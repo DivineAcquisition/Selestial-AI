@@ -409,11 +409,14 @@ export const resumePlan = ownerMutation({
 
 export const openBillingPortal = ownerMutation({
   args: { purpose: v.union(v.literal("portal"), v.literal("payment_method")) },
+  // Updating the card is how a locked account gets paid.
+  whileLocked: true,
   handler: async (ctx, args) => startIntent(ctx, { kind: args.purpose, stage: "submitting" }),
 });
 
 export const refresh = ownerMutation({
   args: {},
+  whileLocked: true,
   handler: async (ctx) => {
     connectedOrRefuse();
     if (!(await allow(ctx, `billing.refresh:${ctx.companyId}`, 6, MINUTE))) throw userError("Refreshed a moment ago. Try again shortly.", "limit");
@@ -588,6 +591,7 @@ export const creditIndicator = companyQuery({
 });
 
 export const intent = ownerQuery({
+  whileLocked: true,
   args: { intentId: v.id("billingIntents") },
   handler: async (ctx, args) => {
     const row = await ctx.db.get(args.intentId);

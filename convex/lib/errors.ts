@@ -8,7 +8,7 @@ export const NOT_ALLOWED = "Not allowed.";
  * in production; a ConvexError's data reaches the caller, so every message meant for a person uses this.
  * Never put provider responses, tokens or stack text in `message`.
  */
-export type UserErrorCode = "invalid" | "not_found" | "not_allowed" | "limit";
+export type UserErrorCode = "invalid" | "not_found" | "not_allowed" | "limit" | "billing_locked";
 export type UserErrorData = { code: UserErrorCode; message: string };
 
 export function userError(message: string, code: UserErrorCode = "invalid") {

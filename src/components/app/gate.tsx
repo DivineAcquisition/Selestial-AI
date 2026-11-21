@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { AgentDock } from "@/components/app/agent-dock";
+import { LockedGate, PaymentWarning } from "@/components/app/billing/locked";
 import { ChatBoundary } from "@/components/app/chat/boundary";
 import { ChatProvider, useChat } from "@/components/app/chat/chat-context";
 import { AskButton, ChatPanel } from "@/components/app/chat/panel";
@@ -202,7 +203,7 @@ function Workspace({ companyId, role, userId, businesses, onSwitch, support, chi
   }, [sendToSetup, router]);
   if (company === undefined || setup === undefined || sendToSetup) return <Loading />;
   // Setup is its own full screen: no sidebar, dock or chat until the owner opens the workspace.
-  const banner = support ? <SupportBanner session={support.session} onExit={support.onExit} /> : undefined;
+  const banner = support ? <SupportBanner session={support.session} onExit={support.onExit} /> : role === "owner" ? <PaymentWarning companyId={companyId} /> : undefined;
   if (inSetup) {
     return (
       <CompanyProvider company={{ companyId, name: company.name, timezone: company.timezone, role }}>
@@ -280,8 +281,11 @@ function Companies({ userId, children }: { userId: string; children: React.React
     setChosen(companyId);
     router.push(LANDING_PATH);
   };
+  const businesses = mine.map((row) => ({ companyId: row.companyId, name: row.name, locked: row.locked }));
+  // The Selestial plan is unpaid after two failed payments: the payment screen instead of the workspace.
+  if (current.locked) return <LockedGate key={current.companyId} companyId={current.companyId as Id<"companies">} businesses={businesses} onSwitch={switchTo} fallback={<Loading />} />;
   return (
-    <Workspace key={current.companyId} companyId={current.companyId as Id<"companies">} role={current.role as Role} userId={userId} businesses={mine.map((row) => ({ companyId: row.companyId, name: row.name }))} onSwitch={switchTo}>
+    <Workspace key={current.companyId} companyId={current.companyId as Id<"companies">} role={current.role as Role} userId={userId} businesses={businesses} onSwitch={switchTo}>
       {children}
     </Workspace>
   );

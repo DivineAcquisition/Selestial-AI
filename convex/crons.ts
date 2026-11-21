@@ -55,6 +55,7 @@ crons.daily("remove abandoned agreement uploads", { hourUTC: 8, minuteUTC: 29 },
 crons.interval("creative studio follows up quiet generations", { minutes: 5 }, internal.media.sweep, {});
 // Billing: settlements that failed are retried, holds left behind by stopped work are released, and work that never reported back is closed.
 crons.interval("billing settles and recovers AI work", { minutes: 5 }, internal.billing.sweep, {});
+crons.interval("unpaid plans: reminder before cancel, cancel after 30 days locked", { hours: 1 }, internal.billingLock.sweep, {});
 crons.interval("messaging charges settle and recover", { minutes: 5 }, internal.messagingBilling.sweep, {});
 crons.interval("texting number monthly fees", { hours: 6 }, internal.texting.chargeNumbers, {});
 // Telnyx callbacks can be lost: a registration the carriers are working on is checked if it has been quiet for six hours.

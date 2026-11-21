@@ -60,6 +60,7 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   { table: "mailboxConnections", index: "by_company", omit: ["cursor"], why: "The mail provider's internal read position." },
   // Plans and credits (convex/lib/billing/schema.ts).
   { table: "billingAccounts", index: "by_company_env" },
+  { table: "billingDunning", index: "by_company_resolved" },
   { table: "aiExecutions", index: "by_company_created", omit: ["lockId"], why: "Autumn's internal reference for a credit hold." },
   { table: "messagingCharges", index: "by_company_created", omit: ["lockId"], why: "Autumn's internal reference for a messaging hold." },
   { table: "billingIntents", index: "by_company_created", omit: ["url"], why: "A short-lived payment or portal address." },

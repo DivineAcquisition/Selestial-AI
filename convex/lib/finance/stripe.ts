@@ -113,6 +113,14 @@ async function call<T>(method: "GET" | "POST", path: string, params: Params, opt
   return { kind: "refused", status: response.status, code, message };
 }
 
+/**
+ * A customer on Selestial's own Stripe account (the one Autumn charges plans through), read to find which
+ * company an unpaid plan invoice belongs to. Only its id and metadata are used.
+ */
+export function getPlatformCustomer(customerId: string) {
+  return call<{ id: string; metadata?: Record<string, string> | null; deleted?: boolean }>("GET", `/v1/customers/${encodeURIComponent(customerId)}`, {});
+}
+
 // ── The objects Selestial reads, reduced to the fields it uses ────────────────────────────────────
 
 export type RawAccount = {

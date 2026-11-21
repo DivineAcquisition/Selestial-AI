@@ -48,10 +48,14 @@ export type MemberAccess = {
 
 type QueryDef<V extends AnyValidators, R> = {
   args: V;
+  /** Still answers while the company is locked for an unpaid plan (convex/billingLock.ts). Default: refused. */
+  whileLocked?: boolean;
   handler: (ctx: QueryCtx & MemberAccess, args: ObjectType<V>) => R;
 };
 type MutationDef<V extends AnyValidators, R> = {
   args: V;
+  /** Still runs while the company is locked for an unpaid plan: paying, and nothing else. Default: refused. */
+  whileLocked?: boolean;
   /**
    * Opens this write to Manage-mode support sessions, under one staff capability, with what the owner is
    * told it did. Without it, a support session can never make this change: the default is closed.
@@ -62,6 +66,16 @@ type MutationDef<V extends AnyValidators, R> = {
 
 /** Every company function also takes the support session it is called in, when it is. */
 const SUPPORT_ARG = { supportSessionId: v.optional(v.id("supportSessions")) };
+
+/**
+ * A company locked for an unpaid plan opens nothing to its own people except what paying needs
+ * (convex/billingLock.ts). Selestial Support sessions are not affected: staff may need to help.
+ */
+function refuseWhileLocked(company: Doc<"companies">, whileLocked: boolean | undefined) {
+  if (company.billingLockedAt !== undefined && !whileLocked) {
+    throw userError("This account is locked because the Selestial plan is unpaid. The Owner can pay to reopen it.", "billing_locked");
+  }
+}
 
 /** A read inside a company. Any active member, or Selestial staff in a support session for it. */
 export function companyQuery<V extends AnyValidators, R>(def: QueryDef<V, R>): RegisteredQuery<"public", CompanyArgs<V>, R> {
@@ -76,6 +90,7 @@ export function companyQuery<V extends AnyValidators, R>(def: QueryDef<V, R>): R
         return def.handler({ ...ctx, db, ...access, role: support.session.previewRole, support }, rest as ObjectType<V>);
       }
       const access = await requireMember(ctx, companyId);
+      refuseWhileLocked(access.company, def.whileLocked);
       return def.handler({ ...ctx, ...access, role: roleOf(access.member.role), support: null }, rest as ObjectType<V>);
     },
   } as any) as RegisteredQuery<"public", CompanyArgs<V>, R>;
@@ -99,6 +114,7 @@ export function companyMutation<V extends AnyValidators, R>(def: MutationDef<V, 
         return result;
       }
       const access = await requireMember(ctx, companyId);
+      refuseWhileLocked(access.company, def.whileLocked);
       return def.handler({ ...ctx, ...access, role: roleOf(access.member.role), support: null }, rest as ObjectType<V>);
     },
   } as any) as RegisteredMutation<"public", CompanyArgs<V>, R>;
@@ -108,6 +124,7 @@ export function companyMutation<V extends AnyValidators, R>(def: MutationDef<V, 
 export function managerQuery<V extends AnyValidators, R>(def: QueryDef<V, R>) {
   return companyQuery({
     args: def.args,
+    whileLocked: def.whileLocked,
     handler: async (ctx, args) => {
       if (!isManager(ctx.role)) notAllowed();
       return def.handler(ctx, args);
@@ -119,6 +136,7 @@ export function managerMutation<V extends AnyValidators, R>(def: MutationDef<V, 
   return companyMutation({
     args: def.args,
     support: def.support,
+    whileLocked: def.whileLocked,
     handler: async (ctx, args) => {
       if (!isManager(ctx.role)) notAllowed();
       return def.handler(ctx, args);
@@ -130,6 +148,7 @@ export function managerMutation<V extends AnyValidators, R>(def: MutationDef<V, 
 export function ownerQuery<V extends AnyValidators, R>(def: QueryDef<V, R>) {
   return companyQuery({
     args: def.args,
+    whileLocked: def.whileLocked,
     handler: async (ctx, args) => {
       if (!isOwner(ctx.role)) notAllowed();
       return def.handler(ctx, args);
@@ -142,6 +161,7 @@ export function ownerMutation<V extends AnyValidators, R>(def: MutationDef<V, R>
   return companyMutation({
     args: def.args,
     support: def.support,
+    whileLocked: def.whileLocked,
     handler: async (ctx, args) => {
       // A support session reaches here only for a change opened to it by name (companyMutation checked it).
       if (!isOwner(ctx.role) && !ctx.support) notAllowed();

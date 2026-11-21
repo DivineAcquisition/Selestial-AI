@@ -7,6 +7,7 @@ import { useParams, usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
+import { useNow } from "@/components/app/use-now";
 import { Modal } from "@/components/app/modal";
 import { missingSetup } from "@/components/app/not-set-up";
 import { PageHeader, Panel } from "@/components/app/shell";
@@ -86,6 +87,7 @@ const NAV = [
   { href: "/staff/fields", label: "Form fields" },
   { href: "/staff/texting", label: "Texting" },
   { href: "/staff/messaging", label: "Messaging money" },
+  { href: "/staff/unpaid", label: "Unpaid plans" },
   { href: "/staff/agent-requests", label: "Agent requests" },
   { href: "/staff/people", label: "Staff" },
   { href: "/staff/ai", label: "AI models" },
@@ -1257,6 +1259,70 @@ function AttentionItem({ row }: { row: AttentionRow }) {
           <NumberField value={amount} onChange={(text) => setAmount(text)} placeholder="Credit $ (optional)" aria-label="Credit in dollars, optional" className="w-36" precision={2} />
           <Button type="submit" size="sm" variant="outline" loading={busy}>
             {cents ? `Credit ${dollars(cents)} and close` : "Close"}
+          </Button>
+        </form>
+        <FormError message={error} />
+      </div>
+    </Panel>
+  );
+}
+
+// ── Unpaid plans (convex/billingLock.ts) ─────────────────────────────────────────────────────────
+
+/** Accounts locked after two failed plan payments, with when each is canceled. Staff with billing adjustments can lift one. */
+export function UnpaidPlans() {
+  const rows = useQuery(api.billingLock.lockedAccounts, {});
+  return (
+    <>
+      <PageHeader title="Unpaid plans" lead="Companies whose Selestial plan payment failed twice. Their team can't open the workspace and their agents are paused; their customers' booking pages and links keep working. Paying reopens it at once; after 30 days locked the plan is canceled. Lift a lock only when it was paid another way or locked by mistake." />
+      {rows === undefined ? (
+        <Skeleton className="h-40 rounded-2xl" />
+      ) : rows.length === 0 ? (
+        <Panel>
+          <p className="py-6 text-center text-sm text-muted-foreground">No account is locked for an unpaid plan.</p>
+        </Panel>
+      ) : (
+        <div className="grid gap-3">
+          {rows.map((row) => (
+            <UnpaidItem key={row.id} row={row} />
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+type UnpaidRow = NonNullable<ReturnType<typeof useQuery<typeof api.billingLock.lockedAccounts>>>[number];
+
+function UnpaidItem({ row }: { row: UnpaidRow }) {
+  const lift = useMutation(api.billingLock.lift);
+  const { busy, error, run } = useRun();
+  const [note, setNote] = useState("");
+  const now = useNow();
+  const daysLeft = now ? Math.max(0, Math.ceil((row.cancelAt - now) / 86_400_000)) : null;
+  return (
+    <Panel>
+      <div className="grid gap-2 text-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p>
+            <span className="font-semibold text-strong">{row.company}</span>
+            <span className="text-muted-foreground"> · locked {new Date(row.lockedAt).toLocaleDateString()}</span>
+          </p>
+          {daysLeft !== null ? <Badge variant={daysLeft <= 7 ? "error" : "warning"}>{daysLeft} day{daysLeft === 1 ? "" : "s"} to cancellation</Badge> : null}
+        </div>
+        <p className="text-strong">
+          {dollars(row.amountCents)} unpaid after {row.attempts} failed attempts{row.reminded ? " · 7-day reminder sent" : ""}
+        </p>
+        <form
+          className="flex flex-wrap items-center gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void run(() => lift({ id: row.id, note }));
+          }}
+        >
+          <TextInput value={note} onChange={(event) => setNote(event.target.value)} placeholder="Why, e.g. Paid by bank transfer on 3/2" aria-label="Why the lock is lifted" required className="max-w-md" />
+          <Button type="submit" size="sm" variant="outline" loading={busy}>
+            Lift lock
           </Button>
         </form>
         <FormError message={error} />

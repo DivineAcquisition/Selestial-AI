@@ -30,7 +30,7 @@ describe("moving sign-in to a new service", () => {
     const after = t.withIdentity(who("user_live_1", LIVE));
     expect(await after.query(api.companies.mine, {})).toEqual([]);
     expect(await after.mutation(api.companies.reconnect, {})).toEqual({ reconnected: 1 });
-    expect(await after.query(api.companies.mine, {})).toEqual([{ companyId, name: "Novara Cleaning", role: "owner" }]);
+    expect(await after.query(api.companies.mine, {})).toEqual([{ companyId, name: "Novara Cleaning", role: "owner", locked: false }]);
     expect(await after.query(api.companies.get, { companyId })).toMatchObject({ name: "Novara Cleaning", role: "owner" });
     // The old sign-in no longer opens it, and a second call changes nothing.
     expect(await before.query(api.companies.mine, {})).toEqual([]);
