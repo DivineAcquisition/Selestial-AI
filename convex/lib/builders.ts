@@ -23,11 +23,17 @@ import { linkForStatementToken } from "./finance/statementLinks";
 import { notePortalAction, portalLinkForToken, portalLinkState, type PortalAction, type PortalLinkState } from "./cleaners/portal";
 import { isManager, isOwner, roleOf, type Role } from "./roles";
 import { publicIdFor, type LinkKind } from "./sales/links";
+import { hasCapability, type StaffCapability } from "./support/capabilities";
+import { recordSupportChange, requireStrong, type SupportContext, type SupportRule } from "./support/access";
 
 type AnyValidators = Record<string, PropertyValidators[string]>;
 
-/** The arguments a company function takes from callers: its own, plus the company. */
-export type CompanyArgs<V extends AnyValidators> = ObjectType<V> & { companyId: Id<"companies"> };
+/**
+ * The arguments a company function takes from callers: its own, plus the company, plus (only inside a
+ * Selestial support session) the session the request belongs to. The browser adds the session to every
+ * company request of the one tab that opened it (src/components/support/client.tsx).
+ */
+export type CompanyArgs<V extends AnyValidators> = ObjectType<V> & { companyId: Id<"companies">; supportSessionId?: Id<"supportSessions"> };
 
 export type MemberAccess = {
   identity: UserIdentity;
@@ -35,6 +41,8 @@ export type MemberAccess = {
   company: Doc<"companies">;
   companyId: Id<"companies">;
   role: Role;
+  /** Set only when a Selestial admin is acting through a support session (convex/lib/support/access.ts). */
+  support: SupportContext | null;
 };
 
 type QueryDef<V extends AnyValidators, R> = {
@@ -43,29 +51,56 @@ type QueryDef<V extends AnyValidators, R> = {
 };
 type MutationDef<V extends AnyValidators, R> = {
   args: V;
+  /**
+   * What a Selestial support session in Manage mode may do here. Absent: a support session may not call
+   * it at all. Approving on the owner's behalf never has one (docs/operations/03-support-sessions.md).
+   */
+  support?: SupportRule;
   handler: (ctx: MutationCtx & MemberAccess, args: ObjectType<V>) => R;
 };
 
-/** A read inside a company. Any active member. */
+const SUPPORT_ARG = { supportSessionId: v.optional(v.id("supportSessions")) };
+
+async function companyAccess(ctx: QueryCtx | MutationCtx, args: { companyId: Id<"companies">; supportSessionId?: Id<"supportSessions"> }) {
+  const { companyId, supportSessionId, ...rest } = args;
+  const access = await requireMember(ctx, companyId, supportSessionId);
+  // In a support session, the role is the session's "View as" preview: never more than the session allows.
+  const role = access.support ? access.support.session.previewRole : roleOf(access.member.role);
+  return { access: { ...access, role }, rest };
+}
+
+/** A read inside a company. Any active member, or a support session (View or Manage). */
 export function companyQuery<V extends AnyValidators, R>(def: QueryDef<V, R>): RegisteredQuery<"public", CompanyArgs<V>, R> {
   return query({
-    args: { companyId: v.id("companies"), ...def.args },
-    handler: async (ctx: QueryCtx, args: { companyId: Id<"companies"> }) => {
-      const { companyId, ...rest } = args;
-      const access = await requireMember(ctx, companyId);
-      return def.handler({ ...ctx, ...access, role: roleOf(access.member.role) }, rest as ObjectType<V>);
+    args: { companyId: v.id("companies"), ...SUPPORT_ARG, ...def.args },
+    handler: async (ctx: QueryCtx, args: { companyId: Id<"companies">; supportSessionId?: Id<"supportSessions"> }) => {
+      const { access, rest } = await companyAccess(ctx, args);
+      return def.handler({ ...ctx, ...access }, rest as ObjectType<V>);
     },
   } as any) as RegisteredQuery<"public", CompanyArgs<V>, R>;
 }
 
-/** A write inside a company. Any active member: Office works the queue, so day-to-day records are theirs too. */
+/**
+ * A write inside a company. Any active member: Office works the queue, so day-to-day records are theirs too.
+ * A support session may write only in Manage mode, only where the function declares a support rule, only
+ * with that rule's capability, and for a sensitive rule only after a fresh sign-in with a second factor.
+ * Every support write is recorded with the session, the staff member and what changed.
+ */
 export function companyMutation<V extends AnyValidators, R>(def: MutationDef<V, R>): RegisteredMutation<"public", CompanyArgs<V>, R> {
   return mutation({
-    args: { companyId: v.id("companies"), ...def.args },
-    handler: async (ctx: MutationCtx, args: { companyId: Id<"companies"> }) => {
-      const { companyId, ...rest } = args;
-      const access = await requireMember(ctx, companyId);
-      return def.handler({ ...ctx, ...access, role: roleOf(access.member.role) }, rest as ObjectType<V>);
+    args: { companyId: v.id("companies"), ...SUPPORT_ARG, ...def.args },
+    handler: async (ctx: MutationCtx, args: { companyId: Id<"companies">; supportSessionId?: Id<"supportSessions"> }) => {
+      const { access, rest } = await companyAccess(ctx, args);
+      const support = access.support;
+      if (support) {
+        if (support.mode !== "manage") throw userError("This support session is View only. Switch to Manage to make changes.", "not_allowed");
+        if (!def.support) throw userError("Selestial Support can't make this change from a support session. Prepare it for the owner to do instead.", "not_allowed");
+        if (!hasCapability(support.staff, def.support.capability)) notAllowed();
+        if (def.support.sensitive) requireStrong(access.identity);
+      }
+      const result = await def.handler({ ...ctx, ...access }, rest as ObjectType<V>);
+      if (support && def.support) await recordSupportChange(ctx, support, def.support, rest);
+      return result;
     },
   } as any) as RegisteredMutation<"public", CompanyArgs<V>, R>;
 }
@@ -84,6 +119,7 @@ export function managerQuery<V extends AnyValidators, R>(def: QueryDef<V, R>) {
 export function managerMutation<V extends AnyValidators, R>(def: MutationDef<V, R>) {
   return companyMutation({
     args: def.args,
+    support: def.support,
     handler: async (ctx, args) => {
       if (!isManager(ctx.role)) notAllowed();
       return def.handler(ctx, args);
@@ -106,6 +142,7 @@ export function ownerQuery<V extends AnyValidators, R>(def: QueryDef<V, R>) {
 export function ownerMutation<V extends AnyValidators, R>(def: MutationDef<V, R>) {
   return companyMutation({
     args: def.args,
+    support: def.support,
     handler: async (ctx, args) => {
       if (!isOwner(ctx.role)) notAllowed();
       return def.handler(ctx, args);
@@ -115,7 +152,7 @@ export function ownerMutation<V extends AnyValidators, R>(def: MutationDef<V, R>
 
 export type SignedIn = { userId: string; issuer: string; email: string; emailVerified: boolean; name: string };
 
-function signedIn(identity: UserIdentity): SignedIn {
+export function signedIn(identity: UserIdentity): SignedIn {
   return {
     userId: identity.subject,
     issuer: identity.issuer,
@@ -188,26 +225,31 @@ async function requireStaff(ctx: MutationCtx | QueryCtx, who: SignedIn, writable
   return (await ctx.db.get(id))!;
 }
 
-/** For Selestial staff only. Anyone else, signed in or not, gets "Not found.", as if the function did not exist. */
-export function staffQuery<V extends AnyValidators, R>(def: { args: V; handler: (ctx: QueryCtx & StaffAccess, args: ObjectType<V>) => R }): RegisteredQuery<"public", ObjectType<V>, R> {
+/**
+ * For Selestial staff only. Anyone else, signed in or not, gets "Not found.", as if the function did not
+ * exist. `capability` limits it to staff who hold that capability (convex/lib/support/capabilities.ts).
+ */
+export function staffQuery<V extends AnyValidators, R>(def: { args: V; capability?: StaffCapability; handler: (ctx: QueryCtx & StaffAccess, args: ObjectType<V>) => R }): RegisteredQuery<"public", ObjectType<V>, R> {
   return query({
     args: def.args,
     handler: async (ctx: QueryCtx, args: ObjectType<V>) => {
       const who = signedIn(await requireIdentity(ctx));
       const staff = await requireStaff(ctx, who, false);
+      if (def.capability && !hasCapability(staff, def.capability)) notAllowed();
       return def.handler({ ...ctx, ...who, staff }, args);
     },
   } as any);
 }
 
-/** For Selestial staff only. `adminOnly` limits it to staff admins. */
-export function staffMutation<V extends AnyValidators, R>(def: { args: V; adminOnly?: boolean; handler: (ctx: MutationCtx & StaffAccess, args: ObjectType<V>) => R }): RegisteredMutation<"public", ObjectType<V>, R> {
+/** For Selestial staff only. `adminOnly` limits it to staff admins; `capability` to staff holding it. */
+export function staffMutation<V extends AnyValidators, R>(def: { args: V; adminOnly?: boolean; capability?: StaffCapability; handler: (ctx: MutationCtx & StaffAccess, args: ObjectType<V>) => R }): RegisteredMutation<"public", ObjectType<V>, R> {
   return mutation({
     args: def.args,
     handler: async (ctx: MutationCtx, args: ObjectType<V>) => {
       const who = signedIn(await requireIdentity(ctx));
       const staff = await requireStaff(ctx, who, true);
       if (def.adminOnly && staff.role !== "admin") notAllowed();
+      if (def.capability && !hasCapability(staff, def.capability)) notAllowed();
       return def.handler({ ...ctx, ...who, staff }, args);
     },
   } as any);

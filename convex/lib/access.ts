@@ -3,6 +3,7 @@ import type { UserIdentity } from "convex/server";
 import type { Doc, Id, TableNames } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { notFound } from "./errors";
+import { requireSupport } from "./support/access";
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -17,15 +18,17 @@ export async function requireIdentity(ctx: Ctx): Promise<UserIdentity> {
  * The caller's active membership in this company. Someone signed out, a company that does not exist and a
  * company the caller is not in all get the same "Not found.", so an id tells an outsider nothing.
  */
-export async function requireMember(ctx: Ctx, companyId: Id<"companies">) {
+export async function requireMember(ctx: Ctx, companyId: Id<"companies">, supportSessionId?: Id<"supportSessions">) {
   const identity = await requireIdentity(ctx);
+  // A Selestial support session: only when the request names it, and only as that session allows.
+  if (supportSessionId) return requireSupport(ctx, identity, companyId, supportSessionId);
   const company = await ctx.db.get(companyId);
   const member = await ctx.db
     .query("members")
     .withIndex("by_company_user", (q) => q.eq("companyId", companyId).eq("userId", identity.subject))
     .unique();
   if (!company || !member || member.status !== "active") notFound();
-  return { identity, member, company, companyId };
+  return { identity, member, company, companyId, support: null };
 }
 
 type CompanyTables = {

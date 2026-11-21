@@ -20,6 +20,8 @@
  * the Connect webhook pointed at https://<deployment>.convex.site/webhooks/stripe). Unset: card
  * payments are unavailable and Finance says so; recording payments by hand keeps working.
  */
+import { liveMoneyAllowed, paymentsAllowed } from "../operations/deployment";
+
 const BASE = "https://api.stripe.com";
 const TIMEOUT_MS = 15_000;
 
@@ -30,6 +32,9 @@ export function stripeConfig(): StripeConfig | null {
   const test = /^(sk|rk)_test_/.test(secretKey);
   const live = /^(sk|rk)_live_/.test(secretKey);
   if (!test && !live) return null;
+  // Only production may use a live key, and a restored backend calls Stripe not at all
+  // (convex/lib/operations/deployment.ts). Finance then says card payments are unavailable.
+  if (!paymentsAllowed() || (live && !liveMoneyAllowed())) return null;
   const publishable = process.env.STRIPE_PUBLISHABLE_KEY?.trim() ?? "";
   const pkOk = live ? publishable.startsWith("pk_live_") : publishable.startsWith("pk_test_");
   return { secretKey, publishableKey: pkOk ? publishable : null, livemode: live };

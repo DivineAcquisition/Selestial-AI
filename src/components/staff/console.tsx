@@ -66,7 +66,7 @@ const NAV = [
   { href: "/staff/ai", label: "AI models" },
 ];
 
-function StaffShell({ role, children }: { role: "admin" | "reviewer"; children: React.ReactNode }) {
+function StaffShell({ role, children }: { role: string; children: React.ReactNode }) {
   const pathname = usePathname();
   return (
     <div className="min-h-dvh bg-muted/50">

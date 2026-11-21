@@ -9,6 +9,7 @@
  * A plain-words request to stop ("stop texting me") stops texts too, and a person checks it.
  * Anything else from someone on record becomes a task for a person to read. Nothing acts on its words.
  */
+import { reportSignal } from "./lib/operations/signals";
 import { salesInboundSms, salesOptedOut } from "./lib/sales/inbound";
 import { v } from "convex/values";
 
@@ -96,12 +97,19 @@ async function handleSms(ctx: MutationCtx, args: { to: string; from: string; bod
   {
     const to = normalAddress("sms", args.to);
     const companyId = to ? await companyForNumber(ctx, to) : null;
-    if (!companyId) return { kind: "unknown_number", replied: false };
+    if (!companyId) {
+      // Nobody owns the number: recorded for Operations (masked, never the text), and left unanswered.
+      await reportSignal(ctx, { kind: "inbound_unknown_number", detail: `to …${(to ?? args.to).slice(-4)}` });
+      return { kind: "unknown_number", replied: false };
+    }
     // An incoming text costs money whether or not the balance covers it, and is always received and handled:
     // it is charged (within the overdraft bound, with the Owner and staff told) and never refused.
     if (args.billing) await chargeInbound(ctx, { companyId, providerMessageId: args.billing.providerMessageId, provider: "telnyx", mms: args.billing.mms, parts: args.billing.parts, activity: args.billing.mms ? "Incoming picture message" : "Incoming text" });
     const from = normalAddress("sms", args.from);
-    if (!from) return { kind: "bad_number", replied: false };
+    if (!from) {
+      await reportSignal(ctx, { companyId, kind: "inbound_bad_number", detail: "sender number unreadable" });
+      return { kind: "bad_number", replied: false };
+    }
     const kind = classify(args.body);
     // Not a keyword. Someone on record who texts the company's number is answered by a person, and a
     // cleaner's text is also read against their own visits (dispatchReplies.ts).

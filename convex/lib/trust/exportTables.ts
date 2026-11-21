@@ -65,6 +65,11 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   { table: "billingIntents", index: "by_company_created", omit: ["url"], why: "A short-lived payment or portal address." },
   { table: "agentAccessRequests", index: "by_company_last" },
   { table: "messagingAttention", index: "by_company_at", omit: ["resolvedBy"], why: "Which Selestial staff member resolved it." },
+  // Operations (convex/lib/operations/schema.ts): what Selestial tracked for this company, without staff-only fields.
+  { table: "incidents", index: "by_company_open", omit: ["diagnostics", "next", "assignedTo", "resolution", "related", "groupKey", "parentId", "key"], why: "Staff diagnostics, internal references and which Selestial staff member worked it." },
+  // Admin support sessions (convex/lib/support/schema.ts): when Selestial Support entered the workspace and what it changed.
+  { table: "supportSessions", index: "by_company_started", omit: ["staffId", "memberId"], why: "Which Selestial staff member it was." },
+  { table: "supportActions", index: "by_company_at", omit: ["staffId"], why: "Which Selestial staff member it was." },
   { table: "messagingTopUps", index: "by_company_created", omit: ["intentId", "applied"], why: "Internal references to a purchase request and to payment events already applied." },
   { table: "sourceMessages", index: "by_company_received" },
   { table: "formSessions", index: "by_company_application" },
@@ -211,6 +216,8 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
 
 /** Company tables kept out of the export, and why. */
 export const NOT_EXPORTED: Readonly<Record<string, string>> = {
+  opsLog: "Selestial's own operations log, including staff notes; what it means for the company is in incidents, which are exported.",
+  opsSignals: "Masked, short-lived facts for Selestial's monitor (an inbound text to an unknown number); nothing the company entered.",
   clientViews: "The client directory's search rows, rebuilt from clients, contacts and properties, which are exported.",
   numberSearches: "Lists of numbers that were for sale at the moment of a search; the number the company asked for is in its texting request.",
   actionLinks: "Each row is half of a cleaner's link; a copy of it must never leave the record.",

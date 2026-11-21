@@ -16,6 +16,7 @@
  * The secret key never leaves the server. Its prefix decides the environment: am_sk_test_ is the sandbox,
  * am_sk_live_ is production, and any other value is treated as not configured.
  */
+import { liveMoneyAllowed, paymentsAllowed } from "../operations/deployment";
 import { AUTUMN } from "./catalog";
 
 export type AutumnEnv = "sandbox" | "production";
@@ -25,8 +26,10 @@ const TIMEOUT_MS = 10_000;
 
 export function autumnConfig(): { secretKey: string; env: AutumnEnv } | null {
   const secretKey = process.env.AUTUMN_SECRET_KEY?.trim() ?? "";
+  // A restored backend charges nothing; a test backend never uses the live key (convex/lib/operations/deployment.ts).
+  if (!paymentsAllowed()) return null;
   if (secretKey.startsWith("am_sk_test_")) return { secretKey, env: "sandbox" };
-  if (secretKey.startsWith("am_sk_live_")) return { secretKey, env: "production" };
+  if (secretKey.startsWith("am_sk_live_") && liveMoneyAllowed()) return { secretKey, env: "production" };
   return null;
 }
 

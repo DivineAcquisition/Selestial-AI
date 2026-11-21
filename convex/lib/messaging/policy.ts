@@ -4,6 +4,7 @@
  * that arrives in between still stops it. The checks run in a fixed order and the first that fails
  * answers, with its own code and words a person can act on. Nothing here is written by a model.
  */
+import { sendIsolation } from "../operations/deployment";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import { clockMinutes, readProfile } from "../compliance/profile";
@@ -22,12 +23,14 @@ const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
 const WEEK = 7 * DAY;
 
-export const POLICY_CODES = ["company_suspended", "agent_paused", "sender_not_ready", "no_address", "not_registered", "suppressed", "no_permission", "quiet_hours", "frequency"] as const;
+export const POLICY_CODES = ["company_suspended", "outbound_stopped", "not_test_recipient", "agent_paused", "sender_not_ready", "no_address", "not_registered", "suppressed", "no_permission", "quiet_hours", "frequency"] as const;
 export type PolicyCode = (typeof POLICY_CODES)[number];
 
 /** The general words for each code. An answer carries more exact words for the case at hand. */
 export const POLICY_WORDS: Record<PolicyCode, string> = {
   company_suspended: "Sending is suspended for this company by Selestial.",
+  outbound_stopped: "Selestial stopped outbound sending for this company while it looks into a problem.",
+  not_test_recipient: "This is a test backend: it only sends to the test recipients it lists.",
   agent_paused: "The agent is paused, so it sends nothing. A person can still send.",
   sender_not_ready: "The company's sending setup is not finished.",
   no_address: "There is no usable address for this person on this channel.",
@@ -107,7 +110,8 @@ export function quietUntil(now: number, timezone: string, window: { start: strin
 }
 
 /**
- * Whether this message may be sent now. In order: company suspended, agent paused, sender not ready,
+ * Whether this message may be sent now. In order: company suspended, outbound stopped by Selestial, a
+ * non-production backend's recipient list, agent paused, sender not ready,
  * no usable address, not covered by the texting registration, suppressed, no permission, quiet hours,
  * weekly limit.
  *
@@ -118,6 +122,12 @@ export function quietUntil(now: number, timezone: string, window: { start: strin
 export async function checkSend(ctx: Ctx, input: PolicyInput): Promise<PolicyAnswer> {
   const company = await ctx.db.get(input.companyId);
   if (!company || company.suspendedAt !== undefined) return no("company_suspended", "Sending is suspended for this company by Selestial. Nothing is sent until Selestial lifts it.");
+  // Selestial's emergency stop: nothing outbound, except the answer to a person's own STOP, HELP or START,
+  // which carriers require and which stops nothing from being honored.
+  if (company.outboundStop && !input.reply) return no("outbound_stopped", "Selestial stopped outbound sending for this company while it looks into a problem. Nothing is sent until Selestial resumes it; nothing waiting is sent automatically when it does.");
+  // A backend that isn't production sends only to its listed test recipients (convex/lib/operations/deployment.ts).
+  const isolation = sendIsolation(input.channel, input.to);
+  if (isolation) return no("not_test_recipient", isolation);
 
   if (AGENT_ORIGINS.includes(input.origin) && input.agent && company.pausedAgents.includes(input.agent)) {
     return no("agent_paused", `${AGENT_PROFILES[input.agent].name} is paused, so it sends nothing. A person can still send.`);

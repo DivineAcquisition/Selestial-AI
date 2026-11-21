@@ -5,6 +5,7 @@
  * A provider's answer is turned into plain words here. Its raw response and the API key never leave
  * this file: they are not returned, not logged and not stored.
  */
+import { sendIsolation } from "../operations/deployment";
 import { isVerifiedFrom } from "./senders";
 export type EmailInput = {
   to: string;
@@ -151,7 +152,22 @@ export function emailProvider(): EmailProvider | null {
   if (name === "resend") {
     const apiKey = process.env.RESEND_API_KEY?.trim();
     const from = process.env.EMAIL_FROM?.trim();
-    return apiKey && from ? resendProvider(apiKey, from) : null;
+    return apiKey && from ? isolated(resendProvider(apiKey, from)) : null;
   }
   return null;
+}
+
+/**
+ * Real mail from a backend that isn't production goes only to its listed test recipients, whatever path
+ * it took (convex/lib/operations/deployment.ts). The refusal is a plain, final answer: nothing was sent.
+ */
+function isolated(provider: EmailProvider): EmailProvider {
+  return {
+    ...provider,
+    async send(input) {
+      const refused = sendIsolation("email", input.to);
+      if (refused) return { ok: false, retryable: false, problem: refused };
+      return provider.send(input);
+    },
+  };
 }

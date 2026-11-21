@@ -21,6 +21,7 @@ import { unsubscribable } from "./route";
 import { unsubscribeFor } from "./unsubscribe";
 import { waitingMessages } from "../inbox/events";
 import { OUTCOME_WORDS } from "../retention/cases";
+import { ownerShouldHear, reference } from "../operations/engine";
 
 export type Composed =
   | { ok: true; email: Email; from: string; replyTo?: string; headers: Record<string, string> }
@@ -401,6 +402,12 @@ async function build(ctx: MutationCtx, message: Doc<"messages">, company: Doc<"c
       return activation(ctx, company, "first", notice.ref, c);
     case "activation_summary":
       return activation(ctx, company, "summary", notice.ref, c);
+    case "operations_attention":
+      return operationsAttention(ctx, company, c);
+    case "operations_recovered":
+      return operationsRecovered(ctx, company, c);
+    case "support_session":
+      return supportSession(ctx, company, notice.ref, str(facts, "kind"), c);
     case "weekly_digest": {
       const weekStart = num(facts, "weekStart");
       if (weekStart === null) return { problem: "The notice didn't say which week it was for." };
@@ -444,6 +451,100 @@ async function textingNotice(ctx: MutationCtx, company: Doc<"companies">, ref: s
   }
   return { problem: "This texting notice is out of date." };
 }
+
+/**
+ * Operations (docs/operations/01-recovery.md): what needs the Owner now, read from the open incidents as
+ * they are when the email goes. Each incident it lists is marked told, so it is never in a second email.
+ */
+async function operationsAttention(ctx: MutationCtx, company: Doc<"companies">, c: Context): Promise<Built> {
+  const open = await ctx.db
+    .query("incidents")
+    .withIndex("by_company_open", (q) => q.eq("companyId", company._id).eq("open", true))
+    .take(100);
+  const due = open.filter(ownerShouldHear).sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]);
+  if (!due.length) return { problem: "Nothing needs the Owner any more." };
+  const now = Date.now();
+  for (const row of due) await ctx.db.patch(row._id, { notified: { ...row.notified, ownerAt: now } });
+  const first = due[0];
+  const actionable = due.filter((row) => row.action?.href);
+  const button = actionable.length === 1 && due.length === 1 ? { label: actionable[0].action!.label, path: actionable[0].action!.href! } : { label: "See what needs you", path: "/app#issues" };
+  return alertEmail({
+    ...c,
+    eyebrow: "Needs you",
+    tone: due.some((row) => row.severity === "high" || row.severity === "critical") ? "warning" : "info",
+    subject: due.length === 1 ? first.title : `${due.length} things need you in Selestial`,
+    heading: due.length === 1 ? first.title : `${due.length} things need you`,
+    body: due.length === 1 ? `${first.impact} ${first.done}` : "Selestial kept your work safe and stopped what could go wrong twice. Each of these needs one step from you.",
+    facts: due.length === 1 ? [{ label: "Reference", value: reference(first._id) }] : due.slice(0, 6).map((row) => ({ label: row.title, value: row.action?.label ?? "Selestial is on it" })),
+    button,
+    essential: true,
+    because: "you're the Owner, and only you can fix these",
+  });
+}
+
+async function operationsRecovered(ctx: MutationCtx, company: Doc<"companies">, c: Context): Promise<Built> {
+  const recent = await ctx.db
+    .query("incidents")
+    .withIndex("by_company_open", (q) => q.eq("companyId", company._id).eq("open", false).gte("lastSeenAt", Date.now() - 2 * 24 * 60 * 60_000))
+    .take(100);
+  const due = recent.filter((row) => row.ownerVisible && row.notified.ownerAt !== undefined && row.notified.recoveredAt === undefined && row.resolution?.how === "verified");
+  if (!due.length) return { problem: "Nothing new has recovered." };
+  const now = Date.now();
+  for (const row of due) await ctx.db.patch(row._id, { notified: { ...row.notified, recoveredAt: now } });
+  return alertEmail({
+    ...c,
+    eyebrow: "Working again",
+    tone: "info",
+    subject: due.length === 1 ? `Working again: ${due[0].title}` : `${due.length} things are working again`,
+    heading: due.length === 1 ? "This is working again" : `${due.length} things are working again`,
+    body: "Selestial checked the records again and confirmed it. Work that was waiting carries on, and each waiting item is checked again before it goes.",
+    facts: due.slice(0, 6).map((row) => ({ label: row.title, value: reference(row._id) })),
+    button: { label: "Open Home", path: "/app" },
+    essential: true,
+  });
+}
+
+/** Selestial Support switched a session to Manage, or ended one that made changes. */
+async function supportSession(ctx: MutationCtx, company: Doc<"companies">, ref: string | undefined, kind: string | null, c: Context): Promise<Built> {
+  const id = ref ? ctx.db.normalizeId("supportSessions", ref) : null;
+  const session = id ? await ctx.db.get(id) : null;
+  if (!session || session.companyId !== company._id) return { problem: "The support session no longer exists." };
+  if (kind === "summary") {
+    const changes = await ctx.db
+      .query("supportActions")
+      .withIndex("by_session_at", (q) => q.eq("sessionId", session._id))
+      .take(200);
+    const made = changes.filter((row) => row.kind === "changed" || row.kind === "external");
+    if (!made.length) return { problem: "The session made no changes." };
+    return alertEmail({
+      ...c,
+      eyebrow: "Support access",
+      tone: "info",
+      subject: `Selestial Support made ${made.length} ${made.length === 1 ? "change" : "changes"} in your workspace`,
+      heading: "What Selestial Support changed",
+      body: `Reason given: ${session.reason}`,
+      facts: made.slice(0, 8).map((row) => ({ label: when(row.at, c.timezone), value: row.summary })),
+      button: { label: "See support access history", path: "/app/settings/support-access" },
+      essential: true,
+      because: "you're the Owner, and you're told whenever Selestial Support changes something",
+    });
+  }
+  if (session.mode !== "manage") return { problem: "The session is no longer in Manage." };
+  return alertEmail({
+    ...c,
+    eyebrow: "Support access",
+    tone: "info",
+    subject: "Selestial Support is making changes in your workspace",
+    heading: "Selestial Support switched to Manage",
+    body: `A Selestial admin can now make support changes in your workspace until ${timeOf(session.expiresAt, c.timezone)}. Reason given: ${session.manageReason ?? session.reason}. Approvals, messages to your customers and payments still need you.`,
+    facts: [{ label: "Started", value: when(session.manageAt ?? session.startedAt, c.timezone) }],
+    button: { label: "See support access history", path: "/app/settings/support-access" },
+    essential: true,
+    because: "you're the Owner, and you're told whenever Selestial Support can change something",
+  });
+}
+
+const SEVERITY_RANK: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
 
 /** The notice as it should go now, or why it shouldn't. */
 export async function composeNotice(ctx: MutationCtx, message: Doc<"messages">, now: number): Promise<Composed> {

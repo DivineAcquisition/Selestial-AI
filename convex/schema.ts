@@ -18,6 +18,8 @@ import { textingTables } from "./lib/texting/schema";
 import { financeTables } from "./lib/finance/schema";
 import { clientsTables, communicationValidator, propertyDetailsValidator, propertyKindValidator, relationshipValidator } from "./lib/clients/schema";
 import { trustTables } from "./lib/trust/schema";
+import { operationsTables } from "./lib/operations/schema";
+import { supportTables } from "./lib/support/schema";
 import { staffTables } from "./lib/trust/staffSchema";
 import { v } from "convex/values";
 
@@ -273,6 +275,12 @@ export default defineSchema({
     /** Set only by Selestial staff. While set, nothing is sent for this company. */
     suspendedAt: v.optional(v.number()),
     /**
+     * Selestial's emergency stop on outbound activity only (convex/operations.ts stopOutbound). While set, no
+     * text or email leaves and no agent acts on its own. Public pages, inbound texts, STOP replies, delivery
+     * reports and billing reconciliation keep working. Narrower than suspendedAt.
+     */
+    outboundStop: v.optional(v.object({ at: v.number(), staffId: v.id("staff"), reason: v.string(), incidentId: v.optional(v.id("incidents")) })),
+    /**
      * The verified plan, copied from Autumn by billing sync (convex/lib/billing) and nothing else. "growth"
      * and "scale" are the retired, staff-set values: they grant nothing and are cleared by
      * billing.clearLegacyPlans.
@@ -283,7 +291,9 @@ export default defineSchema({
     /** AI features the Owner switched off. Absent means on, within the plan's allowances. */
     aiFeatures: v.optional(v.object({ imageGeneration: v.optional(v.boolean()), videoGeneration: v.optional(v.boolean()), photoReview: v.optional(v.boolean()), documentSearch: v.optional(v.boolean()), otherChatModels: v.optional(v.boolean()) })),
     createdAt: v.number(),
-  }).index("by_creator_setupKey", ["createdBy", "setupKey"]),
+  })
+    .index("by_creator_setupKey", ["createdBy", "setupKey"])
+    .index("by_outbound_stop", ["outboundStop.at"]),
 
   members: defineTable({
     companyId: v.id("companies"),
@@ -299,6 +309,8 @@ export default defineSchema({
     name: v.string(),
     role: roleValidator,
     status: memberStatusValidator,
+    /** Only on a row with status "support": the Selestial staff member whose support sessions act through it. */
+    supportStaffId: v.optional(v.id("staff")),
     createdAt: v.number(),
   })
     .index("by_company_user", ["companyId", "userId"])
@@ -779,6 +791,16 @@ export default defineSchema({
     sentAt: v.optional(v.number()),
     deliveredAt: v.optional(v.number()),
     failedAt: v.optional(v.number()),
+    /**
+     * An unconfirmed text being checked with the provider under its own idempotency key (convex/operations.ts).
+     * `deadline` is inside the provider's replay window from the first attempt: past it, nothing is sent.
+     */
+    reconcile: v.optional(v.object({ requestedAt: v.number(), deadline: v.number(), by: v.string() })),
+    /** Telnyx answered a reconciliation with the stored response: the original send had been accepted. */
+    replayedAt: v.optional(v.number()),
+    /** A person looked at an unconfirmed message and chose to leave it. It is not checked or tracked again. */
+    reviewedAt: v.optional(v.number()),
+    reviewedBy: v.optional(v.string()),
   })
     .index("by_company_dedupe", ["companyId", "dedupeKey"])
     .index("by_company_assignment", ["companyId", "assignmentId"])
@@ -1008,6 +1030,11 @@ export default defineSchema({
   ...activationTables,
   // ── Retention: signals, cases, actions, feedback and customer links (convex/lib/retention/schema.ts) ─
   ...retentionTables,
+
+  // ── Operations: incidents, the monitor and its log (convex/lib/operations/schema.ts) ─────────────
+  ...operationsTables,
+  // ── Admin support sessions (convex/lib/support/schema.ts) ──────────────────────────────────────
+  ...supportTables,
 
   // ── Events: append-only ────────────────────────────────────────────────────────────────────────
   events: defineTable({
