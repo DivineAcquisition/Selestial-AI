@@ -462,7 +462,7 @@ export const incident = staffQuery({
       parent: parent ? staffRow(parent, companies, staff) : null,
       children: children.map((c) => staffRow(c, companies, staff)),
       check: check ? { name: check.name, about: check.about, lastRunAt: checkRow?.lastRunAt ?? null, everyMs: check.everyMs } : null,
-      company: company ? { outboundStop: company.outboundStop ? { at: company.outboundStop.at, reason: company.outboundStop.reason } : null, pausedAgents: company.pausedAgents, suspended: company.suspendedAt !== undefined } : null,
+      companyState: company ? { outboundStop: company.outboundStop ? { at: company.outboundStop.at, reason: company.outboundStop.reason } : null, pausedAgents: company.pausedAgents, suspended: company.suspendedAt !== undefined } : null,
       sessions: sessions.map((s) => ({ id: s._id, mode: s.mode, startedAt: s.startedAt, endedAt: s.endedAt ?? null, changes: s.changes })),
       log: entries.map((e) => ({ id: e._id, at: e.at, kind: e.kind, words: e.words, detail: e.detail ?? null, actor: e.actor.kind === "staff" ? `${staff.get(e.actor.staffId) ?? "Staff"}${e.actor.sessionId ? " (support session)" : ""}` : e.actor.kind === "member" ? "Company member" : "Selestial" })),
     };

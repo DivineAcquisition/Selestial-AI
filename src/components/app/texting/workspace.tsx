@@ -9,6 +9,7 @@
  * only what it actually did and checked. Phone: one column, a compact progress bar, and the assistant
  * folded under the form.
  */
+import { IssueCards } from "@/components/app/operations/issue-cards";
 import { useMutation, useQuery } from "convex/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -138,6 +139,8 @@ export function TextingFrame() {
           </Button>
         </div>
       </header>
+      {/* Stopped, paused by carriers or slow to connect: what Selestial is doing about it. A correction is asked for in the steps below. */}
+      <IssueCards area="communications" kinds={["texting.failed", "texting.interrupted", "texting.number_pending"]} title="Where your texting stands" />
 
       {/* Phone and tablet: compact progress. */}
       <div className="min-w-0 xl:hidden">

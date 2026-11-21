@@ -374,7 +374,7 @@ describe("the overview and navigation", () => {
 
   it("links every section the Owner may open, and each one is a real page", () => {
     const html = renderToStaticMarkup(<OverviewGrid sections={sectionsFor("owner")} />);
-    expect(SETTINGS_SECTIONS).toHaveLength(13); // Services & pricing moved to Company → Services & Pricing; Notifications added.
+    expect(SETTINGS_SECTIONS).toHaveLength(14); // Services & pricing moved to Company → Services & Pricing; Notifications and Support access added.
     for (const section of SETTINGS_SECTIONS) {
       expect(html, section.id).toContain(`href="${section.path}"`);
       expect(html, section.id).toContain(section.label.replace("&", "&amp;"));
@@ -387,6 +387,7 @@ describe("the overview and navigation", () => {
       const html = renderToStaticMarkup(<OverviewGrid sections={sectionsFor(role)} />);
       expect(html).not.toContain("/app/settings/billing");
       expect(html).not.toContain("/app/settings/activity");
+      expect(html).not.toContain("/app/settings/support-access");
       expect(html).toContain("/app/settings/business");
     }
   });

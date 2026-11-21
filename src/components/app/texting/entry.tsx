@@ -4,6 +4,7 @@
  * The way into "Set up business texting" from anywhere it's needed (settings, agent pages, onboarding).
  * Every entry opens the same saved setup at /app/texting, on the step it was left on.
  */
+import { IssueCards } from "@/components/app/operations/issue-cards";
 import { useQuery } from "convex/react";
 import Link from "next/link";
 
@@ -36,6 +37,7 @@ export function TextingEntry() {
   const words = WORDS[status?.status ?? "none"] ?? WORDS.none;
   return (
     <div className="grid gap-3 rounded-xl border border-border p-4">
+      <IssueCards area="communications" kinds={["texting.needs_you", "texting.failed", "texting.interrupted", "texting.number_pending"]} title="Texting needs attention" />
       <div className="flex flex-wrap items-center gap-2">
         <MessageSquareText className="size-5 text-brand-300" aria-hidden />
         <p className="text-sm font-semibold text-strong">Business texting</p>

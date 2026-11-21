@@ -55,6 +55,7 @@ function StaffCheck({ children }: { children: React.ReactNode }) {
 }
 
 const NAV = [
+  { href: "/staff/operations", label: "Operations" },
   { href: "/staff", label: "Requests" },
   { href: "/staff/trust", label: "Trust records" },
   { href: "/staff/companies", label: "Companies" },
@@ -66,6 +67,8 @@ const NAV = [
   { href: "/staff/ai", label: "AI models" },
 ];
 
+const ROLE_LABEL: Record<string, string> = { admin: "Admin", support_lead: "Support lead", support: "Support", billing: "Billing", reviewer: "Reviewer" };
+
 function StaffShell({ role, children }: { role: string; children: React.ReactNode }) {
   const pathname = usePathname();
   return (
@@ -76,7 +79,7 @@ function StaffShell({ role, children }: { role: string; children: React.ReactNod
             <LogoMark className="size-7" />
             Selestial staff
           </Link>
-          <Badge variant={role === "admin" ? "info" : "outline"}>{role === "admin" ? "Admin" : "Reviewer"}</Badge>
+          <Badge variant={role === "admin" ? "info" : "outline"}>{ROLE_LABEL[role] ?? role}</Badge>
           <nav aria-label="Staff" className="order-last flex w-full gap-1 overflow-x-auto sm:order-none sm:w-auto">
             {NAV.map((item) => {
               const active = item.href === "/staff" ? pathname === "/staff" || pathname.startsWith("/staff/requests") : pathname.startsWith(item.href);
@@ -846,36 +849,50 @@ function CompanyActions({ company }: { company: { id: Id<"companies">; name: str
 
 // ── Staff ─────────────────────────────────────────────────────────────────────────────────────────
 
+type StaffRole = "admin" | "support_lead" | "support" | "billing" | "reviewer";
+
 export function StaffPeople() {
   const me = useQuery(api.staff.me, {});
   const people = useQuery(api.staff.list, {});
+  const catalog = useQuery(api.staff.catalog, {});
   const add = useMutation(api.staff.add);
   const remove = useMutation(api.staff.remove);
   const { busy, error, run } = useRun();
-  const [form, setForm] = useState({ name: "", email: "", role: "reviewer" as "admin" | "reviewer" });
+  const [form, setForm] = useState({ name: "", email: "", role: "support" as StaffRole });
+  const [editing, setEditing] = useState<string | null>(null);
   const admin = me?.role === "admin";
   return (
     <>
-      <PageHeader title="Staff" lead="Selestial people who handle requests and trust records. Being staff gives no access to any company's records." />
+      <PageHeader title="Staff" lead="Selestial people, their role and what each may do. Being staff gives no access to any company's records: entering a workspace needs a recorded, time-bound support session." />
       <Panel>
         {people === undefined ? (
           <Skeleton className="h-24" />
         ) : (
           <ul className="grid gap-1.5">
             {people.map((person) => (
-              <li key={person.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm">
-                <span>
-                  <span className="font-medium text-strong">{person.name}</span> <span className="text-muted-foreground">{person.email}</span>
-                </span>
-                <span className="flex items-center gap-2">
-                  <Badge variant={person.role === "admin" ? "info" : "outline"}>{person.role}</Badge>
-                  {!person.joined ? <Badge variant="warning">Not signed in yet</Badge> : null}
-                  {admin && person.email !== me?.email ? (
-                    <Button size="sm" variant="ghost" loading={busy} onClick={() => void run(() => remove({ staffId: person.id }))}>
-                      Remove
-                    </Button>
-                  ) : null}
-                </span>
+              <li key={person.id} className="rounded-lg border border-border px-3 py-2 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span>
+                    <span className="font-medium text-strong">{person.name}</span> <span className="text-muted-foreground">{person.email}</span>
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <Badge variant={person.role === "admin" ? "info" : "outline"}>{ROLE_LABEL[person.role] ?? person.role}</Badge>
+                    {person.grants.length || person.removed.length ? <Badge variant="warning">Adjusted</Badge> : null}
+                    {!person.joined ? <Badge variant="warning">Not signed in yet</Badge> : null}
+                    {admin ? (
+                      <Button size="sm" variant="ghost" onClick={() => setEditing(editing === person.id ? null : person.id)}>
+                        Access
+                      </Button>
+                    ) : null}
+                    {admin && person.email !== me?.email ? (
+                      <Button size="sm" variant="ghost" loading={busy} onClick={() => void run(() => remove({ staffId: person.id }))}>
+                        Remove
+                      </Button>
+                    ) : null}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">Can: {person.capabilities.map((c) => catalog?.capabilities.find((x) => x.id === c)?.label ?? c).join(" · ") || "nothing"}</p>
+                {editing === person.id && catalog ? <StaffAccess person={person} catalog={catalog} onDone={() => setEditing(null)} /> : null}
               </li>
             ))}
           </ul>
@@ -887,7 +904,7 @@ export function StaffPeople() {
               event.preventDefault();
               void run(async () => {
                 await add(form);
-                setForm({ name: "", email: "", role: "reviewer" });
+                setForm({ name: "", email: "", role: "support" });
               });
             }}
           >
@@ -898,9 +915,12 @@ export function StaffPeople() {
               <TextInput type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required />
             </Field>
             <Field label="Role">
-              <SelectInput value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value as "admin" | "reviewer" })}>
-                <option value="reviewer">Reviewer</option>
-                <option value="admin">Admin</option>
+              <SelectInput value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value as StaffRole })}>
+                {(catalog?.roles ?? []).map((role) => (
+                  <option key={role.id} value={role.id}>
+                    {role.label}
+                  </option>
+                ))}
               </SelectInput>
             </Field>
             <div className="sm:col-span-4">
@@ -913,6 +933,71 @@ export function StaffPeople() {
         <FormError message={error} />
       </Panel>
     </>
+  );
+}
+
+type Catalog = NonNullable<ReturnType<typeof useQuery<typeof api.staff.catalog>>>;
+type Person = NonNullable<ReturnType<typeof useQuery<typeof api.staff.list>>>[number];
+
+/** Role plus single-capability overrides, with a reason. Narrowing workspace access ends their live sessions. */
+function StaffAccess({ person, catalog, onDone }: { person: Person; catalog: Catalog; onDone: () => void }) {
+  const save = useMutation(api.staff.setAccess);
+  const { busy, error, run } = useRun();
+  const [role, setRole] = useState(person.role as StaffRole);
+  const [grants, setGrants] = useState<string[]>([...person.grants]);
+  const [removed, setRemoved] = useState<string[]>([...person.removed]);
+  const [reason, setReason] = useState("");
+  const fromRole = new Set<string>(catalog.roles.find((r) => r.id === role)?.capabilities ?? []);
+  const toggle = (id: string) => {
+    if (fromRole.has(id)) setRemoved(removed.includes(id) ? removed.filter((x) => x !== id) : [...removed, id]);
+    else setGrants(grants.includes(id) ? grants.filter((x) => x !== id) : [...grants, id]);
+  };
+  const has = (id: string) => (fromRole.has(id) ? !removed.includes(id) : grants.includes(id));
+  return (
+    <form
+      className="mt-3 grid gap-3 border-t border-border pt-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void run(async () => {
+          await save({ staffId: person.id, role, grants: grants.filter((g) => !fromRole.has(g)) as never, removed: removed.filter((r) => fromRole.has(r)) as never, reason });
+          onDone();
+        });
+      }}
+    >
+      <Field label="Role" className="max-w-xs">
+        <SelectInput value={role} onChange={(event) => setRole(event.target.value as StaffRole)}>
+          {catalog.roles.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.label}
+            </option>
+          ))}
+        </SelectInput>
+      </Field>
+      <fieldset className="grid gap-1.5 sm:grid-cols-2">
+        <legend className="mb-1 text-xs font-medium text-muted-foreground">Capabilities (role defaults, with this person&apos;s changes)</legend>
+        {catalog.capabilities.map((cap) => (
+          <label key={cap.id} className="flex items-start gap-2 rounded-md border border-border px-2 py-1.5 text-xs">
+            <input type="checkbox" checked={has(cap.id)} onChange={() => toggle(cap.id)} className="mt-0.5 accent-[#6838ef]" />
+            <span>
+              <span className="font-medium text-strong">
+                {cap.label}
+                {cap.sensitive ? " · sensitive" : ""}
+              </span>
+              <span className="block text-muted-foreground">{cap.about}</span>
+            </span>
+          </label>
+        ))}
+      </fieldset>
+      <Field label="Reason (recorded)">
+        <TextInput value={reason} onChange={(event) => setReason(event.target.value)} required />
+      </Field>
+      <FormError message={error} />
+      <div>
+        <Button type="submit" size="sm" loading={busy}>
+          Save access
+        </Button>
+      </div>
+    </form>
   );
 }
 

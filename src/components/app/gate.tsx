@@ -23,6 +23,8 @@ import { UserMenu, useSignOut } from "@/components/auth/user-menu";
 import { Sidebar, SidebarStateProvider, type BusinessOption } from "@/components/app/sidebar";
 import { useNow } from "@/components/app/use-now";
 import { Button } from "@/components/ui/button";
+import { storeSession, SupportSessionProvider } from "@/components/support/client";
+import { SupportBanner, SupportBoundary, SupportEnded, useMounted, useSupportTab } from "@/components/support/workspace";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LANDING_PATH, SETUP_PAGES } from "@/lib/app/navigation";
 import { AUTH, withNext } from "@/lib/auth/routes";
@@ -181,7 +183,7 @@ function LiveSidebar({ businesses, onSwitch, onNavigate }: { businesses: Busines
       )} />;
 }
 
-function Workspace({ companyId, role, userId, businesses, onSwitch, children }: { companyId: Id<"companies">; role: Role; userId: string; businesses: BusinessOption[]; onSwitch: (companyId: string) => void; children: React.ReactNode }) {
+function Workspace({ companyId, role, userId, businesses, onSwitch, banner, children }: { companyId: Id<"companies">; role: Role; userId: string; businesses: BusinessOption[]; onSwitch: (companyId: string) => void; banner?: React.ReactNode; children: React.ReactNode }) {
   const company = useQuery(api.companies.get, { companyId });
   const count = useQuery(api.overview.decisionCount, { companyId });
   const team = useQuery(api.overview.team, { companyId });
@@ -196,7 +198,13 @@ function Workspace({ companyId, role, userId, businesses, onSwitch, children }: 
   }, [sendToSetup, router]);
   if (company === undefined || setup === undefined || sendToSetup) return <Loading />;
   // Setup is its own full screen: no sidebar, dock or chat until the owner opens the workspace.
-  if (inSetup) return <CompanyProvider company={{ companyId, name: company.name, timezone: company.timezone, role }}>{children}</CompanyProvider>;
+  if (inSetup)
+    return (
+      <CompanyProvider company={{ companyId, name: company.name, timezone: company.timezone, role }}>
+        {banner}
+        {children}
+      </CompanyProvider>
+    );
   return (
     <CompanyProvider company={{ companyId, name: company.name, timezone: company.timezone, role }}>
       <ChatProvider userId={userId} companyId={companyId}>
@@ -211,6 +219,7 @@ function Workspace({ companyId, role, userId, businesses, onSwitch, children }: 
               notices={<NotificationBell />}
               panel={<ChatPanel />}
               dock={<Dock departments={team?.departments} />}
+              banner={banner}
             >
               {children}
             </AppShell>
@@ -291,7 +300,41 @@ function SignedIn({ children }: { children: React.ReactNode }) {
     // The sign-in service knows this person, but the record did not accept their session. That is a setup gap.
     return <NotSetUp title="You are signed in, but the workspace did not accept it" body="We couldn’t open your workspace just now. Nothing is wrong with your account. Please try again in a few minutes." />;
   }
+  return <WorkspaceOrSupport userId={userId}>{children}</WorkspaceOrSupport>;
+}
+
+/** A tab holding a Selestial support session opens that company's workspace through the session; any other tab is the person's own. */
+function WorkspaceOrSupport({ userId, children }: { userId: string; children: React.ReactNode }) {
+  const mounted = useMounted();
+  const support = useSupportTab();
+  if (!mounted || support === undefined) return <Loading />;
+  if (support) return <SupportWorkspace sessionId={support} userId={userId}>{children}</SupportWorkspace>;
   return <Companies userId={userId}>{children}</Companies>;
+}
+
+/**
+ * A Selestial admin inside a company's workspace (docs/operations/03-support-sessions.md). The workspace is
+ * the company's own, drawn the same way, with every company request carrying this tab's session and the
+ * banner on every screen. The server decides everything; this only draws.
+ */
+function SupportWorkspace({ sessionId, userId, children }: { sessionId: Id<"supportSessions">; userId: string; children: React.ReactNode }) {
+  const router = useRouter();
+  const session = useQuery(api.support.current, { sessionId });
+  const back = () => {
+    storeSession(null);
+    router.push("/staff/operations");
+  };
+  if (session === undefined) return <Loading />;
+  if (session === null || session.ended) return <SupportEnded reason={session?.endReason ?? null} onBack={back} />;
+  return (
+    <SupportBoundary onEnded={back}>
+      <SupportSessionProvider sessionId={sessionId}>
+        <Workspace key={`${sessionId}:${session.previewRole}`} companyId={session.company.id} role={session.previewRole} userId={userId} businesses={[{ companyId: session.company.id, name: session.company.name }]} onSwitch={() => undefined} banner={<SupportBanner session={session} />}>
+          {children}
+        </Workspace>
+      </SupportSessionProvider>
+    </SupportBoundary>
+  );
 }
 
 /** Everything under /app passes through here: set up, signed in, accepted by the record, and inside a company. */

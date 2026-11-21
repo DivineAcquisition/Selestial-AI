@@ -189,8 +189,9 @@ describe("Admin support sessions: every company function is bound to the session
     const missing: string[] = [];
     for (const [path, mod] of Object.entries(modules)) {
       for (const [name, fn] of Object.entries(mod)) {
-        const f = fn as { isPublic?: boolean; exportArgs?: () => string };
-        if (!f || typeof f !== "function" || !f.isPublic || typeof f.exportArgs !== "function") continue;
+        if (typeof fn !== "function") continue;
+        const f = fn as unknown as { isPublic?: boolean; exportArgs?: () => string };
+        if (!f.isPublic || typeof f.exportArgs !== "function") continue;
         const args = JSON.parse(f.exportArgs()) as { type: string; value?: Record<string, unknown> };
         if (args.type !== "object" || !args.value) continue;
         if ("companyId" in args.value && !("supportSessionId" in args.value)) missing.push(`${path}:${name}`);

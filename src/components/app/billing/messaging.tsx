@@ -1,5 +1,6 @@
 "use client";
 
+import { IssueCards } from "@/components/app/operations/issue-cards";
 import { useMutation, useQuery } from "convex/react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
@@ -87,6 +88,7 @@ export function MessagingTab({ onIntent }: { onIntent: (id: Id<"billingIntents">
   }
   return (
     <div className="grid min-w-0 gap-5 [&>*]:min-w-0">
+      <IssueCards area="billing" title="Billing needs attention" />
       <BalanceHero data={data} onIntent={onIntent} />
       <HeldWork data={data} />
       <div className="grid gap-5 lg:grid-cols-2 [&>*]:min-w-0">

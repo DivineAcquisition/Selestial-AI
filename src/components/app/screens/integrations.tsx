@@ -1,5 +1,6 @@
 "use client";
 
+import { IssueCards } from "@/components/app/operations/issue-cards";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import Link from "next/link";
@@ -296,6 +297,10 @@ export function IntegrationsScreen({ embedded = false }: { embedded?: boolean })
   return (
     <>
       {embedded ? null : <PageHeader title="Integrations" lead="The accounts and services Selestial works with on your behalf, what each one lets your agents do, and which agents use it." />}
+
+      <div className="mb-5 empty:hidden">
+        <IssueCards area="connections" title="Connections that need you" />
+      </div>
 
       <section className="relative mb-5 overflow-hidden rounded-2xl border border-brand-500/30 bg-[radial-gradient(120%_140%_at_0%_0%,color-mix(in_srgb,var(--color-brand-500)_9%,transparent),transparent_55%),var(--card)] p-5 sm:p-6">
         <p className={eyebrow}>Your team&rsquo;s tools</p>
