@@ -162,6 +162,24 @@ export const textingTables = {
     .index("by_request_version", ["requestId", "version"])
     .index("by_company_submitted", ["companyId", "submittedAt"]),
 
+  /**
+   * A staff check of the live Telnyx account (convex/telnyxCheck.ts): the API key, the messaging profile,
+   * number search, and a mock brand and campaign filed through the same code a real submission uses, then
+   * deleted. Mock filings are never sent to the carriers, and no number is bought.
+   */
+  telnyxChecks: defineTable({
+    startedAt: v.number(),
+    startedBy: v.id("staff"),
+    status: v.union(v.literal("running"), v.literal("passed"), v.literal("failed")),
+    /** Where the check is, so a retry continues instead of filing again. */
+    phase: v.union(v.literal("account"), v.literal("brand"), v.literal("campaign"), v.literal("cleanup"), v.literal("done")),
+    attempts: v.number(),
+    brandId: v.optional(v.string()),
+    campaignId: v.optional(v.string()),
+    steps: v.array(v.object({ key: v.string(), label: v.string(), state: v.union(v.literal("passed"), v.literal("warning"), v.literal("failed"), v.literal("skipped")), detail: v.string(), at: v.number() })),
+    finishedAt: v.optional(v.number()),
+  }).index("by_started", ["startedAt"]),
+
   /** Telnyx 10DLC callbacks whose signature checked out, once each. A callback is a hint: status is always read back from Telnyx. */
   telnyxEvents: defineTable({
     eventId: v.string(),

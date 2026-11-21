@@ -1009,6 +1009,7 @@ export function TextingQueue() {
   return (
     <>
       <PageHeader title="Texting" lead="Selestial review for business texting. Each company registers in its own name, with its own privacy policy and texting terms. Approving files the registration with the carriers; the number is bought only after they approve." />
+      <TelnyxCheck />
       <FormError message={error} />
       {rows === undefined ? (
         <Skeleton className="h-40 rounded-2xl" />
@@ -1150,6 +1151,59 @@ export function TextingQueue() {
         </div>
       )}
     </>
+  );
+}
+
+const CHECK_STATE: Record<string, { label: string; variant: "success" | "warning" | "error" | "outline" }> = {
+  passed: { label: "Passed", variant: "success" },
+  warning: { label: "Check", variant: "warning" },
+  failed: { label: "Failed", variant: "error" },
+  skipped: { label: "Skipped", variant: "outline" },
+};
+
+/**
+ * Whether the live Telnyx account can take a registration: the key, the messaging profile, callbacks, number
+ * search, and a mock brand and campaign filed through the real submission code and then deleted. Nothing goes
+ * to the carriers and no number is bought.
+ */
+function TelnyxCheck() {
+  const checks = useQuery(api.telnyxCheck.latest, {});
+  const start = useMutation(api.telnyxCheck.run);
+  const { busy, error, run } = useRun();
+  const last = checks?.[0];
+  return (
+    <Panel className="mb-4">
+      <div className="grid gap-3 text-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="font-semibold text-strong">Telnyx check</p>
+            <p className="text-xs text-muted-foreground">Runs on the live backend with production&apos;s key. Files a mock brand and campaign through the real submission code, then deletes them. Nothing goes to the carriers; no number is bought.</p>
+          </div>
+          <Button variant="outline" size="sm" loading={busy || last?.status === "running"} onClick={() => void run(() => start({}))}>
+            Run Telnyx check
+          </Button>
+        </div>
+        <FormError message={error} />
+        {last ? (
+          <div className="grid gap-1.5">
+            <p className="text-xs text-muted-foreground">
+              {last.status === "running" ? "Running" : last.status === "passed" ? "Passed" : "Failed"} · started {new Date(last.startedAt).toLocaleString()}
+            </p>
+            <ul className="grid gap-1.5">
+              {last.steps.map((row, i) => (
+                <li key={`${row.key}-${i}`} className="flex flex-wrap items-start gap-2 text-xs">
+                  <Badge variant={CHECK_STATE[row.state].variant} size="sm">
+                    {CHECK_STATE[row.state].label}
+                  </Badge>
+                  <span className="font-medium text-strong">{row.label}</span>
+                  <span className="min-w-0 flex-1 text-muted-foreground">{row.detail}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
+    </Panel>
   );
 }
 

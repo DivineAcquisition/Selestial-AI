@@ -508,6 +508,7 @@ import type * as subcontractors from "../subcontractors.js";
 import type * as support from "../support.js";
 import type * as tasks from "../tasks.js";
 import type * as teamPay from "../teamPay.js";
+import type * as telnyxCheck from "../telnyxCheck.js";
 import type * as texting from "../texting.js";
 import type * as textingPublic from "../textingPublic.js";
 import type * as textingSetup from "../textingSetup.js";
@@ -1022,6 +1023,7 @@ declare const fullApi: ApiFromModules<{
   support: typeof support;
   tasks: typeof tasks;
   teamPay: typeof teamPay;
+  telnyxCheck: typeof telnyxCheck;
   texting: typeof texting;
   textingPublic: typeof textingPublic;
   textingSetup: typeof textingSetup;
