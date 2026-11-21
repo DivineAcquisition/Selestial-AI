@@ -16,7 +16,7 @@ const API = "https://api.telnyx.com/v2";
 type Fetcher = typeof fetch;
 export type Answer<T> = { ok: true; value: T } | { ok: false; problem: string; retryable: boolean; status?: number };
 
-async function call<T>(fetcher: Fetcher, method: "GET" | "POST" | "PUT", path: string, body: unknown, read: (json: unknown) => T | null): Promise<Answer<T>> {
+async function call<T>(fetcher: Fetcher, method: "GET" | "POST" | "PUT" | "DELETE", path: string, body: unknown, read: (json: unknown) => T | null): Promise<Answer<T>> {
   const key = process.env.TELNYX_API_KEY?.trim();
   if (!key) return { ok: false, problem: "Telnyx's API key is not set on the deployment.", retryable: false };
   // A backend that is not production never buys a number or files a registration (convex/lib/environment.ts).
@@ -168,6 +168,8 @@ export type BrandInput = {
   stockExchange?: string;
   businessContactEmail?: string;
   webhookURL?: string;
+  /** A Telnyx mock brand: validated and stored by Telnyx, never sent to the carriers. Only the staff Telnyx check sets it. */
+  mock?: boolean;
 };
 
 export type BrandState = { brandId: string; identityStatus: string | null; status: string | null; failure: string | null; fields: string[]; displayName: string | null; email: string | null };
@@ -180,6 +182,7 @@ function brandBody(input: BrandInput) {
   else Object.assign(body, { companyName: input.companyName, ...(input.ein ? { ein: `${input.ein.slice(0, 2)}-${input.ein.slice(2)}` } : {}) });
   if (input.entityType === "PUBLIC_PROFIT") Object.assign(body, { stockSymbol: input.stockSymbol, stockExchange: input.stockExchange, businessContactEmail: input.businessContactEmail });
   if (input.webhookURL) body.webhookURL = input.webhookURL;
+  if (input.mock) body.mock = true;
   return body;
 }
 
@@ -306,6 +309,34 @@ function readAssignment(json: unknown): Assignment | null {
   const row = unwrap(json);
   if (!row || (row.assignmentStatus === undefined && row.phoneNumber === undefined)) return null;
   return { assignmentStatus: str(row.assignmentStatus), failure: reasons(row.failureReasons).words };
+}
+
+// ── Account checks (the staff Telnyx check, convex/telnyxCheck.ts) ───────────────────────────────
+
+/** How many 10DLC brands the account has: answers only if the API key is accepted. */
+export function countBrands(fetcher: Fetcher): Promise<Answer<number>> {
+  return call(fetcher, "GET", "/10dlc/brand?recordsPerPage=1", null, (json) => {
+    const total = (json as { totalRecords?: unknown } | null)?.totalRecords;
+    return typeof total === "number" ? total : records(json).length;
+  });
+}
+
+/** The messaging profile numbers are ordered onto. Only its name, state and webhook address are read; its secret never is. */
+export function getMessagingProfile(fetcher: Fetcher, id: string): Promise<Answer<{ name: string | null; enabled: boolean; webhookUrl: string | null }>> {
+  return call(fetcher, "GET", `/messaging_profiles/${encodeURIComponent(id)}`, null, (json) => {
+    const row = (json as { data?: Record<string, unknown> } | null)?.data;
+    if (!row || typeof row !== "object") return null;
+    return { name: str(row.name), enabled: row.enabled !== false, webhookUrl: str(row.webhook_url) };
+  });
+}
+
+/** Removes a mock filing made by the staff Telnyx check. */
+export function deleteCampaign(fetcher: Fetcher, campaignId: string): Promise<Answer<true>> {
+  return call(fetcher, "DELETE", `/10dlc/campaign/${encodeURIComponent(campaignId)}`, null, () => true);
+}
+
+export function deleteBrand(fetcher: Fetcher, brandId: string): Promise<Answer<true>> {
+  return call(fetcher, "DELETE", `/10dlc/brand/${encodeURIComponent(brandId)}`, null, () => true);
 }
 
 // ── What statuses mean ───────────────────────────────────────────────────────────────────────────
