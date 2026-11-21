@@ -40,7 +40,7 @@ export const FOOTER_COLUMNS: { id: string; title: string; links: { href: string;
       { href: "/#see-it-work", label: "See it work" },
       { href: "/#how-it-works", label: "How the agents coordinate" },
       { href: "/#platform", label: "Platform" },
-      { href: "/#connections", label: "Integrations" },
+      { href: "/integrations", label: "Integrations" },
       { href: "/#pricing", label: "Pricing" },
       { href: ASSESSMENT_PATH, label: "Operations assessment" },
     ],

@@ -10,11 +10,11 @@ import { useEffect, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
 import { Field, messageOf, TextInput } from "@/components/app/form";
+import { IntegrationMark } from "@/components/app/integration-mark";
 import {
   Check,
   ExternalLink,
   Loader2,
-  Plug,
   RefreshCw,
   Unplug,
 } from "@/components/icons";
@@ -80,12 +80,14 @@ export function ConnectedImport() {
 }
 
 function Card({
+  id,
   name,
   connection,
   available,
   canManage,
   children,
 }: {
+  id: string;
   name: string;
   connection: Connection;
   available: boolean;
@@ -98,7 +100,7 @@ function Card({
       aria-label={name}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <Plug className="size-4 text-muted-foreground" aria-hidden />
+        <IntegrationMark id={id} size="sm" />
         <span className="font-medium text-strong">{name}</span>
         {connection?.status === "connected" ? (
           <Badge variant="success">Connected</Badge>
@@ -158,6 +160,7 @@ function JobberCard({ status }: { status: Status }) {
 
   return (
     <Card
+      id="jobber"
       name="Jobber"
       connection={connection}
       available={available}
@@ -254,6 +257,7 @@ function HousecallCard({ status }: { status: Status }) {
 
   return (
     <Card
+      id="housecall-pro"
       name="Housecall Pro"
       connection={connection}
       available={available}

@@ -52,6 +52,10 @@ What Selestial connects to, why, and the order it is built in. The list itself i
     symbols only, because the wordmarks are too wide for a tile.
   - Jobber, Checkr, Housecall Pro, ZenMaid and Launch27: the app icon each company publishes on its own
     website (Launch27's is a wordmark).
+  - ZipRecruiter (on the public site's home section): the app icon ZipRecruiter publishes at
+    ziprecruiter.com/apple-touch-icon.png (added November 21, 2026).
+  - The public site uses these same files (`/integrations` and the home page's integrations section);
+    there is no second set.
   - The texting number is Selestial's own feature and uses a chat glyph.
   - Logos belong to their owners and are shown only to say which service a card is about.
 

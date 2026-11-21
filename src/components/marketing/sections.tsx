@@ -1,12 +1,14 @@
 import Image from "next/image";
 import Link from "next/link";
 
+import { IntegrationMark } from "@/components/app/integration-mark";
 import { ArrowRight, Hand, ListChecks, ScrollTextIcon, ShieldCheck, type LucideIcon } from "@/components/icons";
 import { AgentMark } from "@/components/marketing/agent-mark";
 import { AgentVisual } from "@/components/marketing/agent-visuals";
 import { SpotlightCard } from "@/components/marketing/saas-frame";
 import { AGENT_PAGE_IDS, AGENT_PAGES, agentPagePath } from "@/lib/marketing/agent-pages";
 import { AGENT_STATUS, AGENTS, CONTROL, INTEGRATIONS, PRICING, PROBLEM } from "@/lib/marketing/content";
+import { INTEGRATIONS_PATH } from "@/lib/marketing/integrations-page";
 
 /** The four loose ends from the problem section, each beside the agent that will carry it. */
 export function LooseEnds() {
@@ -133,15 +135,7 @@ export function IntegrationsGrid() {
             <ul className="mt-4 grid gap-3">
               {group.items.map((item) => (
                 <li key={item.name} className="flex items-start gap-3">
-                  <span className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-background" aria-hidden>
-                    {item.icon ? (
-                      // Plain img: tiny static SVGs, which next/image does not optimize.
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={`/brand/integrations/${item.icon}.svg`} alt="" width={20} height={20} className="size-5 object-contain" />
-                    ) : (
-                      <span className="text-sm font-semibold text-muted-foreground">{item.name.charAt(0)}</span>
-                    )}
-                  </span>
+                  <IntegrationMark id={item.mark} size="md" />
                   <span className="min-w-0">
                     <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                       <span className="text-sm font-medium text-strong">{item.name}</span>
@@ -162,7 +156,13 @@ export function IntegrationsGrid() {
           </div>
         ))}
       </div>
-      <p className="mt-4 text-xs text-muted-foreground">{INTEGRATIONS.note}</p>
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">{INTEGRATIONS.note}</p>
+        <Link href={INTEGRATIONS_PATH} className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 underline-offset-4 hover:underline">
+          See all integrations
+          <ArrowRight className="size-4" aria-hidden />
+        </Link>
+      </div>
     </div>
   );
 }

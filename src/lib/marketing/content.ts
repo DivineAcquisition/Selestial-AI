@@ -396,46 +396,46 @@ export const TASK_TRAIL = {
 
 /**
  * Connections. `live` matches `BUILT` in convex/lib/integrations.ts; everything else is planned and says
- * so. `icon` is a file in public/brand/integrations; a connection with no icon file shows its initial.
+ * so. `mark` names the logo IntegrationMark draws (src/components/app/integration-mark.tsx, files in public/integrations).
  */
 export const INTEGRATIONS = {
   id: "connections",
   headline: "Works with the tools you already use.",
   lead: "Selestial connects to the places your leads, applicants, calendar and payments already live. Some connections work today; the rest are on the way, and each says which.",
   liveLabel: "Live",
-  plannedLabel: "Planned",
+  plannedLabel: "Coming soon",
   groups: [
     {
       title: "Leads and customers",
       items: [
-        { name: "Google Ads", catalogId: "google-ads", icon: "google-ads", live: true, body: "Lead-form leads arrive in Sales with their source attached." },
-        { name: "Google Business Profile", catalogId: "google-business-profile", icon: "google", live: true, body: "Your business profile, connected to the workspace." },
-        { name: "Business texting", catalogId: "texting-number", icon: null, live: true, body: "Text customers and cleaners from your company’s own number." },
-        { name: "Meta lead ads", catalogId: "meta-lead-ads", icon: "meta", live: false, body: "New leads from Facebook and Instagram go straight to Sales." },
+        { name: "Google Ads", catalogId: "google-ads", mark: "google-ads", live: true, body: "Lead-form leads arrive in Sales with their source attached." },
+        { name: "Google Business Profile", catalogId: "google-business-profile", mark: "google-business-profile", live: true, body: "Your business profile, connected to the workspace." },
+        { name: "Business texting", catalogId: "texting-number", mark: "texting-number", live: true, body: "Text customers and cleaners from your company’s own number." },
+        { name: "Meta lead ads", catalogId: "meta-lead-ads", mark: "meta-lead-ads", live: false, body: "New leads from Facebook and Instagram go straight to Sales." },
       ],
     },
     {
       title: "Hiring",
       items: [
-        { name: "Gmail", catalogId: "gmail", icon: "gmail", live: true, body: "Recruiter reads applications from the mailbox they arrive in." },
-        { name: "Indeed", catalogId: "indeed", icon: "indeed", live: false, body: "Applications from your job posts, read by Recruiter." },
-        { name: "ZipRecruiter", catalogId: null, icon: null, live: false, body: "Applications from your job posts, read by Recruiter." },
-        { name: "Outlook", catalogId: "outlook", icon: "outlook", live: false, body: "Connect the mailbox your applications arrive in." },
+        { name: "Gmail", catalogId: "gmail", mark: "gmail", live: true, body: "Recruiter reads applications from the mailbox they arrive in." },
+        { name: "Indeed", catalogId: "indeed", mark: "indeed", live: false, body: "Applications from your job posts, read by Recruiter." },
+        { name: "ZipRecruiter", catalogId: null, mark: "ziprecruiter", live: false, body: "Applications from your job posts, read by Recruiter." },
+        { name: "Outlook", catalogId: "outlook", mark: "outlook", live: false, body: "Connect the mailbox your applications arrive in." },
       ],
     },
     {
       title: "Scheduling and files",
       items: [
-        { name: "Google Calendar", catalogId: "google-calendar", icon: "google-calendar", live: true, body: "Interviews and visits appear on the calendar you already keep." },
-        { name: "Google Drive", catalogId: "google-drive", icon: null, live: true, body: "Agreements and documents filed where your team looks for them." },
-        { name: "Google Maps", catalogId: null, icon: "googlemaps", live: false, body: "Real travel time between jobs, so the day is one cleaners can keep." },
+        { name: "Google Calendar", catalogId: "google-calendar", mark: "google-calendar", live: true, body: "Interviews and visits appear on the calendar you already keep." },
+        { name: "Google Drive", catalogId: "google-drive", mark: "google-drive", live: true, body: "Agreements and documents filed where your team looks for them." },
+        { name: "Google Maps", catalogId: null, mark: "google-maps", live: false, body: "Real travel time between jobs, so the day is one cleaners can keep." },
       ],
     },
     {
       title: "Money",
       items: [
-        { name: "Stripe", catalogId: "stripe", icon: "stripe", live: true, body: "Card payments, deposits and invoices your customers pay online." },
-        { name: "QuickBooks", catalogId: "quickbooks-online", icon: "quickbooks", live: false, body: "Charges and payouts sent to your books." },
+        { name: "Stripe", catalogId: "stripe", mark: "stripe", live: true, body: "Card payments, deposits and invoices your customers pay online." },
+        { name: "QuickBooks", catalogId: "quickbooks-online", mark: "quickbooks-online", live: false, body: "Charges and payouts sent to your books." },
       ],
     },
   ],

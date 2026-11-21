@@ -50,7 +50,7 @@ export const SITE_NAV: { menus: NavMenu[]; pricing: { href: string; label: strin
             { href: "/#how-it-works", label: "How the agents coordinate", description: "One agent's finished work becomes the next one's start.", icon: "team" },
             { href: "/#platform", label: "The platform", description: "Clients, schedule, cleaners, pricing and finance in one place.", icon: "platform" },
             { href: "/#control", label: "You stay in control", description: "Set the limits; agents bring back what needs your judgment.", icon: "control" },
-            { href: "/#connections", label: "Integrations", description: "Google, Stripe, texting, email and the tools you already use.", icon: "plug" },
+            { href: "/integrations", label: "Integrations", description: "Google, Stripe, texting, email and the tools you already use.", icon: "plug" },
           ],
         },
       ],
