@@ -16,7 +16,8 @@ Revisit both once there are paying customers at scale (hourly backups, a warm st
 ## What exists to recover from
 
 - **Code:** every production deployment in Vercel (`selestial-ai`), rollback candidates marked.
-- **Data:** Convex backups of the live deployment `terrific-avocet-835` (Dashboard › the deployment ›
+- **Data:** Convex backups of the live deployment `stoic-gazelle-731` (before the move in
+  docs/foundation/07-production-move.md: `terrific-avocet-835`) (Dashboard › the deployment ›
   Backups): scheduled and manual, downloadable, and restorable into a deployment. The Convex CLI can also
   export (`npx convex export --path backup.zip`) and import (`npx convex import backup.zip`).
 - **Providers keep their own record:** Telnyx (messages, numbers, brands, campaigns), Resend (emails),
