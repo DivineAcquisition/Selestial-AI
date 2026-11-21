@@ -4,7 +4,7 @@ Two Convex backends, with one rule: **only `main` changes what the live site run
 
 | Backend | Used by | Who deploys to it |
 |---|---|---|
-| Live: `stoic-gazelle-731` (production deployment; until November 2026 the live backend was the development deployment `terrific-avocet-835`, see [07-production-move.md](07-production-move.md)) | www, app and link.selestial.io (Vercel production). Real companies' data. | Only Vercel's production build, on a merge to `main` (`scripts/build.mjs`). Never by hand. |
+| Live: `terrific-avocet-835` | www, app and link.selestial.io (Vercel production). Real companies' data. | Only Vercel's production build, on a merge to `main` (`scripts/build.mjs`). Never by hand. |
 | Test: a separate deployment in the same Convex project | Work in progress: Claude sessions, local development, trying a branch. Sample data only. | Anyone, any branch, any time. |
 
 Why: both used to share the live backend, and `npx convex deploy` from one branch replaces every function

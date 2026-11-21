@@ -12,7 +12,7 @@
 import { spawnSync } from "node:child_process";
 
 /** The live backend. Keep convex/lib/environment.ts's copy the same (convex/environment.test.ts checks). */
-const PRODUCTION_DEPLOYMENTS = ["stoic-gazelle-731"];
+const PRODUCTION_DEPLOYMENTS = ["terrific-avocet-835"];
 
 const production = process.env.VERCEL_ENV === "production";
 const key = process.env.CONVEX_DEPLOY_KEY?.trim();

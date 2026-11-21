@@ -15,7 +15,7 @@
  */
 
 /** The live backend. Keep scripts/build.mjs's copy the same (convex/environment.test.ts checks). */
-export const PRODUCTION_DEPLOYMENTS: readonly string[] = ["stoic-gazelle-731"];
+export const PRODUCTION_DEPLOYMENTS: readonly string[] = ["terrific-avocet-835"];
 
 export type Environment = "production" | "non_production" | "unknown";
 
