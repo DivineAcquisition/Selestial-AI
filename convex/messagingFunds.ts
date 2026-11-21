@@ -249,6 +249,7 @@ export async function paymentEvent(ctx: MutationCtx, input: { invoiceId: string;
  * invoice, and this deployment cannot read Stripe's charges). Applied once per dispute event id.
  */
 export const recordDispute = staffMutation({
+  capability: "billing.adjust",
   args: { topUpId: v.id("messagingTopUps"), eventId: v.string(), kind: v.union(v.literal("dispute_opened"), v.literal("dispute_won"), v.literal("dispute_lost")), cents: v.number() },
   handler: async (ctx, args) => {
     const topUp = await ctx.db.get(args.topUpId);
@@ -259,6 +260,7 @@ export const recordDispute = staffMutation({
 
 /** Selestial staff: a credit to a company's messaging balance (a goodwill credit or a correction), audited with its reason. */
 export const supportCredit = staffMutation({
+  capability: "billing.adjust",
   args: { companyId: v.id("companies"), cents: v.number(), reason: v.string(), key: v.string() },
   handler: async (ctx, args) => {
     const state = connectedOrRefuse();
@@ -274,6 +276,7 @@ export const supportCredit = staffMutation({
 
 /** Selestial staff: refunds one messaging charge, naming it. A charge can be refunded once. */
 export const supportRefund = staffMutation({
+  capability: "billing.adjust",
   args: { chargeId: v.id("messagingCharges"), reason: v.string() },
   handler: async (ctx, args) => {
     const reason = args.reason.trim();
@@ -319,6 +322,7 @@ export const attention = staffQuery({
 
 /** Staff close an item with what they did. */
 export const resolveAttention = staffMutation({
+  capability: "operations.act",
   args: { id: v.id("messagingAttention"), note: v.string() },
   handler: async (ctx, args) => {
     const row = await ctx.db.get(args.id);

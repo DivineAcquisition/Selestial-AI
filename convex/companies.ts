@@ -117,6 +117,7 @@ export const update = ownerMutation({
 
 /** The owner can pause one agent or all of them (brief, section 7). */
 export const setPausedAgents = ownerMutation({
+  support: { capability: "agents.recover", summary: "Changed which agents are paused" },
   args: { agents: v.array(agentValidator) },
   handler: async (ctx, args) => {
     const pausedAgents = [...new Set(args.agents)];

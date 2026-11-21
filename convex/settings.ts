@@ -44,6 +44,7 @@ export const business = companyQuery({
  * writes nothing and does not move the revision.
  */
 export const saveBusiness = ownerMutation({
+  support: { capability: "workspace.manage", summary: "Updated business details" },
   args: {
     expectedRevision: v.number(),
     name: v.string(),

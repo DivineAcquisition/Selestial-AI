@@ -294,6 +294,7 @@ const originValidator = v.union(v.literal("manual"), v.literal("template"), v.li
 
 /** Starts a new service as a draft: blank, from a template, from an imported row, or from research. Nothing is live. */
 export const startDraft = managerMutation({
+  support: { capability: "workspace.manage", summary: "Started a services and pricing draft" },
   args: { category: categoryValidator, spec: v.optional(specValidator), origin: originValidator, templateId: v.optional(v.string()) },
   handler: async (ctx, args) => {
     return createDraft(ctx, { category: args.category, spec: args.spec, origin: args.origin, templateId: args.templateId, via: "workspace", actor: byMember(ctx) });
@@ -321,6 +322,7 @@ export const editLive = managerMutation({
  * that changes the draft returns any change already submitted from it: that review was for older content.
  */
 export const saveDraft = managerMutation({
+  support: { capability: "workspace.manage", summary: "Edited the services and pricing draft" },
   args: { serviceId: v.id("services"), expectedRevision: v.number(), spec: specValidator, step: v.string() },
   handler: async (ctx, args) => {
     const service = await ownedService(ctx, ctx.companyId, args.serviceId);
@@ -339,6 +341,7 @@ export const saveDraft = managerMutation({
 
 /** Throws the draft away. A service that was never live and has nothing waiting is removed with it. */
 export const discardDraft = managerMutation({
+  support: { capability: "workspace.manage", summary: "Discarded a services and pricing draft" },
   args: { serviceId: v.id("services") },
   handler: async (ctx, args) => {
     const service = await ownedService(ctx, ctx.companyId, args.serviceId);
@@ -380,6 +383,7 @@ export const startRollback = managerMutation({
 
 /** Applies a specialist's suggested edit to the draft. Only the fields specialists may suggest. */
 export const applySuggestion = managerMutation({
+  support: { capability: "workspace.manage", summary: "Applied a suggestion to the pricing draft" },
   args: { serviceId: v.id("services"), field: v.union(v.literal("team.crewSize"), v.literal("team.maxVisitMinutes")), value: v.number() },
   handler: async (ctx, args) => {
     const service = await ownedService(ctx, ctx.companyId, args.serviceId);
@@ -407,6 +411,7 @@ const noticeValidator = v.object({ required: v.boolean(), note: v.string() });
  * illustrative amounts or requirements) stop it here.
  */
 export const submit = managerMutation({
+  support: { capability: "workspace.manage", summary: "Sent the pricing draft to the Owner for approval" },
   args: { serviceId: v.id("services"), expectedRevision: v.number(), reason: v.string(), customerNotice: noticeValidator, contractReview: noticeValidator, effectiveAt: v.optional(v.number()), evidence: v.optional(v.array(evidenceValidator)) },
   handler: async (ctx, args) => submitDraft(ctx, { ...args, actor: byMember(ctx) }),
 });

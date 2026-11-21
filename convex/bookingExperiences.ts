@@ -368,6 +368,7 @@ export const analytics = companyQuery({
 const actorName = (ctx: MemberAccess, via?: "chat") => (via === "chat" ? `Selestial, asked by ${ctx.member.name} in Chat` : ctx.member.name);
 
 export const create = managerMutation({
+  support: { capability: "workspace.manage", summary: "Created a booking page draft" },
   args: { kind: experienceKindValidator, name: v.optional(v.string()) },
   handler: async (ctx, args) => {
     return createExperience(ctx, args.kind, args.name);
@@ -419,6 +420,7 @@ export async function writeDraft(ctx: MutationCtx & MemberAccess, experience: Do
 }
 
 export const saveDraft = managerMutation({
+  support: { capability: "workspace.manage", summary: "Edited a booking page draft" },
   args: { experienceId: v.id("bookingExperiences"), expectedRevision: v.number(), definition: definitionValidator, force: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
     const experience = await owned(ctx, args.experienceId);
@@ -427,6 +429,7 @@ export const saveDraft = managerMutation({
 });
 
 export const rename = managerMutation({
+  support: { capability: "workspace.manage", summary: "Renamed a booking page" },
   args: { experienceId: v.id("bookingExperiences"), name: v.string(), slug: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const experience = await owned(ctx, args.experienceId);
@@ -444,6 +447,7 @@ export const rename = managerMutation({
 });
 
 export const duplicate = managerMutation({
+  support: { capability: "workspace.manage", summary: "Duplicated a booking page as a draft" },
   args: { experienceId: v.id("bookingExperiences") },
   handler: async (ctx, args) => {
     const source = await owned(ctx, args.experienceId);

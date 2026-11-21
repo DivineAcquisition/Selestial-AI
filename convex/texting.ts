@@ -229,6 +229,7 @@ export const chargeNumbers = internalMutation({
  * messaging balance under the owner's authorization, at most $500, posted once per key.
  */
 export const chargeRegistrationFee = staffMutation({
+  capability: "billing.adjust",
   args: { requestId: v.id("textingRequests"), cents: v.number(), description: v.string(), key: v.string() },
   handler: async (ctx, args) => {
     const row = await ctx.db.get(args.requestId);

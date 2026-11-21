@@ -524,6 +524,7 @@ export const cancel = ownerMutation({
 
 /** Tries a failed or blocked task again. A task that already finished is not run twice. */
 export const retry = ownerMutation({
+  support: { capability: "agents.recover", summary: "Retried a piece of first work" },
   args: { taskId: v.id("activationTasks") },
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);

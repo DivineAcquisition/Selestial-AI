@@ -161,6 +161,7 @@ export const setRegistration = staffMutation({
 
 /** Selestial staff only. While suspended, the sending policy refuses every message for the company. */
 export const setSuspended = staffMutation({
+  capability: "destructive",
   args: { companyId: v.id("companies"), suspended: v.boolean(), note: v.string() },
   handler: async (ctx, args) => {
     const company = await ctx.db.get(args.companyId);

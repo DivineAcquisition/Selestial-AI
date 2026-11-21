@@ -106,6 +106,7 @@ export const begin = ownerMutation({
  * device. Saving the same thing twice changes nothing.
  */
 export const save = ownerMutation({
+  support: { capability: "workspace.manage", summary: "Updated setup answers" },
   args: {
     expectedRevision: v.number(),
     step: v.string(),
@@ -242,6 +243,7 @@ async function ownSetup(ctx: MutationCtx & { companyId: Id<"companies"> }) {
 
 /** Starts one service from a template, named as the owner's website names it when they choose that. Its template prices stay marked as examples. */
 export const prepareService = ownerMutation({
+  support: { capability: "workspace.manage", summary: "Prepared a service draft" },
   args: { templateId: v.string(), name: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const template = TEMPLATES.find((row) => row.id === args.templateId);
@@ -257,6 +259,7 @@ export const prepareService = ownerMutation({
 
 /** Starts one agreement from Selestial's starting text. It is a draft: nobody has reviewed or approved it. */
 export const prepareAgreement = ownerMutation({
+  support: { capability: "workspace.manage", summary: "Prepared an agreement draft" },
   args: { docType: v.union(v.literal("one_time_residential"), v.literal("recurring_residential"), v.literal("office_janitorial"), v.literal("commercial_msa"), v.literal("str_turnover")) },
   handler: async (ctx, args) => {
     const setup = await ownSetup(ctx);
@@ -269,6 +272,7 @@ export const prepareAgreement = ownerMutation({
 
 /** Starts one booking page. It can take bookings only once it is published with a live service. */
 export const prepareBooking = ownerMutation({
+  support: { capability: "workspace.manage", summary: "Prepared a booking page draft" },
   args: { kind: experienceKindValidator },
   handler: async (ctx, args) => {
     const setup = await ownSetup(ctx);
@@ -285,6 +289,7 @@ export const prepareBooking = ownerMutation({
  * to approve, as on any role.
  */
 export const prepareHiringBrief = ownerMutation({
+  support: { capability: "workspace.manage", summary: "Prepared a hiring brief draft" },
   args: {},
   handler: async (ctx) => {
     const setup = await ownSetup(ctx);

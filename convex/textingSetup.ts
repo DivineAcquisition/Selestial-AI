@@ -178,6 +178,7 @@ async function writable(ctx: MutationCtx, companyId: Id<"companies">, revision: 
 }
 
 export const save = ownerMutation({
+  support: { capability: "workspace.manage", summary: "Corrected texting setup details" },
   args: {
     revision: v.number(),
     step: v.optional(literals(SETUP_STEPS)),
