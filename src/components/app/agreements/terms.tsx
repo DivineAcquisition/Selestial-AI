@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextInput, useRun } from "@/components/app/form";
 import { Notice } from "@/components/app/agreements/shared";
 import { QuestionField, shown, type Q } from "@/components/app/agreements/question";
 import type { Detail } from "@/components/app/agreements/types";
@@ -13,7 +13,7 @@ import { Panel } from "@/components/app/shell";
 
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
-import { Checkbox, cleanerOption, customerOption, propertyOption, SearchableSelect } from "@/components/ui/selection";
+import { Checkbox, cleanerOption, customerOption, propertyOption, SearchableSelect, Select } from "@/components/ui/selection";
 import { EmailInput } from "@/components/ui/fields";
 
 type Section = { group: string; label: string; answered: number; total: number; questions: Q[] };
@@ -211,13 +211,7 @@ export function PartiesAndLinks({ detail, editable }: { detail: Detail; editable
         {editable ? (
           <div className="mt-3 grid gap-2 sm:grid-cols-[8rem_1fr_1fr_auto] sm:items-end">
             <Field label="Link a">
-              <SelectInput value={kind} onChange={(event) => (setKind(event.target.value as never), setRecordId(""), setCustomerId(""))}>
-                {KINDS.map((k) => (
-                  <option key={k.id} value={k.id}>
-                    {k.label}
-                  </option>
-                ))}
-              </SelectInput>
+              <Select value={kind} onValueChange={(next) => (setKind((next ?? "") as never), setRecordId(""), setCustomerId(""))} options={KINDS.map((k) => ({ value: k.id, label: k.label }))} />
             </Field>
             {kind === "properties" ? (
               <Field label="Customer">

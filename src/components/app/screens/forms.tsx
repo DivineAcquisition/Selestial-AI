@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import { AddressField } from "@/components/app/address-field";
 import { Guard } from "@/components/app/settings/guard";
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { Button } from "@/components/ui/button";
 import { centsFrom, zonedInstant } from "@/lib/app/format";
 
@@ -18,7 +18,7 @@ import { quote as runQuote, type PropertyExtra, type QuoteInput } from "../../..
 import type { Spec } from "../../../../convex/lib/services/spec";
 import { visitScope } from "../../../../convex/lib/services/operations";
 import { lowerFirst } from "../../../../convex/lib/services/words";
-import { Checkbox, ChoiceChips, customerOption, propertyOption, SearchableSelect, serviceOption } from "@/components/ui/selection";
+import { Checkbox, ChoiceChips, customerOption, propertyOption, SearchableSelect, Select, serviceOption } from "@/components/ui/selection";
 import { markComposite } from "@/components/ui/selection/field-context";
 import { AssistedTextArea, CountField, DurationField, EmailInput, PhoneInput, organizeIntoSteps, type WritingAction } from "@/components/ui/fields";
 
@@ -57,11 +57,12 @@ export function NewCustomerForm({ onDone }: { onDone: () => void }) {
   // The place picked from address search. Typing in the street field afterwards drops it, so a changed
   // address never keeps the old map location.
   const [place, setPlace] = useState<{ placeId: string; lat?: number; lng?: number } | null>(null);
-  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+  const setValue = (key: keyof typeof form, value: string) => {
     // A changed city, state or ZIP no longer matches the picked map location, so it is dropped.
     if (key === "city" || key === "region" || key === "postalCode") setPlace(null);
-    setForm((current) => ({ ...current, [key]: event.target.value }));
+    setForm((current) => ({ ...current, [key]: value }));
   };
+  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setValue(key, event.target.value);
   return (
     <form
       className="grid gap-3"
@@ -85,13 +86,7 @@ export function NewCustomerForm({ onDone }: { onDone: () => void }) {
           <TextInput value={form.name} onChange={set("name")} required maxLength={160} />
         </Field>
         <Field label="Kind of work">
-          <SelectInput value={form.kind} onChange={set("kind")}>
-            {KINDS.map((kind) => (
-              <option key={kind.id} value={kind.id}>
-                {kind.label}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={form.kind} onValueChange={(next) => setValue("kind", next ?? "")} options={KINDS.map((kind) => ({ value: kind.id, label: kind.label }))} searchable="auto" />
         </Field>
         <Field label="Email (optional)">
           <EmailInput value={form.email} onChange={(text) => set("email")({ target: { type: "text", value: text } } as unknown as React.ChangeEvent<HTMLInputElement>)} />
@@ -154,7 +149,8 @@ export function NewCleanerForm({ onDone }: { onDone: () => void }) {
   const [form, setForm] = useState({ name: "", engagement: "contractor" as "contractor" | "employee", phone: "", skills: "", areas: "", from: "", to: "" });
   const [days, setDays] = useState<number[]>([]);
   const [ready, setReady] = useState(false);
-  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm((current) => ({ ...current, [key]: event.target.value }));
+  const setValue = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
+  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setValue(key, event.target.value);
   return (
     <form
       className="grid gap-3"
@@ -176,10 +172,7 @@ export function NewCleanerForm({ onDone }: { onDone: () => void }) {
           <TextInput value={form.name} onChange={set("name")} required maxLength={160} />
         </Field>
         <Field label="Works as">
-          <SelectInput value={form.engagement} onChange={set("engagement")}>
-            <option value="contractor">Contractor, paid a share of the job</option>
-            <option value="employee">Employee, paid hourly</option>
-          </SelectInput>
+          <Select value={form.engagement} onValueChange={(next) => setValue("engagement", next ?? "")} options={[{ value: "contractor", label: "Contractor, paid a share of the job" }, { value: "employee", label: "Employee, paid hourly" }]} />
         </Field>
         <Field label="Phone (optional)">
           <PhoneInput value={form.phone} onChange={(text) => set("phone")({ target: { type: "text", value: text } } as unknown as React.ChangeEvent<HTMLInputElement>)} />
@@ -259,14 +252,7 @@ function ServiceField({ value, onChoose, onLegacy }: { value: string; onChoose: 
   const picked = live.find((s) => s.key === value);
   return (
     <Field label="Service" hint={picked ? `Live version ${picked.version} from Services & Pricing. Its scope, crew and price are filled in; the visit keeps this version.` : "From Services & Pricing. Or leave it and type the service below."}>
-      <SelectInput value={value} onChange={(event) => onChoose(live.find((s) => s.key === event.target.value) ?? null)}>
-        <option value="">Type it instead</option>
-        {live.map((s) => (
-          <option key={s.key} value={s.key}>
-            {s.name}
-          </option>
-        ))}
-      </SelectInput>
+      <Select value={value} onValueChange={(next) => onChoose(live.find((s) => s.key === (next ?? "")) ?? null)} options={live.map((s) => ({ value: s.key, label: s.name }))} emptyLabel="Type it instead" placeholder="Type it instead" searchable="auto" />
     </Field>
   );
 }
@@ -322,7 +308,8 @@ export function NewVisitForm({ onDone, initial }: { onDone: () => void; initial?
       const end = hours * 60 + minutes + visitMinutes;
       return end < 24 * 60 ? { ...current, from, to: `${String(Math.floor(end / 60)).padStart(2, "0")}:${String(end % 60).padStart(2, "0")}` } : { ...current, from };
     });
-  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm((current) => ({ ...current, [key]: event.target.value }));
+  const setValue = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
+  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setValue(key, event.target.value);
   if (customers && customers.length === 0) return <p className="text-sm text-muted-foreground">Add a customer under Customers & Properties first, then schedule their visit here.</p>;
   return (
     <form
@@ -372,9 +359,7 @@ export function NewVisitForm({ onDone, initial }: { onDone: () => void; initial?
           {form.customerId ? (
             <PropertySelect customerId={form.customerId as Id<"customers">} value={form.propertyId} onChange={(propertyId) => setForm((current) => ({ ...current, propertyId }))} />
           ) : (
-            <SelectInput disabled>
-              <option>Choose a customer first</option>
-            </SelectInput>
+            <Select value={null} onValueChange={() => undefined} options={[]} placeholder="Choose a customer first" disabled />
           )}
         </Field>
         <Guard fallback={() => null}>

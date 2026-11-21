@@ -9,7 +9,7 @@ import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextArea, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, useRun } from "@/components/app/form";
 import { Modal } from "@/components/app/modal";
 import { PageHeader, Panel } from "@/components/app/shell";
 import { useNow } from "@/components/app/use-now";
@@ -22,7 +22,7 @@ import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { CaseDrawer } from "./drawer";
 import { CaseCardView, Empty, useCaseParam } from "./shared";
-import { Checkbox, customerOption, SearchableSelect } from "@/components/ui/selection";
+import { Checkbox, customerOption, SearchableSelect, Select } from "@/components/ui/selection";
 
 function NewCase({ open, onClose, onOpened }: { open: boolean; onClose: () => void; onOpened: (id: string) => void }) {
   const { companyId } = useCompany();
@@ -42,21 +42,10 @@ function NewCase({ open, onClose, onOpened }: { open: boolean; onClose: () => vo
           <SearchableSelect value={customerId} onValueChange={(next) => (setCustomerId(next ?? ""), setJobId(""))} options={(customers ?? []).map(customerOption)} loading={customers === undefined} placeholder="Search customers by name, email or phone" />
         </Field>
         <Field label="The service this is about" hint={customerId && sources && !sources.visits.length ? "No completed visit is on record for this customer." : "A case about a visit can read its scope, checklist and photos."}>
-          <SelectInput value={jobId} onChange={(event) => setJobId(event.target.value)} disabled={!sources}>
-            <option value="">Not about one visit</option>
-            {(sources?.visits ?? []).map((row) => (
-              <option key={row.id} value={row.id}>
-                {row.label}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={jobId} onValueChange={(next) => setJobId(next ?? "")} options={[...((sources?.visits ?? [])?.map((row) => ({ value: row.id, label: row.label })) ?? [])]} emptyLabel="Not about one visit" placeholder="Not about one visit" disabled={!sources} searchable="auto" />
         </Field>
         <Field label="How it reached you">
-          <SelectInput value={origin} onChange={(event) => setOrigin(event.target.value as typeof origin)}>
-            <option value="conversation">A conversation with the customer</option>
-            <option value="inspection">An inspection</option>
-            <option value="staff">A report from the team</option>
-          </SelectInput>
+          <Select value={origin} onValueChange={(next) => setOrigin((next ?? "") as typeof origin)} options={[{ value: "conversation", label: "A conversation with the customer" }, { value: "inspection", label: "An inspection" }, { value: "staff", label: "A report from the team" }]} />
         </Field>
         <Field label="What was reported" hint="In the customer's words where you can. Name the room or task.">
           <TextArea rows={4} value={description} onChange={(event) => setDescription(event.target.value)} />

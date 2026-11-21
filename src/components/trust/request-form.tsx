@@ -1,11 +1,11 @@
 "use client";
 
-import { startTransition, useActionState, useId } from "react";
+import { startTransition, useActionState, useId, useState } from "react";
 
 import { AlertTriangle, CircleCheckIcon, Loader } from "@/components/icons";
 import type { RequestState } from "@/lib/trust/requests";
 import { cn } from "@/lib/utils";
-import { SelectInput } from "@/components/app/form";
+import { Select } from "@/components/ui/selection";
 
 type FieldBase = { name: string; label: string; required?: boolean; hint?: string; /** Shown after an unrequired label instead of "(optional)". */ optionalLabel?: string };
 export type FieldSpec =
@@ -62,14 +62,7 @@ export function RequestForm({ action, fields, submitLabel, consentNote }: { acti
             {field.kind === "textarea" ? (
               <textarea {...common} rows={field.rows ?? 5} maxLength={field.max} className={cn(control, "py-2.5")} />
             ) : field.kind === "select" ? (
-              <SelectInput {...common} className={cn(control, "h-11 cursor-pointer")}>
-                <option value="">Choose one</option>
-                {field.options.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </SelectInput>
+              <ChoiceField key={`${field.name}:${common.defaultValue}`} id={id} name={field.name} required={field.required} invalid={Boolean(error)} describedBy={described} initial={common.defaultValue} options={field.options} className={cn(control, "h-11")} />
             ) : (
               <input {...common} type={field.kind} autoComplete={field.autoComplete} maxLength={field.max} inputMode={field.kind === "email" ? "email" : undefined} className={cn(control, "h-11")} />
             )}
@@ -109,4 +102,10 @@ export function RequestForm({ action, fields, submitLabel, consentNote }: { acti
       </div>
     </form>
   );
+}
+
+/** A dropdown in the request form. Its value reaches the submitted FormData under `name` through the select's hidden input, and `required` blocks an empty submit. */
+function ChoiceField({ id, name, required, invalid, describedBy, initial, options, className }: { id: string; name: string; required?: boolean; invalid: boolean; describedBy?: string; initial: string; options: readonly { value: string; label: string }[]; className?: string }) {
+  const [value, setValue] = useState(initial);
+  return <Select id={id} name={name} required={required} aria-invalid={invalid || undefined} aria-describedby={describedBy} value={value} onValueChange={(next) => setValue(next ?? "")} options={options} emptyLabel="Choose one" placeholder="Choose one" className={className} />;
 }

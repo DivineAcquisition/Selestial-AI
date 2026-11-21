@@ -4,7 +4,8 @@ import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextInput, useRun } from "@/components/app/form";
+import { Select } from "@/components/ui/selection";
 import { WeekMeasures } from "@/components/app/overview/week-measures";
 import { NotBuilt, PageHeader } from "@/components/app/shell";
 import { useNow } from "@/components/app/use-now";
@@ -120,10 +121,7 @@ export function Invitations() {
           <EmailInput value={form.email} onChange={(text) => setForm((current) => ({ ...current, email: text }))} required autoComplete="off" />
         </Field>
         <Field label="Role">
-          <SelectInput value={form.role} onChange={(event) => setForm((current) => ({ ...current, role: event.target.value as "manager" | "office" }))}>
-            <option value="office">Office</option>
-            <option value="manager">Manager</option>
-          </SelectInput>
+          <Select value={form.role} onValueChange={(next) => setForm((current) => ({ ...current, role: (next ?? "") as "manager" | "office" }))} options={[{ value: "office", label: "Office" }, { value: "manager", label: "Manager" }]} />
         </Field>
         <Button type="submit" variant="primary" loading={busy}>
           Invite

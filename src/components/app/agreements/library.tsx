@@ -6,7 +6,8 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
 import { AgreementRow, Empty, Notice } from "@/components/app/agreements/shared";
-import { SelectInput, TextInput } from "@/components/app/form";
+import { TextInput } from "@/components/app/form";
+import { Select } from "@/components/ui/selection";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CATEGORY, SORTS, VIEW_HINT, WORKFLOW } from "@/lib/app/agreements";
@@ -74,7 +75,8 @@ export function Library({ preset }: { preset: Preset }) {
   );
   const result = useQuery(api.companyAgreements.list, args);
   // A preset with several views (signatures and failures) shows the first; the others are one click away.
-  const set = (key: keyof typeof filters) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setFilters((current) => ({ ...current, [key]: event.target.value }));
+  const setValue = (key: keyof typeof filters, value: string) => setFilters((current) => ({ ...current, [key]: value }));
+  const set = (key: keyof typeof filters) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setValue(key, event.target.value);
   const active = Boolean(debounced || Object.values(filters).some(Boolean));
 
   return (
@@ -102,38 +104,10 @@ export function Library({ preset }: { preset: Preset }) {
           </label>
           <TextInput id="agreement-search" type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by title, type, person or property" />
         </div>
-        <SelectInput aria-label="Category" value={filters.category} onChange={set("category")}>
-          <option value="">Any category</option>
-          {Object.entries(CATEGORY).map(([key, label]) => (
-            <option key={key} value={key}>
-              {label}
-            </option>
-          ))}
-        </SelectInput>
-        <SelectInput aria-label="Document type" value={filters.docType} onChange={set("docType")}>
-          <option value="">Any document type</option>
-          {catalog?.types.map((type) => (
-            <option key={type.key} value={type.key}>
-              {type.label}
-            </option>
-          ))}
-        </SelectInput>
-        <SelectInput aria-label="Workflow state" value={filters.workflow} onChange={set("workflow")}>
-          <option value="">Any workflow state</option>
-          {Object.entries(WORKFLOW).map(([key, look]) => (
-            <option key={key} value={key}>
-              {look.label}
-            </option>
-          ))}
-        </SelectInput>
-        <SelectInput aria-label="Effective status" value={filters.lifecycle} onChange={set("lifecycle")}>
-          <option value="">Any effective status</option>
-          {LIFECYCLES.map((key) => (
-            <option key={key} value={key}>
-              {key.replace(/_/g, " ")}
-            </option>
-          ))}
-        </SelectInput>
+        <Select value={filters.category} onValueChange={(next) => setValue("category", next ?? "")} options={Object.entries(CATEGORY).map(([key, label]) => ({ value: key, label: label }))} emptyLabel="Any category" placeholder="Any category" aria-label="Category" searchable="auto" />
+        <Select value={filters.docType} onValueChange={(next) => setValue("docType", next ?? "")} options={[...(catalog?.types?.map((type) => ({ value: type.key, label: type.label })) ?? [])]} emptyLabel="Any document type" placeholder="Any document type" aria-label="Document type" searchable="auto" />
+        <Select value={filters.workflow} onValueChange={(next) => setValue("workflow", next ?? "")} options={Object.entries(WORKFLOW).map(([key, look]) => ({ value: key, label: look.label }))} emptyLabel="Any workflow state" placeholder="Any workflow state" aria-label="Workflow state" searchable="auto" />
+        <Select value={filters.lifecycle} onValueChange={(next) => setValue("lifecycle", next ?? "")} options={LIFECYCLES.map((key) => ({ value: key, label: key.replace(/_/g, " ") }))} emptyLabel="Any effective status" placeholder="Any effective status" aria-label="Effective status" searchable="auto" />
         <label className="grid gap-1 text-xs text-muted-foreground">
           Effective from
           <TextInput type="date" value={filters.from} onChange={set("from")} />
@@ -144,13 +118,7 @@ export function Library({ preset }: { preset: Preset }) {
         </label>
         <label className="grid gap-1 text-xs text-muted-foreground sm:col-span-2">
           Sort by
-          <SelectInput aria-label="Sort by" value={sort} onChange={(event) => setSort(event.target.value as never)}>
-            {SORTS.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={sort} onValueChange={(next) => setSort((next ?? "") as never)} options={SORTS.map((option) => ({ value: option.id, label: option.label }))} aria-label="Sort by" />
         </label>
       </div>
       {!result ? (

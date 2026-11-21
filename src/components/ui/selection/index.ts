@@ -15,7 +15,6 @@
  *                     agent proposes and why, and what a choice will do
  *
  * Action menus (Edit, Delete) are not selections and keep Menu semantics; see clients/menu.tsx.
- * The native SelectInput in app/form.tsx stays for platform pickers and event-based handlers.
  */
 export { Checkbox, CheckboxRow, tableSelection, type CheckboxProps } from "./checkbox";
 export { ChoiceChips } from "./chips";

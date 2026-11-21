@@ -5,7 +5,7 @@ import type { FunctionReturnType } from "convex/server";
 import { useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, messageOf, SelectInput } from "@/components/app/form";
+import { Field, FormError, messageOf } from "@/components/app/form";
 import { JobInputs, defaultInput } from "@/components/app/services/preview";
 import { MoneyInput } from "@/components/app/services/shared";
 import { Copy, Eye, Plus, Trash2 } from "@/components/icons";
@@ -23,7 +23,7 @@ import { CustomerSection } from "./customer-section";
 import { Chip, fieldClass, FormSection, ReadyLine, SummaryRow } from "./kit";
 import { servicesFor } from "./service-section";
 import type { DraftData, Working } from "./use-draft";
-import { Checkbox, propertyOption, SearchableSelect, SegmentedControl } from "@/components/ui/selection";
+import { Checkbox, propertyOption, SearchableSelect, SegmentedControl, Select } from "@/components/ui/selection";
 
 type Summary = FunctionReturnType<typeof api.sales.price>;
 type Preview = FunctionReturnType<typeof api.proposals.preview>;
@@ -52,14 +52,7 @@ function DetailInput({ field, value, onChange }: { field: Field; value: string |
     return (
       <label className="grid gap-1.5 text-sm">
         {label}
-        <SelectInput className={fieldClass()} value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value || undefined)}>
-          <option value="">Not set</option>
-          {field.choices?.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </SelectInput>
+        <Select value={typeof value === "string" ? value : ""} onValueChange={(next) => onChange(next || undefined)} options={[...(field.choices?.map((c) => ({ value: c, label: c })) ?? [])]} emptyLabel="Not set" placeholder="Not set" searchable="auto" />
       </label>
     );
   if (field.kind === "number")
@@ -221,17 +214,10 @@ export function ProposalWorkspace({ data, working, update, setBody, summary, flu
                 <p className="text-sm font-semibold text-strong">{site.label || "Site"}</p>
                 <label className="grid max-w-md gap-1.5 text-sm">
                   <span className="font-medium text-strong">Service</span>
-                  <SelectInput className={fieldClass()} value={site.serviceKey ?? ""} onChange={(e) => {
-                    const chosen = data.catalog.find((s) => s.key === e.target.value);
-                    setSite(site.key, { serviceKey: e.target.value || undefined, input: chosen ? defaultInput(chosen.spec) : undefined });
-                  }}>
-                    <option value="">Choose a service</option>
-                    {catalog.map((s) => (
-                      <option key={s.key} value={s.key}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </SelectInput>
+                  <Select value={site.serviceKey ?? ""} onValueChange={(next) => {
+                    const chosen = data.catalog.find((s) => s.key === (next ?? ""));
+                    setSite(site.key, { serviceKey: next || undefined, input: chosen ? defaultInput(chosen.spec) : undefined });
+                  }} options={catalog.map((s) => ({ value: s.key, label: s.name }))} emptyLabel="Choose a service" placeholder="Choose a service" searchable="auto" />
                 </label>
                 {spec && site.serviceKey ? <JobInputs spec={spec} input={site.input ?? {}} onInput={(input) => setSite(site.key, { input })} compact fromBooking /> : null}
                 {str ? (
@@ -257,13 +243,7 @@ export function ProposalWorkspace({ data, working, update, setBody, summary, flu
                     {(site.matrix ?? []).map((row, i) => (
                       <div key={i} className="grid grid-cols-[1fr_auto_auto] gap-2">
                         <input className={fieldClass()} aria-label="Task" value={row.task} onChange={(e) => setSite(site.key, { matrix: (site.matrix ?? []).map((r, j) => (j === i ? { ...r, task: e.target.value } : r)) })} />
-                        <SelectInput className={fieldClass("w-36")} aria-label="How often" value={row.frequency} onChange={(e) => setSite(site.key, { matrix: (site.matrix ?? []).map((r, j) => (j === i ? { ...r, frequency: e.target.value as typeof row.frequency } : r)) })}>
-                          {FREQUENCIES.map((f) => (
-                            <option key={f.id} value={f.id}>
-                              {f.label}
-                            </option>
-                          ))}
-                        </SelectInput>
+                        <Select value={row.frequency} onValueChange={(next) => setSite(site.key, { matrix: (site.matrix ?? []).map((r, j) => (j === i ? { ...r, frequency: (next ?? "") as typeof row.frequency } : r)) })} options={FREQUENCIES.map((f) => ({ value: f.id, label: f.label }))} className="w-36" aria-label="How often" />
                         <Button size="icon-sm" variant="ghost" aria-label="Remove task" onClick={() => setSite(site.key, { matrix: (site.matrix ?? []).filter((_, j) => j !== i) })}>
                           <Trash2 aria-hidden className="size-4" />
                         </Button>
@@ -323,14 +303,7 @@ export function ProposalWorkspace({ data, working, update, setBody, summary, flu
                 {proposal.sites.map((site) => (
                   <label key={site.key} className="grid gap-1 text-sm sm:grid-cols-[10rem_1fr] sm:items-center">
                     <span className="text-muted-foreground">{site.label || "Site"}</span>
-                    <SelectInput className={fieldClass()} value={option.siteServiceKeys?.[site.key] ?? ""} onChange={(e) => setProposal((p) => ({ ...p, options: (p.options ?? []).map((o) => (o.id === option.id ? { ...o, siteServiceKeys: { ...o.siteServiceKeys, [site.key]: e.target.value } } : o)) }))}>
-                      <option value="">Choose a service</option>
-                      {catalog.map((s) => (
-                        <option key={s.key} value={s.key}>
-                          {s.name}
-                        </option>
-                      ))}
-                    </SelectInput>
+                    <Select value={option.siteServiceKeys?.[site.key] ?? ""} onValueChange={(next) => setProposal((p) => ({ ...p, options: (p.options ?? []).map((o) => (o.id === option.id ? { ...o, siteServiceKeys: { ...o.siteServiceKeys, [site.key]: next ?? "" } } : o)) }))} options={catalog.map((s) => ({ value: s.key, label: s.name }))} emptyLabel="Choose a service" placeholder="Choose a service" searchable="auto" />
                   </label>
                 ))}
               </div>
@@ -349,12 +322,7 @@ export function ProposalWorkspace({ data, working, update, setBody, summary, flu
           <div className="grid gap-3 sm:grid-cols-3">
             <label className="grid gap-1.5 text-sm">
               <span className="font-medium text-strong">Invoicing</span>
-              <SelectInput className={fieldClass()} value={proposal.terms.invoiceFrequency ?? ""} onChange={(e) => setProposal((p) => ({ ...p, terms: { ...p.terms, invoiceFrequency: (e.target.value || undefined) as ProposalDraft["terms"]["invoiceFrequency"] } }))}>
-                <option value="">Choose</option>
-                <option value="per_visit">After each visit</option>
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-              </SelectInput>
+              <Select value={proposal.terms.invoiceFrequency ?? ""} onValueChange={(next) => setProposal((p) => ({ ...p, terms: { ...p.terms, invoiceFrequency: (next || undefined) as ProposalDraft["terms"]["invoiceFrequency"] } }))} options={[{ value: "per_visit", label: "After each visit" }, { value: "weekly", label: "Weekly" }, { value: "monthly", label: "Monthly" }]} emptyLabel="Choose" placeholder="Choose" />
             </label>
             <label className="grid gap-1.5 text-sm">
               <span className="font-medium text-strong">Payment due (days)</span>

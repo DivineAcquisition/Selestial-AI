@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Select } from "@/components/ui/selection";
 import { PageHeader, Panel } from "@/components/app/shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -117,12 +118,7 @@ function RoleCard({ need }: { need: Need }) {
           Applicants
         </Button>
         {role === "owner" ? (
-          <SelectInput aria-label="Status" value={need.status} disabled={busy} onChange={(event) => void run(() => setStatus({ companyId, needId: need._id as Id<"hiringNeeds">, status: event.target.value as Need["status"] }))} className="h-8 w-auto">
-            {need.status === "draft" ? <option value="draft">Draft</option> : null}
-            <option value="open">{need.status === "draft" ? "Open to applicants" : "Open"}</option>
-            <option value="paused">Paused</option>
-            <option value="closed">Closed</option>
-          </SelectInput>
+          <Select value={need.status} onValueChange={(next) => void run(() => setStatus({ companyId, needId: need._id as Id<"hiringNeeds">, status: (next ?? "") as Need["status"] }))} options={[...(need.status === "draft" ? [{ value: "draft", label: "Draft" }] : []), { value: "open", label: need.status === "draft" ? "Open to applicants" : "Open" }, { value: "paused", label: "Paused" }, { value: "closed", label: "Closed" }]} className="h-8 w-auto" disabled={busy} aria-label="Status" searchable="auto" />
         ) : null}
       </div>
       <FormError message={error} />
@@ -162,10 +158,7 @@ function NewRole({ onDone }: { onDone: () => void }) {
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Worker type">
-            <SelectInput value={form.engagement} onChange={(event) => set("engagement", event.target.value)}>
-              <option value="contractor">Contractor</option>
-              <option value="employee">Employee</option>
-            </SelectInput>
+            <Select value={form.engagement} onValueChange={(next) => set("engagement", next ?? "")} options={[{ value: "contractor", label: "Contractor" }, { value: "employee", label: "Employee" }]} />
           </Field>
           <Field label="Openings">
             <NumberField value={form.openings} onChange={(text) => set("openings", text)} />

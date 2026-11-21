@@ -3,14 +3,14 @@
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 
-import { FormError, messageOf, SelectInput } from "@/components/app/form";
+import { FormError, messageOf } from "@/components/app/form";
 import { PageHeader, Panel } from "@/components/app/shell";
 import { CheckCircle2, CircleDashed, Lock } from "@/components/icons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 import { api } from "../../../convex/_generated/api";
-import { Switch } from "@/components/ui/selection";
+import { Select, Switch } from "@/components/ui/selection";
 
 const EVALUATIONS = [
   ["not_evaluated", "Not evaluated"],
@@ -95,13 +95,7 @@ export function AiModels() {
                   {row.optional ? " · optional" : ""}
                 </span>
                 <span className="ml-auto flex items-center gap-2">
-                  <SelectInput aria-label={`Evaluation for ${row.label}`} value={evaluation} disabled={!row.implemented} onChange={(event) => update({ evaluation: event.target.value as Evaluation })} className="h-8 rounded-lg border border-border bg-card px-2 text-xs">
-                    {EVALUATIONS.map(([value, label]) => (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
-                    ))}
-                  </SelectInput>
+                  <Select value={evaluation} onValueChange={(next) => update({ evaluation: (next ?? "") as Evaluation })} options={EVALUATIONS.map(([value, label]) => ({ value: value, label: label }))} disabled={!row.implemented} aria-label={`Evaluation for ${row.label}`} density="compact" />
                   <Switch checked={enabled} label={`${row.label} on`} disabled={!row.implemented} onChange={() => update({ enabled: !enabled })} />
                 </span>
               </div>

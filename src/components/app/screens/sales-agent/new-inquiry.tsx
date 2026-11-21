@@ -9,7 +9,8 @@ import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Select } from "@/components/ui/selection";
 import { Modal } from "@/components/app/modal";
 import { Plus } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -70,21 +71,10 @@ function InquiryForm({ onDone }: { onDone: (id: string) => void }) {
           <EmailInput value={form.email} onChange={(text) => set("email", text)} autoComplete="off" />
         </Field>
         <Field label="Kind of work">
-          <SelectInput value={form.kind} onChange={(event) => set("kind", event.target.value as Kind)}>
-            <option value="residential">Home</option>
-            <option value="commercial">Commercial</option>
-            <option value="short_term_rental">Short-term rental</option>
-          </SelectInput>
+          <Select value={form.kind} onValueChange={(next) => set("kind", (next ?? "") as Kind)} options={[{ value: "residential", label: "Home" }, { value: "commercial", label: "Commercial" }, { value: "short_term_rental", label: "Short-term rental" }]} />
         </Field>
         <Field label="Service" hint={playbook && playbook.services.length === 0 ? "No service is published yet." : undefined}>
-          <SelectInput value={form.serviceKey} onChange={(event) => set("serviceKey", event.target.value)}>
-            <option value="">Not sure yet</option>
-            {(playbook?.services ?? []).map((service) => (
-              <option key={service.key} value={service.key}>
-                {service.name}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={form.serviceKey} onValueChange={(next) => set("serviceKey", next ?? "")} options={[...((playbook?.services ?? [])?.map((service) => ({ value: service.key, label: service.name })) ?? [])]} emptyLabel="Not sure yet" placeholder="Not sure yet" searchable="auto" />
         </Field>
       </div>
       <Field label="What they asked for">
@@ -92,19 +82,10 @@ function InquiryForm({ onDone }: { onDone: (id: string) => void }) {
       </Field>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Reply by">
-          <SelectInput value={form.channel} onChange={(event) => set("channel", event.target.value as "sms" | "email")}>
-            <option value="sms">Text</option>
-            <option value="email">Email</option>
-          </SelectInput>
+          <Select value={form.channel} onValueChange={(next) => set("channel", (next ?? "") as "sms" | "email")} options={[{ value: "sms", label: "Text" }, { value: "email", label: "Email" }]} />
         </Field>
         <Field label="How they agreed to be contacted">
-          <SelectInput value={form.consent} onChange={(event) => set("consent", event.target.value as typeof form.consent)}>
-            {CONSENT.map((row) => (
-              <option key={row.value} value={row.value}>
-                {row.label}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={form.consent} onValueChange={(next) => set("consent", (next ?? "") as typeof form.consent)} options={CONSENT.map((row) => ({ value: row.value, label: row.label }))} />
         </Field>
       </div>
       {form.consent ? (

@@ -12,7 +12,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { FormError, SelectInput, useRun } from "@/components/app/form";
+import { FormError, useRun } from "@/components/app/form";
 import { Modal } from "@/components/app/modal";
 import { NewVisitForm } from "@/components/app/screens/forms";
 import { FunnelIcon, Plus, Search, X } from "@/components/icons";
@@ -29,7 +29,7 @@ import { CategoryChips, ClientMark, day, EmptyState, RelationshipBadge, Staffing
 import { ClientQuickView } from "./quick-view";
 import { ActionMenu } from "./menu";
 import { rememberScroll, takeScroll, useDirectoryState, viewOf, type DirectoryState } from "./state";
-import { Checkbox, tableSelection } from "@/components/ui/selection";
+import { Checkbox, Select, tableSelection } from "@/components/ui/selection";
 
 type Overview = FunctionReturnType<typeof api.clients.overview>;
 type Row = FunctionReturnType<typeof api.clients.directory>["page"][number];
@@ -104,13 +104,7 @@ export function ClientsScreen() {
             </Button>
             <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
               <span className="sr-only sm:not-sr-only">Sort</span>
-              <SelectInput aria-label="Sort" className="min-h-9 w-auto py-1.5" value={state.sort ?? "name"} onChange={(event) => update({ sort: event.target.value === "name" ? undefined : event.target.value })} disabled={Boolean(state.q)}>
-                {SORTS.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.label}
-                  </option>
-                ))}
-              </SelectInput>
+              <Select value={state.sort ?? "name"} onValueChange={(next) => update({ sort: (next ?? "") === "name" ? undefined : next ?? "" })} options={SORTS.map((s) => ({ value: s.id, label: s.label }))} className="min-h-9 w-auto py-1.5" disabled={Boolean(state.q)} aria-label="Sort" />
             </label>
           </div>
           <nav aria-label="Views" className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-0.5">
@@ -273,26 +267,12 @@ function FiltersDrawer({ open, onClose, state, view, overview, onApply }: { open
           {show === "clients" ? (
             <label className="grid gap-1.5 text-sm">
               <span className="font-medium text-strong">Relationship</span>
-              <SelectInput value={relationshipArg(state, view) ?? "current"} onChange={(event) => onApply({ rel: event.target.value === "current" ? undefined : event.target.value })}>
-                {RELATIONSHIPS.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.label}
-                  </option>
-                ))}
-              </SelectInput>
+              <Select value={relationshipArg(state, view) ?? "current"} onValueChange={(next) => onApply({ rel: (next ?? "") === "current" ? undefined : next ?? "" })} options={RELATIONSHIPS.map((r) => ({ value: r.id, label: r.label }))} />
             </label>
           ) : null}
           <label className="grid gap-1.5 text-sm">
             <span className="font-medium text-strong">Account owner</span>
-            <SelectInput value={state.owner ?? ""} onChange={(event) => onApply({ owner: event.target.value || undefined })}>
-              <option value="">Anyone</option>
-              <option value="none">No account owner</option>
-              {overview?.owners.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name}
-                </option>
-              ))}
-            </SelectInput>
+            <Select value={state.owner ?? ""} onValueChange={(next) => onApply({ owner: next || undefined })} options={[{ value: "none", label: "No account owner" }, ...(overview?.owners?.map((o) => ({ value: o.id, label: o.name })) ?? [])]} emptyLabel="Anyone" placeholder="Anyone" searchable="auto" />
           </label>
           <p className="text-xs text-muted-foreground">Filters are in the page address, so a filtered list can be bookmarked or shared with your team.</p>
           <Button variant="primary" onClick={onClose}>
@@ -564,15 +544,7 @@ function BulkBar({ rows, owners, onDone }: { rows: Row[]; owners: Overview["owne
     <div role="region" aria-label="Selected clients" className="grid gap-2 border-b border-border bg-brand-500/[0.04] px-4 py-3 text-sm">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium text-strong">{rows.length} selected</span>
-        <SelectInput aria-label="Account owner to assign" className="min-h-9 w-auto py-1.5" value={owner} onChange={(event) => (setOwner(event.target.value), setConfirming(false))}>
-          <option value="">Assign an account owner…</option>
-          <option value="none">No account owner</option>
-          {owners.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.name}
-            </option>
-          ))}
-        </SelectInput>
+        <Select value={owner} onValueChange={(next) => (setOwner(next ?? ""), setConfirming(false))} options={[{ value: "none", label: "No account owner" }, ...owners.map((o) => ({ value: o.id, label: o.name }))]} emptyLabel="Assign an account owner…" placeholder="Assign an account owner…" className="min-h-9 w-auto py-1.5" aria-label="Account owner to assign" searchable="auto" />
         <Button size="sm" variant="secondary" disabled={!owner} onClick={() => setConfirming(true)}>
           Review
         </Button>

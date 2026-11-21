@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, TextArea, TextInput, useRun, SelectInput } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { PageHeader } from "@/components/app/shell";
 import { ArrowLeft, CheckCircle2, ExternalLink, Loader2, Plus, RefreshCw, ShieldCheck, Trash2, Wallet } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 import { api } from "../../../../convex/_generated/api";
 import type { FunctionReturnType } from "convex/server";
 import { Notice, Section } from "./kit";
-import { Checkbox } from "@/components/ui/selection";
+import { Checkbox, Select } from "@/components/ui/selection";
 import { EmailInput, PercentField } from "@/components/ui/fields";
 
 type Settings = FunctionReturnType<typeof api.finance.settings>;
@@ -452,10 +452,7 @@ function ExpenseCategories({ data }: { data: Settings }) {
           {rows.map((row, i) => (
             <li key={row.id || `new-${i}`} className={cn("grid grid-cols-[minmax(0,1fr)_8.5rem_auto] items-center gap-2", row.hidden && "opacity-60")}>
               <TextInput aria-label="Category name" value={row.name} maxLength={40} onChange={(e) => change(i, { name: e.target.value })} />
-              <SelectInput aria-label={`${row.name || "Category"} kind`} value={row.kind} onChange={(e) => change(i, { kind: e.target.value as "job" | "overhead" })} className="h-10 rounded-lg border border-border bg-card px-2 text-sm text-strong sm:h-9">
-                <option value="job">Job cost</option>
-                <option value="overhead">Overhead</option>
-              </SelectInput>
+              <Select value={row.kind} onValueChange={(next) => change(i, { kind: (next ?? "") as "job" | "overhead" })} options={[{ value: "job", label: "Job cost" }, { value: "overhead", label: "Overhead" }]} aria-label={`${row.name || "Category"} kind`} density="compact" />
               <Button size="xs" variant="ghost" onClick={() => change(i, { hidden: !row.hidden })}>
                 {row.hidden ? "Show" : "Hide"}
               </Button>

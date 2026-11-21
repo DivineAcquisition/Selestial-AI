@@ -6,7 +6,8 @@ import { useState } from "react";
 import { Action, Card, Loading, Notice, Page, Problem, problemWords } from "@/components/cleaner/shell";
 
 import { api } from "../../../convex/_generated/api";
-import { SelectInput } from "@/components/app/form";
+
+import { Select } from "@/components/ui/selection";
 
 /** The assessor's page at the property: what to record, photos, then finish. Saves as they go. */
 export function AssessPage({ token }: { token: string }) {
@@ -82,18 +83,9 @@ export function AssessPage({ token }: { token: string }) {
           <label key={field.key} className="flex flex-col gap-1.5 text-sm">
             <span className="font-medium">{field.label}</span>
             {field.kind === "choice" ? (
-              <SelectInput disabled={closed} className="min-h-11 rounded-xl border border-border bg-background px-3" value={values[field.key] ?? String(view.findings[field.key] ?? "")} onChange={(e) => setValues({ ...values, [field.key]: e.target.value })}>
-                <option value="">Not checked</option>
-                {field.options.map((o) => (
-                  <option key={o}>{o}</option>
-                ))}
-              </SelectInput>
+              <Select value={values[field.key] ?? String(view.findings[field.key] ?? "")} onValueChange={(next) => setValues({ ...values, [field.key]: next ?? "" })} options={field.options.map((o) => ({ value: o, label: o }))} emptyLabel="Not checked" placeholder="Not checked" className="min-h-11 rounded-xl border border-border bg-background px-3" disabled={closed} searchable="auto" />
             ) : field.kind === "yes_no" ? (
-              <SelectInput disabled={closed} className="min-h-11 rounded-xl border border-border bg-background px-3" value={values[field.key] ?? (view.findings[field.key] === undefined ? "" : view.findings[field.key] ? "yes" : "no")} onChange={(e) => setValues({ ...values, [field.key]: e.target.value })}>
-                <option value="">Not checked</option>
-                <option value="yes">Yes</option>
-                <option value="no">No</option>
-              </SelectInput>
+              <Select value={values[field.key] ?? (view.findings[field.key] === undefined ? "" : view.findings[field.key] ? "yes" : "no")} onValueChange={(next) => setValues({ ...values, [field.key]: next ?? "" })} options={[{ value: "yes", label: "Yes" }, { value: "no", label: "No" }]} emptyLabel="Not checked" placeholder="Not checked" className="min-h-11 rounded-xl border border-border bg-background px-3" disabled={closed} />
             ) : field.kind === "number" ? (
               <input disabled={closed} type="number" inputMode="decimal" className="min-h-11 rounded-xl border border-border bg-background px-3 text-base" value={values[field.key] ?? String(view.findings[field.key] ?? "")} onChange={(e) => setValues({ ...values, [field.key]: e.target.value })} />
             ) : (

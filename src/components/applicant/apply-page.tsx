@@ -7,8 +7,8 @@ import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { Action, Card, Loading, Notice, Page, Problem, problemWords, Row } from "@/components/cleaner/shell";
 import { Check } from "@/components/icons";
-import { SelectInput } from "@/components/app/form";
-import { Checkbox, RadioButtonGroup } from "@/components/ui/selection";
+
+import { Checkbox, RadioButtonGroup, Select } from "@/components/ui/selection";
 
 type Answer = string | number | boolean | string[];
 type Answers = Record<string, Answer>;
@@ -92,12 +92,7 @@ function FieldInput({ field, value, onChange }: { field: Field; value: Answer | 
     return (
       <label className="flex flex-col gap-1 text-sm">
         {label}
-        <SelectInput data-testid={id} className={`${inputClass} select-native cursor-pointer pr-10`} value={typeof value === "string" ? value : ""} onChange={(event) => onChange(event.target.value || undefined)}>
-          <option value="">Choose…</option>
-          {(field.options ?? []).map((option) => (
-            <option key={option} value={option}>{option}</option>
-          ))}
-        </SelectInput>
+        <Select value={typeof value === "string" ? value : ""} onValueChange={(next) => onChange(next || undefined)} options={[...(field.options ?? []).map((option) => ({ value: option, label: option }))]} emptyLabel="Choose…" placeholder="Choose…" className={inputClass} data-testid={id} searchable="auto" />
       </label>
     );
   }

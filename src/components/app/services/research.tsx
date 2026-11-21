@@ -8,7 +8,7 @@ import { useState } from "react";
 import { useCompany } from "@/components/app/company";
 import { useChat } from "@/components/app/chat/chat-context";
 import { Composer, type Outgoing } from "@/components/app/chat/composer";
-import { Field, FormError, SelectInput, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextInput, useRun } from "@/components/app/form";
 import { ArrowLeft, ArrowRight, ChatIcon, ExternalLink, Plus, Search, Sparkles, Trash2 } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,7 @@ import { startingCents } from "../../../../convex/lib/services/engine";
 import { BASIS_LABELS, comparableRange } from "../../../../convex/lib/services/research";
 import { Empty, formatCents, InfoTip, Notice, SectionTitle, when } from "./shared";
 import { PriceStrip } from "./visuals";
-import { Checkbox } from "@/components/ui/selection";
+import { Checkbox, Select } from "@/components/ui/selection";
 import { MoneyField } from "@/components/ui/fields";
 
 const BASIS_TONE: Record<string, "info" | "warning" | "success" | "outline"> = { advertised_starting: "warning", estimated: "info", firm_published: "success", company_data: "success", ai_inference: "outline" };
@@ -194,11 +194,7 @@ function SourceRows({ sources, setSources }: { sources: OwnerSource[]; setSource
               </Field>
               <label className="grid grid-cols-1 gap-1.5 text-sm sm:col-span-2">
                 <span className="font-medium text-strong">What kind of price</span>
-                <SelectInput value={s.priceKind} onChange={(e) => set({ priceKind: e.target.value as OwnerSource["priceKind"] })}>
-                  <option value="advertised_starting">A “from” or starting price</option>
-                  <option value="estimated">An estimate or range</option>
-                  <option value="firm_published">A firm price for a stated scope</option>
-                </SelectInput>
+                <Select value={s.priceKind} onValueChange={(next) => set({ priceKind: (next ?? "") as OwnerSource["priceKind"] })} options={[{ value: "advertised_starting", label: "A “from” or starting price" }, { value: "estimated", label: "An estimate or range" }, { value: "firm_published", label: "A firm price for a stated scope" }]} />
               </label>
             </div>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_12rem]">
@@ -294,14 +290,7 @@ export function BriefView({ briefId }: { briefId: string }) {
         <div className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-card p-3">
           <label className="grid grid-cols-1 gap-1.5 text-sm">
             <span className="font-medium text-strong">Apply to a draft of</span>
-            <SelectInput value={serviceFor} onChange={(e) => setTarget(e.target.value)}>
-              <option value="">Choose a service</option>
-              {catalog?.services.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </SelectInput>
+            <Select value={serviceFor} onValueChange={(next) => setTarget(next ?? "")} options={[...(catalog?.services?.map((s) => ({ value: s.id, label: s.name })) ?? [])]} emptyLabel="Choose a service" placeholder="Choose a service" searchable="auto" />
           </label>
           <Button variant="secondary" size="sm" disabled={busy || !serviceFor} onClick={() => attachTo()}>
             Attach the whole brief

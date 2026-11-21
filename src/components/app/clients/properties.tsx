@@ -12,7 +12,7 @@ import { useState } from "react";
 
 import { AgreementsForRecord } from "@/components/app/agreements/record";
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { Modal } from "@/components/app/modal";
 import { NewVisitForm } from "@/components/app/screens/forms";
 import { ArrowLeft, Lock, MapPin, Plus } from "@/components/icons";
@@ -27,7 +27,7 @@ import { Card, EmptyState, money, PropertyKindIcon, StaffingLine } from "./bits"
 import { ActionMenu } from "./menu";
 import { AgentCard, PropertyCard, VisitRow, type PropertyRow } from "./parts";
 import type { Profile } from "./profile";
-import { Checkbox } from "@/components/ui/selection";
+import { Checkbox, Select } from "@/components/ui/selection";
 import { useConfirm } from "@/components/ui/fields/confirm";
 import { AssistedTextArea, NumberField, organizeIntoSteps, type WritingAction } from "@/components/ui/fields";
 
@@ -357,7 +357,8 @@ function PropertyForm({ profile, property, onDone }: { profile: Profile; propert
     accessInstructions: property?.accessInstructions ?? "",
   });
   const [days, setDays] = useState<number[]>(Array.isArray(d.serviceDays) ? (d.serviceDays as number[]) : []);
-  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm((current) => ({ ...current, [key]: event.target.value }));
+  const setValue = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
+  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setValue(key, event.target.value);
   const str = kind === "short_term_rental";
   const site = kind === "office" || kind === "commercial";
   return (
@@ -390,13 +391,7 @@ function PropertyForm({ profile, property, onDone }: { profile: Profile; propert
       {!property ? <AddressInputs value={address} onChange={setAddress} required /> : null}
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Kind of property">
-          <SelectInput value={kind} onChange={(event) => setKind(event.target.value as typeof kind)}>
-            {["home", "short_term_rental", "office", "commercial", "property_manager"].map((k) => (
-              <option key={k} value={k}>
-                {PROPERTY_KIND_LABELS[k]}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={kind} onValueChange={(next) => setKind((next ?? "") as typeof kind)} options={["home", "short_term_rental", "office", "commercial", "property_manager"].map((k) => ({ value: k, label: PROPERTY_KIND_LABELS[k] }))} />
         </Field>
         <Field label="Nickname (optional)">
           <TextInput value={form.label} onChange={set("label")} maxLength={120} placeholder="Lake house, HQ, Unit 4" />
@@ -409,12 +404,7 @@ function PropertyForm({ profile, property, onDone }: { profile: Profile; propert
             <Field label="Beds to make"><NumberField value={form.beds} onChange={(text) => setForm((current) => ({ ...current, beds: text }))} min={0} max={99} stepper /></Field>
             <Field label="Guests"><NumberField value={form.maxGuests} onChange={(text) => setForm((current) => ({ ...current, maxGuests: text }))} min={0} max={99} stepper /></Field>
             <Field label="Laundry">
-              <SelectInput value={form.laundry} onChange={set("laundry")}>
-                <option value="">Not recorded</option>
-                <option value="on_site">On site</option>
-                <option value="off_site">Off site</option>
-                <option value="none">None</option>
-              </SelectInput>
+              <Select value={form.laundry} onValueChange={(next) => setValue("laundry", next ?? "")} options={[{ value: "on_site", label: "On site" }, { value: "off_site", label: "Off site" }, { value: "none", label: "None" }]} emptyLabel="Not recorded" placeholder="Not recorded" />
             </Field>
             <Field label="Checkout"><TextInput type="time" value={form.checkoutTime} onChange={set("checkoutTime")} /></Field>
             <Field label="Check-in"><TextInput type="time" value={form.checkinTime} onChange={set("checkinTime")} /></Field>

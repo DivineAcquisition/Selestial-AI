@@ -10,13 +10,13 @@ import { useDeferredValue, useState } from "react";
 
 import { AddressField } from "@/components/app/address-field";
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextInput, useRun } from "@/components/app/form";
 import { Button } from "@/components/ui/button";
 import { clientPath, PROPERTY_KIND_LABELS } from "@/lib/app/clients";
 
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
-import { Checkbox, SelectionCards } from "@/components/ui/selection";
+import { Checkbox, Select, SelectionCards } from "@/components/ui/selection";
 import { EmailInput, PhoneInput } from "@/components/ui/fields";
 
 type Duplicate = { customerId: Id<"customers">; name: string; reason: string; status: string };
@@ -92,7 +92,8 @@ export function AddClientForm({ onDone, onCreated }: { onDone: () => void; onCre
   const [address, setAddress] = useState<AddressValue>(emptyAddress());
   const [withProperty, setWithProperty] = useState(true);
   const [refused, setRefused] = useState<Duplicate[]>([]);
-  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm((current) => ({ ...current, [key]: event.target.value }));
+  const setValue = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
+  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setValue(key, event.target.value);
   const lookup = useDeferredValue({ name: form.name.trim(), email: form.email.trim(), phone: form.phone.trim() });
   const ready = lookup.name.length >= 3 || lookup.email.includes("@") || lookup.phone.replace(/\D/g, "").length >= 10;
   const matches = useQuery(api.clients.duplicates, ready ? { companyId, ...(lookup.name ? { name: lookup.name } : {}), ...(lookup.email ? { email: lookup.email } : {}), ...(lookup.phone ? { phone: lookup.phone } : {}) } : "skip") ?? [];
@@ -135,13 +136,7 @@ export function AddClientForm({ onDone, onCreated }: { onDone: () => void; onCre
           <TextInput value={form.name} onChange={set("name")} required maxLength={160} autoComplete={type === "person" ? "name" : "organization"} />
         </Field>
         <Field label="Mainly serves">
-          <SelectInput value={form.kind} onChange={set("kind")}>
-            {KINDS.map((k) => (
-              <option key={k.id} value={k.id}>
-                {k.label}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={form.kind} onValueChange={(next) => setValue("kind", next ?? "")} options={KINDS.map((k) => ({ value: k.id, label: k.label }))} searchable="auto" />
         </Field>
         {type === "business" ? (
           <>
@@ -172,13 +167,7 @@ export function AddClientForm({ onDone, onCreated }: { onDone: () => void; onCre
             <AddressInputs value={address} onChange={setAddress} required />
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Kind of property">
-                <SelectInput value={form.propertyKind} onChange={set("propertyKind")}>
-                  {["home", "short_term_rental", "office", "commercial", "property_manager"].map((k) => (
-                    <option key={k} value={k}>
-                      {PROPERTY_KIND_LABELS[k]}
-                    </option>
-                  ))}
-                </SelectInput>
+                <Select value={form.propertyKind} onValueChange={(next) => setValue("propertyKind", next ?? "")} options={["home", "short_term_rental", "office", "commercial", "property_manager"].map((k) => ({ value: k, label: PROPERTY_KIND_LABELS[k] }))} searchable="auto" />
               </Field>
               <Field label="Nickname (optional)" hint="For example: Lake house, HQ, Unit 4.">
                 <TextInput value={form.label} onChange={set("label")} maxLength={120} />
@@ -189,10 +178,7 @@ export function AddClientForm({ onDone, onCreated }: { onDone: () => void; onCre
         ) : null}
       </fieldset>
       <Field label="Relationship">
-        <SelectInput value={form.relationship} onChange={set("relationship")}>
-          <option value="active">A client</option>
-          <option value="prospect">A prospect (not a client yet)</option>
-        </SelectInput>
+        <Select value={form.relationship} onValueChange={(next) => setValue("relationship", next ?? "")} options={[{ value: "active", label: "A client" }, { value: "prospect", label: "A prospect (not a client yet)" }]} />
       </Field>
       <FormError message={error} />
       <div className="flex flex-wrap gap-2">

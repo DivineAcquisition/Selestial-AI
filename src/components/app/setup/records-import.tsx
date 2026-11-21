@@ -9,7 +9,8 @@ import { useConvex, useMutation } from "convex/react";
 import { useRef, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, messageOf, SelectInput } from "@/components/app/form";
+import { Field, messageOf } from "@/components/app/form";
+import { Select } from "@/components/ui/selection";
 import { TutorialCard, TutorialLink } from "@/components/app/tutorials/offer";
 import { Check, FileSpreadsheet, TriangleAlert } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -156,20 +157,10 @@ export function RecordImport({ kind, platform = null }: { kind: RecordKind; plat
             <div className="grid gap-2 sm:grid-cols-2">
               {FIELDS_FOR[kind].map((field) => (
                 <Field key={field} label={`${RECORD_FIELD_LABELS[field]}${REQUIRED_FOR[kind].includes(field) ? "" : " (optional)"}`}>
-                  <SelectInput
-                    value={mapping[field] === undefined ? "" : String(mapping[field])}
-                    onChange={(event) => {
+                  <Select value={mapping[field] === undefined ? "" : String(mapping[field])} onValueChange={(next) => {
                       setChecked(null);
-                      setMapping({ ...mapping, [field]: event.target.value === "" ? undefined : Number(event.target.value) });
-                    }}
-                  >
-                    <option value="">Not in this file</option>
-                    {file.header.map((name, index) => (
-                      <option key={`${name}-${index}`} value={index}>
-                        {name || `Column ${index + 1}`}
-                      </option>
-                    ))}
-                  </SelectInput>
+                      setMapping({ ...mapping, [field]: (next ?? "") === "" ? undefined : Number(next ?? "") });
+                    }} options={file.header.map((name, index) => ({ value: String(index), label: name || `Column ${index + 1}` }))} emptyLabel="Not in this file" placeholder="Not in this file" searchable="auto" />
                 </Field>
               ))}
             </div>

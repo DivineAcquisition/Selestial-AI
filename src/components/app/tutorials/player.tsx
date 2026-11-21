@@ -15,7 +15,8 @@ import { Captions, Maximize, Minimize, Pause, Play, RefreshCw, TriangleAlert, Vo
 import { cn } from "@/lib/utils";
 
 import type { Media } from "../../../../convex/lib/tutorials/catalog";
-import { SelectInput } from "@/components/app/form";
+
+import { Select } from "@/components/ui/selection";
 
 export type PlayerEvent = "play_started" | "play_completed" | "play_failed";
 
@@ -263,22 +264,11 @@ export function TutorialPlayer({ media, title, onEvent }: { media: Media; title:
         <label className="sr-only" htmlFor={`speed-${attempt}`}>
           Playback speed
         </label>
-        <SelectInput
-          id={`speed-${attempt}`}
-          value={speed}
-          onChange={(e) => {
-            const next = Number(e.target.value) as (typeof SPEEDS)[number];
+        <Select value={String(speed)} onValueChange={(picked) => {
+            const next = Number(picked ?? "") as (typeof SPEEDS)[number];
             setSpeed(next);
             if (video.current) video.current.playbackRate = next;
-          }}
-          className="h-9 shrink-0 cursor-pointer rounded-lg bg-transparent px-1.5 text-xs font-medium text-white hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-white [&>option]:text-black"
-        >
-          {SPEEDS.map((value) => (
-            <option key={value} value={value}>
-              {value}×
-            </option>
-          ))}
-        </SelectInput>
+          }} options={SPEEDS.map((value) => ({ value: String(value), label: `${value}×` }))} className="h-9 shrink-0 cursor-pointer rounded-lg bg-transparent px-1.5 text-xs font-medium text-white hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-white [&>option]:text-black" id={`speed-${attempt}`} />
         <button type="button" className={cn(control, captions && "bg-white/15")} onClick={toggleCaptions} aria-label="Captions" aria-pressed={captions}>
           <Captions className="size-5" aria-hidden />
         </button>

@@ -6,7 +6,7 @@ import { useState } from "react";
 
 import { AddressField } from "@/components/app/address-field";
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { TextingEntry } from "@/components/app/texting/entry";
 import { Panel } from "@/components/app/shell";
 import { AlertTriangle, ArrowRight, CircleCheckIcon, Download, ShieldCheck } from "@/components/icons";
@@ -16,7 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
-import { Checkbox } from "@/components/ui/selection";
+import { Checkbox, Select } from "@/components/ui/selection";
 import { EmailInput, PhoneInput } from "@/components/ui/fields";
 
 /**
@@ -131,10 +131,11 @@ function IdentityForm({ profile }: { profile: Profile }) {
     supportEmail: identity.supportEmail ?? "",
     supportPhone: identity.supportPhone ?? "",
   });
-  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const setValue = (key: keyof typeof form, value: string) => {
     setSaved(false);
-    setForm((current) => ({ ...current, [key]: event.target.value }));
+    setForm((current) => ({ ...current, [key]: value }));
   };
+  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setValue(key, event.target.value);
   const hasAddress = form.line1.trim() || form.city.trim() || form.region.trim() || form.postalCode.trim();
   const hasRep = form.repName.trim() || form.repTitle.trim() || form.repEmail.trim();
   return (
@@ -190,10 +191,7 @@ function IdentityForm({ profile }: { profile: Profile }) {
         <TextInput value={form.postalCode} onChange={set("postalCode")} disabled={!owner} autoComplete="postal-code" />
       </Field>
       <Field label="Country">
-        <SelectInput value={form.country} onChange={set("country")} disabled={!owner}>
-          <option value="US">United States</option>
-          <option value="CA">Canada</option>
-        </SelectInput>
+        <Select value={form.country} onValueChange={(next) => setValue("country", next ?? "")} options={[{ value: "US", label: "United States" }, { value: "CA", label: "Canada" }]} disabled={!owner} />
       </Field>
       <span className="hidden sm:block" />
       <Field label="Authorised representative">
@@ -449,17 +447,10 @@ function Disclosures() {
             }}
           >
             <Field label="Channel">
-              <SelectInput value={channel} onChange={(event) => setChannel(event.target.value as "sms" | "email")}>
-                <option value="sms">Texts</option>
-                <option value="email">Email</option>
-              </SelectInput>
+              <Select value={channel} onValueChange={(next) => setChannel((next ?? "") as "sms" | "email")} options={[{ value: "sms", label: "Texts" }, { value: "email", label: "Email" }]} />
             </Field>
             <Field label="Kind of message">
-              <SelectInput value={category} onChange={(event) => setCategory(event.target.value as typeof category)}>
-                <option value="operational">Work messages</option>
-                <option value="marketing">Marketing</option>
-                <option value="recruiting">Recruiting</option>
-              </SelectInput>
+              <Select value={category} onValueChange={(next) => setCategory((next ?? "") as typeof category)} options={[{ value: "operational", label: "Work messages" }, { value: "marketing", label: "Marketing" }, { value: "recruiting", label: "Recruiting" }]} />
             </Field>
             <Field label="Wording" className="sm:col-span-2" hint="Name your business, what you will send, that rates may apply, and that replying STOP ends it and HELP gets help.">
               <TextArea value={words} onChange={(event) => setWords(event.target.value)} required maxLength={2000} />
@@ -587,26 +578,13 @@ function Erase() {
         }}
       >
         <Field label="Who">
-          <SelectInput
-            value={kind}
-            onChange={(event) => {
-              setKind(event.target.value as "customer" | "cleaner");
+          <Select value={kind} onValueChange={(next) => {
+              setKind((next ?? "") as "customer" | "cleaner");
               setTarget("");
-            }}
-          >
-            <option value="customer">A customer</option>
-            <option value="cleaner">A cleaner</option>
-          </SelectInput>
+            }} options={[{ value: "customer", label: "A customer" }, { value: "cleaner", label: "A cleaner" }]} />
         </Field>
         <Field label="Person">
-          <SelectInput value={target} onChange={(event) => setTarget(event.target.value)} required>
-            <option value="">Choose</option>
-            {people.map((person) => (
-              <option key={person._id} value={person._id}>
-                {person.name}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={target} onValueChange={(next) => setTarget(next ?? "")} options={people.map((person) => ({ value: person._id, label: person.name }))} emptyLabel="Choose" placeholder="Choose" required searchable="auto" />
         </Field>
         <Field label='Type "ERASE" to confirm'>
           <TextInput value={confirm} onChange={(event) => setConfirm(event.target.value)} autoComplete="off" />

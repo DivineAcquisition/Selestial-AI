@@ -5,7 +5,7 @@ import type { FunctionReturnType } from "convex/server";
 import { useEffect, useMemo, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextInput, useRun } from "@/components/app/form";
 import { Modal } from "@/components/app/modal";
 import { AlertTriangle, CheckCircle2, Clock, Copy, HistoryIcon, Mail, MessageSquareText, Minus, Plus, RotateCcw, Users, Wallet } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,7 @@ import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import type { FinanceNav } from "./finance-screen";
 import { Chip, Empty, Notice, eyebrow } from "./kit";
-import { Checkbox, RadioButtonGroup, SegmentedControl } from "@/components/ui/selection";
+import { Checkbox, RadioButtonGroup, SegmentedControl, Select } from "@/components/ui/selection";
 import { MoneyField, PercentField } from "@/components/ui/fields";
 
 /**
@@ -646,13 +646,7 @@ function PaymentForm({ cleanerId, preselect, onDone }: { cleanerId: Id<"cleaners
       </fieldset>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="How you paid">
-          <SelectInput value={method} onChange={(e) => setMethod(e.target.value as typeof method)}>
-            {PAY_METHODS.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={method} onValueChange={(next) => setMethod((next ?? "") as typeof method)} options={PAY_METHODS.map((m) => ({ value: m.id, label: m.label }))} />
         </Field>
         <Field label="Reference" hint="Optional: check number, confirmation">
           <TextInput value={reference} maxLength={80} onChange={(e) => setReference(e.target.value)} />
@@ -970,13 +964,7 @@ function PayMethodEditor({ cleaner }: { cleaner: NonNullable<FunctionReturnType<
           </RadioButtonGroup>
           {kind === "tier" ? (
             <Field label="Tier" hint="Edit tiers in Payments setup">
-              <SelectInput value={tierId} onChange={(e) => setTierId(e.target.value)}>
-                {cleaner.tiers.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name} · {t.shareBps / 100}%
-                  </option>
-                ))}
-              </SelectInput>
+              <Select value={tierId} onValueChange={(next) => setTierId(next ?? "")} options={cleaner.tiers.map((t) => ({ value: t.id, label: `${t.name} · ${t.shareBps / 100}%` }))} searchable="auto" />
             </Field>
           ) : kind === "share" ? (
             <Field label="Share of each job" hint="Of the job price before tax">

@@ -14,7 +14,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { PermissionRow, type Action } from "@/components/app/screens/agent-permissions";
 import { PageHeader, Panel } from "@/components/app/shell";
 import { Plus, Trash2 } from "@/components/icons";
@@ -24,7 +24,7 @@ import { centsFrom } from "@/lib/app/format";
 
 import { api } from "../../../../../convex/_generated/api";
 import { ReadinessPanel } from "./shared";
-import { Checkbox } from "@/components/ui/selection";
+import { Checkbox, Select } from "@/components/ui/selection";
 import { MoneyField } from "@/components/ui/fields";
 
 type Playbook = FunctionReturnType<typeof api.salesInquiries.playbook>;
@@ -256,11 +256,7 @@ function Editor({ playbook, justSaved, onSaved }: { playbook: Playbook; justSave
             </span>
           </label>
           <Field label="Deposit">
-            <SelectInput value={settings.booking.deposit.kind} disabled={!can} onChange={(event) => patch("booking", { ...settings.booking, deposit: event.target.value === "percent" ? { kind: "percent", percent: 25 } : event.target.value === "fixed" ? { kind: "fixed", cents: 5000 } : { kind: "none" } })}>
-              <option value="none">No deposit</option>
-              <option value="percent">A percent of the quote</option>
-              <option value="fixed">A fixed amount</option>
-            </SelectInput>
+            <Select value={settings.booking.deposit.kind} onValueChange={(next) => patch("booking", { ...settings.booking, deposit: (next ?? "") === "percent" ? { kind: "percent", percent: 25 } : (next ?? "") === "fixed" ? { kind: "fixed", cents: 5000 } : { kind: "none" } })} options={[{ value: "none", label: "No deposit" }, { value: "percent", label: "A percent of the quote" }, { value: "fixed", label: "A fixed amount" }]} disabled={!can} />
           </Field>
           {settings.booking.deposit.kind === "percent" ? (
             <Field label="Percent of the quote">

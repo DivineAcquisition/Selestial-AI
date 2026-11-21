@@ -12,7 +12,7 @@ import { Component, useState, type ReactNode } from "react";
 import { eyebrow } from "@/components/app/agent";
 import { useChat, useOfferChatContext } from "@/components/app/chat/chat-context";
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { AlertTriangle, CalendarCheckIcon, ChatIcon, Hand, Loader2, RotateCcw, SendIcon, Sparkles } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils";
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { ActionCard, AttentionBadge, BookingChecklist, FollowUpTimeline, LOST_WORDS, NextStep, OpenLink, QualificationChecklist, QUOTE_STATE, QuotePreview, RunTimeline, StageBadge, Thread, type ChecklistRow, type Detail, type Stage } from "./shared";
-import { SegmentedControl } from "@/components/ui/selection";
+import { SegmentedControl, Select } from "@/components/ui/selection";
 
 const TABS = [
   { id: "summary", label: "Summary" },
@@ -84,23 +84,12 @@ function Section({ title, hint, children, action }: { title: string; hint?: stri
 function factInput(row: ChecklistRow, value: string, onChange: (value: string) => void) {
   if (row.type === "choice" && row.options) {
     return (
-      <SelectInput value={value} onChange={(event) => onChange(event.target.value)}>
-        <option value="">Not known</option>
-        {row.options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </SelectInput>
+      <Select value={value} onValueChange={(next) => onChange(next ?? "")} options={row.options.map((option) => ({ value: option.value, label: option.label }))} emptyLabel="Not known" placeholder="Not known" searchable="auto" />
     );
   }
   if (row.type === "yes_no") {
     return (
-      <SelectInput value={value} onChange={(event) => onChange(event.target.value)}>
-        <option value="">Not known</option>
-        <option value="true">Yes</option>
-        <option value="false">No</option>
-      </SelectInput>
+      <Select value={value} onValueChange={(next) => onChange(next ?? "")} options={[{ value: "true", label: "Yes" }, { value: "false", label: "No" }]} emptyLabel="Not known" placeholder="Not known" />
     );
   }
   return <TextInput value={value} inputMode={row.type === "number" ? "decimal" : undefined} onChange={(event) => onChange(event.target.value)} />;
@@ -166,14 +155,7 @@ function Details({ detail }: { detail: Detail }) {
     <Section title="Correct or add details" hint="What you record here is treated as confirmed. Sales will not overwrite it from a message, and looks at the opportunity again once you save.">
       <div className="grid gap-3 rounded-xl border border-border bg-background p-3.5 sm:grid-cols-2">
         <Field label="Service" className="sm:col-span-2">
-          <SelectInput value={serviceKey} onChange={(event) => setServiceKey(event.target.value)}>
-            <option value="">Not chosen yet</option>
-            {detail.services.map((service) => (
-              <option key={service.key} value={service.key}>
-                {service.name}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={serviceKey} onValueChange={(next) => setServiceKey(next ?? "")} options={detail.services.map((service) => ({ value: service.key, label: service.name }))} emptyLabel="Not chosen yet" placeholder="Not chosen yet" searchable="auto" />
         </Field>
         {detail.checklist.map((row) => (
           <Field key={row.key} label={row.label}>
@@ -209,30 +191,14 @@ function MoveStage({ detail, now }: { detail: Detail; now: number }) {
       <div className="grid gap-3 rounded-xl border border-border bg-background p-3.5">
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Stage">
-            <SelectInput
-              value={to}
-              onChange={(event) => {
-                setTo(event.target.value as Stage | "");
+            <Select value={to} onValueChange={(next) => {
+                setTo((next ?? "") as Stage | "");
                 setBlockers([]);
-              }}
-            >
-              <option value="">Choose a stage</option>
-              {choices.map((choice) => (
-                <option key={choice.stage} value={choice.stage}>
-                  {choice.label}
-                </option>
-              ))}
-            </SelectInput>
+              }} options={choices.map((choice) => ({ value: choice.stage, label: choice.label }))} emptyLabel="Choose a stage" placeholder="Choose a stage" searchable="auto" />
           </Field>
           {to === "closed_lost" ? (
             <Field label="Reason">
-              <SelectInput value={reason} onChange={(event) => setReason(event.target.value)}>
-                {Object.entries(LOST_WORDS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </SelectInput>
+              <Select value={reason} onValueChange={(next) => setReason(next ?? "")} options={Object.entries(LOST_WORDS).map(([value, label]) => ({ value: value, label: label }))} />
             </Field>
           ) : null}
           {to === "deferred" ? (
@@ -296,11 +262,7 @@ function RecordPermission({ detail }: { detail: Detail }) {
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="How they agreed">
-          <SelectInput value={source} onChange={(event) => setSource(event.target.value as typeof source)}>
-            <option value="verbal">They said so, in person or on a call</option>
-            <option value="paper_form">They signed a paper form</option>
-            <option value="staff">They asked a team member to follow up</option>
-          </SelectInput>
+          <Select value={source} onValueChange={(next) => setSource((next ?? "") as typeof source)} options={[{ value: "verbal", label: "They said so, in person or on a call" }, { value: "paper_form", label: "They signed a paper form" }, { value: "staff", label: "They asked a team member to follow up" }]} />
         </Field>
         <Field label="What they said, or where the proof is">
           <TextInput value={evidence} onChange={(event) => setEvidence(event.target.value)} placeholder="Asked us to text a price, on the call of Nov 12" />
@@ -439,14 +401,7 @@ function Conversation({ detail, now }: { detail: Detail; now: number }) {
         <div className="flex flex-wrap items-center gap-2">
           <SegmentedControl label="What to write" hideLabel density="compact" value={mode} options={[{ id: "reply", label: "Reply to the customer" }, { id: "note", label: "Note for the team" }]} onChange={setMode} />
           {mode === "reply" ? (
-            <SelectInput value={channel} onChange={(event) => setChannel(event.target.value as "sms" | "email")} className="ml-auto w-auto min-w-28" aria-label="Send by">
-              <option value="sms" disabled={!canText}>
-                Text{canText ? "" : " (no number)"}
-              </option>
-              <option value="email" disabled={!canEmail}>
-                Email{canEmail ? "" : " (no address)"}
-              </option>
-            </SelectInput>
+            <Select value={channel} onValueChange={(next) => setChannel((next ?? "") as "sms" | "email")} options={[{ value: "sms", label: `Text${canText ? "" : " (no number)"}`, disabled: !canText }, { value: "email", label: `Email${canEmail ? "" : " (no address)"}`, disabled: !canEmail }]} className="ml-auto w-auto min-w-28" aria-label="Send by" />
           ) : null}
         </div>
         <TextArea value={body} onChange={(event) => setBody(event.target.value)} rows={3} placeholder={mode === "reply" ? `Write to ${detail.card.customer}` : "Only your team sees this"} aria-label={mode === "reply" ? "Your reply" : "Your note"} />

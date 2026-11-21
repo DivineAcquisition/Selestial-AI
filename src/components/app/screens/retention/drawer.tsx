@@ -15,7 +15,7 @@ import { useMemo, useState } from "react";
 
 import { useChat, useOfferChatContext } from "@/components/app/chat/chat-context";
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { useNow } from "@/components/app/use-now";
 import { AlertTriangle, ArrowUpRight, ChatIcon, CheckCircle2, Hand, ShieldCheck, Sparkles } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -29,7 +29,7 @@ import { cn } from "@/lib/utils";
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { BasisTag, Flag, StatusPill, type ActionRow, type Detail, type Entry } from "./shared";
-import { Checkbox } from "@/components/ui/selection";
+import { Checkbox, Select } from "@/components/ui/selection";
 import { DurationField, MoneyField } from "@/components/ui/fields";
 
 const TOOLS = [
@@ -295,14 +295,7 @@ function ProposeRemedy({ detail, timezone }: { detail: Detail; timezone: string 
       <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-strong">Propose a different step</summary>
       <div className="grid gap-3 border-t border-border p-4">
         <Field label="What">
-          <SelectInput value={kind} onChange={(event) => setKind(event.target.value as typeof kind)}>
-            <option value="correction_visit">Correction visit, at no charge</option>
-            <option value="inspection">Inspection</option>
-            <option value="different_cleaner">Different cleaner</option>
-            <option value="credit">Credit on an invoice</option>
-            <option value="refund">Refund</option>
-            <option value="message">Message to the customer</option>
-          </SelectInput>
+          <Select value={kind} onValueChange={(next) => setKind((next ?? "") as typeof kind)} options={[{ value: "correction_visit", label: "Correction visit, at no charge" }, { value: "inspection", label: "Inspection" }, { value: "different_cleaner", label: "Different cleaner" }, { value: "credit", label: "Credit on an invoice" }, { value: "refund", label: "Refund" }, { value: "message", label: "Message to the customer" }]} />
         </Field>
         {kind === "correction_visit" ? (
           <>
@@ -337,28 +330,14 @@ function ProposeRemedy({ detail, timezone }: { detail: Detail; timezone: string 
             </Field>
             {detail.invoices ? (
               <Field label="Invoice">
-                <SelectInput value={invoice} onChange={(event) => setInvoice(event.target.value)}>
-                  <option value="">Not chosen</option>
-                  {detail.invoices.map((row) => (
-                    <option key={row.invoiceId} value={row.invoiceId}>
-                      {row.number} · {money(row.balanceCents)} owed
-                    </option>
-                  ))}
-                </SelectInput>
+                <Select value={invoice} onValueChange={(next) => setInvoice(next ?? "")} options={detail.invoices.map((row) => ({ value: row.invoiceId, label: `${row.number} · ${money(row.balanceCents)} owed` }))} emptyLabel="Not chosen" placeholder="Not chosen" searchable="auto" />
               </Field>
             ) : null}
           </div>
         ) : null}
         {kind === "different_cleaner" ? (
           <Field label="Who the customer asked not to have back" hint="This changes who Dispatch offers this property's visits to. It changes nothing about anyone's pay or standing.">
-            <SelectInput value={avoid} onChange={(event) => setAvoid(event.target.value)}>
-              <option value="">Choose</option>
-              {detail.crew.map((member) => (
-                <option key={member.cleanerId} value={member.cleanerId}>
-                  {member.name}
-                </option>
-              ))}
-            </SelectInput>
+            <Select value={avoid} onValueChange={(next) => setAvoid(next ?? "")} options={detail.crew.map((member) => ({ value: member.cleanerId, label: member.name }))} emptyLabel="Choose" placeholder="Choose" searchable="auto" />
           </Field>
         ) : null}
         {kind === "message" ? (
@@ -417,10 +396,7 @@ function Controls({ detail }: { detail: Detail }) {
         </Button>
         {detail.verification?.correctionCompletedAt && !detail.verification.customerAnswer ? (
           <span className="flex items-end gap-2">
-            <SelectInput aria-label="What the customer said about the correction" value={answer} onChange={(event) => setAnswer(event.target.value as typeof answer)}>
-              <option value="resolved">They said it is put right</option>
-              <option value="not_resolved">They said it is not put right</option>
-            </SelectInput>
+            <Select value={answer} onValueChange={(next) => setAnswer((next ?? "") as typeof answer)} options={[{ value: "resolved", label: "They said it is put right" }, { value: "not_resolved", label: "They said it is not put right" }]} aria-label="What the customer said about the correction" />
             <Button size="sm" variant="outline" disabled={busy || !note.trim()} onClick={() => void run(async () => (await recordAnswer({ companyId, caseId, answer, note }), setNote("")))}>
               Record their answer
             </Button>
@@ -430,13 +406,7 @@ function Controls({ detail }: { detail: Detail }) {
       {detail.can.manage ? (
         <div className="flex flex-wrap items-end gap-2 border-t border-border pt-3">
           <Field label="Close the case as" className="min-w-56 flex-1">
-            <SelectInput value={outcome} onChange={(event) => setOutcome(event.target.value)}>
-              {detail.outcomeChoices.map((choice) => (
-                <option key={choice.code} value={choice.code}>
-                  {choice.words}
-                </option>
-              ))}
-            </SelectInput>
+            <Select value={outcome} onValueChange={(next) => setOutcome(next ?? "")} options={detail.outcomeChoices.map((choice) => ({ value: choice.code, label: choice.words }))} searchable="auto" />
           </Field>
           <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => (await close({ companyId, caseId, outcome: outcome as never, ...(note.trim() ? { note } : {}) }), setNote("")))}>
             Close with this outcome

@@ -10,7 +10,7 @@ import { useConvex, useMutation } from "convex/react";
 import { useRef, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, messageOf, SelectInput } from "@/components/app/form";
+import { Field, messageOf } from "@/components/app/form";
 import { Check, FileSpreadsheet, TriangleAlert } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,7 +31,7 @@ import {
   type ImportRow,
 } from "../../../../convex/lib/clients/importing";
 import type { Platform } from "../../../../convex/lib/tutorials/catalog";
-import { Checkbox } from "@/components/ui/selection";
+import { Checkbox, Select } from "@/components/ui/selection";
 import { FileDetails } from "@/components/ui/fields";
 
 type Checked = FunctionReturnType<typeof api.clientImports.check>;
@@ -190,27 +190,13 @@ export function ClientImport({
             <div className="grid gap-2 sm:grid-cols-2">
               {SHOWN.map((field) => (
                 <Field key={field} label={FIELD_LABELS[field]}>
-                  <SelectInput
-                    value={
-                      mapping[field] === undefined ? "" : String(mapping[field])
-                    }
-                    onChange={(event) =>
-                      setMapping({
+                  <Select value={mapping[field] === undefined ? "" : String(mapping[field])} onValueChange={(next) => setMapping({
                         ...mapping,
                         [field]:
-                          event.target.value === ""
+                          (next ?? "") === ""
                             ? undefined
-                            : Number(event.target.value),
-                      })
-                    }
-                  >
-                    <option value="">Not in this file</option>
-                    {file.header.map((name, index) => (
-                      <option key={`${name}-${index}`} value={index}>
-                        {name || `Column ${index + 1}`}
-                      </option>
-                    ))}
-                  </SelectInput>
+                            : Number(next ?? ""),
+                      })} options={file.header.map((name, index) => ({ value: String(index), label: name || `Column ${index + 1}` }))} emptyLabel="Not in this file" placeholder="Not in this file" searchable="auto" />
                 </Field>
               ))}
             </div>

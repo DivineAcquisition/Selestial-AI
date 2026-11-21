@@ -9,7 +9,8 @@ import { useMutation } from "convex/react";
 import { useMemo, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextArea, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, useRun } from "@/components/app/form";
+import { Select } from "@/components/ui/selection";
 import { Modal } from "@/components/app/modal";
 import { Upload } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -73,11 +74,7 @@ function ImportForm({ onDone }: { onDone: () => void }) {
         <TextArea value={text} onChange={(event) => setText(event.target.value)} rows={6} placeholder={"Dana Whitfield, 512-555-0142, asked about a deep clean\nSam Ortiz, sam@example.com"} />
       </Field>
       <Field label="Kind of work">
-        <SelectInput value={kind} onChange={(event) => setKind(event.target.value as Kind)}>
-          <option value="residential">Home</option>
-          <option value="commercial">Commercial</option>
-          <option value="short_term_rental">Short-term rental</option>
-        </SelectInput>
+        <Select value={kind} onValueChange={(next) => setKind((next ?? "") as Kind)} options={[{ value: "residential", label: "Home" }, { value: "commercial", label: "Commercial" }, { value: "short_term_rental", label: "Short-term rental" }]} />
       </Field>
       {rows.length > 0 ? (
         <div className="max-h-56 overflow-auto rounded-xl border border-border">

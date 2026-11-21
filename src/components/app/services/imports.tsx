@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextInput, useRun } from "@/components/app/form";
+import { Select } from "@/components/ui/selection";
 import { Disclosure, FileDetails, MoneyField, NumberField } from "@/components/ui/fields";
 import { ArrowLeft } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
@@ -73,13 +74,7 @@ export function ImportReview({ importId }: { importId: string }) {
       {data.state === "review" ? (
         <label className="grid max-w-xs gap-1.5 text-sm">
           <span className="font-medium text-strong">Kind of cleaning for new drafts</span>
-          <SelectInput value={category} onChange={(e) => setCategory(e.target.value as Category)}>
-            {CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {CATEGORY_LABELS[c]}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={category} onValueChange={(next) => setCategory((next ?? "") as Category)} options={CATEGORIES.map((c) => ({ value: c, label: CATEGORY_LABELS[c] }))} />
         </label>
       ) : null}
       <ul className="grid grid-cols-1 gap-3">
@@ -119,14 +114,7 @@ export function ImportReview({ importId }: { importId: string }) {
                     </Field>
                     <label className="grid grid-cols-1 gap-1.5 text-sm">
                       <span className="font-medium text-strong">Unit {row.unitRaw ? <span className="font-normal text-muted-foreground">(read “{row.unitRaw}”)</span> : null}</span>
-                      <SelectInput value={method} onChange={(e) => set({ method: e.target.value as Method })}>
-                        <option value="">Unclear: choose one</option>
-                        {UNITS.map((u) => (
-                          <option key={u.id} value={u.id}>
-                            {u.label}
-                          </option>
-                        ))}
-                      </SelectInput>
+                      <Select value={method} onValueChange={(next) => set({ method: (next ?? "") as Method })} options={UNITS.map((u) => ({ value: u.id, label: u.label }))} emptyLabel="Unclear: choose one" placeholder="Unclear: choose one" />
                     </label>
                   </div>
                   {row.scope ? <p className="text-sm text-muted-foreground">Scope read: {row.scope}</p> : null}

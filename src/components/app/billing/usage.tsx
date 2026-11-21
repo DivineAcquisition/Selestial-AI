@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextInput, useRun } from "@/components/app/form";
 import { Panel } from "@/components/app/shell";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
-import { Checkbox, SegmentedControl } from "@/components/ui/selection";
+import { Checkbox, SegmentedControl, Select } from "@/components/ui/selection";
 import { ListInput, NumberField } from "@/components/ui/fields";
 
 type Usage = Extract<NonNullable<ReturnType<typeof useQuery<typeof api.billingUsage.usage>>>, { connected: true }>;
@@ -156,14 +156,7 @@ function UsageOverTime({ data, range, onRange }: { data: Usage; range: { from?: 
     <Panel title="Usage over time">
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <Field label="Period">
-          <SelectInput value={cycleIndex >= 0 ? String(cycleIndex) : "custom"} onChange={(event) => (event.target.value === "custom" ? onRange({ from: data.range.from, to: data.range.to }) : onRange(event.target.value === "0" ? {} : { from: data.cycles[Number(event.target.value)].from, to: data.cycles[Number(event.target.value)].to }))}>
-            {data.cycles.map((cycle, index) => (
-              <option key={cycle.from} value={index}>
-                {cycle.label}
-              </option>
-            ))}
-            <option value="custom">Custom dates</option>
-          </SelectInput>
+          <Select value={cycleIndex >= 0 ? String(cycleIndex) : "custom"} onValueChange={(next) => ((next ?? "") === "custom" ? onRange({ from: data.range.from, to: data.range.to }) : onRange((next ?? "") === "0" ? {} : { from: data.cycles[Number(next ?? "")].from, to: data.cycles[Number(next ?? "")].to }))} options={[...data.cycles.map((cycle, index) => ({ value: String(index), label: cycle.label })), { value: "custom", label: "Custom dates" }]} searchable="auto" />
         </Field>
         <Field label="From">
           <TextInput type="date" value={dayInput(data.range.from)} onChange={(event) => event.target.value && onRange({ ...range, from: Date.parse(`${event.target.value}T00:00:00Z`), to: range.to ?? data.range.to })} />
@@ -421,36 +414,10 @@ function ActivityAndHistory({ data, filters, onFilters }: { data: Usage; filters
         <>
           <div className="mb-3 grid gap-2 sm:grid-cols-5">
             <TextInput aria-label="Search activity" placeholder="Search" value={filters.search ?? ""} onChange={(event) => set("search", event.target.value)} />
-            <SelectInput aria-label="Agent" value={filters.agent ?? ""} onChange={(event) => set("agent", event.target.value)}>
-              <option value="">Every agent</option>
-              {data.filters.agents.map((row) => (
-                <option key={row.key} value={row.key}>
-                  {row.label}
-                </option>
-              ))}
-            </SelectInput>
-            <SelectInput aria-label="Action" value={filters.task ?? ""} onChange={(event) => set("task", event.target.value)}>
-              <option value="">Every action</option>
-              {data.filters.tasks.map((row) => (
-                <option key={row.key} value={row.key}>
-                  {row.label}
-                </option>
-              ))}
-            </SelectInput>
-            <SelectInput aria-label="Status" value={filters.status ?? ""} onChange={(event) => set("status", event.target.value)}>
-              <option value="">Every status</option>
-              {data.filters.statuses.map((status) => (
-                <option key={status}>{status}</option>
-              ))}
-            </SelectInput>
-            <SelectInput aria-label="Initiated by" value={filters.memberId ?? ""} onChange={(event) => set("memberId", event.target.value)}>
-              <option value="">Anyone or automatic</option>
-              {data.filters.members.map((row) => (
-                <option key={row.id} value={row.id}>
-                  {row.name}
-                </option>
-              ))}
-            </SelectInput>
+            <Select value={filters.agent ?? ""} onValueChange={(next) => set("agent", next ?? "")} options={data.filters.agents.map((row) => ({ value: row.key, label: row.label }))} emptyLabel="Every agent" placeholder="Every agent" aria-label="Agent" searchable="auto" />
+            <Select value={filters.task ?? ""} onValueChange={(next) => set("task", next ?? "")} options={data.filters.tasks.map((row) => ({ value: row.key, label: row.label }))} emptyLabel="Every action" placeholder="Every action" aria-label="Action" searchable="auto" />
+            <Select value={filters.status ?? ""} onValueChange={(next) => set("status", next ?? "")} options={data.filters.statuses.map((status) => ({ value: status, label: status }))} emptyLabel="Every status" placeholder="Every status" aria-label="Status" searchable="auto" />
+            <Select value={filters.memberId ?? ""} onValueChange={(next) => set("memberId", next ?? "")} options={data.filters.members.map((row) => ({ value: row.id, label: row.name }))} emptyLabel="Anyone or automatic" placeholder="Anyone or automatic" aria-label="Initiated by" searchable="auto" />
           </div>
           {data.activity.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">No AI work matches.</p>

@@ -11,7 +11,7 @@ import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextInput, useRun } from "@/components/app/form";
 import { Modal } from "@/components/app/modal";
 import { NewVisitForm } from "@/components/app/screens/forms";
 import { JobInputs, defaultInput } from "@/components/app/services/preview";
@@ -32,7 +32,7 @@ import { VisitRow } from "./parts";
 import { SalesPlans, SalesWork, useClientSales } from "./sales";
 import type { Profile } from "./profile";
 import { ImportedRecords } from "@/components/app/setup/migration";
-import { Checkbox, SegmentedControl, SelectionCards } from "@/components/ui/selection";
+import { Checkbox, SegmentedControl, Select, SelectionCards } from "@/components/ui/selection";
 import { AssistedTextArea, DurationField, organizeIntoSteps, type WritingAction } from "@/components/ui/fields";
 
 const STEPS: WritingAction[] = [{ id: "steps", label: "Organize into steps", kind: "template", run: organizeIntoSteps }];
@@ -85,14 +85,7 @@ function Visits({ profile, when: which }: { profile: Profile; when: "upcoming" |
       title={which === "upcoming" ? "Booked visits" : "Past visits"}
       action={
         profile.properties.length > 1 ? (
-          <SelectInput aria-label="Property" className="min-h-9 w-auto py-1.5" value={property} onChange={(event) => setProperty(event.target.value)}>
-            <option value="">Every property</option>
-            {profile.properties.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={property} onValueChange={(next) => setProperty(next ?? "")} options={profile.properties.map((p) => ({ value: p.id, label: p.name }))} emptyLabel="Every property" placeholder="Every property" className="min-h-9 w-auto py-1.5" aria-label="Property" searchable="auto" />
         ) : undefined
       }
     >
@@ -264,7 +257,8 @@ function PlanForm({ profile, onDone }: { profile: Profile; onDone: () => void })
   const [facts, setFacts] = useState<QuoteInput>({});
   const service = live.find((s) => s.id === form.serviceId);
   const spec = service?.live?.spec as Spec | undefined;
-  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm((current) => ({ ...current, [key]: event.target.value }));
+  const setValue = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
+  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setValue(key, event.target.value);
   const ready = form.propertyId && form.serviceId && /^\d{4}-\d{2}-\d{2}$/.test(form.startsOn);
   const preview = useQuery(api.servicePlans.preview, ready ? { companyId, propertyId: form.propertyId as Id<"properties">, serviceId: form.serviceId as Id<"services">, kind: form.kind as "recurring", cadence: form.kind === "recurring" ? (form.cadence as "every_7_days") : null, startsOn: form.startsOn, quoteInput: facts } : "skip");
   return (
@@ -280,31 +274,14 @@ function PlanForm({ profile, onDone }: { profile: Profile; onDone: () => void })
     >
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Property">
-          <SelectInput value={form.propertyId} onChange={set("propertyId")} required>
-            {properties.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={form.propertyId} onValueChange={(next) => setValue("propertyId", next ?? "")} options={properties.map((p) => ({ value: p.id, label: p.name }))} required searchable="auto" />
         </Field>
         <Field label="Service">
-          <SelectInput
-            value={form.serviceId}
-            onChange={(event) => {
-              const next = live.find((s) => s.id === event.target.value);
-              setForm((current) => ({ ...current, serviceId: event.target.value }));
+          <Select value={form.serviceId} onValueChange={(picked) => {
+              const next = live.find((s) => s.id === (picked ?? ""));
+              setForm((current) => ({ ...current, serviceId: picked ?? "" }));
               setFacts(next?.live ? defaultInput(next.live.spec as Spec) : {});
-            }}
-            required
-          >
-            <option value="">{studio ? "Choose a live service" : "Loading…"}</option>
-            {live.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </SelectInput>
+            }} options={live.map((s) => ({ value: s.id, label: s.name }))} emptyLabel={studio ? "Choose a live service" : "Loading…"} placeholder={studio ? "Choose a live service" : "Loading…"} required searchable="auto" />
         </Field>
       </div>
       <Field label="Kind of plan">
@@ -321,13 +298,7 @@ function PlanForm({ profile, onDone }: { profile: Profile; onDone: () => void })
       <div className="grid gap-3 sm:grid-cols-2">
         {form.kind === "recurring" ? (
           <Field label="How often">
-            <SelectInput value={form.cadence} onChange={set("cadence")}>
-              {Object.entries(CADENCE_LABELS).map(([id, label]) => (
-                <option key={id} value={id}>
-                  {label}
-                </option>
-              ))}
-            </SelectInput>
+            <Select value={form.cadence} onValueChange={(next) => setValue("cadence", next ?? "")} options={Object.entries(CADENCE_LABELS).map(([id, label]) => ({ value: id, label: label }))} searchable="auto" />
           </Field>
         ) : null}
         <Field label={form.kind === "recurring" ? "First visit" : "Starts"}>
@@ -362,16 +333,8 @@ function PlanForm({ profile, onDone }: { profile: Profile; onDone: () => void })
           <AssistedTextArea rows={3} value={form.scopeNote} onChange={(text) => setForm((current) => ({ ...current, scopeNote: text }))} maxLength={1000} actions={STEPS} />
         </Field>
         <Field label="Agreement (optional)" hint="The customer agreement these terms come from.">
-          <SelectInput value={form.agreementId} onChange={set("agreementId")}>
-            <option value="">None</option>
-            {docs?.agreements
-              .filter((a) => !a.archived && a.lifecycle !== "superseded" && a.lifecycle !== "terminated" && a.lifecycle !== "expired")
-              .map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.title} ({a.workflow.replace(/_/g, " ")})
-                </option>
-              ))}
-          </SelectInput>
+          <Select value={form.agreementId} onValueChange={(next) => setValue("agreementId", next ?? "")} options={[...(docs?.agreements
+              .filter((a) => !a.archived && a.lifecycle !== "superseded" && a.lifecycle !== "terminated" && a.lifecycle !== "expired")?.map((a) => ({ value: a.id, label: `${a.title} (${a.workflow.replace(/_/g, " ")})` })) ?? [])]} emptyLabel="None" placeholder="None" searchable="auto" />
         </Field>
       </div>
       {(() => {
@@ -410,7 +373,8 @@ function PlanChange({ plan, action, onDone }: { plan: Plan; action: "pause" | "e
   const { busy, error, run } = useRun();
   const today = useMemo(() => new Date().toLocaleDateString("en-CA", { timeZone: timezone }), [timezone]);
   const [form, setForm] = useState({ from: plan.next ? new Date(plan.next.startsAt).toLocaleDateString("en-CA", { timeZone: timezone }) : today, until: "", reason: "", cadence: plan.cadence ?? "every_14_days", startTime: plan.startTime, arrival: String(plan.arrivalWindowMinutes) });
-  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm((current) => ({ ...current, [key]: event.target.value }));
+  const setValue = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
+  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setValue(key, event.target.value);
   const affected = useQuery(api.servicePlans.affected, /^\d{4}-\d{2}-\d{2}$/.test(form.from) ? { companyId, planId: plan.id, from: form.from, ...(action === "pause" && form.until ? { until: form.until } : {}) } : "skip");
   const shown = affected?.visits.map((v) => v.id) ?? [];
   return (
@@ -438,13 +402,7 @@ function PlanChange({ plan, action, onDone }: { plan: Plan; action: "pause" | "e
         {action === "series" ? (
           <>
             <Field label="How often">
-              <SelectInput value={form.cadence} onChange={set("cadence")}>
-                {Object.entries(CADENCE_LABELS).map(([id, label]) => (
-                  <option key={id} value={id}>
-                    {label}
-                  </option>
-                ))}
-              </SelectInput>
+              <Select value={form.cadence} onValueChange={(next) => setValue("cadence", next ?? "")} options={Object.entries(CADENCE_LABELS).map(([id, label]) => ({ value: id, label: label }))} searchable="auto" />
             </Field>
             <Field label="Start time">
               <TextInput type="time" value={form.startTime} onChange={set("startTime")} />

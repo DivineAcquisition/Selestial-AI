@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { Modal } from "@/components/app/modal";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,7 +12,7 @@ import { MANUAL_METHODS, clientKey, moneyInput, parseMoney, todayKey, usd } from
 
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
-import { Checkbox } from "@/components/ui/selection";
+import { Checkbox, Select } from "@/components/ui/selection";
 import { MoneyField } from "@/components/ui/fields";
 
 /**
@@ -89,13 +89,7 @@ function RecordPaymentForm({ invoiceId, owedCents, onDone }: { invoiceId: Id<"in
           <MoneyField value={amount} onChange={(text) => setAmount(text)} autoFocus />
         </Field>
         <Field label="How you were paid">
-          <SelectInput value={method} onChange={(e) => setMethod(e.target.value as typeof method)}>
-            {MANUAL_METHODS.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={method} onValueChange={(next) => setMethod((next ?? "") as typeof method)} options={MANUAL_METHODS.map((m) => ({ value: m.id, label: m.label }))} />
         </Field>
         <Field label="Date received">
           <TextInput type="date" value={receivedOn} max={todayKey(timezone)} onChange={(e) => setReceivedOn(e.target.value)} />

@@ -13,8 +13,8 @@ import { sampleInputs } from "../../../../convex/lib/services/store";
 import { addOnWord, areaWord, minutesWords, scheduleLabel } from "../../../../convex/lib/services/words";
 import { formatCents, InfoTip, NumberInput, Segmented, Stepper } from "./shared";
 import { AnimatedMoney, MarginMeter, PriceChange, SPLIT_COLORS, SplitBar, type SplitPart } from "./visuals";
-import { SelectInput } from "@/components/app/form";
-import { Checkbox } from "@/components/ui/selection";
+
+import { Checkbox, Select } from "@/components/ui/selection";
 
 /** Sensible first inputs for a spec: the middle of its range, with every required question answered plainly. */
 export function defaultInput(spec: Spec): QuoteInput {
@@ -53,27 +53,13 @@ export function JobInputs({ spec, input, onInput, compact, fromBooking }: { spec
         {spec.modifiers.condition.enabled ? (
           <label className="grid grid-cols-1 gap-1.5 text-sm">
             <span className="font-medium text-strong">Condition</span>
-            <SelectInput className="min-h-10 rounded-lg border border-border bg-card px-3 text-sm text-strong" value={input.condition ?? spec.modifiers.condition.levels[0]?.id ?? ""} onChange={(event) => set({ condition: event.target.value })}>
-              {spec.modifiers.condition.levels.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.label}
-                  {l.requiresWalkthrough ? " (walkthrough)" : ""}
-                </option>
-              ))}
-            </SelectInput>
+            <Select value={input.condition ?? spec.modifiers.condition.levels[0]?.id ?? ""} onValueChange={(next) => set({ condition: next ?? "" })} options={spec.modifiers.condition.levels.map((l) => ({ value: l.id, label: `${l.label}${l.requiresWalkthrough ? " (walkthrough)" : ""}` }))} searchable="auto" />
           </label>
         ) : null}
         {!fromBooking && spec.modifiers.recurring.enabled && p.method !== "recurring_package" ? (
           <label className="grid grid-cols-1 gap-1.5 text-sm">
             <span className="font-medium text-strong">How often</span>
-            <SelectInput className="min-h-10 rounded-lg border border-border bg-card px-3 text-sm text-strong" value={input.schedule ?? ""} onChange={(event) => set({ schedule: (event.target.value || undefined) as QuoteInput["schedule"] })}>
-              <option value="">One time</option>
-              {spec.modifiers.recurring.options.map((o) => (
-                <option key={o.schedule} value={o.schedule}>
-                  {scheduleLabel(o.schedule)}
-                </option>
-              ))}
-            </SelectInput>
+            <Select value={input.schedule ?? ""} onValueChange={(next) => set({ schedule: (next || undefined) as QuoteInput["schedule"] })} options={spec.modifiers.recurring.options.map((o) => ({ value: o.schedule, label: scheduleLabel(o.schedule) }))} emptyLabel="One time" placeholder="One time" searchable="auto" />
           </label>
         ) : null}
         {!fromBooking && spec.modifiers.area.enabled ? (
@@ -143,14 +129,7 @@ export function JobInputs({ spec, input, onInput, compact, fromBooking }: { spec
                     {q.required ? <span className="text-muted-foreground"> (required)</span> : null}
                   </span>
                   {q.kind === "choice" || q.kind === "yes_no" ? (
-                    <SelectInput className="min-h-10 rounded-lg border border-border bg-card px-3 text-sm text-strong" value={String(value ?? "")} onChange={(event) => setAnswer(event.target.value || undefined)}>
-                      <option value="">Not answered</option>
-                      {(q.kind === "yes_no" ? ["yes", "no"] : q.options).map((o) => (
-                        <option key={o} value={o}>
-                          {o}
-                        </option>
-                      ))}
-                    </SelectInput>
+                    <Select value={String(value ?? "")} onValueChange={(next) => setAnswer(next || undefined)} options={[...(q.kind === "yes_no" ? ["yes", "no"] : q.options).map((o) => ({ value: o, label: o }))]} emptyLabel="Not answered" placeholder="Not answered" searchable="auto" />
                   ) : (
                     <input className="min-h-10 rounded-lg border border-border bg-card px-3 text-sm text-strong" type={q.kind === "number" ? "number" : "text"} value={value === undefined ? "" : String(value)} onChange={(event) => setAnswer(q.kind === "number" ? (event.target.value === "" ? undefined : Number(event.target.value)) : event.target.value)} />
                   )}

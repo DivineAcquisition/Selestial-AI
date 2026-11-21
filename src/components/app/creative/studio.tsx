@@ -4,7 +4,7 @@ import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { FormError, messageOf, SelectInput } from "@/components/app/form";
+import { FormError, messageOf } from "@/components/app/form";
 import { PageHeader, Panel } from "@/components/app/shell";
 import { CheckCircle2, Download, FileImage, Hand, Lock, Palette, RotateCcw, Sparkles, Upload, X } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
-import { Checkbox, SegmentedControl } from "@/components/ui/selection";
+import { Checkbox, SegmentedControl, Select } from "@/components/ui/selection";
 
 type Asset = { assetId: string; kind: "image" | "video" | "logo"; origin: "original" | "composed" | "generated"; realWork: boolean; label: string; contentType: string; url: string | null; marketingPermission: { at: number; note: string } | null; generation: { model: string; provider: string; prompt: string; provenance: string; jobId: string } | null; sources: string[]; selectedFor: string[]; createdAt: number };
 
@@ -83,11 +83,7 @@ function Library({ assets, canSpend, onCompose }: { assets: Asset[]; canSpend: b
         <div className="flex flex-wrap items-end gap-2">
           <label className="grid gap-1 text-xs font-medium text-strong">
             Add
-            <SelectInput value={kind} onChange={(event) => setKind(event.target.value as typeof kind)} className="h-9 rounded-lg border border-border bg-card px-2 text-sm">
-              <option value="image">A photo of real work</option>
-              <option value="video">Real job footage</option>
-              <option value="logo">A logo or brand image</option>
-            </SelectInput>
+            <Select value={kind} onValueChange={(next) => setKind((next ?? "") as typeof kind)} options={[{ value: "image", label: "A photo of real work" }, { value: "video", label: "Real job footage" }, { value: "logo", label: "A logo or brand image" }]} density="compact" />
           </label>
           <Button variant="outline" loading={busy === "upload"} onClick={() => file.current?.click()}>
             <Upload className="size-4" aria-hidden /> Upload
@@ -109,25 +105,24 @@ function Library({ assets, canSpend, onCompose }: { assets: Asset[]; canSpend: b
               }, "Uploaded. Real work stays exactly as it was uploaded.");
             }}
           />
-          <label className="ml-auto grid gap-1 text-xs font-medium text-strong">
-            Bring in a finished visit&apos;s photos
-            <SelectInput
-              defaultValue=""
-              onChange={(event) => {
-                const jobId = event.target.value as Id<"jobs">;
-                event.target.value = "";
-                if (jobId) void run("import", async () => setNotice(`${(await importPhotos({ companyId, jobId })).added} photo(s) added from the visit.`));
+          <div className="ml-auto grid gap-1 text-xs font-medium text-strong">
+            <span id="bring-in-visit-photos">Bring in a finished visit&apos;s photos</span>
+            {/* Choosing a visit brings its photos in at once; the field goes back to blank for the next one. */}
+            <Select
+              aria-labelledby="bring-in-visit-photos"
+              density="compact"
+              className="max-w-xs"
+              value={null}
+              onValueChange={(jobId) => {
+                if (jobId) void run("import", async () => setNotice(`${(await importPhotos({ companyId, jobId: jobId as Id<"jobs"> })).added} photo(s) added from the visit.`));
               }}
-              className="h-9 max-w-xs rounded-lg border border-border bg-card px-2 text-sm"
-            >
-              <option value="">{visits === undefined ? "Loading visits…" : visits.length ? "Choose a completed visit" : "No completed visits in 90 days"}</option>
-              {(visits ?? []).map((visit) => (
-                <option key={visit._id} value={visit._id}>
-                  {new Date(visit.startsAt).toLocaleDateString()} · {visit.serviceType}
-                </option>
-              ))}
-            </SelectInput>
-          </label>
+              loading={visits === undefined}
+              options={(visits ?? []).map((visit) => ({ value: visit._id, label: `${new Date(visit.startsAt).toLocaleDateString()} · ${visit.serviceType}` }))}
+              placeholder={visits === undefined ? "Loading visits…" : visits.length ? "Choose a completed visit" : "No completed visits in 90 days"}
+              emptyText="No completed visits in 90 days."
+              searchable="auto"
+            />
+          </div>
         </div>
         {notice ? (
           <p role="status" className="mt-2 text-xs text-success-foreground">
@@ -192,23 +187,17 @@ function Library({ assets, canSpend, onCompose }: { assets: Asset[]; canSpend: b
                     </a>
                   ) : null}
                   {canSpend && campaigns.length ? (
-                    <SelectInput
+                    <Select
                       aria-label="Choose for a campaign draft"
-                      defaultValue=""
-                      onChange={(event) => {
-                        const artifactId = event.target.value;
-                        event.target.value = "";
+                      density="compact"
+                      className="max-w-[9rem] text-xs"
+                      value={null}
+                      onValueChange={(artifactId) => {
                         if (artifactId) void run(`select-${asset.assetId}`, () => select({ companyId, assetId: asset.assetId, artifactId }), "Chosen for the campaign draft. Nothing is published.");
                       }}
-                      className="h-7 max-w-[9rem] rounded-md border border-border bg-card px-1 text-xs sm:h-6"
-                    >
-                      <option value="">{asset.selectedFor.length ? `In ${asset.selectedFor.length} draft(s)` : "Use in a draft…"}</option>
-                      {campaigns.map((draft) => (
-                        <option key={draft.artifactId} value={draft.artifactId}>
-                          {draft.title}
-                        </option>
-                      ))}
-                    </SelectInput>
+                      options={campaigns.map((draft) => ({ value: draft.artifactId, label: draft.title }))}
+                      placeholder={asset.selectedFor.length ? `In ${asset.selectedFor.length} draft(s)` : "Use in a draft…"}
+                    />
                   ) : null}
                   {canSpend ? (
                     <button type="button" aria-label={`Archive ${asset.label}`} onClick={() => void run(`archive-${asset.assetId}`, () => archive({ companyId, assetId: asset.assetId }))} className="ml-auto text-muted-foreground hover:text-strong">
@@ -347,14 +336,7 @@ function Composer({ assets, initial }: { assets: Asset[]; initial: string | null
   const picker = (label: string, value: string, set: (value: string) => void) => (
     <label className="grid gap-1 text-xs font-medium text-strong">
       {label}
-      <SelectInput value={value} onChange={(event) => set(event.target.value)} className="h-9 rounded-lg border border-border bg-card px-2 text-sm">
-        <option value="">None</option>
-        {images.map((asset) => (
-          <option key={asset.assetId} value={asset.assetId}>
-            {asset.label} ({asset.origin === "generated" ? "AI generated" : asset.realWork ? "real" : asset.kind})
-          </option>
-        ))}
-      </SelectInput>
+      <Select value={value} onValueChange={(next) => set(next ?? "")} options={images.map((asset) => ({ value: asset.assetId, label: `${asset.label} (${asset.origin === "generated" ? "AI generated" : asset.realWork ? "real" : asset.kind})` }))} emptyLabel="None" placeholder="None" searchable="auto" density="compact" />
     </label>
   );
   return (
@@ -378,11 +360,7 @@ function Composer({ assets, initial }: { assets: Asset[]; initial: string | null
           </label>
           <label className="grid gap-1 text-xs font-medium text-strong">
             Format
-            <SelectInput value={format} onChange={(event) => setFormat(event.target.value as typeof format)} className="h-9 rounded-lg border border-border bg-card px-2 text-sm">
-              <option value="1080x1080">Square 1080×1080</option>
-              <option value="1200x628">Link ad 1200×628</option>
-              <option value="1080x1920">Story 1080×1920</option>
-            </SelectInput>
+            <Select value={format} onValueChange={(next) => setFormat((next ?? "") as typeof format)} options={[{ value: "1080x1080", label: "Square 1080×1080" }, { value: "1200x628", label: "Link ad 1200×628" }, { value: "1080x1920", label: "Story 1080×1920" }]} density="compact" />
           </label>
           {blocked ? <p className="rounded-lg border border-warning/50 bg-warning/10 px-3 py-2 text-xs text-warning-foreground">“{blocked.label}” is a real job photo without marketing permission. Record permission in the Library first.</p> : null}
           {chosen.some((asset) => asset.origin === "generated") && chosen.some((asset) => asset.realWork) ? <p className="rounded-lg border border-warning/50 bg-warning/10 px-3 py-2 text-xs text-warning-foreground">This mixes real photos with an AI-generated image. Do not present it as a real before and after.</p> : null}
@@ -453,14 +431,7 @@ function Generator({ assets, allowance }: { assets: Asset[]; allowance: { images
         {kind === "image_edit" || isVideo ? (
           <label className="grid gap-1 text-xs font-medium text-strong">
             {isVideo ? "Start from an image (optional)" : "Image to edit"}
-            <SelectInput value={source} onChange={(event) => setSource(event.target.value)} className="h-9 rounded-lg border border-border bg-card px-2 text-sm">
-              <option value="">{isVideo ? "No image" : "Choose a generated image or logo"}</option>
-              {editable.map((asset) => (
-                <option key={asset.assetId} value={asset.assetId}>
-                  {asset.label}
-                </option>
-              ))}
-            </SelectInput>
+            <Select value={source} onValueChange={(next) => setSource(next ?? "")} options={editable.map((asset) => ({ value: asset.assetId, label: asset.label }))} emptyLabel={isVideo ? "No image" : "Choose a generated image or logo"} placeholder={isVideo ? "No image" : "Choose a generated image or logo"} searchable="auto" density="compact" />
           </label>
         ) : null}
         <div className="flex flex-wrap gap-3">
@@ -468,43 +439,24 @@ function Generator({ assets, allowance }: { assets: Asset[]; allowance: { images
             <>
               <label className="grid gap-1 text-xs font-medium text-strong">
                 Shape
-                <SelectInput value={aspect} onChange={(event) => setAspect(event.target.value as typeof aspect)} className="h-9 rounded-lg border border-border bg-card px-2 text-sm">
-                  <option value="9:16">Vertical 9:16</option>
-                  <option value="16:9">Wide 16:9</option>
-                </SelectInput>
+                <Select value={aspect} onValueChange={(next) => setAspect((next ?? "") as typeof aspect)} options={[{ value: "9:16", label: "Vertical 9:16" }, { value: "16:9", label: "Wide 16:9" }]} density="compact" />
               </label>
               <label className="grid gap-1 text-xs font-medium text-strong">
                 Length
-                <SelectInput value={duration} onChange={(event) => setDuration(Number(event.target.value))} className="h-9 rounded-lg border border-border bg-card px-2 text-sm">
-                  {[4, 6, 8, 10].map((seconds) => (
-                    <option key={seconds} value={seconds}>
-                      {seconds} seconds
-                    </option>
-                  ))}
-                </SelectInput>
+                <Select value={String(duration)} onValueChange={(next) => setDuration(Number(next ?? ""))} options={[4, 6, 8, 10].map((seconds) => ({ value: String(seconds), label: `${seconds} seconds` }))} density="compact" />
               </label>
             </>
           ) : (
             <>
               <label className="grid gap-1 text-xs font-medium text-strong">
                 Size
-                <SelectInput value={size} onChange={(event) => setSize(event.target.value as typeof size)} className="h-9 rounded-lg border border-border bg-card px-2 text-sm">
-                  <option value="1024x1024">Square</option>
-                  <option value="1536x1024">Landscape</option>
-                  <option value="1024x1536">Portrait</option>
-                </SelectInput>
+                <Select value={size} onValueChange={(next) => setSize((next ?? "") as typeof size)} options={[{ value: "1024x1024", label: "Square" }, { value: "1536x1024", label: "Landscape" }, { value: "1024x1536", label: "Portrait" }]} density="compact" />
               </label>
               {kind === "image_generate" ? (
                 <>
                   <label className="grid gap-1 text-xs font-medium text-strong">
                     Variants
-                    <SelectInput value={count} onChange={(event) => setCount(Number(event.target.value))} className="h-9 rounded-lg border border-border bg-card px-2 text-sm">
-                      {[1, 2, 3, 4].map((n) => (
-                        <option key={n} value={n}>
-                          {n}
-                        </option>
-                      ))}
-                    </SelectInput>
+                    <Select value={String(count)} onValueChange={(next) => setCount(Number(next ?? ""))} options={[1, 2, 3, 4].map((n) => ({ value: String(n), label: String(n) }))} density="compact" />
                   </label>
                   <label className="flex items-center gap-2 self-end pb-2 text-xs font-medium text-strong">
                     <Checkbox checked={fast} onCheckedChange={(checked) => setFast(checked)} /> Fast variants

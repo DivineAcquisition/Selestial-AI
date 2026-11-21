@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { FormError, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Select } from "@/components/ui/selection";
 import { Home, Plus } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -259,22 +260,10 @@ function ProposeForm({ serviceId, spec, start, today, onCancel }: { serviceId: I
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <LabeledField label="Customer">
             {(id) => (
-              <SelectInput
-                id={id}
-                value={customerId}
-                onChange={(event) => {
-                  setCustomerId(event.target.value);
+              <Select value={customerId} onValueChange={(next) => {
+                  setCustomerId(next ?? "");
                   setPropertyId("");
-                }}
-                required
-              >
-                <option value="">{customers ? "Choose a customer" : "Loading…"}</option>
-                {customers?.map((customer) => (
-                  <option key={customer._id} value={customer._id}>
-                    {customer.name}
-                  </option>
-                ))}
-              </SelectInput>
+                }} options={[...(customers?.map((customer) => ({ value: customer._id, label: customer.name })) ?? [])]} emptyLabel={customers ? "Choose a customer" : "Loading…"} placeholder={customers ? "Choose a customer" : "Loading…"} required id={id} searchable="auto" />
             )}
           </LabeledField>
           <LabeledField label="Property">
@@ -282,9 +271,7 @@ function ProposeForm({ serviceId, spec, start, today, onCancel }: { serviceId: I
               customerId ? (
                 <PropertyChoice id={id} customerId={customerId as Id<"customers">} value={propertyId} onChange={setPropertyId} />
               ) : (
-                <SelectInput id={id} disabled>
-                  <option>Choose a customer first</option>
-                </SelectInput>
+                <Select id={id} value={null} onValueChange={() => undefined} options={[]} placeholder="Choose a customer first" disabled />
               )
             }
           </LabeledField>
@@ -319,11 +306,7 @@ function ProposeForm({ serviceId, spec, start, today, onCancel }: { serviceId: I
                     <span className="min-w-0 text-strong">
                       {addOn.label} <span className="text-xs text-muted-foreground">{formatCents(addOn.priceCents)} {addOnWord(addOn)}</span>
                     </span>
-                    <SelectInput aria-label={`${addOn.label} at this property`} value={mode} onChange={(event) => set(event.target.value === "usual" ? null : event.target.value === "included" ? { id: addOn.id, included: true, priceCents: null } : { id: addOn.id, included: false, priceCents: here?.priceCents ?? null })}>
-                      <option value="usual">The service&apos;s price</option>
-                      <option value="included">Included here</option>
-                      <option value="own">Its own price here</option>
-                    </SelectInput>
+                    <Select value={mode} onValueChange={(next) => set((next ?? "") === "usual" ? null : (next ?? "") === "included" ? { id: addOn.id, included: true, priceCents: null } : { id: addOn.id, included: false, priceCents: here?.priceCents ?? null })} options={[{ value: "usual", label: "The service's price" }, { value: "included", label: "Included here" }, { value: "own", label: "Its own price here" }]} aria-label={`${addOn.label} at this property`} />
                     {mode === "own" ? <MoneyInput label={`Price for ${addOn.label} here`} className="[&>span:first-child]:sr-only" cents={here?.priceCents ?? null} onCents={(cents) => set({ id: addOn.id, included: false, priceCents: cents })} unit={addOnWord(addOn)} /> : <span className="hidden sm:block" />}
                   </div>
                 );
@@ -367,13 +350,6 @@ function PropertyChoice({ id, customerId, value, onChange }: { id: string; custo
   const found = useQuery(api.customers.get, { companyId, customerId });
   const active = found?.properties.filter((property) => property.status === "active") ?? [];
   return (
-    <SelectInput id={id} value={value} onChange={(event) => onChange(event.target.value)} required disabled={!found}>
-      <option value="">{found ? (active.length ? "Choose a property" : "No active property") : "Loading…"}</option>
-      {active.map((property) => (
-        <option key={property._id} value={property._id}>
-          {property.label ?? `${property.address.line1}, ${property.address.city}`}
-        </option>
-      ))}
-    </SelectInput>
+    <Select value={value} onValueChange={(next) => onChange(next ?? "")} options={active.map((property) => ({ value: property._id, label: property.label ?? `${property.address.line1}, ${property.address.city}` }))} emptyLabel={found ? (active.length ? "Choose a property" : "No active property") : "Loading…"} placeholder={found ? (active.length ? "Choose a property" : "No active property") : "Loading…"} disabled={!found} required id={id} searchable="auto" />
   );
 }

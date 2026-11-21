@@ -4,7 +4,8 @@ import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, useRun } from "@/components/app/form";
+import { Field, FormError, useRun } from "@/components/app/form";
+import { Select } from "@/components/ui/selection";
 import { OwnerOnly } from "@/components/app/settings/billing";
 import { Guard } from "@/components/app/settings/guard";
 import { Panel } from "@/components/app/shell";
@@ -66,11 +67,7 @@ function SupportAccessInner() {
         ) : (
           <form className="flex flex-wrap items-end gap-3" onSubmit={(event) => (event.preventDefault(), void run(() => grant({ companyId, hours: Number(hours) })))}>
             <Field label="Allow changes for" className="w-44">
-              <SelectInput value={hours} onChange={(event) => setHours(event.target.value)}>
-                <option value="4">4 hours</option>
-                <option value="24">24 hours</option>
-                <option value="72">3 days</option>
-              </SelectInput>
+              <Select value={hours} onValueChange={(next) => setHours(next ?? "")} options={[{ value: "4", label: "4 hours" }, { value: "24", label: "24 hours" }, { value: "72", label: "3 days" }]} />
             </Field>
             <Button type="submit" size="sm" variant="primary" loading={busy}>
               Allow changes

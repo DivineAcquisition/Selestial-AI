@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextInput, useRun } from "@/components/app/form";
+import { Select } from "@/components/ui/selection";
 import { PageHeader, Panel } from "@/components/app/shell";
 import { useNow } from "@/components/app/use-now";
 import { CalendarIcon, Clock } from "@/components/icons";
@@ -165,11 +166,7 @@ function InterviewCard({ row, now, timezone }: { row: Interview; now: number; ti
               });
             }}
           >
-            <SelectInput aria-label="Recommendation" value={recommendation} onChange={(event) => setRecommendation(event.target.value as typeof recommendation)}>
-              <option value="advance">Advance</option>
-              <option value="hold">Hold</option>
-              <option value="do_not_advance">Do not advance</option>
-            </SelectInput>
+            <Select value={recommendation} onValueChange={(next) => setRecommendation((next ?? "") as typeof recommendation)} options={[{ value: "advance", label: "Advance" }, { value: "hold", label: "Hold" }, { value: "do_not_advance", label: "Do not advance" }]} aria-label="Recommendation" />
             <TextInput aria-label="Notes" placeholder="What you noticed" value={notes} onChange={(event) => setNotes(event.target.value)} />
             <div className="flex gap-1.5">
               <Button type="submit" size="xs" variant="primary" loading={busy} disabled={!notes.trim()}>
@@ -216,16 +213,8 @@ function AddTimes() {
         }}
       >
         <Field label="Interviewer" className="sm:col-span-2">
-          <SelectInput value={form.interviewerId} onChange={(event) => setForm({ ...form, interviewerId: event.target.value })} required>
-            <option value="">Choose…</option>
-            {members
-              ?.filter((member) => member.status === "active")
-              .map((member) => (
-                <option key={member.id} value={member.id}>
-                  {member.name}
-                </option>
-              ))}
-          </SelectInput>
+          <Select value={form.interviewerId} onValueChange={(next) => setForm({ ...form, interviewerId: next ?? "" })} options={[...(members
+              ?.filter((member) => member.status === "active")?.map((member) => ({ value: member.id, label: member.name })) ?? [])]} emptyLabel="Choose…" placeholder="Choose…" required searchable="auto" />
         </Field>
         <Field label="Day" className="sm:col-span-2">
           <TextInput type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} required />

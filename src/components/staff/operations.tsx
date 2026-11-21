@@ -6,7 +6,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { Modal } from "@/components/app/modal";
 import { PageHeader, Panel } from "@/components/app/shell";
 import { SecondFactor } from "@/components/app/support/verify";
@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
-import { Checkbox } from "@/components/ui/selection";
+import { Checkbox, Select } from "@/components/ui/selection";
 
 type Overview = FunctionReturnType<typeof api.operations.overview>;
 type Row = Overview["needsStaff"][number];
@@ -238,14 +238,7 @@ function IncidentsView({ area, onOpen }: { area?: Area; onOpen: (id: Id<"inciden
           <TextInput value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Company or incident" type="search" />
         </Field>
         <Field label="State" className="w-52">
-          <SelectInput value={state} disabled={resolved} onChange={(event) => setState(event.target.value as typeof state)}>
-            <option value="">Every open state</option>
-            <option value="needs_staff">Needs staff action</option>
-            <option value="recovering">Recovering automatically</option>
-            <option value="investigating">Investigating</option>
-            <option value="waiting_owner">Waiting for the owner</option>
-            <option value="waiting_provider">Waiting for the provider</option>
-          </SelectInput>
+          <Select value={state} onValueChange={(next) => setState((next ?? "") as typeof state)} options={[{ value: "needs_staff", label: "Needs staff action" }, { value: "recovering", label: "Recovering automatically" }, { value: "investigating", label: "Investigating" }, { value: "waiting_owner", label: "Waiting for the owner" }, { value: "waiting_provider", label: "Waiting for the provider" }]} emptyLabel="Every open state" placeholder="Every open state" disabled={resolved} />
         </Field>
         <label className="flex min-h-10 items-center gap-2 text-sm text-strong">
           <Checkbox checked={resolved} onCheckedChange={(checked) => setResolved(checked)} />
@@ -591,11 +584,7 @@ function OpenWorkspaceForm({ company, incident, onDone }: { company: { id: Id<"c
           <TextInput value={ticket} onChange={(event) => setTicket(event.target.value)} maxLength={100} />
         </Field>
         <Field label="See the workspace as">
-          <SelectInput value={previewRole} onChange={(event) => setPreviewRole(event.target.value as typeof previewRole)}>
-            <option value="owner">Owner</option>
-            <option value="manager">Manager</option>
-            <option value="office">Office</option>
-          </SelectInput>
+          <Select value={previewRole} onValueChange={(next) => setPreviewRole((next ?? "") as typeof previewRole)} options={[{ value: "owner", label: "Owner" }, { value: "manager", label: "Manager" }, { value: "office", label: "Office" }]} />
         </Field>
       </div>
       <p className="flex items-start gap-2 text-xs text-muted-foreground">

@@ -19,7 +19,8 @@ import type { Spec } from "../../../../convex/lib/services/spec";
 import { minutesWords, scheduleLabel } from "../../../../convex/lib/services/words";
 import { defaultInput, JobInputs, ProfitPanel, QuoteLines, ScheduleCalendar } from "./preview";
 import { Empty, formatCents, Notice, SectionTitle } from "./shared";
-import { SelectInput } from "@/components/app/form";
+
+import { Select } from "@/components/ui/selection";
 
 type Services = NonNullable<ReturnType<typeof useQuery<typeof api.services.studio>>>["services"];
 type Scenario = { key: number; label: string; serviceId: string; source: "live" | "draft"; input: QuoteInput };
@@ -176,28 +177,15 @@ function ScenarioCard({ services, scenario, costs, onChange, onRemove }: { servi
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <label className="grid grid-cols-1 gap-1.5 text-sm">
           <span className="font-medium text-strong">Service</span>
-          <SelectInput
-            className="min-h-10 rounded-lg border border-border bg-card px-3 text-sm"
-            value={scenario.serviceId}
-            onChange={(e) => {
-              const next = services.find((s) => s.id === e.target.value)!;
+          <Select value={scenario.serviceId} onValueChange={(picked) => {
+              const next = services.find((s) => s.id === (picked ?? ""))!;
               const spec = (next.live?.spec ?? next.draft?.spec)!;
               onChange({ ...scenario, serviceId: next.id, source: next.live ? "live" : "draft", input: defaultInput(spec) });
-            }}
-          >
-            {services.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </SelectInput>
+            }} options={services.map((s) => ({ value: s.id, label: s.name }))} searchable="auto" />
         </label>
         <label className="grid grid-cols-1 gap-1.5 text-sm">
           <span className="font-medium text-strong">Version</span>
-          <SelectInput className="min-h-10 rounded-lg border border-border bg-card px-3 text-sm" value={scenario.source} onChange={(e) => onChange({ ...scenario, source: e.target.value as "live" | "draft" })}>
-            {row?.live ? <option value="live">Live (version {row.live.version})</option> : null}
-            {row?.draft ? <option value="draft">Draft</option> : null}
-          </SelectInput>
+          <Select value={scenario.source} onValueChange={(next) => onChange({ ...scenario, source: (next ?? "") as "live" | "draft" })} options={[...(row?.live ? [{ value: "live", label: `Live (version ${row.live.version})` }] : []), ...(row?.draft ? [{ value: "draft", label: "Draft" }] : [])]} searchable="auto" />
         </label>
       </div>
       {r ? (

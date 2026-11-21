@@ -5,7 +5,7 @@ import type { FunctionReturnType } from "convex/server";
 import { useMemo, useRef, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { Modal } from "@/components/app/modal";
 import { AlertTriangle, CameraIcon, CheckCircle2, Download, ExternalLink, FileText, HistoryIcon, Loader2, Plus, ReceiptIcon, Settings2, Sparkles, Trash2, Upload } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,7 @@ import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import type { FinanceNav } from "./finance-screen";
 import { Chip, Empty, Notice, eyebrow } from "./kit";
-import { Checkbox, SegmentedControl } from "@/components/ui/selection";
+import { Checkbox, SegmentedControl, Select } from "@/components/ui/selection";
 import { MoneyField, NumberField } from "@/components/ui/fields";
 
 /**
@@ -123,13 +123,7 @@ export function ExpensesTab({ nav }: { nav: Nav }) {
       <div className="flex flex-wrap items-center gap-2">
         <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
           <span className="sr-only">Period</span>
-          <SelectInput value={nav.period} onChange={(event) => nav.set({ period: event.target.value === "this_month" ? null : (event.target.value as PeriodId) })} className="h-9 cursor-pointer rounded-lg border border-border bg-card px-2.5 text-sm font-medium text-strong focus-visible:outline-2 focus-visible:outline-brand-500">
-            {PERIODS.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.label}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={nav.period} onValueChange={(next) => nav.set({ period: (next ?? "") === "this_month" ? null : ((next ?? "") as PeriodId) })} options={PERIODS.map((p) => ({ value: p.id, label: p.label }))} density="compact" />
         </label>
         <input ref={snapRef} type="file" accept="image/*" capture="environment" className="sr-only" tabIndex={-1} aria-hidden onChange={(e) => (e.target.files && void uploads.upload(e.target.files), (e.target.value = ""))} />
         <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic,application/pdf" multiple className="sr-only" tabIndex={-1} aria-hidden onChange={(e) => (e.target.files && void uploads.upload(e.target.files), (e.target.value = ""))} />
@@ -498,26 +492,11 @@ function ExpenseFields({ form, set, categories, unclear, around }: { form: FormS
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Category">
-          <SelectInput value={form.categoryId} onChange={(e) => set({ categoryId: e.target.value, ...(categories.find((c) => c.id === e.target.value)?.kind === "overhead" && form.linkKind === "job" ? { linkKind: "overhead" as const, linkId: "" } : {}) })}>
-            <option value="">Choose…</option>
-            {categories
-              .filter((c) => !c.hidden || c.id === form.categoryId)
-              .map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} ({c.kind === "job" ? "job cost" : "overhead"})
-                </option>
-              ))}
-          </SelectInput>
+          <Select value={form.categoryId} onValueChange={(next) => set({ categoryId: next ?? "", ...(categories.find((c) => c.id === (next ?? ""))?.kind === "overhead" && form.linkKind === "job" ? { linkKind: "overhead" as const, linkId: "" } : {}) })} options={categories
+              .filter((c) => !c.hidden || c.id === form.categoryId).map((c) => ({ value: c.id, label: `${c.name} (${c.kind === "job" ? "job cost" : "overhead"})` }))} emptyLabel="Choose…" placeholder="Choose…" searchable="auto" />
         </Field>
         <Field label="Paid with">
-          <SelectInput value={form.paidWith} onChange={(e) => set({ paidWith: e.target.value as FormState["paidWith"] })}>
-            <option value="">Not set</option>
-            {PAID_WITH.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.label}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={form.paidWith} onValueChange={(next) => set({ paidWith: (next ?? "") as FormState["paidWith"] })} options={PAID_WITH.map((p) => ({ value: p.id, label: p.label }))} emptyLabel="Not set" placeholder="Not set" />
         </Field>
       </div>
       {(form.paidWith && form.paidWith !== "cash") || form.paidWithNote ? (
@@ -527,26 +506,11 @@ function ExpenseFields({ form, set, categories, unclear, around }: { form: FormS
       ) : null}
       <div className="grid gap-4 sm:grid-cols-[12rem_minmax(0,1fr)]">
         <Field label="For">
-          <SelectInput value={form.linkKind} onChange={(e) => set({ linkKind: e.target.value as FormState["linkKind"], linkId: "" })}>
-            <option value="">Not linked</option>
-            <option value="job" disabled={category?.kind === "overhead"}>
-              A visit
-            </option>
-            <option value="property">A property</option>
-            <option value="service">A service</option>
-            <option value="overhead">General overhead</option>
-          </SelectInput>
+          <Select value={form.linkKind} onValueChange={(next) => set({ linkKind: (next ?? "") as FormState["linkKind"], linkId: "" })} options={[{ value: "job", label: "A visit", disabled: category?.kind === "overhead" }, { value: "property", label: "A property" }, { value: "service", label: "A service" }, { value: "overhead", label: "General overhead" }]} emptyLabel="Not linked" placeholder="Not linked" />
         </Field>
         {form.linkKind && form.linkKind !== "overhead" ? (
           <Field label={form.linkKind === "job" ? "Visit" : form.linkKind === "property" ? "Property" : "Service"} hint={form.linkKind === "job" ? "Visits within a week of the date paid" : undefined}>
-            <SelectInput value={form.linkId} onChange={(e) => set({ linkId: e.target.value })}>
-              <option value="">{options ? "Choose…" : "Loading…"}</option>
-              {(form.linkKind === "job" ? (options?.jobs ?? []) : form.linkKind === "property" ? (options?.properties ?? []) : (options?.services ?? []).map((s) => ({ id: s.id, label: s.name }))).map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.label}
-                </option>
-              ))}
-            </SelectInput>
+            <Select value={form.linkId} onValueChange={(next) => set({ linkId: next ?? "" })} options={[...((form.linkKind === "job" ? (options?.jobs ?? []) : form.linkKind === "property" ? (options?.properties ?? []) : (options?.services ?? []).map((s) => ({ id: s.id, label: s.name })))?.map((o) => ({ value: o.id, label: o.label })) ?? [])]} emptyLabel={options ? "Choose…" : "Loading…"} placeholder={options ? "Choose…" : "Loading…"} searchable="auto" />
           </Field>
         ) : null}
       </div>
@@ -946,60 +910,29 @@ function ImportDialog({ onClose }: { onClose: () => void }) {
           <div className="grid gap-3 sm:grid-cols-3">
             {(["date", "description"] as const).map((k) => (
               <Field key={k} label={k === "date" ? "Date column" : "Description column"}>
-                <SelectInput value={columns?.[k] ?? ""} onChange={(e) => setColumns((c) => ({ ...c!, [k]: e.target.value === "" ? null : Number(e.target.value) }))}>
-                  <option value="">Choose…</option>
-                  {header.map((h, i) => (
-                    <option key={i} value={i}>
-                      {h || `Column ${i + 1}`}
-                    </option>
-                  ))}
-                </SelectInput>
+                <Select value={String(columns?.[k] ?? "")} onValueChange={(next) => setColumns((c) => ({ ...c!, [k]: (next ?? "") === "" ? null : Number(next ?? "") }))} options={header.map((h, i) => ({ value: String(i), label: h || `Column ${i + 1}` }))} emptyLabel="Choose…" placeholder="Choose…" searchable="auto" />
               </Field>
             ))}
             <Field label="Money out is shown as">
-              <SelectInput value={sign} onChange={(e) => setSign(e.target.value as SpendSign)}>
-                <option value="negative">Minus (−48.37)</option>
-                <option value="positive">Plus (48.37)</option>
-                <option value="debit_column">Debit column</option>
-              </SelectInput>
+              <Select value={sign} onValueChange={(next) => setSign((next ?? "") as SpendSign)} options={[{ value: "negative", label: "Minus (−48.37)" }, { value: "positive", label: "Plus (48.37)" }, { value: "debit_column", label: "Debit column" }]} />
             </Field>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             {sign === "debit_column" ? (
               (["debit", "credit"] as const).map((k) => (
                 <Field key={k} label={k === "debit" ? "Debit (money out) column" : "Credit (money in) column"}>
-                  <SelectInput value={columns?.[k] ?? ""} onChange={(e) => setColumns((c) => ({ ...c!, [k]: e.target.value === "" ? null : Number(e.target.value) }))}>
-                    <option value="">None</option>
-                    {header.map((h, i) => (
-                      <option key={i} value={i}>
-                        {h || `Column ${i + 1}`}
-                      </option>
-                    ))}
-                  </SelectInput>
+                  <Select value={String(columns?.[k] ?? "")} onValueChange={(next) => setColumns((c) => ({ ...c!, [k]: (next ?? "") === "" ? null : Number(next ?? "") }))} options={header.map((h, i) => ({ value: String(i), label: h || `Column ${i + 1}` }))} emptyLabel="None" placeholder="None" searchable="auto" />
                 </Field>
               ))
             ) : (
               <Field label="Amount column">
-                <SelectInput value={columns?.amount ?? ""} onChange={(e) => setColumns((c) => ({ ...c!, amount: e.target.value === "" ? null : Number(e.target.value) }))}>
-                  <option value="">Choose…</option>
-                  {header.map((h, i) => (
-                    <option key={i} value={i}>
-                      {h || `Column ${i + 1}`}
-                    </option>
-                  ))}
-                </SelectInput>
+                <Select value={String(columns?.amount ?? "")} onValueChange={(next) => setColumns((c) => ({ ...c!, amount: (next ?? "") === "" ? null : Number(next ?? "") }))} options={header.map((h, i) => ({ value: String(i), label: h || `Column ${i + 1}` }))} emptyLabel="Choose…" placeholder="Choose…" searchable="auto" />
               </Field>
             )}
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="This statement is for">
-              <SelectInput value={paidWith} onChange={(e) => setPaidWith(e.target.value as PaidWith)}>
-                {PAID_WITH.filter((p) => p.id !== "cash").map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.label}
-                  </option>
-                ))}
-              </SelectInput>
+              <Select value={paidWith} onValueChange={(next) => setPaidWith((next ?? "") as PaidWith)} options={PAID_WITH.filter((p) => p.id !== "cash").map((p) => ({ value: p.id, label: p.label }))} searchable="auto" />
             </Field>
             <Field label="Card or account name" hint="Optional">
               <TextInput value={note} maxLength={60} onChange={(e) => setNote(e.target.value)} placeholder="Chase Ink ending 1234" />
@@ -1122,14 +1055,7 @@ function RulesBody() {
             <TextInput value={vendor} maxLength={60} onChange={(e) => setVendor(e.target.value)} placeholder="Home Depot" />
           </Field>
           <Field label="File as">
-            <SelectInput value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-              <option value="">Choose…</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </SelectInput>
+            <Select value={categoryId} onValueChange={(next) => setCategoryId(next ?? "")} options={categories.map((c) => ({ value: c.id, label: c.name }))} emptyLabel="Choose…" placeholder="Choose…" searchable="auto" />
           </Field>
         </div>
         <label className="flex items-start gap-2 text-sm text-strong">

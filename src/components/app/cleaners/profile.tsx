@@ -13,7 +13,7 @@ import { useState } from "react";
 
 import { canManage, useCompany } from "@/components/app/company";
 import { useDetail } from "@/components/app/detail-panel";
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { Modal } from "@/components/app/modal";
 import { useNow } from "@/components/app/use-now";
 import { type LucideIcon, ArrowRight, CalendarIcon, Check, ChevronDown, Clock, Hand, HistoryIcon, Mail, MapPin, MessageSquareText, PenLine, Plus, Sparkles, TriangleAlert, User, Users } from "@/components/icons";
@@ -31,7 +31,7 @@ import { ConfirmHoursDialog, ExceptionDialog, RemoveButton, TimeAwayDialog, Week
 import { PerformanceSection } from "./performance";
 import { FollowUpsCard, PortalAccessCard, RequirementActions, SkillClaims } from "./onboarding-review";
 import { profilePath, SECTIONS, type SectionId } from "./state";
-import { Checkbox } from "@/components/ui/selection";
+import { Checkbox, Select } from "@/components/ui/selection";
 import { DurationField, EmailInput, ListInput, numberProblem, PhoneInput, zipProblem } from "@/components/ui/fields";
 import { useSkillSuggestions } from "@/components/app/skill-suggestions";
 
@@ -334,13 +334,7 @@ function PersonnelDialog({ profile, onClose }: { profile: Profile; onClose: () =
           }}
         >
           <Field label="What should change">
-            <SelectInput value={kind} onChange={(event) => setKind(event.target.value)}>
-              {kinds.map((value) => (
-                <option key={value} value={value}>
-                  {REQUEST_KINDS[value].label}
-                </option>
-              ))}
-            </SelectInput>
+            <Select value={kind} onValueChange={(next) => setKind(next ?? "")} options={kinds.map((value) => ({ value: value, label: REQUEST_KINDS[value].label }))} searchable="auto" />
           </Field>
           <p className="text-xs text-muted-foreground">{REQUEST_KINDS[kind].help}</p>
           {impact && (impact.accepted.length > 0 || impact.offered > 0) ? (

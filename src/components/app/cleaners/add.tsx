@@ -8,7 +8,7 @@ import { useMutation, useQuery } from "convex/react";
 import { useDeferredValue, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { Modal } from "@/components/app/modal";
 import { TriangleAlert } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,7 @@ import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import type { Engagement } from "./bits";
 import { profilePath } from "./state";
-import { ChoiceChips, SelectionCards } from "@/components/ui/selection";
+import { ChoiceChips, Select, SelectionCards } from "@/components/ui/selection";
 import { EmailInput, PhoneInput } from "@/components/ui/fields";
 
 const TYPES: { value: Engagement; label: string; help: string }[] = [
@@ -53,7 +53,8 @@ export function AddCleanerDialog({ onClose, onAdded }: { onClose: () => void; on
   const [different, setDifferent] = useState("");
   const deferred = useDeferredValue({ name: form.name, phone: form.phone, email: form.email });
   const matches = useQuery(api.workforce.possibleDuplicates, deferred.name.trim().length >= 2 || deferred.phone.trim().length >= 7 || deferred.email.includes("@") ? { companyId, name: deferred.name, phone: deferred.phone || undefined, email: deferred.email || undefined } : "skip");
-  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm({ ...form, [key]: event.target.value });
+  const setValue = (key: keyof typeof form, value: string) => setForm({ ...form, [key]: value });
+  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setValue(key, event.target.value);
   const strong = matches?.some((match) => match.strong) ?? false;
   const needsReason = (matches?.length ?? 0) > 0;
   const hoursValid = days.length === 0 || minutes(hours.from) < minutes(hours.to);
@@ -98,17 +99,8 @@ export function AddCleanerDialog({ onClose, onAdded }: { onClose: () => void; on
         {form.engagement === "subcontractor" ? (
           <div className="grid gap-3 rounded-xl border border-border bg-muted/30 p-3">
             <Field label="Subcontractor company" hint="Jobs still go to this person by name; the company is who they work through.">
-              <SelectInput value={form.subcontractorId} onChange={set("subcontractorId")} required>
-                <option value="">Choose…</option>
-                {subs
-                  ?.filter((sub) => sub.status !== "ended")
-                  .map((sub) => (
-                    <option key={sub.subcontractorId} value={sub.subcontractorId}>
-                      {sub.name}
-                    </option>
-                  ))}
-                <option value="new">Add a new subcontractor company…</option>
-              </SelectInput>
+              <Select value={form.subcontractorId} onValueChange={(next) => setValue("subcontractorId", next ?? "")} options={[...(subs
+                  ?.filter((sub) => sub.status !== "ended")?.map((sub) => ({ value: sub.subcontractorId, label: sub.name })) ?? []), { value: "new", label: "Add a new subcontractor company…" }]} emptyLabel="Choose…" placeholder="Choose…" required searchable="auto" />
             </Field>
             {form.subcontractorId === "new" ? (
               <div className="grid gap-3 sm:grid-cols-2">

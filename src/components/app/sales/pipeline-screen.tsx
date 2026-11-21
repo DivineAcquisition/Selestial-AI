@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { FormError, messageOf, SelectInput } from "@/components/app/form";
+import { FormError, messageOf } from "@/components/app/form";
+import { Select } from "@/components/ui/selection";
 import { PageHeader } from "@/components/app/shell";
 import { Plus } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -98,13 +99,7 @@ export function PipelineScreen() {
           </label>
           <label className="grid gap-1.5 text-sm">
             <span className="font-medium text-strong">Kind</span>
-            <SelectInput className={fieldClass()} value={form.segment} onChange={(e) => setForm({ ...form, segment: e.target.value as keyof typeof SEGMENTS })}>
-              {Object.entries(SEGMENTS).map(([id, label]) => (
-                <option key={id} value={id}>
-                  {label}
-                </option>
-              ))}
-            </SelectInput>
+            <Select value={form.segment} onValueChange={(next) => setForm({ ...form, segment: (next ?? "") as keyof typeof SEGMENTS })} options={Object.entries(SEGMENTS).map(([id, label]) => ({ value: id, label: label }))} />
           </label>
           <label className="grid gap-1.5 text-sm">
             <span className="font-medium text-strong">Source</span>
@@ -209,22 +204,10 @@ export function PipelineScreen() {
                         <label className="sr-only" htmlFor={`stage-of-${row._id}`}>
                           Move to stage
                         </label>
-                        <SelectInput
-                          id={`stage-of-${row._id}`}
-                          className="min-h-8 rounded-lg border border-border bg-card px-2 text-xs"
-                          value=""
-                          onChange={(e) => {
-                            const next = e.target.value as (typeof STAGES)[number]["id"];
+                        <Select value={String("")} onValueChange={(picked) => {
+                            const next = (picked ?? "") as (typeof STAGES)[number]["id"];
                             if (next) moveTo(row._id, next);
-                          }}
-                        >
-                          <option value="">Move…</option>
-                          {STAGES.filter((s) => s.id !== stage.id).map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.label}
-                            </option>
-                          ))}
-                        </SelectInput>
+                          }} options={STAGES.filter((s) => s.id !== stage.id).map((s) => ({ value: s.id, label: s.label }))} emptyLabel="Move…" placeholder="Move…" id={`stage-of-${row._id}`} searchable="auto" density="compact" />
                       </div>
                     ) : null}
                   </article>

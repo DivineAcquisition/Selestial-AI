@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { useEffect, useRef, useState } from "react";
 
 import { canManage, useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { Panel } from "@/components/app/shell";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,7 +12,7 @@ import { driveIdFrom, pickerConfig, pickFromDrive } from "@/lib/app/google-picke
 
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
-import { Checkbox } from "@/components/ui/selection";
+import { Checkbox, Select } from "@/components/ui/selection";
 
 export type Feature = "drive" | "calendar" | "business_profile" | "ads" | "conversions";
 const PURPOSES = ["photos", "resumes", "agreements", "reports", "creative", "documents"] as const;
@@ -199,14 +199,7 @@ function ChooseDrive({ companyId, email }: { companyId: Id<"companies">; email?:
       <p className="text-xs text-muted-foreground">Selestial only sees what you add here. Adding a folder doesn’t include the files already in it, so add those files too.</p>
       <div className="flex flex-wrap items-end gap-2">
         <Field label="Add" className="min-w-48">
-          <SelectInput value={purpose} onChange={(e) => setPurpose(e.target.value)}>
-            <option value="knowledge">Information your team can ask about</option>
-            {PURPOSES.map((p) => (
-              <option key={p} value={p}>
-                A folder to save {p} in
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={purpose} onValueChange={(next) => setPurpose(next ?? "")} options={[{ value: "knowledge", label: "Information your team can ask about" }, ...PURPOSES.map((p) => ({ value: p, label: `A folder to save ${p} in` }))]} searchable="auto" />
         </Field>
         {picker ? (
           <Button type="button" variant="outline" disabled={busy} onClick={() => void pickFromDrive({ folders: purpose !== "knowledge", loginHint: email }).then((items) => (items.length ? save(items) : undefined)).catch((e: Error) => setError(e.message))}>
@@ -253,13 +246,7 @@ function ChooseFromList({ companyId, kind, title, empty, options }: { companyId:
         </Button>
       </div>
       {options.length > 1 ? (
-        <SelectInput aria-label="What to use it for" value={target} onChange={(e) => setTarget(e.target.value as Kind)}>
-          {options.map((o) => (
-            <option key={o.kind} value={o.kind}>
-              {o.label}
-            </option>
-          ))}
-        </SelectInput>
+        <Select value={target} onValueChange={(next) => setTarget((next ?? "") as Kind)} options={options.map((o) => ({ value: o.kind, label: o.label }))} aria-label="What to use it for" searchable="auto" />
       ) : null}
       {!choices ? <p className="text-xs text-muted-foreground">Looking in your Google account…</p> : choices.problem ? <p className="text-xs text-muted-foreground">{choices.problem}</p> : choices.items.length === 0 ? <p className="text-xs text-muted-foreground">{empty}</p> : null}
       <ul className="grid gap-1">

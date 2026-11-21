@@ -11,7 +11,8 @@ import { useState } from "react";
 
 import { canManage, useCompany } from "@/components/app/company";
 import { useDetail } from "@/components/app/detail-panel";
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Select } from "@/components/ui/selection";
 import { Modal } from "@/components/app/modal";
 import { useNow } from "@/components/app/use-now";
 import { Check, ChevronDown, Flag, Info, MessageSquareText, PenLine, Plus, Sparkles, TriangleAlert, X } from "@/components/icons";
@@ -524,19 +525,11 @@ function NoteDialog({ cleanerId, firstName, note, onClose }: { cleanerId: string
         <div className="grid gap-3 sm:grid-cols-2">
           {!note ? (
             <Field label="Kind">
-              <SelectInput value={form.kind} onChange={(event) => setForm({ ...form, kind: event.target.value as Note["kind"] })}>
-                <option value="coaching">Coaching</option>
-                <option value="feedback">Feedback</option>
-                <option value="training">Training</option>
-                <option value="note">Internal note</option>
-              </SelectInput>
+              <Select value={form.kind} onValueChange={(next) => setForm({ ...form, kind: (next ?? "") as Note["kind"] })} options={[{ value: "coaching", label: "Coaching" }, { value: "feedback", label: "Feedback" }, { value: "training", label: "Training" }, { value: "note", label: "Internal note" }]} />
             </Field>
           ) : null}
           <Field label="Who sees it">
-            <SelectInput value={form.visibility} disabled={shared} onChange={(event) => setForm({ ...form, visibility: event.target.value as "internal" | "shared" })}>
-              <option value="internal">The office only</option>
-              <option value="shared">{firstName} too, in their portal</option>
-            </SelectInput>
+            <Select value={form.visibility} onValueChange={(next) => setForm({ ...form, visibility: (next ?? "") as "internal" | "shared" })} options={[{ value: "internal", label: "The office only" }, { value: "shared", label: `${firstName} too, in their portal` }]} disabled={shared} />
           </Field>
         </div>
         <Field label="Title">

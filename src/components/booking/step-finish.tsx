@@ -21,8 +21,8 @@ import { BottomBar, Editable, Field, Notice, Pill, StepHeading } from "./parts";
 import { Faqs } from "./step-service";
 import { TrustRow } from "./step-start";
 import { moneyExact } from "./theme";
-import { SelectInput } from "@/components/app/form";
-import { Checkbox, ChoiceChips, RadioButtonGroup } from "@/components/ui/selection";
+
+import { Checkbox, ChoiceChips, RadioButtonGroup, Select } from "@/components/ui/selection";
 
 // ── Details and agreement ────────────────────────────────────────────────────────────────────────
 
@@ -48,14 +48,7 @@ function QuestionInput({ q, value, onChange }: { q: CustomQuestion; value: unkno
           ))}
         </RadioButtonGroup>
       ) : q.type === "choice" ? (
-        <SelectInput id={id} className="bk-input" value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)}>
-          <option value="">Choose…</option>
-          {q.options.map((o) => (
-            <option key={o} value={o}>
-              {o}
-            </option>
-          ))}
-        </SelectInput>
+        <Select value={(value as string) ?? ""} onValueChange={(next) => onChange(next || undefined)} options={q.options.map((o) => ({ value: o, label: o }))} emptyLabel="Choose…" placeholder="Choose…" className="bk-input" id={id} searchable="auto" />
       ) : (
         <ChoiceChips aria-label={q.label} options={q.options.map((o) => ({ value: o, label: o }))} value={(value as string[]) ?? []} onValueChange={onChange} />
       )}

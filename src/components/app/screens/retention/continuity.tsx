@@ -9,7 +9,8 @@ import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 
 import { canManage, useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextInput, useRun } from "@/components/app/form";
+import { Select } from "@/components/ui/selection";
 import { Modal } from "@/components/app/modal";
 import { PageHeader, Panel } from "@/components/app/shell";
 import { useNow } from "@/components/app/use-now";
@@ -55,13 +56,7 @@ function ChangePlan({ row, onClose, onCase }: { row: PlanRow; onClose: () => voi
     <Modal open onClose={onClose} title={`${row.customer} · ${row.property}`} description="Choose the change, read what it does, then confirm. Nothing changes until you confirm.">
       <div className="grid gap-4">
         <Field label="Change" hint={CHANGES.find((c) => c.id === change)?.hint}>
-          <SelectInput value={change} onChange={(event) => (setChange(event.target.value as Change), setTold(null))}>
-            {CHANGES.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={change} onValueChange={(next) => (setChange((next ?? "") as Change), setTold(null))} options={CHANGES.map((option) => ({ value: option.id, label: option.label }))} />
         </Field>
         {change === "pause_service" || change === "end_service" ? (
           <div className="grid gap-3 sm:grid-cols-2">

@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, messageOf, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, messageOf, TextArea, TextInput, useRun } from "@/components/app/form";
 import { Guard } from "@/components/app/settings/guard";
 import { SaveBar, useSavedDraft, useUnsavedWarning } from "@/components/app/settings/save-bar";
 import { Plus, Trash2 } from "@/components/icons";
@@ -19,7 +19,7 @@ import { timeZoneLabel } from "@/lib/app/timezones";
 
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
-import { Checkbox } from "@/components/ui/selection";
+import { Checkbox, Select } from "@/components/ui/selection";
 import { NumberField } from "@/components/ui/fields";
 
 function RecruitingInner() {
@@ -203,10 +203,7 @@ function RecruitingFormView({ saved, timezone, canEdit, companyId }: { saved: Re
       <Panel title="Application invitations">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Inviting applicants" hint="Automatic invitations only go out when every check in Recruiter's rules passes.">
-            <SelectInput value={form.invitationMode} disabled={!canEdit} onChange={(event) => set("invitationMode", event.target.value as "review" | "auto")}>
-              <option value="review">Ask me first</option>
-              <option value="auto">Act automatically</option>
-            </SelectInput>
+            <Select value={form.invitationMode} onValueChange={(next) => set("invitationMode", (next ?? "") as "review" | "auto")} options={[{ value: "review", label: "Ask me first" }, { value: "auto", label: "Act automatically" }]} disabled={!canEdit} />
           </Field>
           {text("linkTtlDays", "Application link works for (days)", "After this, the applicant needs a new invitation.")}
         </div>
@@ -261,13 +258,7 @@ function RecruitingFormView({ saved, timezone, canEdit, companyId }: { saved: Re
           ) : null}
           {reminders.length > 0 ? (
             <Field label="Reminders to send at most" className="w-48">
-              <SelectInput value={form.maxFollowUps} disabled={!canEdit} onChange={(event) => set("maxFollowUps", event.target.value)}>
-                {maxChoices.map((n) => (
-                  <option key={n} value={String(n)}>
-                    {n === 0 ? "None" : n === reminders.length ? `All ${n}` : String(n)}
-                  </option>
-                ))}
-              </SelectInput>
+              <Select value={form.maxFollowUps} onValueChange={(next) => set("maxFollowUps", next ?? "")} options={maxChoices.map((n) => ({ value: String(n), label: n === 0 ? "None" : n === reminders.length ? `All ${n}` : String(n) }))} disabled={!canEdit} searchable="auto" />
             </Field>
           ) : null}
         </div>

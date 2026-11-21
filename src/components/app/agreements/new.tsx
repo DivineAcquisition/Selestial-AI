@@ -8,7 +8,7 @@ import { useMemo, useRef, useState } from "react";
 import { useCompany } from "@/components/app/company";
 import { Empty, Notice, ReadinessBadge, ToneBadge } from "@/components/app/agreements/shared";
 import type { Catalog } from "@/components/app/agreements/types";
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { Sparkles } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -126,13 +126,7 @@ function FromTemplate({ catalog }: { catalog: Catalog }) {
     <div className="grid gap-4">
       <div className="grid gap-3 sm:grid-cols-[1fr_1fr]">
         <Field label="Kind of document">
-          <SelectInput value={category} onChange={(event) => setCategory(event.target.value)}>
-            {Object.entries(CATEGORY).map(([key, label]) => (
-              <option key={key} value={key}>
-                {label}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={category} onValueChange={(next) => setCategory(next ?? "")} options={Object.entries(CATEGORY).map(([key, label]) => ({ value: key, label: label }))} />
         </Field>
         <Field label="For a customer (optional)" hint="Fills in their details from your records.">
           <SearchableSelect value={customerId} onValueChange={(next) => setCustomerId(next ?? "")} options={(customers ?? []).map(customerOption)} loading={customers === undefined} placeholder="No one yet" />
@@ -249,10 +243,7 @@ function UploadAgreement({ catalog }: { catalog: Catalog }) {
           {status.extraction.state !== "read" ? <Notice tone="warning">{status.extraction.note}</Notice> : <Notice>The text was read from the file.</Notice>}
           {suggestion ? <p className="text-xs text-muted-foreground">Selestial&apos;s guess: {suggestion.reasons.join(" ")} ({suggestion.confidence} confidence). You decide.</p> : null}
           <Field label="What is this?">
-            <SelectInput value={form.classification} onChange={set("classification")}>
-              <option value="agreement">An agreement</option>
-              <option value="supporting">A supporting record (insurance, license, official form)</option>
-            </SelectInput>
+            <Select value={form.classification} onValueChange={(next) => setForm((f) => ({ ...f, classification: next ?? "" }))} options={[{ value: "agreement", label: "An agreement" }, { value: "supporting", label: "A supporting record (insurance, license, official form)" }]} />
           </Field>
           {form.classification === "agreement" ? (
             <>
@@ -278,13 +269,7 @@ function UploadAgreement({ catalog }: { catalog: Catalog }) {
           ) : (
             <>
               <Field label="Kind of record">
-                <SelectInput value={form.supportingKind} onChange={set("supportingKind")}>
-                  {catalog.supportingKinds.map((k) => (
-                    <option key={k.key} value={k.key}>
-                      {k.label}
-                    </option>
-                  ))}
-                </SelectInput>
+                <Select value={form.supportingKind} onValueChange={(next) => setForm((f) => ({ ...f, supportingKind: next ?? "" }))} options={catalog.supportingKinds.map((k) => ({ value: k.key, label: k.label }))} searchable="auto" />
               </Field>
               <Field label="Expires (optional)"><TextInput type="date" value={form.expiresOn} onChange={set("expiresOn")} /></Field>
               <Notice>Official forms are kept as you uploaded them. Selestial never writes or replaces one.</Notice>

@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { PermissionRow, type Action } from "@/components/app/screens/agent-permissions";
 import { PageHeader, Panel } from "@/components/app/shell";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +16,7 @@ import { linkTo } from "@/lib/app/navigation-helpers";
 import { cn } from "@/lib/utils";
 
 import { api } from "../../../../../convex/_generated/api";
-import { Checkbox } from "@/components/ui/selection";
+import { Checkbox, Select } from "@/components/ui/selection";
 import { NumberField } from "@/components/ui/fields";
 
 type Policy = FunctionReturnType<typeof api.dispatchOps.policy>;
@@ -154,10 +154,7 @@ function NumbersForm({ section, policy, settings, canEdit }: { section: Exclude<
     >
       {section === "assignment" ? (
         <Field label="How a crew is paid" hint="For cleaners paid a share of the job. Hourly cleaners are paid for their own hours either way. Every offer states the exact amount, and a person offering by hand can enter any pay.">
-          <SelectInput value={toggles.crewPayMode} disabled={!canEdit} onChange={(event) => setToggles((current) => ({ ...current, crewPayMode: event.target.value as Policy["crewPayMode"] }))}>
-            <option value="share_of_whole">Each cleaner gets their share of the whole price</option>
-            <option value="split_by_crew">Their share is split across the cleaners the visit needs</option>
-          </SelectInput>
+          <Select value={toggles.crewPayMode} onValueChange={(next) => setToggles((current) => ({ ...current, crewPayMode: (next ?? "") as Policy["crewPayMode"] }))} options={[{ value: "share_of_whole", label: "Each cleaner gets their share of the whole price" }, { value: "split_by_crew", label: "Their share is split across the cleaners the visit needs" }]} disabled={!canEdit} />
         </Field>
       ) : null}
       {section === "coverage" ? (

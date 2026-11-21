@@ -5,15 +5,15 @@ import { useId, useMemo, useState } from "react";
 import { Unavailable } from "@/components/app/settings/guard";
 import { useBusinessDraft } from "@/components/app/settings/business-draft";
 import { SaveBar as SaveArea } from "@/components/app/settings/save-bar";
-import { Field, TextInput, SelectInput } from "@/components/app/form";
-import { Plus, Search, Trash2, X } from "@/components/icons";
+import { Field, TextInput } from "@/components/app/form";
+import { Plus, Trash2, X } from "@/components/icons";
 import { Panel } from "@/components/app/shell";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { addPostalCodes, clockLabel, hoursSummary, minuteToTime, type HoursWindow, timeToMinute, WEEKDAYS } from "@/lib/app/settings-draft";
 import { filterTimeZones, timeZoneLabel, timeZoneOptions } from "@/lib/app/timezones";
 import { cn } from "@/lib/utils";
-import { Checkbox } from "@/components/ui/selection";
+import { Checkbox, SearchableSelect } from "@/components/ui/selection";
 
 /** Save and discard for the business draft. */
 export function SaveBar() {
@@ -38,7 +38,6 @@ export function SaveBar() {
 
 /** A searchable list of time zones, named by their places. The stored value is the zone's identifier. */
 function TimeZonePicker({ value, disabled, onChange }: { value: string; disabled: boolean; onChange: (id: string) => void }) {
-  const id = useId();
   const [query, setQuery] = useState("");
   const options = useMemo(() => timeZoneOptions(value), [value]);
   const shown = useMemo(() => filterTimeZones(options, query, value), [options, query, value]);
@@ -51,46 +50,18 @@ function TimeZonePicker({ value, disabled, onChange }: { value: string; disabled
     );
   }
   return (
-    <div className="grid gap-1.5 text-sm">
-      <label htmlFor={`${id}-select`} className="font-medium text-strong">
-        Time zone
-      </label>
-      <div className="relative">
-        <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-        <input
-          type="search"
-          aria-label="Find a time zone by city or region"
-          aria-controls={`${id}-select`}
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Type a city, like Dallas or Toronto"
-          className="block min-h-10 w-full rounded-t-lg border border-b-0 border-border bg-card py-2 pr-3 pl-8 text-sm text-strong placeholder:text-muted-foreground/70 focus-visible:border-brand-500/60 focus-visible:outline-2 focus-visible:outline-brand-500/30"
-        />
-      </div>
-      <SelectInput
-        id={`${id}-select`}
-        size={6}
+    <Field label="Time zone" hint={`Selected: ${timeZoneLabel(value)}. Bookings, deadlines and your booking hours use this clock.`}>
+      {/* Search keeps the zone list's own matching (cities, regions, the saved zone always listed). */}
+      <SearchableSelect
         value={value}
-        onChange={(event) => onChange(event.target.value)}
-        aria-describedby={`${id}-hint`}
-        className="block w-full -mt-1.5 rounded-b-lg border border-border bg-card px-1 py-1 text-sm text-strong focus-visible:border-brand-500/60 focus-visible:outline-2 focus-visible:outline-brand-500/30"
-      >
-        {regions.map((region) => (
-          <optgroup key={region} label={region}>
-            {shown
-              .filter((row) => row.region === region)
-              .map((row) => (
-                <option key={row.id} value={row.id} className="rounded px-2 py-1">
-                  {row.label}
-                </option>
-              ))}
-          </optgroup>
-        ))}
-      </SelectInput>
-      <span id={`${id}-hint`} className="text-xs text-muted-foreground">
-        Selected: <span className="font-medium text-strong">{timeZoneLabel(value)}</span>. Bookings, deadlines and your booking hours use this clock.
-      </span>
-    </div>
+        onValueChange={(next) => next && onChange(next)}
+        onSearchChange={setQuery}
+        clearable={false}
+        options={regions.flatMap((region) => shown.filter((row) => row.region === region).map((row) => ({ value: row.id, label: row.label, meta: region })))}
+        placeholder="Type a city, like Dallas or Toronto"
+        emptyText="No time zone matches. Try a nearby large city."
+      />
+    </Field>
   );
 }
 

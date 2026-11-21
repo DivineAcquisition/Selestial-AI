@@ -12,7 +12,7 @@ import { useMemo, useState } from "react";
 import { SegmentEstimate } from "@/components/app/billing/segment-estimate";
 import { useCompany } from "@/components/app/company";
 import { useDetail } from "@/components/app/detail-panel";
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { Clock, Hand, Lock, Mail, MessageSquareText, NotebookPenIcon, SendIcon, TriangleAlert, X } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,7 +31,7 @@ function phone(value: string | null) {
 }
 
 import type { Profile } from "./profile";
-import { Checkbox, SegmentedControl } from "@/components/ui/selection";
+import { Checkbox, SegmentedControl, Select } from "@/components/ui/selection";
 
 type Thread = NonNullable<ReturnType<typeof useQuery<typeof api.clientConversations.thread>>>;
 type Item = Thread["items"][number];
@@ -292,14 +292,7 @@ function NoteForm({ profile }: { profile: Profile }) {
       </Field>
       {profile.properties.length > 1 ? (
         <Field label="About a property (optional)">
-          <SelectInput value={propertyId} onChange={(event) => setPropertyId(event.target.value)}>
-            <option value="">The client in general</option>
-            {profile.properties.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={propertyId} onValueChange={(next) => setPropertyId(next ?? "")} options={profile.properties.map((p) => ({ value: p.id, label: p.name }))} emptyLabel="The client in general" placeholder="The client in general" searchable="auto" />
         </Field>
       ) : null}
       <FormError message={error} />
@@ -370,14 +363,7 @@ function MessageForm({ profile, composer }: { profile: Profile; composer: Compos
     >
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="To">
-          <SelectInput value={who} onChange={(event) => setWho(event.target.value)}>
-            {composer.recipients.map((r, i) => (
-              <option key={r.contactId ?? "client"} value={i}>
-                {r.name}
-                {r.contactId ? ` (${r.roles.join(", ")})` : ""}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={who} onValueChange={(next) => setWho(next ?? "")} options={composer.recipients.map((r, i) => ({ value: String(i), label: `${r.name}${r.contactId ? ` (${r.roles.join(", ")})` : ""}` }))} searchable="auto" />
         </Field>
         <fieldset className="grid gap-1.5">
           <legend className="mb-1.5 text-sm font-medium text-strong">By</legend>
@@ -416,14 +402,7 @@ function MessageForm({ profile, composer }: { profile: Profile; composer: Compos
       {channel === "sms" ? <SegmentEstimate body={body} className="-mt-1.5" /> : null}
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="About (optional)">
-          <SelectInput value={about} onChange={(event) => setAbout(event.target.value)}>
-            <option value="">Nothing in particular</option>
-            {composer.about.map((a) => (
-              <option key={`${a.table}:${a.id}`} value={`${a.table}:${a.id}`}>
-                {a.label}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={about} onValueChange={(next) => setAbout(next ?? "")} options={composer.about.map((a) => ({ value: `${a.table}:${a.id}`, label: a.label }))} emptyLabel="Nothing in particular" placeholder="Nothing in particular" searchable="auto" />
         </Field>
         <div className="grid content-start gap-2">
           <label className="mt-7 flex items-center gap-2 text-sm text-strong">

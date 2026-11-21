@@ -3,7 +3,8 @@
 import { useMutation, useQuery } from "convex/react";
 
 import { useCompany } from "@/components/app/company";
-import { FormError, SelectInput, useRun } from "@/components/app/form";
+import { FormError, useRun } from "@/components/app/form";
+import { Select } from "@/components/ui/selection";
 import { Invitations } from "@/components/app/screens/misc";
 import { Panel } from "@/components/app/shell";
 import { Badge } from "@/components/ui/badge";
@@ -45,16 +46,7 @@ export function PeopleAccess() {
                 <span className="flex flex-wrap items-center gap-2">
                   {owner && member.role !== "owner" ? (
                     <>
-                      <SelectInput
-                        aria-label={`Role for ${member.name}`}
-                        className="w-auto min-w-32 py-1.5"
-                        disabled={busy}
-                        value={member.role}
-                        onChange={(event) => void run(() => setRole({ companyId, memberId: member.id, role: event.target.value as "manager" | "office" }))}
-                      >
-                        <option value="manager">Manager</option>
-                        <option value="office">Office</option>
-                      </SelectInput>
+                      <Select value={member.role} onValueChange={(next) => void run(() => setRole({ companyId, memberId: member.id, role: (next ?? "") as "manager" | "office" }))} options={[{ value: "manager", label: "Manager" }, { value: "office", label: "Office" }]} className="w-auto min-w-32 py-1.5" disabled={busy} aria-label={`Role for ${member.name}`} />
                       <Button
                         size="sm"
                         variant="ghost"

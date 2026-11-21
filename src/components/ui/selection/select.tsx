@@ -5,6 +5,7 @@ import { Select as SelectPrimitive } from "@base-ui/react/select";
 import { Check, ChevronDown, Loader2 } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
+import { SearchableSelect } from "./combobox";
 import { joinIds, markComposite, useFieldControl } from "./field-context";
 import { controlHeight, controlPadding, fieldSurface, focusRing, optionRow, popupSurface, type Density } from "./tokens";
 import { groupOptions, type ListState, type Option } from "./types";
@@ -23,6 +24,8 @@ export type SelectProps<V extends string> = ListState & {
   required?: boolean;
   name?: string;
   density?: Density;
+  /** `"auto"`: a list that comes from data becomes a SearchableSelect once it has more than 15 options. */
+  searchable?: "auto";
   id?: string;
   className?: string;
   "aria-label"?: string;
@@ -39,8 +42,11 @@ const EMPTY = "__selestial_empty__";
  * they are disabled. The popup positions itself against the trigger and stays inside dialogs, sheets and
  * scrolling containers. Inside a Field, the trigger is the labelled, described control.
  */
-export function Select<V extends string>({ value, onValueChange, options, placeholder = "Choose…", emptyLabel, disabled, readOnly, required, name, density = "default", id, className, loading, error, onRetry, emptyText = "Nothing to choose from yet.", ...aria }: SelectProps<V>) {
+export function Select<V extends string>({ value, onValueChange, options, placeholder = "Choose…", emptyLabel, disabled, readOnly, required, name, density = "default", searchable, id, className, loading, error, onRetry, emptyText = "Nothing to choose from yet.", ...aria }: SelectProps<V>) {
   const field = useFieldControl();
+  if (searchable === "auto" && options.length > 15) {
+    return <SearchableSelect value={value} onValueChange={onValueChange} options={options} placeholder={placeholder} clearable={Boolean(emptyLabel)} disabled={disabled} readOnly={readOnly} required={required} name={name} density={density} id={id} className={className} loading={loading} error={error} onRetry={onRetry} {...aria} />;
+  }
   const current = value === "" || value === null ? null : value;
   const chosen = current === null ? undefined : options.find((option) => option.value === current);
   const invalid = aria["aria-invalid"] ?? field?.invalid;
@@ -48,6 +54,8 @@ export function Select<V extends string>({ value, onValueChange, options, placeh
     <SelectPrimitive.Root
       value={current ?? (emptyLabel ? EMPTY : null)}
       onValueChange={(next: unknown) => onValueChange(next === EMPTY || next === null ? null : (next as V))}
+      // "Nothing chosen" reaches a form as "", as a native <option value=""> would: never the internal marker, and an empty required field stays invalid.
+      itemToStringValue={(item: unknown) => (item === EMPTY || item === null || item === undefined ? "" : String(item))}
       disabled={disabled}
       readOnly={readOnly}
       required={required ?? field?.required}

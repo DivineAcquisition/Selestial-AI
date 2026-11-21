@@ -10,7 +10,8 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { FormError, useRun, SelectInput } from "@/components/app/form";
+import { FormError, useRun } from "@/components/app/form";
+import { Select } from "@/components/ui/selection";
 import { PageHeader } from "@/components/app/shell";
 import { TutorialCard, useSource } from "@/components/app/tutorials/offer";
 import { ArrowLeft, Check, FileSpreadsheet, TriangleAlert, Upload } from "@/components/icons";
@@ -133,19 +134,7 @@ export function ImportScreen() {
             {IMPORT_FIELDS.map((field) => (
               <label key={field.key} className="grid gap-1 text-sm">
                 <span className="font-medium text-strong">{field.label}</span>
-                <SelectInput
-                  value={columns[field.key] ?? ""}
-                  onChange={(event) => setColumns({ ...columns, [field.key]: event.target.value === "" ? undefined : Number(event.target.value) })}
-                  className="h-10 rounded-lg border border-border bg-card px-2.5 text-sm text-strong sm:h-9"
-                >
-                  <option value="">Not in the file</option>
-                  {columns[field.key] !== undefined && columns[field.key]! < 0 ? <option value={columns[field.key]}>First and last name</option> : null}
-                  {header.map((name, index) => (
-                    <option key={`${name}-${index}`} value={index}>
-                      {name || `Column ${index + 1}`}
-                    </option>
-                  ))}
-                </SelectInput>
+                <Select value={String(columns[field.key] ?? "")} onValueChange={(next) => setColumns({ ...columns, [field.key]: (next ?? "") === "" ? undefined : Number(next ?? "") })} options={[...(columns[field.key] !== undefined && columns[field.key]! < 0 ? [{ value: String(columns[field.key]), label: "First and last name" }] : []), ...header.map((name, index) => ({ value: String(index), label: name || `Column ${index + 1}` }))]} emptyLabel="Not in the file" placeholder="Not in the file" searchable="auto" density="compact" />
               </label>
             ))}
           </div>

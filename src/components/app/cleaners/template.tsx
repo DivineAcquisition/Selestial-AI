@@ -10,7 +10,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { Modal } from "@/components/app/modal";
 import { PageHeader } from "@/components/app/shell";
 import { useNow } from "@/components/app/use-now";
@@ -25,7 +25,7 @@ import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { EFFECT_WORDS, ENGAGEMENT_SHORT, type Engagement } from "./bits";
 import { CLEANERS_PATH } from "./state";
-import { Checkbox } from "@/components/ui/selection";
+import { Checkbox, Select } from "@/components/ui/selection";
 import { ListInput, NumberField } from "@/components/ui/fields";
 import { useSkillSuggestions } from "@/components/app/skill-suggestions";
 
@@ -219,20 +219,10 @@ function EditDialog({ definition, onClose }: { definition: Definition | null; on
           </Field>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Kind">
-              <SelectInput value={form.kind} onChange={(event) => set("kind", event.target.value as Definition["kind"])} disabled={Boolean(definition && ["availability", "service_areas", "contact"].includes(definition.kind))}>
-                {Object.entries(KIND_WORDS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </SelectInput>
+              <Select value={form.kind} onValueChange={(next) => set("kind", (next ?? "") as Definition["kind"])} options={Object.entries(KIND_WORDS).map(([value, label]) => ({ value: value, label: label }))} disabled={Boolean(definition && ["availability", "service_areas", "contact"].includes(definition.kind))} />
             </Field>
             <Field label="If it is not met">
-              <SelectInput value={form.effect} onChange={(event) => set("effect", event.target.value as Definition["effect"])}>
-                <option value="blocks_assignments">No work is offered</option>
-                <option value="blocks_payment">No payment until it is</option>
-                <option value="informational">Nothing is held up</option>
-              </SelectInput>
+              <Select value={form.effect} onValueChange={(next) => set("effect", (next ?? "") as Definition["effect"])} options={[{ value: "blocks_assignments", label: "No work is offered" }, { value: "blocks_payment", label: "No payment until it is" }, { value: "informational", label: "Nothing is held up" }]} />
             </Field>
           </div>
           <fieldset className="grid gap-1.5">
@@ -248,10 +238,7 @@ function EditDialog({ definition, onClose }: { definition: Definition | null; on
           </fieldset>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Who reviews it">
-              <SelectInput value={form.reviewer} onChange={(event) => set("reviewer", event.target.value as "manager" | "owner")}>
-                <option value="manager">Owners and Managers</option>
-                <option value="owner">The Owner only</option>
-              </SelectInput>
+              <Select value={form.reviewer} onValueChange={(next) => set("reviewer", (next ?? "") as "manager" | "owner")} options={[{ value: "manager", label: "Owners and Managers" }, { value: "owner", label: "The Owner only" }]} />
             </Field>
             <Field label="Valid for (days)" hint="Leave empty if it does not expire.">
               <NumberField value={form.validForDays} onChange={(text) => set("validForDays", text)} suffix="days" stepper />
@@ -259,11 +246,7 @@ function EditDialog({ definition, onClose }: { definition: Definition | null; on
           </div>
           {form.kind === "equipment" ? (
             <Field label="Who provides it" hint="Equipment the crew brings is checked on the crew, never held against one person.">
-              <SelectInput value={form.providedBy || "cleaner"} onChange={(event) => set("providedBy", event.target.value)}>
-                <option value="cleaner">The cleaner</option>
-                <option value="company">The company</option>
-                <option value="crew">The crew</option>
-              </SelectInput>
+              <Select value={form.providedBy || "cleaner"} onValueChange={(next) => set("providedBy", next ?? "")} options={[{ value: "cleaner", label: "The cleaner" }, { value: "company", label: "The company" }, { value: "crew", label: "The crew" }]} />
             </Field>
           ) : null}
           <Field label="Only for these services (optional)" hint="Service names or skills. With none, it applies to every job.">

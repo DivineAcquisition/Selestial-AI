@@ -69,7 +69,10 @@ The combobox serializes the stored id (not the label) into its hidden form input
 
 Every selection control in the app now draws from the shared system:
 
-- **Dropdowns:** 237 uses. `SelectInput` keeps the native contract (`<option>` children, `event.target.value`) and renders the shared Select, or SearchableSelect past 15 options. Every raw `<select>` goes through it.
+- **Dropdowns:** every dropdown is the shared `Select` or `SearchableSelect`, written with an `options` array and `onValueChange`. The native-contract `SelectInput` shim is gone. The move was done by a type-checked codemod that converted only handlers reading `event.target.value` (rewritten to the new value, with `""` for "nothing chosen", exactly what the native select gave), plus hand migration of the rest: `set("key")` event factories were split into a value setter (`setValue(key, value)`) that the event version delegates to; uncontrolled pickers got explicit state; "choose to act" pickers stay blank after acting.
+  - A list that comes from data uses `searchable="auto"`, which keeps the old behaviour of becoming searchable past 15 options. Fixed lists don't.
+  - Native-era classes that only restated the field surface (border, background, radius, padding, ad-hoc heights) were removed: 32–36px ones became `density="compact"` (filter bars, table rows), 40px ones use the default. Classes with real intent (widths, the dark toolbar, public pages' own look and 44px touch targets) stay.
+  - A named `Select` submits `""` for "nothing chosen", like a native `<option value="">`, and an empty required one is invalid. (Before, the internal "nothing chosen" marker reached the form.)
 - **Checkboxes:** 108 uses of the shared Checkbox / CheckboxRow. Handlers take the checked value.
 - **Choice cards:** 23. **Segmented controls:** 50. **Chips:** 11. **Switches:** 32. **Radio groups:** 20 (`RadioButtonGroup` gives custom-styled radio buttons arrow keys, Home/End and one tab stop).
 

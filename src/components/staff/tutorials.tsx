@@ -8,7 +8,7 @@
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 
-import { messageOf, SelectInput } from "@/components/app/form";
+import { messageOf } from "@/components/app/form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,7 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { PLATFORM_WORDS, STATE_WORDS, STATES, type Media, type State } from "../../../convex/lib/tutorials/catalog";
-import { SegmentedControl } from "@/components/ui/selection";
+import { SegmentedControl, Select } from "@/components/ui/selection";
 
 type Row = NonNullable<ReturnType<typeof useQuery<typeof api.tutorials.staffList>>>[number];
 
@@ -99,17 +99,7 @@ function TutorialRow({ row }: { row: Row }) {
         </div>
         <label className="grid gap-1 text-xs text-muted-foreground">
           State
-          <SelectInput
-            value={row.state}
-            onChange={(event) => run(setState({ tutorialId: row.id, state: event.target.value as State }))}
-            className="h-9 rounded-lg border border-border bg-background px-2 text-sm text-strong"
-          >
-            {STATES.map((state) => (
-              <option key={state} value={state}>
-                {STATE_WORDS[state]}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={row.state} onValueChange={(next) => run(setState({ tutorialId: row.id, state: (next ?? "") as State }))} options={STATES.map((state) => ({ value: state, label: STATE_WORDS[state] }))} className="h-9 rounded-lg border border-border bg-background px-2 text-sm text-strong" />
         </label>
       </div>
 

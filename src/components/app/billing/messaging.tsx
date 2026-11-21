@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 
 import { HeroCard, HeroStat } from "@/components/app/billing/visuals";
 import { useCompany } from "@/components/app/company";
-import { FormError, useRun, SelectInput } from "@/components/app/form";
+import { FormError, useRun } from "@/components/app/form";
 import { InfoTip } from "@/components/app/services/shared";
 import { Panel } from "@/components/app/shell";
 import { Download, Mail, MessageSquareText, Plus, ReceiptIcon, ShieldCheck, Zap } from "@/components/icons";
@@ -19,7 +19,7 @@ import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { formatUnits, UNITS_PER_CENT } from "../../../../convex/lib/messagingBilling/money";
 import { autoTopUpWording } from "../../../../convex/lib/messagingBilling/wording";
-import { Checkbox } from "@/components/ui/selection";
+import { Checkbox, Select } from "@/components/ui/selection";
 
 type Overview = NonNullable<ReturnType<typeof useQuery<typeof api.messagingUsage.overview>>>;
 type Live = Extract<Overview, { connected: true }>;
@@ -675,13 +675,7 @@ function Statement() {
       <div className="flex flex-wrap items-end gap-2">
         <label className="grid gap-1 text-sm text-strong">
           Month
-          <SelectInput className="h-9 rounded-lg border border-border bg-card px-2 text-sm" value={month} onChange={(event) => setMonth(event.target.value)}>
-            {months.map((row) => (
-              <option key={row.value} value={row.value}>
-                {row.label}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={month} onValueChange={(next) => setMonth(next ?? "")} options={months.map((row) => ({ value: row.value, label: row.label }))} searchable="auto" density="compact" />
         </label>
         <Button size="sm" variant="outline" loading={data === undefined} disabled={!data} onClick={download}>
           <Download aria-hidden className="size-4" />

@@ -7,7 +7,7 @@
  */
 import { useQuery } from "convex/react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 
 import { canManage, useCompany } from "@/components/app/company";
 import { useStableQuery } from "@/lib/app/stable-query";
@@ -16,6 +16,7 @@ import { PageHeader } from "@/components/app/shell";
 import { useNow } from "@/components/app/use-now";
 import { Building2, CalendarIcon, Check, ChevronDown, ClipboardList, Clock, FunnelIcon, LayoutGrid, MessageSquareText, Plus, Search, Sparkles, TableIcon, TriangleAlert, Upload, Users, X } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/selection";
 import { Skeleton } from "@/components/ui/skeleton";
 import { clock, dayName, localDate, zonedInstant } from "@/lib/app/format";
 import { cn } from "@/lib/utils";
@@ -28,7 +29,6 @@ import { Avatar, Chips, ENGAGEMENT_SHORT, Progress, ReadinessLine, StatusBadge, 
 import { CleanerDrawer } from "./drawer";
 import { InviteManyDialog } from "./onboarding-review";
 import { CLEANERS_PATH, useDirectoryState, type DirectoryState } from "./state";
-import { SelectInput } from "@/components/app/form";
 
 export type Directory = FunctionReturnType<typeof api.workforce.directory>;
 export type Row = Directory["rows"][number];
@@ -197,23 +197,14 @@ function parseAvail(value: string | undefined): { date: string; from: string; to
   return { date: parts[0], from: parts[1], to: parts[2] };
 }
 
-function Select({ label, value, onChange, options }: { label: string; value: string | undefined; onChange: (value: string | undefined) => void; options: { value: string; label: string }[] }) {
+/** A filter in the cleaners filter bar: compact, with "Any" as the way back to no filter. */
+function FilterSelect({ label, value, onChange, options }: { label: string; value: string | undefined; onChange: (value: string | undefined) => void; options: { value: string; label: string }[] }) {
+  const id = useId();
   return (
-    <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-      {label}
-      <SelectInput
-        value={value ?? ""}
-        onChange={(event) => onChange(event.target.value || undefined)}
-        className="h-9 w-full cursor-pointer rounded-lg border border-border bg-card px-2.5 text-sm text-strong focus-visible:border-brand-500/60 focus-visible:outline-2 focus-visible:outline-brand-500/30"
-      >
-        <option value="">Any</option>
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </SelectInput>
-    </label>
+    <div className="grid gap-1 text-xs font-medium text-muted-foreground">
+      <span id={id}>{label}</span>
+      <Select aria-labelledby={id} density="compact" value={value ?? null} onValueChange={(next) => onChange(next ?? undefined)} options={options} emptyLabel="Any" placeholder="Any" searchable="auto" />
+    </div>
   );
 }
 
@@ -546,14 +537,14 @@ export function CleanersScreen() {
 
             {filtersOpen ? (
               <div className="grid grid-cols-2 gap-3 rounded-xl border border-border bg-muted/30 p-3 sm:grid-cols-4 xl:grid-cols-8">
-                <Select label="Worker type" value={state.type} onChange={(type) => update({ type })} options={TYPE_OPTIONS} />
-                <Select label="Engagement" value={state.status} onChange={(status) => update({ status })} options={STATUS_OPTIONS} />
-                <Select label="Readiness" value={state.ready} onChange={(ready) => update({ ready })} options={READY_OPTIONS} />
-                <Select label="Onboarding stage" value={state.stage} onChange={(stage) => update({ stage })} options={[...data.filters.stages.map((row) => ({ value: row.key, label: `At: ${row.label}` })), { value: "complete", label: "Every requirement met" }]} />
-                <Select label="Crew" value={state.crew} onChange={(crew) => update({ crew })} options={data.filters.crews.map((row) => ({ value: row.id, label: row.name }))} />
-                <Select label="Service area" value={state.area} onChange={(area) => update({ area })} options={data.filters.areas.map((value) => ({ value, label: value }))} />
-                <Select label="Skill" value={state.skill} onChange={(skill) => update({ skill })} options={data.filters.skills.map((value) => ({ value, label: value }))} />
-                <Select label="Subcontractor" value={state.sub} onChange={(sub) => update({ sub })} options={data.filters.subcontractors.map((row) => ({ value: row.id, label: row.name }))} />
+                <FilterSelect label="Worker type" value={state.type} onChange={(type) => update({ type })} options={TYPE_OPTIONS} />
+                <FilterSelect label="Engagement" value={state.status} onChange={(status) => update({ status })} options={STATUS_OPTIONS} />
+                <FilterSelect label="Readiness" value={state.ready} onChange={(ready) => update({ ready })} options={READY_OPTIONS} />
+                <FilterSelect label="Onboarding stage" value={state.stage} onChange={(stage) => update({ stage })} options={[...data.filters.stages.map((row) => ({ value: row.key, label: `At: ${row.label}` })), { value: "complete", label: "Every requirement met" }]} />
+                <FilterSelect label="Crew" value={state.crew} onChange={(crew) => update({ crew })} options={data.filters.crews.map((row) => ({ value: row.id, label: row.name }))} />
+                <FilterSelect label="Service area" value={state.area} onChange={(area) => update({ area })} options={data.filters.areas.map((value) => ({ value, label: value }))} />
+                <FilterSelect label="Skill" value={state.skill} onChange={(skill) => update({ skill })} options={data.filters.skills.map((value) => ({ value, label: value }))} />
+                <FilterSelect label="Subcontractor" value={state.sub} onChange={(sub) => update({ sub })} options={data.filters.subcontractors.map((row) => ({ value: row.id, label: row.name }))} />
               </div>
             ) : null}
             {availOpen ? <AvailabilityPicker value={state.avail} timezone={timezone} now={now} onApply={(value) => update({ avail: value })} /> : null}

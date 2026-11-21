@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { Modal } from "@/components/app/modal";
 import { missingSetup } from "@/components/app/not-set-up";
 import { PageHeader, Panel } from "@/components/app/shell";
@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
 
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
-import { Checkbox } from "@/components/ui/selection";
+import { Checkbox, Select } from "@/components/ui/selection";
 import { EmailInput, NumberField } from "@/components/ui/fields";
 
 /**
@@ -160,24 +160,10 @@ export function RequestQueue() {
       <PageHeader title="Requests" lead="Privacy requests, vulnerability reports and security questions from the public site. Each one was saved before anyone was told." />
       <div className="mb-4 flex flex-wrap gap-3">
         <Field label="Kind" className="w-48">
-          <SelectInput value={kind} onChange={(event) => setKind(event.target.value as typeof kind)}>
-            <option value="">All kinds</option>
-            {Object.entries(KIND_LABEL).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={kind} onValueChange={(next) => setKind((next ?? "") as typeof kind)} options={Object.entries(KIND_LABEL).map(([value, label]) => ({ value: value, label: label }))} emptyLabel="All kinds" placeholder="All kinds" />
         </Field>
         <Field label="Status" className="w-56">
-          <SelectInput value={status} onChange={(event) => setStatus(event.target.value)}>
-            <option value="">Any status</option>
-            {Object.entries(STATUS_LABEL).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={status} onValueChange={(next) => setStatus(next ?? "")} options={Object.entries(STATUS_LABEL).map(([value, label]) => ({ value: value, label: label }))} emptyLabel="Any status" placeholder="Any status" />
         </Field>
       </div>
       <Panel flush>
@@ -344,27 +330,26 @@ function Handling({ requestId, status, dueOn }: { requestId: Id<"trustRequests">
   const verify = useMutation(api.requests.recordVerification);
   const { busy, error, run } = useRun();
   const [method, setMethod] = useState("");
+  const [assignee, setAssignee] = useState<string | null>(null);
   const [due, setDueValue] = useState(dueOn);
   return (
     <div className="grid gap-4 border-t border-border pt-4">
       <Field label="Assign to">
-        <SelectInput defaultValue="" onChange={(event) => void run(() => assign({ requestId, staffId: (event.target.value || null) as Id<"staff"> | null }))}>
-          <option value="">Choose</option>
-          {(staff ?? []).map((person) => (
-            <option key={person.id} value={person.id}>
-              {person.name}
-            </option>
-          ))}
-        </SelectInput>
+        <Select
+          value={assignee}
+          onValueChange={(next) => {
+            setAssignee(next);
+            void run(() => assign({ requestId, staffId: next as Id<"staff"> | null }));
+          }}
+          options={(staff ?? []).map((person) => ({ value: person.id, label: person.name }))}
+          loading={staff === undefined}
+          emptyLabel="Choose"
+          placeholder="Choose"
+          searchable="auto"
+        />
       </Field>
       <Field label="Status">
-        <SelectInput value={status} onChange={(event) => void run(() => setStatus({ requestId, status: event.target.value as "received" }))}>
-          {["received", "verifying", "in_progress", "waiting_on_requester", "routed_to_business", "spam"].map((value) => (
-            <option key={value} value={value}>
-              {STATUS_LABEL[value]}
-            </option>
-          ))}
-        </SelectInput>
+        <Select value={status} onValueChange={(next) => void run(() => setStatus({ requestId, status: (next ?? "") as "received" }))} options={["received", "verifying", "in_progress", "waiting_on_requester", "routed_to_business", "spam"].map((value) => ({ value: value, label: STATUS_LABEL[value] }))} />
       </Field>
       <form
         className="flex items-end gap-2"
@@ -599,7 +584,8 @@ function ProviderRow({ provider, canEdit }: { provider: Provider; canEdit: boole
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ ...provider, locations: provider.locations ?? "", agreementRef: provider.agreementRef ?? "", policyUrl: provider.policyUrl ?? "", publicNote: provider.publicNote ?? "" });
   const [note, setNote] = useState("");
-  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm({ ...form, [key]: event.target.value });
+  const setValue = (key: keyof typeof form, value: string) => setForm({ ...form, [key]: value });
+  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setValue(key, event.target.value);
   return (
     <li className="rounded-xl border border-border px-3.5 py-3 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -647,13 +633,7 @@ function ProviderRow({ provider, canEdit }: { provider: Provider; canEdit: boole
             <TextInput value={form.name} onChange={set("name")} required />
           </Field>
           <Field label="Status">
-            <SelectInput value={form.status} onChange={set("status")}>
-              {Object.entries(PROVIDER_STATUS_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </SelectInput>
+            <Select value={form.status} onValueChange={(next) => setValue("status", next ?? "")} options={Object.entries(PROVIDER_STATUS_LABEL).map(([value, label]) => ({ value: value, label: label }))} searchable="auto" />
           </Field>
           <Field label="What it does for us" className="sm:col-span-2">
             <TextInput value={form.purpose} onChange={set("purpose")} required />
@@ -674,10 +654,7 @@ function ProviderRow({ provider, canEdit }: { provider: Provider; canEdit: boole
             <TextInput value={form.publicNote} onChange={set("publicNote")} />
           </Field>
           <Field label="Review">
-            <SelectInput value={form.reviewStatus} onChange={set("reviewStatus")}>
-              <option value="verified">Reviewed</option>
-              <option value="needs_review">Needs review</option>
-            </SelectInput>
+            <Select value={form.reviewStatus} onValueChange={(next) => setValue("reviewStatus", next ?? "")} options={[{ value: "verified", label: "Reviewed" }, { value: "needs_review", label: "Needs review" }]} />
           </Field>
           <Field label="Reviewed on">
             <TextInput type="date" value={form.reviewedOn} onChange={set("reviewedOn")} required />
@@ -834,12 +811,7 @@ function CompanyActions({ company }: { company: { id: Id<"companies">; name: str
         }}
       >
         <Field label="Carrier registration">
-          <SelectInput value={status} onChange={(event) => setStatus(event.target.value as typeof status)}>
-            <option value="approved">Approved</option>
-            <option value="rejected">Rejected</option>
-            <option value="submitted">Submitted</option>
-            <option value="not_started">Not started</option>
-          </SelectInput>
+          <Select value={status} onValueChange={(next) => setStatus((next ?? "") as typeof status)} options={[{ value: "approved", label: "Approved" }, { value: "rejected", label: "Rejected" }, { value: "submitted", label: "Submitted" }, { value: "not_started", label: "Not started" }]} />
         </Field>
         <Field label="Provider reference">
           <TextInput value={reference} onChange={(event) => setReference(event.target.value)} />
@@ -914,11 +886,7 @@ export function StaffPeople() {
                   </span>
                   <span className="flex items-center gap-2">
                     {admin && person.email !== me?.email ? (
-                      <SelectInput aria-label={`Role for ${person.name}`} className="h-8 w-32 py-0 text-xs" value={person.role} onChange={(event) => void run(() => setRole({ staffId: person.id, role: event.target.value as StaffRole }))}>
-                        <option value="reviewer">Reviewer</option>
-                        <option value="support">Support</option>
-                        <option value="admin">Admin</option>
-                      </SelectInput>
+                      <Select value={person.role} onValueChange={(next) => void run(() => setRole({ staffId: person.id, role: (next ?? "") as StaffRole }))} options={[{ value: "reviewer", label: "Reviewer" }, { value: "support", label: "Support" }, { value: "admin", label: "Admin" }]} className="h-8 w-32 py-0 text-xs" aria-label={`Role for ${person.name}`} />
                     ) : (
                       <Badge variant={person.role === "admin" ? "info" : "outline"}>{ROLE_NAME[person.role]}</Badge>
                     )}
@@ -973,11 +941,7 @@ export function StaffPeople() {
               <EmailInput value={form.email} onChange={(text) => setForm({ ...form, email: text })} required />
             </Field>
             <Field label="Role">
-              <SelectInput value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value as StaffRole })}>
-                <option value="reviewer">Reviewer</option>
-                <option value="support">Support</option>
-                <option value="admin">Admin</option>
-              </SelectInput>
+              <Select value={form.role} onValueChange={(next) => setForm({ ...form, role: (next ?? "") as StaffRole })} options={[{ value: "reviewer", label: "Reviewer" }, { value: "support", label: "Support" }, { value: "admin", label: "Admin" }]} />
             </Field>
             <div className="sm:col-span-4">
               <Button type="submit" size="sm" loading={busy}>
@@ -1003,13 +967,7 @@ function GrantForm({ staffId, onDone }: { staffId: Id<"staff">; onDone: () => vo
   return (
     <form className="grid gap-3" onSubmit={(event) => (event.preventDefault(), void run(async () => (await grant({ staffId, capability, reason }), onDone())))}>
       <Field label="Capability">
-        <SelectInput value={capability} onChange={(event) => setCapability(event.target.value as typeof capability)}>
-          {SENSITIVE.map((item) => (
-            <option key={item} value={item}>
-              {CAPABILITY_NAME[item]}
-            </option>
-          ))}
-        </SelectInput>
+        <Select value={capability} onValueChange={(next) => setCapability((next ?? "") as typeof capability)} options={SENSITIVE.map((item) => ({ value: item, label: CAPABILITY_NAME[item] }))} />
       </Field>
       <Field label="Why they need it">
         <TextInput value={reason} onChange={(event) => setReason(event.target.value)} maxLength={300} required />
