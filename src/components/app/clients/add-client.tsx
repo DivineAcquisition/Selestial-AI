@@ -10,13 +10,14 @@ import { useDeferredValue, useState } from "react";
 
 import { AddressField } from "@/components/app/address-field";
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextInput, useRun } from "@/components/app/form";
 import { Button } from "@/components/ui/button";
 import { clientPath, PROPERTY_KIND_LABELS } from "@/lib/app/clients";
-import { cn } from "@/lib/utils";
 
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
+import { Checkbox, Select, SelectionCards } from "@/components/ui/selection";
+import { EmailInput, PhoneInput } from "@/components/ui/fields";
 
 type Duplicate = { customerId: Id<"customers">; name: string; reason: string; status: string };
 
@@ -26,10 +27,11 @@ export const addressInput = (a: AddressValue) => ({ line1: a.line1, ...(a.line2.
 
 /** A street with address search, and the rest of the address. Typing the street again drops a picked map location. */
 export function AddressInputs({ value, onChange, label = "Address", required }: { value: AddressValue; onChange: (next: AddressValue) => void; label?: string; required?: boolean }) {
-  const set = (key: "line2" | "city" | "region" | "postalCode") => (event: React.ChangeEvent<HTMLInputElement>) => onChange({ ...value, [key]: event.target.value });
+  // A changed city, state or ZIP no longer matches the map location of the picked address, so it is dropped. A unit never moves the pin.
+  const set = (key: "line2" | "city" | "region" | "postalCode") => (event: React.ChangeEvent<HTMLInputElement>) => onChange({ ...value, [key]: event.target.value, ...(key === "line2" ? {} : { place: null }) });
   return (
     <div className="grid gap-3">
-      <AddressField label={label} value={value.line1} required={required} onChange={(line1) => onChange({ ...value, line1, place: null })} onPick={({ placeId, lat, lng, ...picked }) => onChange({ line1: picked.line1, line2: picked.line2 ?? "", city: picked.city, region: picked.region, postalCode: picked.postalCode, place: { placeId, lat, lng } })} />
+      <AddressField label={label} value={value.line1} required={required} onChange={(line1) => onChange({ ...value, line1, place: null })} onPick={({ placeId, lat, lng, ...picked }) => onChange({ line1: picked.line1, line2: picked.line2 || value.line2, city: picked.city, region: picked.region, postalCode: picked.postalCode, place: { placeId, lat, lng } })} />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Field label="Unit (optional)">
           <TextInput value={value.line2} onChange={set("line2")} autoComplete="address-line2" />
@@ -90,7 +92,8 @@ export function AddClientForm({ onDone, onCreated }: { onDone: () => void; onCre
   const [address, setAddress] = useState<AddressValue>(emptyAddress());
   const [withProperty, setWithProperty] = useState(true);
   const [refused, setRefused] = useState<Duplicate[]>([]);
-  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm((current) => ({ ...current, [key]: event.target.value }));
+  const setValue = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
+  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setValue(key, event.target.value);
   const lookup = useDeferredValue({ name: form.name.trim(), email: form.email.trim(), phone: form.phone.trim() });
   const ready = lookup.name.length >= 3 || lookup.email.includes("@") || lookup.phone.replace(/\D/g, "").length >= 10;
   const matches = useQuery(api.clients.duplicates, ready ? { companyId, ...(lookup.name ? { name: lookup.name } : {}), ...(lookup.email ? { email: lookup.email } : {}), ...(lookup.phone ? { phone: lookup.phone } : {}) } : "skip") ?? [];
@@ -117,27 +120,23 @@ export function AddClientForm({ onDone, onCreated }: { onDone: () => void; onCre
         void submit(refused.length > 0);
       }}
     >
-      <div role="radiogroup" aria-label="Kind of client" className="grid grid-cols-2 gap-2">
-        {(["person", "business"] as const).map((option) => (
-          <label key={option} className={cn("cursor-pointer rounded-xl border px-3 py-2.5 text-sm has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-brand-500/40", type === option ? "border-brand-500 bg-brand-500/[0.07]" : "border-border hover:border-brand-500/40")}>
-            <input type="radio" className="sr-only" name="client-type" checked={type === option} onChange={() => setType(option)} />
-            <span className="block font-medium text-strong">{option === "person" ? "A person or household" : "A business"}</span>
-            <span className="block text-xs text-muted-foreground">{option === "person" ? "Homes and personal rentals" : "Offices, sites, property managers, hosts"}</span>
-          </label>
-        ))}
-      </div>
+      <SelectionCards
+        type="single"
+        aria-label="Kind of client"
+        className="grid-cols-2"
+        value={type}
+        onValueChange={setType}
+        options={[
+          { value: "person", label: "A person or household", description: "Homes and personal rentals" },
+          { value: "business", label: "A business", description: "Offices, sites, property managers, hosts" },
+        ]}
+      />
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label={type === "business" ? "Business name" : "Name"}>
           <TextInput value={form.name} onChange={set("name")} required maxLength={160} autoComplete={type === "person" ? "name" : "organization"} />
         </Field>
         <Field label="Mainly serves">
-          <SelectInput value={form.kind} onChange={set("kind")}>
-            {KINDS.map((k) => (
-              <option key={k.id} value={k.id}>
-                {k.label}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={form.kind} onValueChange={(next) => setValue("kind", next ?? "")} options={KINDS.map((k) => ({ value: k.id, label: k.label }))} searchable="auto" />
         </Field>
         {type === "business" ? (
           <>
@@ -150,17 +149,17 @@ export function AddClientForm({ onDone, onCreated }: { onDone: () => void; onCre
           </>
         ) : null}
         <Field label="Email">
-          <TextInput type="email" value={form.email} onChange={set("email")} autoComplete="email" />
+          <EmailInput value={form.email} onChange={(text) => set("email")({ target: { type: "text", value: text } } as unknown as React.ChangeEvent<HTMLInputElement>)} autoComplete="email" />
         </Field>
         <Field label="Phone" hint="An email or a phone is needed.">
-          <TextInput type="tel" value={form.phone} onChange={set("phone")} autoComplete="tel" />
+          <PhoneInput value={form.phone} onChange={(text) => set("phone")({ target: { type: "text", value: text } } as unknown as React.ChangeEvent<HTMLInputElement>)} autoComplete="tel" />
         </Field>
       </div>
       <Matches matches={refused.length ? refused : matches} title={refused.length ? "This looks like a client you already have" : "Already on file?"} />
       <fieldset className="grid gap-3 rounded-xl border border-border p-3">
         <legend className="px-1 text-sm font-medium text-strong">First property</legend>
         <label className="flex items-center gap-2 text-sm text-strong">
-          <input type="checkbox" checked={withProperty} onChange={(event) => setWithProperty(event.target.checked)} className="size-4 accent-brand-500" />
+          <Checkbox checked={withProperty} onCheckedChange={(checked) => setWithProperty(checked)} />
           Add it now
         </label>
         {withProperty ? (
@@ -168,13 +167,7 @@ export function AddClientForm({ onDone, onCreated }: { onDone: () => void; onCre
             <AddressInputs value={address} onChange={setAddress} required />
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Kind of property">
-                <SelectInput value={form.propertyKind} onChange={set("propertyKind")}>
-                  {["home", "short_term_rental", "office", "commercial", "property_manager"].map((k) => (
-                    <option key={k} value={k}>
-                      {PROPERTY_KIND_LABELS[k]}
-                    </option>
-                  ))}
-                </SelectInput>
+                <Select value={form.propertyKind} onValueChange={(next) => setValue("propertyKind", next ?? "")} options={["home", "short_term_rental", "office", "commercial", "property_manager"].map((k) => ({ value: k, label: PROPERTY_KIND_LABELS[k] }))} searchable="auto" />
               </Field>
               <Field label="Nickname (optional)" hint="For example: Lake house, HQ, Unit 4.">
                 <TextInput value={form.label} onChange={set("label")} maxLength={120} />
@@ -185,10 +178,7 @@ export function AddClientForm({ onDone, onCreated }: { onDone: () => void; onCre
         ) : null}
       </fieldset>
       <Field label="Relationship">
-        <SelectInput value={form.relationship} onChange={set("relationship")}>
-          <option value="active">A client</option>
-          <option value="prospect">A prospect (not a client yet)</option>
-        </SelectInput>
+        <Select value={form.relationship} onValueChange={(next) => setValue("relationship", next ?? "")} options={[{ value: "active", label: "A client" }, { value: "prospect", label: "A prospect (not a client yet)" }]} />
       </Field>
       <FormError message={error} />
       <div className="flex flex-wrap gap-2">

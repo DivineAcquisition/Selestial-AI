@@ -12,7 +12,7 @@ import { useState } from "react";
 
 import { AgreementsForRecord } from "@/components/app/agreements/record";
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { Modal } from "@/components/app/modal";
 import { NewVisitForm } from "@/components/app/screens/forms";
 import { ArrowLeft, Lock, MapPin, Plus } from "@/components/icons";
@@ -27,6 +27,11 @@ import { Card, EmptyState, money, PropertyKindIcon, StaffingLine } from "./bits"
 import { ActionMenu } from "./menu";
 import { AgentCard, PropertyCard, VisitRow, type PropertyRow } from "./parts";
 import type { Profile } from "./profile";
+import { Checkbox, Select } from "@/components/ui/selection";
+import { useConfirm } from "@/components/ui/fields/confirm";
+import { AssistedTextArea, NumberField, organizeIntoSteps, type WritingAction } from "@/components/ui/fields";
+
+const STEPS: WritingAction[] = [{ id: "steps", label: "Organize into steps", kind: "template", run: organizeIntoSteps }];
 
 type Detail = NonNullable<ReturnType<typeof useQuery<typeof api.clientProperties.detail>>>;
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -83,6 +88,7 @@ function PropertyDetail({ profile, propertyId }: { profile: Profile; propertyId:
   const [dialog, setDialog] = useState<"edit" | "address" | "book" | null>(null);
   const archive = useMutation(api.clientProperties.archive);
   const { busy, error, run } = useRun();
+  const { ask, element: confirmDialog } = useConfirm();
   const router = useRouter();
   if (detail === undefined) return <Skeleton className="h-96 rounded-2xl" />;
   const p = detail.property;
@@ -91,6 +97,7 @@ function PropertyDetail({ profile, propertyId }: { profile: Profile; propertyId:
   const site = p.kind === "office" || p.kind === "commercial";
   return (
     <div className="grid gap-5">
+      {confirmDialog}
       <Link href={clientPath(profile.id, "properties")} className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-strong">
         <ArrowLeft aria-hidden className="size-4" /> All properties
       </Link>
@@ -124,7 +131,18 @@ function PropertyDetail({ profile, propertyId }: { profile: Profile; propertyId:
             actions={[
               { label: "Edit details", onSelect: () => setDialog("edit") },
               { label: "Change the address", onSelect: () => setDialog("address") },
-              ...(detail.canManage && p.status === "active" ? [{ label: "Archive the property", danger: true, onSelect: () => window.confirm(`Archive ${p.name}? Its history is kept.`) && void run(async () => (await archive({ companyId, propertyId: p.id, expectedRevision: p.revision }), router.push(clientPath(profile.id, "properties")))) }] : []),
+              ...(detail.canManage && p.status === "active" ? [{ label: "Archive the property", danger: true, onSelect: () =>
+                      void ask({
+                        title: `Archive ${p.name}?`,
+                        body: "It is no longer offered for new visits. Its history is kept.",
+                        confirmLabel: "Archive the property",
+                        cancelLabel: "Keep it active",
+                        action: async () => {
+                          await archive({ companyId, propertyId: p.id, expectedRevision: p.revision });
+                          router.push(clientPath(profile.id, "properties"));
+                        },
+                      }),
+                  }] : []),
             ]}
           />
         </div>
@@ -339,7 +357,8 @@ function PropertyForm({ profile, property, onDone }: { profile: Profile; propert
     accessInstructions: property?.accessInstructions ?? "",
   });
   const [days, setDays] = useState<number[]>(Array.isArray(d.serviceDays) ? (d.serviceDays as number[]) : []);
-  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm((current) => ({ ...current, [key]: event.target.value }));
+  const setValue = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
+  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setValue(key, event.target.value);
   const str = kind === "short_term_rental";
   const site = kind === "office" || kind === "commercial";
   return (
@@ -372,13 +391,7 @@ function PropertyForm({ profile, property, onDone }: { profile: Profile; propert
       {!property ? <AddressInputs value={address} onChange={setAddress} required /> : null}
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Kind of property">
-          <SelectInput value={kind} onChange={(event) => setKind(event.target.value as typeof kind)}>
-            {["home", "short_term_rental", "office", "commercial", "property_manager"].map((k) => (
-              <option key={k} value={k}>
-                {PROPERTY_KIND_LABELS[k]}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={kind} onValueChange={(next) => setKind((next ?? "") as typeof kind)} options={["home", "short_term_rental", "office", "commercial", "property_manager"].map((k) => ({ value: k, label: PROPERTY_KIND_LABELS[k] }))} />
         </Field>
         <Field label="Nickname (optional)">
           <TextInput value={form.label} onChange={set("label")} maxLength={120} placeholder="Lake house, HQ, Unit 4" />
@@ -388,15 +401,10 @@ function PropertyForm({ profile, property, onDone }: { profile: Profile; propert
         <legend className="px-1 text-sm font-medium text-strong">{str ? "The rental" : site ? "The site" : "The home"}</legend>
         {str ? (
           <>
-            <Field label="Beds to make"><TextInput inputMode="numeric" value={form.beds} onChange={set("beds")} /></Field>
-            <Field label="Guests"><TextInput inputMode="numeric" value={form.maxGuests} onChange={set("maxGuests")} /></Field>
+            <Field label="Beds to make"><NumberField value={form.beds} onChange={(text) => setForm((current) => ({ ...current, beds: text }))} min={0} max={99} stepper /></Field>
+            <Field label="Guests"><NumberField value={form.maxGuests} onChange={(text) => setForm((current) => ({ ...current, maxGuests: text }))} min={0} max={99} stepper /></Field>
             <Field label="Laundry">
-              <SelectInput value={form.laundry} onChange={set("laundry")}>
-                <option value="">Not recorded</option>
-                <option value="on_site">On site</option>
-                <option value="off_site">Off site</option>
-                <option value="none">None</option>
-              </SelectInput>
+              <Select value={form.laundry} onValueChange={(next) => setValue("laundry", next ?? "")} options={[{ value: "on_site", label: "On site" }, { value: "off_site", label: "Off site" }, { value: "none", label: "None" }]} emptyLabel="Not recorded" placeholder="Not recorded" />
             </Field>
             <Field label="Checkout"><TextInput type="time" value={form.checkoutTime} onChange={set("checkoutTime")} /></Field>
             <Field label="Check-in"><TextInput type="time" value={form.checkinTime} onChange={set("checkinTime")} /></Field>
@@ -404,15 +412,15 @@ function PropertyForm({ profile, property, onDone }: { profile: Profile; propert
           </>
         ) : site ? (
           <>
-            <Field label="Size, sq ft"><TextInput inputMode="numeric" value={form.squareFeet} onChange={set("squareFeet")} /></Field>
-            <Field label="Floors"><TextInput inputMode="numeric" value={form.floors} onChange={set("floors")} /></Field>
-            <Field label="People on site"><TextInput inputMode="numeric" value={form.occupants} onChange={set("occupants")} /></Field>
+            <Field label="Size, sq ft"><NumberField value={form.squareFeet} onChange={(text) => setForm((current) => ({ ...current, squareFeet: text }))} suffix="sq ft" min={0} /></Field>
+            <Field label="Floors"><NumberField value={form.floors} onChange={(text) => setForm((current) => ({ ...current, floors: text }))} min={0} max={99} stepper /></Field>
+            <Field label="People on site"><NumberField value={form.occupants} onChange={(text) => setForm((current) => ({ ...current, occupants: text }))} min={0} max={99} stepper /></Field>
             <div className="grid gap-1.5 text-sm sm:col-span-3">
               <span className="font-medium text-strong">Service days</span>
               <div className="flex flex-wrap gap-1.5">
                 {DAYS.map((label, i) => (
                   <label key={label} className="cursor-pointer rounded-lg border border-border px-2.5 py-1 text-sm has-[:checked]:border-brand-500 has-[:checked]:bg-brand-500/[0.08]">
-                    <input type="checkbox" className="sr-only" checked={days.includes(i)} onChange={(event) => setDays((current) => (event.target.checked ? [...current, i] : current.filter((x) => x !== i)))} />
+                    <Checkbox className="sr-only" checked={days.includes(i)} onCheckedChange={(checked) => setDays((current) => (checked ? [...current, i] : current.filter((x) => x !== i)))} />
                     {label}
                   </label>
                 ))}
@@ -426,18 +434,18 @@ function PropertyForm({ profile, property, onDone }: { profile: Profile; propert
           </>
         ) : (
           <>
-            <Field label="Bedrooms"><TextInput inputMode="numeric" value={form.bedrooms} onChange={set("bedrooms")} /></Field>
-            <Field label="Bathrooms"><TextInput inputMode="numeric" value={form.bathrooms} onChange={set("bathrooms")} /></Field>
-            <Field label="Half baths"><TextInput inputMode="numeric" value={form.halfBaths} onChange={set("halfBaths")} /></Field>
-            <Field label="Size, sq ft"><TextInput inputMode="numeric" value={form.squareFeet} onChange={set("squareFeet")} /></Field>
-            <Field label="Floors"><TextInput inputMode="numeric" value={form.floors} onChange={set("floors")} /></Field>
+            <Field label="Bedrooms"><NumberField value={form.bedrooms} onChange={(text) => setForm((current) => ({ ...current, bedrooms: text }))} min={0} max={99} stepper /></Field>
+            <Field label="Bathrooms"><NumberField value={form.bathrooms} onChange={(text) => setForm((current) => ({ ...current, bathrooms: text }))} min={0} max={99} stepper /></Field>
+            <Field label="Half baths"><NumberField value={form.halfBaths} onChange={(text) => setForm((current) => ({ ...current, halfBaths: text }))} min={0} max={99} stepper /></Field>
+            <Field label="Size, sq ft"><NumberField value={form.squareFeet} onChange={(text) => setForm((current) => ({ ...current, squareFeet: text }))} suffix="sq ft" min={0} /></Field>
+            <Field label="Floors"><NumberField value={form.floors} onChange={(text) => setForm((current) => ({ ...current, floors: text }))} min={0} max={99} stepper /></Field>
             <Field label="Pets"><TextInput value={form.pets} onChange={set("pets")} maxLength={200} /></Field>
           </>
         )}
       </fieldset>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Parking and where to go" hint="The crew sees this."><TextArea rows={2} value={form.parking} onChange={set("parking")} maxLength={500} /></Field>
-        <Field label="Notes for the crew" hint="How this property is cleaned."><TextArea rows={2} value={form.crewNotes} onChange={set("crewNotes")} maxLength={2000} /></Field>
+        <Field label="Notes for the crew" hint="How this property is cleaned."><AssistedTextArea rows={3} value={form.crewNotes} onChange={(text) => setForm((current) => ({ ...current, crewNotes: text }))} maxLength={2000} actions={STEPS} /></Field>
         <Field label="What the client asked for" hint="In their words; shared with the client."><TextArea rows={2} value={form.clientNotes} onChange={set("clientNotes")} maxLength={2000} /></Field>
         {profile.canManage ? (
           <Field label="Office notes" hint="Owners and Managers only."><TextArea rows={2} value={form.officeNotes} onChange={set("officeNotes")} maxLength={2000} /></Field>
@@ -505,7 +513,7 @@ function AddressChange({ detail, onDone }: { detail: Detail; onDone: () => void 
           ) : null}
           {!impact.inArea && impact.canOverride ? (
             <label className="flex items-start gap-2 text-strong">
-              <input type="checkbox" checked={confirmOutside} onChange={(event) => setConfirmOutside(event.target.checked)} className="mt-0.5 size-4 accent-brand-500" />
+              <Checkbox checked={confirmOutside} onCheckedChange={(checked) => setConfirmOutside(checked)} className="mt-0.5" />
               Move it anyway: we will serve this address outside our area.
             </label>
           ) : null}

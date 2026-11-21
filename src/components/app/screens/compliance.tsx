@@ -6,7 +6,7 @@ import { useState } from "react";
 
 import { AddressField } from "@/components/app/address-field";
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { TextingEntry } from "@/components/app/texting/entry";
 import { Panel } from "@/components/app/shell";
 import { AlertTriangle, ArrowRight, CircleCheckIcon, Download, ShieldCheck } from "@/components/icons";
@@ -16,6 +16,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
+import { Checkbox, Select } from "@/components/ui/selection";
+import { EmailInput, PhoneInput } from "@/components/ui/fields";
 
 /**
  * Settings → Trust & Compliance. What the company is ready to do, and for each thing it is not, the
@@ -129,10 +131,11 @@ function IdentityForm({ profile }: { profile: Profile }) {
     supportEmail: identity.supportEmail ?? "",
     supportPhone: identity.supportPhone ?? "",
   });
-  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const setValue = (key: keyof typeof form, value: string) => {
     setSaved(false);
-    setForm((current) => ({ ...current, [key]: event.target.value }));
+    setForm((current) => ({ ...current, [key]: value }));
   };
+  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setValue(key, event.target.value);
   const hasAddress = form.line1.trim() || form.city.trim() || form.region.trim() || form.postalCode.trim();
   const hasRep = form.repName.trim() || form.repTitle.trim() || form.repEmail.trim();
   return (
@@ -188,10 +191,7 @@ function IdentityForm({ profile }: { profile: Profile }) {
         <TextInput value={form.postalCode} onChange={set("postalCode")} disabled={!owner} autoComplete="postal-code" />
       </Field>
       <Field label="Country">
-        <SelectInput value={form.country} onChange={set("country")} disabled={!owner}>
-          <option value="US">United States</option>
-          <option value="CA">Canada</option>
-        </SelectInput>
+        <Select value={form.country} onValueChange={(next) => setValue("country", next ?? "")} options={[{ value: "US", label: "United States" }, { value: "CA", label: "Canada" }]} disabled={!owner} />
       </Field>
       <span className="hidden sm:block" />
       <Field label="Authorised representative">
@@ -201,14 +201,14 @@ function IdentityForm({ profile }: { profile: Profile }) {
         <TextInput value={form.repTitle} onChange={set("repTitle")} disabled={!owner} placeholder="Owner, Operations Manager…" />
       </Field>
       <Field label="Their email">
-        <TextInput type="email" value={form.repEmail} onChange={set("repEmail")} disabled={!owner} />
+        <EmailInput value={form.repEmail} onChange={(text) => set("repEmail")({ target: { type: "text", value: text } } as unknown as React.ChangeEvent<HTMLInputElement>)} disabled={!owner} />
       </Field>
       <span className="hidden sm:block" />
       <Field label="Support email" hint="Where people can ask for help. Texts that answer HELP name this or the phone.">
-        <TextInput type="email" value={form.supportEmail} onChange={set("supportEmail")} disabled={!owner} />
+        <EmailInput value={form.supportEmail} onChange={(text) => set("supportEmail")({ target: { type: "text", value: text } } as unknown as React.ChangeEvent<HTMLInputElement>)} disabled={!owner} />
       </Field>
       <Field label="Support phone" hint="International form, for example +15125550100.">
-        <TextInput type="tel" value={form.supportPhone} onChange={set("supportPhone")} disabled={!owner} />
+        <PhoneInput value={form.supportPhone} onChange={(text) => set("supportPhone")({ target: { type: "text", value: text } } as unknown as React.ChangeEvent<HTMLInputElement>)} disabled={!owner} />
       </Field>
       <div className="grid gap-2 sm:col-span-2">
         <FormError message={error} />
@@ -308,12 +308,12 @@ function MessagingForm({ profile }: { profile: Profile }) {
         <TextInput type="tel" value={form.smsNumber} onChange={set("smsNumber")} disabled={!owner} placeholder="+15125550100" />
       </Field>
       <Field label="Emails are sent from" className="sm:col-span-2">
-        <TextInput type="email" value={form.emailFromAddress} onChange={set("emailFromAddress")} disabled={!owner} />
+        <EmailInput value={form.emailFromAddress} onChange={(text) => set("emailFromAddress")({ target: { type: "text", value: text } } as unknown as React.ChangeEvent<HTMLInputElement>)} disabled={!owner} />
       </Field>
       <fieldset className="grid gap-3 rounded-xl border border-border p-3.5 sm:col-span-2 sm:grid-cols-2">
         <legend className="px-1 text-sm font-medium text-strong">Quiet hours</legend>
         <label className="flex items-center gap-2 text-sm sm:col-span-2">
-          <input type="checkbox" checked={form.quiet} onChange={set("quiet")} disabled={!owner} className="size-4 accent-[#6838ef]" />
+          <Checkbox checked={form.quiet} onCheckedChange={(checked) => set("quiet")({ target: { type: "checkbox", checked } } as unknown as React.ChangeEvent<HTMLInputElement>)} disabled={!owner} />
           Hold marketing and recruiting texts during quiet hours
         </label>
         {form.quiet ? (
@@ -325,7 +325,7 @@ function MessagingForm({ profile }: { profile: Profile }) {
               <TextInput type="time" value={form.end} onChange={set("end")} disabled={!owner} />
             </Field>
             <label className="flex items-start gap-2 text-sm sm:col-span-2">
-              <input type="checkbox" checked={form.operational} onChange={set("operational")} disabled={!owner} className="mt-0.5 size-4 accent-[#6838ef]" />
+              <Checkbox checked={form.operational} onCheckedChange={(checked) => set("operational")({ target: { type: "checkbox", checked } } as unknown as React.ChangeEvent<HTMLInputElement>)} disabled={!owner} className="mt-0.5" />
               <span>
                 Hold work texts too
                 <span className="block text-xs text-muted-foreground">Visit changes and offers to cleaners would wait until the morning.</span>
@@ -447,17 +447,10 @@ function Disclosures() {
             }}
           >
             <Field label="Channel">
-              <SelectInput value={channel} onChange={(event) => setChannel(event.target.value as "sms" | "email")}>
-                <option value="sms">Texts</option>
-                <option value="email">Email</option>
-              </SelectInput>
+              <Select value={channel} onValueChange={(next) => setChannel((next ?? "") as "sms" | "email")} options={[{ value: "sms", label: "Texts" }, { value: "email", label: "Email" }]} />
             </Field>
             <Field label="Kind of message">
-              <SelectInput value={category} onChange={(event) => setCategory(event.target.value as typeof category)}>
-                <option value="operational">Work messages</option>
-                <option value="marketing">Marketing</option>
-                <option value="recruiting">Recruiting</option>
-              </SelectInput>
+              <Select value={category} onValueChange={(next) => setCategory((next ?? "") as typeof category)} options={[{ value: "operational", label: "Work messages" }, { value: "marketing", label: "Marketing" }, { value: "recruiting", label: "Recruiting" }]} />
             </Field>
             <Field label="Wording" className="sm:col-span-2" hint="Name your business, what you will send, that rates may apply, and that replying STOP ends it and HELP gets help.">
               <TextArea value={words} onChange={(event) => setWords(event.target.value)} required maxLength={2000} />
@@ -585,26 +578,13 @@ function Erase() {
         }}
       >
         <Field label="Who">
-          <SelectInput
-            value={kind}
-            onChange={(event) => {
-              setKind(event.target.value as "customer" | "cleaner");
+          <Select value={kind} onValueChange={(next) => {
+              setKind((next ?? "") as "customer" | "cleaner");
               setTarget("");
-            }}
-          >
-            <option value="customer">A customer</option>
-            <option value="cleaner">A cleaner</option>
-          </SelectInput>
+            }} options={[{ value: "customer", label: "A customer" }, { value: "cleaner", label: "A cleaner" }]} />
         </Field>
         <Field label="Person">
-          <SelectInput value={target} onChange={(event) => setTarget(event.target.value)} required>
-            <option value="">Choose</option>
-            {people.map((person) => (
-              <option key={person._id} value={person._id}>
-                {person.name}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={target} onValueChange={(next) => setTarget(next ?? "")} options={people.map((person) => ({ value: person._id, label: person.name }))} emptyLabel="Choose" placeholder="Choose" required searchable="auto" />
         </Field>
         <Field label='Type "ERASE" to confirm'>
           <TextInput value={confirm} onChange={(event) => setConfirm(event.target.value)} autoComplete="off" />
@@ -712,7 +692,7 @@ export function AgreementsPanel() {
                 }}
               >
                 <label className="flex items-start gap-2">
-                  <input type="checkbox" checked={read} onChange={(event) => setRead(event.target.checked)} className="mt-0.5 size-4 accent-[#6838ef]" />
+                  <Checkbox checked={read} onCheckedChange={(checked) => setRead(checked)} className="mt-0.5" />
                   <span className="text-strong">I have read the {status.terms.title} and accept them for {company.name}.</span>
                 </label>
                 <FormError message={error} />

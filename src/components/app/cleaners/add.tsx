@@ -8,7 +8,7 @@ import { useMutation, useQuery } from "convex/react";
 import { useDeferredValue, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { Modal } from "@/components/app/modal";
 import { TriangleAlert } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,8 @@ import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import type { Engagement } from "./bits";
 import { profilePath } from "./state";
+import { ChoiceChips, Select, SelectionCards } from "@/components/ui/selection";
+import { EmailInput, PhoneInput } from "@/components/ui/fields";
 
 const TYPES: { value: Engagement; label: string; help: string }[] = [
   { value: "employee", label: "Employee", help: "On your payroll." },
@@ -51,7 +53,8 @@ export function AddCleanerDialog({ onClose, onAdded }: { onClose: () => void; on
   const [different, setDifferent] = useState("");
   const deferred = useDeferredValue({ name: form.name, phone: form.phone, email: form.email });
   const matches = useQuery(api.workforce.possibleDuplicates, deferred.name.trim().length >= 2 || deferred.phone.trim().length >= 7 || deferred.email.includes("@") ? { companyId, name: deferred.name, phone: deferred.phone || undefined, email: deferred.email || undefined } : "skip");
-  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm({ ...form, [key]: event.target.value });
+  const setValue = (key: keyof typeof form, value: string) => setForm({ ...form, [key]: value });
+  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setValue(key, event.target.value);
   const strong = matches?.some((match) => match.strong) ?? false;
   const needsReason = (matches?.length ?? 0) > 0;
   const hoursValid = days.length === 0 || minutes(hours.from) < minutes(hours.to);
@@ -89,33 +92,15 @@ export function AddCleanerDialog({ onClose, onAdded }: { onClose: () => void; on
           <TextInput value={form.name} onChange={set("name")} required autoComplete="off" autoFocus />
         </Field>
 
-        <fieldset className="grid gap-2">
-          <legend className="mb-1.5 text-sm font-medium text-strong">How they work with you</legend>
-          <div className="grid gap-2 sm:grid-cols-3">
-            {TYPES.map((type) => (
-              <label key={type.value} className={cn("flex cursor-pointer flex-col rounded-xl border px-3 py-2.5 transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-brand-500", form.engagement === type.value ? "border-brand-500 bg-brand-500/8" : "border-border hover:border-brand-500/40")}>
-                <input type="radio" name="engagement" value={type.value} checked={form.engagement === type.value} onChange={() => setForm({ ...form, engagement: type.value })} className="sr-only" />
-                <span className="text-sm font-medium text-strong">{type.label}</span>
-                <span className="text-xs text-muted-foreground">{type.help}</span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
+        <Field label="How they work with you">
+          <SelectionCards type="single" columns={3} name="engagement" value={form.engagement} onValueChange={(engagement) => setForm({ ...form, engagement })} options={TYPES.map((type) => ({ value: type.value, label: type.label, description: type.help }))} />
+        </Field>
 
         {form.engagement === "subcontractor" ? (
           <div className="grid gap-3 rounded-xl border border-border bg-muted/30 p-3">
             <Field label="Subcontractor company" hint="Jobs still go to this person by name; the company is who they work through.">
-              <SelectInput value={form.subcontractorId} onChange={set("subcontractorId")} required>
-                <option value="">Choose…</option>
-                {subs
-                  ?.filter((sub) => sub.status !== "ended")
-                  .map((sub) => (
-                    <option key={sub.subcontractorId} value={sub.subcontractorId}>
-                      {sub.name}
-                    </option>
-                  ))}
-                <option value="new">Add a new subcontractor company…</option>
-              </SelectInput>
+              <Select value={form.subcontractorId} onValueChange={(next) => setValue("subcontractorId", next ?? "")} options={[...(subs
+                  ?.filter((sub) => sub.status !== "ended")?.map((sub) => ({ value: sub.subcontractorId, label: sub.name })) ?? []), { value: "new", label: "Add a new subcontractor company…" }]} emptyLabel="Choose…" placeholder="Choose…" required searchable="auto" />
             </Field>
             {form.subcontractorId === "new" ? (
               <div className="grid gap-3 sm:grid-cols-2">
@@ -132,10 +117,10 @@ export function AddCleanerDialog({ onClose, onAdded }: { onClose: () => void; on
 
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Mobile phone" hint="Used for offers and reminders once they agree to texts.">
-            <TextInput value={form.phone} onChange={set("phone")} inputMode="tel" autoComplete="off" />
+            <PhoneInput value={form.phone} onChange={(text) => set("phone")({ target: { type: "text", value: text } } as unknown as React.ChangeEvent<HTMLInputElement>)} autoComplete="off" />
           </Field>
           <Field label="Email">
-            <TextInput type="email" value={form.email} onChange={set("email")} autoComplete="off" />
+            <EmailInput value={form.email} onChange={(text) => set("email")({ target: { type: "text", value: text } } as unknown as React.ChangeEvent<HTMLInputElement>)} autoComplete="off" />
           </Field>
         </div>
 
@@ -175,16 +160,7 @@ export function AddCleanerDialog({ onClose, onAdded }: { onClose: () => void; on
         <fieldset className="grid gap-2">
           <legend className="mb-1 text-sm font-medium text-strong">Weekly hours they said they can work</legend>
           <p className="-mt-1 text-xs text-muted-foreground">Optional now. They can give or confirm these from their portal later.</p>
-          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Days">
-            {DAYS.map((day) => {
-              const on = days.includes(day.value);
-              return (
-                <button key={day.value} type="button" aria-pressed={on} onClick={() => setDays(on ? days.filter((value) => value !== day.value) : [...days, day.value])} className={cn("h-9 min-w-12 rounded-lg border px-2.5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-brand-500", on ? "border-brand-500 bg-brand-500 text-white" : "border-border bg-card text-strong hover:border-brand-500/40")}>
-                  {day.label}
-                </button>
-              );
-            })}
-          </div>
+          <ChoiceChips aria-label="Days" density="compact" options={DAYS.map((day) => ({ value: String(day.value), label: day.label }))} value={days.map(String)} onValueChange={(next) => setDays(DAYS.filter((day) => next.includes(String(day.value))).map((day) => day.value))} />
           {days.length > 0 ? (
             <div className="grid max-w-xs grid-cols-2 gap-2">
               <Field label="From">

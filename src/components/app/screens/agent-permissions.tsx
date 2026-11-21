@@ -6,7 +6,8 @@ import { useId, useState } from "react";
 
 import { AgentAvatar, STATE } from "@/components/app/agent";
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextInput, useRun } from "@/components/app/form";
+import { Select } from "@/components/ui/selection";
 import { ChevronDown, Info, PauseCircleIcon, Play } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ import { centsFrom, money } from "@/lib/app/format";
 import { cn } from "@/lib/utils";
 
 import { api } from "../../../../convex/_generated/api";
+import { MoneyField } from "@/components/ui/fields";
 
 /** The four permission levels, in the owner's words. The ids are the permission engine's and do not change. */
 export const LEVELS = [
@@ -54,7 +56,7 @@ export function PermissionRow({ action, canEdit }: { action: Action; canEdit: bo
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5">
         <span className="min-w-0 flex-1 basis-full text-sm text-strong sm:basis-auto">
           <span id={`${id}-label`}>{action.label}</span>
-          {action.ceiling === "propose" ? <span className="block text-xs text-muted-foreground">Always needs your approval.</span> : null}
+          {action.ceiling === "propose" ? <span className="block text-xs text-muted-foreground">Always needs your approval.</span> : <span className="block text-xs text-muted-foreground">{LEVELS[rank(action.level)]?.meaning}</span>}
           {spends ? (
             <span className="block text-xs text-muted-foreground">
               Spends up to {money(action.perActionCents!)} each time and {money(action.perDayCents!)} a day without asking. Anything more needs your approval.
@@ -68,26 +70,26 @@ export function PermissionRow({ action, canEdit }: { action: Action; canEdit: bo
                 Saved
               </span>
             ) : null}
-            <SelectInput
+            <Select
               aria-labelledby={`${id}-label`}
-              className="w-full py-1.5 sm:w-auto sm:min-w-48"
+              aria-describedby={`${id}-effect`}
+              className="w-full sm:w-auto sm:min-w-52"
               disabled={busy}
               value={pending ?? action.level}
-              onChange={(event) => {
+              // Levels past the ceiling stay in the list, disabled with the reason, so the owner sees why they can't be chosen.
+              options={LEVELS.map((level) => ({ value: level.id, label: level.label, description: level.meaning, ...(rank(level.id) > rank(action.ceiling) ? { disabled: true, disabledReason: `Not allowed for this action. The most it can do is “${levelLabel(action.ceiling)}”.` } : {}) }))}
+              onValueChange={(level) => {
+                if (!level) return;
                 setSaved(false);
-                const level = event.target.value as Level;
                 // Money never moves without review until the Owner has said how much.
                 if (action.money && rank(level) > rank("propose")) return setPending(level);
                 setPending(null);
                 void save(level);
               }}
-            >
-              {LEVELS.filter((level) => rank(level.id) <= rank(action.ceiling)).map((level) => (
-                <option key={level.id} value={level.id}>
-                  {level.label}
-                </option>
-              ))}
-            </SelectInput>
+            />
+            <span id={`${id}-effect`} className="sr-only">
+              {LEVELS[rank(pending ?? action.level)]?.meaning} Changes apply as soon as you choose{action.money ? ", except letting it spend without approval, which asks for limits first" : ""}.
+            </span>
           </span>
         ) : (
           <span className="rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium text-strong">{levelLabel(action.level)}</span>
@@ -109,10 +111,10 @@ export function PermissionRow({ action, canEdit }: { action: Action; canEdit: bo
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Most it can spend at once ($)">
-              <TextInput inputMode="decimal" value={perAction} onChange={(event) => setPerAction(event.target.value)} placeholder="50.00" required />
+              <MoneyField value={perAction} onChange={(text) => setPerAction(text)} placeholder="50.00" required />
             </Field>
             <Field label="Most it can spend in a day ($)">
-              <TextInput inputMode="decimal" value={perDay} onChange={(event) => setPerDay(event.target.value)} placeholder="200.00" required />
+              <MoneyField value={perDay} onChange={(text) => setPerDay(text)} placeholder="200.00" required />
             </Field>
           </div>
           <div className="flex gap-2">
@@ -229,6 +231,7 @@ function AgentCard({ agent, actions, paused, owner, credits, live, texting, onTo
         </button>
         {open ? (
           <div id={panel} className="px-4 pb-2 sm:px-5">
+            {owner ? <p className="pb-1 text-xs text-muted-foreground">A change here applies as soon as you choose it. An action that spends money asks for its limits first.</p> : null}
             <ul className="divide-y divide-border">
               {actions.map((action) => (
                 <PermissionRow key={`${action.key}:${action.level}:${action.perActionCents}:${action.perDayCents}`} action={action} canEdit={owner} />
@@ -276,6 +279,16 @@ export function AgentPermissions() {
           </Button>
         ) : null}
       </div>
+      <details className="rounded-xl border border-border bg-card px-4 py-2.5 text-sm">
+        <summary className="cursor-pointer font-medium text-strong">What pausing does</summary>
+        <ul className="mt-2 grid list-disc gap-1 pl-5 text-muted-foreground">
+          <li>A paused agent starts nothing new and sends nothing. A message it had planned is stopped at the moment it would have gone.</li>
+          <li>Incoming texts and emails are still received, opt-outs (STOP) are still honored, delivery reports still arrive, and billing still settles.</li>
+          <li>You and your team can still send messages and work every record yourselves.</li>
+          <li>A message the provider already accepted before you paused can&rsquo;t be recalled.</li>
+          <li>Resuming doesn&rsquo;t send a pile of old messages: what was stopped stays stopped, and the agent looks again at what is still worth doing.</li>
+        </ul>
+      </details>
       <FormError message={error} />
       <ul className="grid gap-3">
         {built.map((agent) => {

@@ -65,11 +65,6 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   { table: "billingIntents", index: "by_company_created", omit: ["url"], why: "A short-lived payment or portal address." },
   { table: "agentAccessRequests", index: "by_company_last" },
   { table: "messagingAttention", index: "by_company_at", omit: ["resolvedBy"], why: "Which Selestial staff member resolved it." },
-  // Operations (convex/lib/operations/schema.ts): what Selestial tracked for this company, without staff-only fields.
-  { table: "incidents", index: "by_company_open", omit: ["diagnostics", "next", "assignedTo", "resolution", "related", "groupKey", "parentId", "key"], why: "Staff diagnostics, internal references and which Selestial staff member worked it." },
-  // Admin support sessions (convex/lib/support/schema.ts): when Selestial Support entered the workspace and what it changed.
-  { table: "supportSessions", index: "by_company_started", omit: ["staffId", "memberId"], why: "Which Selestial staff member it was." },
-  { table: "supportActions", index: "by_company_at", omit: ["staffId"], why: "Which Selestial staff member it was." },
   { table: "messagingTopUps", index: "by_company_created", omit: ["intentId", "applied"], why: "Internal references to a purchase request and to payment events already applied." },
   { table: "sourceMessages", index: "by_company_received" },
   { table: "formSessions", index: "by_company_application" },
@@ -87,11 +82,20 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   { table: "websiteReads", index: "by_company_started" },
   { table: "clientImportRuns", index: "by_company_key" },
   { table: "importedRecords", index: "by_company_source_external" },
+  // Migration: records brought from another system, and the tutorials used to bring them (convex/lib/migration, lib/tutorials).
+  { table: "migrationImportRuns", index: "by_company_key" },
+  { table: "migrationRecords", index: "by_company_key" },
+  { table: "tutorialReports", index: "by_company" },
+  { table: "tutorialEvents", index: "by_company_tutorial" },
   // Activation: the first agent work an Owner started, and the in-app notices (convex/lib/activation/schema.ts).
   { table: "activations", index: "by_company_started" },
   { table: "activationTasks", index: "by_company_state" },
   { table: "memberNotices", index: "by_company_dedupe" },
   // Company Chat (convex/lib/chat/schema.ts). The conversations themselves are not here: see NOT_EXPORTED.
+  // Admin Support Sessions: when Selestial was in the workspace, why, and what it changed.
+  { table: "supportSessions", index: "by_company_started" },
+  { table: "supportGrants", index: "by_company_granted" },
+  { table: "supportEvents", index: "by_company_at" },
   { table: "chatRuns", index: "by_company_started", omit: ["error"], why: "Run errors are words for the person who was chatting." },
   { table: "chatActionSteps", index: "by_company_key" },
   { table: "chatArtifacts", index: "by_company_creator_updated" },
@@ -216,8 +220,6 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
 
 /** Company tables kept out of the export, and why. */
 export const NOT_EXPORTED: Readonly<Record<string, string>> = {
-  opsLog: "Selestial's own operations log, including staff notes; what it means for the company is in incidents, which are exported.",
-  opsSignals: "Masked, short-lived facts for Selestial's monitor (an inbound text to an unknown number); nothing the company entered.",
   clientViews: "The client directory's search rows, rebuilt from clients, contacts and properties, which are exported.",
   numberSearches: "Lists of numbers that were for sale at the moment of a search; the number the company asked for is in its texting request.",
   actionLinks: "Each row is half of a cleaner's link; a copy of it must never leave the record.",
@@ -242,6 +244,8 @@ export const NOT_EXPORTED: Readonly<Record<string, string>> = {
   googleTravel: "Cached drive times between rounded map points, recomputed as needed.",
   portalCodes: "Hashes of one-time codes that unlock a portal for ten minutes; nothing in them is about the business.",
   capacityHolds: "Short-lived reservations of a day's minutes while a booking waits; the booking keeps what matters.",
+  lockdownCompanies: "A restore's record of each company's sending and agent settings before Selestial paused them; the settings themselves are on the company, which is exported.",
+  incidents: "Selestial's own operational records about the service (what broke, what recovery ran). What happened to the company's records is exported in those records and the event log.",
   trustRequests: "Requests to Selestial are Selestial's records about a person, answered through the privacy request process.",
 };
 

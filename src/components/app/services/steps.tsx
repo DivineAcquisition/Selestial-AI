@@ -3,7 +3,7 @@
 import { useId, useMemo, useState } from "react";
 
 import { Field, TextArea, TextInput } from "@/components/app/form";
-import { Calculator, Check, ChevronDown, Footprints, Gauge, HandCoinsIcon, HouseIcon, LayoutGrid, ListChecks, type LucideIcon, MapPin, MoonIcon, Plus, PriceTagIcon, RefreshCw, ScaleIcon, Sparkles, Square, Trash2, TrendingUp, User, Users, Zap } from "@/components/icons";
+import { Calculator, ChevronDown, Footprints, Gauge, HandCoinsIcon, HouseIcon, LayoutGrid, ListChecks, type LucideIcon, MapPin, MoonIcon, Plus, PriceTagIcon, RefreshCw, ScaleIcon, Sparkles, Square, Trash2, TrendingUp, User, Users, Zap } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { millicentsFrom, newId, rateText } from "@/lib/app/services";
 import { cn } from "@/lib/utils";
@@ -13,6 +13,10 @@ import { CATEGORIES, CATEGORY_LABELS, defaultPricing, defaultStr, METHOD_LABELS,
 import { areaWord, minutesWords, scheduleLabel } from "../../../../convex/lib/services/words";
 import { defaultInput, ScheduleCalendar } from "./preview";
 import { AudienceTag, FieldLabel, formatCents, InfoTip, LabeledField, MoneyInput, NumberInput, SectionTitle, Segmented, Stepper, SwitchButton, Toggle } from "./shared";
+import { Checkbox, ChoiceChips, Select, SelectionCards } from "@/components/ui/selection";
+import { AssistedTextArea, ListInput, NumberField, organizeIntoSteps, type WritingAction, zipProblem } from "@/components/ui/fields";
+
+const STEPS: WritingAction[] = [{ id: "steps", label: "Organize into steps", kind: "template", run: organizeIntoSteps }];
 
 export type StepProps = { spec: Spec; edit: (change: (spec: Spec) => Spec) => void; disabled: boolean };
 
@@ -44,17 +48,11 @@ export function BasicsStep({ spec, edit, disabled }: StepProps) {
         <TextInput value={spec.name} disabled={disabled} maxLength={80} onChange={(event) => edit((s) => ({ ...s, name: event.target.value }))} placeholder="Standard clean" />
       </Field>
       <Field label="Description for customers">
-        <TextArea value={spec.summary} disabled={disabled} maxLength={1000} onChange={(event) => edit((s) => ({ ...s, summary: event.target.value }))} placeholder="A thorough clean of the kitchen, bathrooms and living areas." />
+        <AssistedTextArea value={spec.summary} disabled={disabled} maxLength={1000} audience={{ label: "Customers see this." }} actions={STEPS} onChange={(text) => edit((s) => ({ ...s, summary: text }))} placeholder="A thorough clean of the kitchen, bathrooms and living areas." />
       </Field>
       <label className="grid grid-cols-1 gap-1.5 text-sm">
         <span className="font-medium text-strong">Kind of cleaning</span>
-        <select disabled={disabled} className="min-h-10 rounded-lg border border-border bg-card px-3 text-sm text-strong" value={spec.category} onChange={(event) => edit((s) => ({ ...s, category: event.target.value as Spec["category"] }))}>
-          {CATEGORIES.map((c) => (
-            <option key={c} value={c}>
-              {CATEGORY_LABELS[c]}
-            </option>
-          ))}
-        </select>
+        <Select value={spec.category} onValueChange={(next) => edit((s) => ({ ...s, category: (next ?? "") as Spec["category"] }))} options={CATEGORIES.map((c) => ({ value: c, label: CATEGORY_LABELS[c] }))} disabled={disabled} />
       </label>
       <Segmented
         label="One price buys one…"
@@ -98,7 +96,7 @@ export function ScopeStep({ spec, edit, disabled }: StepProps) {
                 <li key={item.id} className="flex items-center gap-2 rounded-lg border border-border bg-card px-2 py-1">
                   <input aria-label="Task" disabled={disabled} className="min-w-0 flex-1 bg-transparent px-1 py-1 text-sm text-strong outline-none" value={item.label} onChange={(event) => edit((s) => ({ ...s, included: s.included.map((i) => (i.id === item.id ? { ...i, label: event.target.value } : i)) }))} />
                   <label className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-                    <input type="checkbox" disabled={disabled} checked={item.requiresPhoto} onChange={(event) => edit((s) => ({ ...s, included: s.included.map((i) => (i.id === item.id ? { ...i, requiresPhoto: event.target.checked } : i)) }))} /> Photo
+                    <Checkbox disabled={disabled} checked={item.requiresPhoto} onCheckedChange={(checked) => edit((s) => ({ ...s, included: s.included.map((i) => (i.id === item.id ? { ...i, requiresPhoto: checked } : i)) }))} /> Photo
                   </label>
                   <Button size="icon-xs" variant="ghost" disabled={disabled} aria-label={`Remove ${item.label}`} onClick={() => edit((s) => ({ ...s, included: s.included.filter((i) => i.id !== item.id), addOns: s.addOns.map((a) => (a.coversItemId === item.id ? { ...a, coversItemId: undefined } : a)) }))}>
                     <Trash2 aria-hidden />
@@ -204,28 +202,17 @@ function MethodPicker({ value, onPick, disabled }: { value: PricingMethod; onPic
   const shown = [...COMMON_METHODS, ...others.filter((m) => more || m === value)];
   return (
     <div className="grid grid-cols-1 gap-2">
-      <fieldset disabled={disabled}>
-        <legend className="sr-only">Pricing method</legend>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {shown.map((m) => {
-            const { Icon, example } = METHOD_LOOK[m];
-            const selected = value === m;
-            return (
-              <label key={m} className={cn("flex cursor-pointer items-center gap-3 rounded-xl border p-3 text-sm transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-brand-500/40", selected ? "border-brand-500 bg-brand-500/[0.06]" : "border-border bg-card hover:border-brand-500/40")}>
-                <input type="radio" className="sr-only" name="method" checked={selected} onChange={() => onPick(m)} />
-                <span aria-hidden className={cn("grid size-9 shrink-0 place-items-center rounded-lg transition-colors", selected ? "bg-brand-500 text-white" : "bg-brand-500/10 text-brand-300")}>
-                  <Icon className="size-5" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block font-medium text-strong">{METHOD_LABELS[m].label}</span>
-                  <span className="mt-0.5 line-clamp-2 block text-xs text-muted-foreground">e.g. {example}</span>
-                </span>
-                {selected ? <Check aria-hidden className="size-4 shrink-0 text-brand-300" /> : null}
-              </label>
-            );
-          })}
-        </div>
-      </fieldset>
+      <SelectionCards
+        type="single"
+        aria-label="Pricing method"
+        value={value}
+        onValueChange={onPick}
+        disabled={disabled}
+        options={shown.map((m) => {
+          const { Icon, example } = METHOD_LOOK[m];
+          return { value: m, label: METHOD_LABELS[m].label, description: `e.g. ${example}`, icon: <Icon className="size-5" aria-hidden /> };
+        })}
+      />
       <button type="button" aria-expanded={more} onClick={() => setMore((v) => !v)} className="inline-flex w-fit items-center gap-1 rounded-md text-sm font-medium text-brand-300 hover:underline focus-visible:outline-2 focus-visible:outline-brand-500/40">
         {more ? "Fewer ways to price" : `More ways to price (${others.length})`}
         <ChevronDown aria-hidden className={cn("size-4 transition-transform motion-reduce:transition-none", more && "rotate-180")} />
@@ -319,13 +306,7 @@ export function PricingStep({ spec, edit, disabled }: StepProps) {
               {p.basis === "schedule" ? (
                 <label className="grid grid-cols-1 gap-1.5 text-sm">
                   <span className="font-medium text-strong">Schedule</span>
-                  <select disabled={disabled} className="min-h-10 rounded-lg border border-border bg-card px-3 text-sm text-strong" value={p.schedule} onChange={(event) => setP({ schedule: event.target.value as Spec["modifiers"]["recurring"]["options"][number]["schedule"] })}>
-                    {SCHEDULES.map((s) => (
-                      <option key={s} value={s}>
-                        {scheduleLabel(s)}
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={p.schedule} onValueChange={(next) => setP({ schedule: (next ?? "") as Spec["modifiers"]["recurring"]["options"][number]["schedule"] })} options={SCHEDULES.map((s) => ({ value: s, label: scheduleLabel(s) }))} disabled={disabled} />
                 </label>
               ) : (
                 <Stepper label="Visits included each month" value={p.includedVisits} min={1} max={31} disabled={disabled} onValue={(includedVisits) => setP({ includedVisits })} />
@@ -441,19 +422,17 @@ function AreaRate({ spec, edit, disabled }: StepProps) {
         <FieldLabel htmlFor={rateId} label="Rate" tip="Fractions of a cent are kept: 0.085 is eight and a half cents." />
         <div className="flex min-h-10 items-center rounded-lg border border-border bg-card focus-within:border-brand-500/60 focus-within:outline-2 focus-within:outline-brand-500/30">
           <span className="pl-3 text-muted-foreground">$</span>
-          <input
+          <NumberField
             id={rateId}
-            inputMode="decimal"
             disabled={disabled}
             className="w-full bg-transparent px-1.5 py-2 tabular-nums outline-none"
             value={text ?? rateText(p.rateMillicents)}
-            onChange={(event) => {
-              setText(event.target.value);
-              const value = millicentsFrom(event.target.value);
+            onChange={(text) => {
+              setText(text);
+              const value = millicentsFrom(text);
               if (value !== null) edit((s) => ({ ...s, pricing: { ...p, rateMillicents: value } }));
             }}
-            onBlur={() => setText(null)}
-          />
+            onBlur={() => setText(null)} precision={2} />
           <span className="pr-3 text-xs text-muted-foreground">per {unit}</span>
         </div>
       </div>
@@ -595,24 +574,19 @@ function QuestionsEditor({ spec, edit, disabled }: StepProps) {
             </Field>
             <label className="grid grid-cols-1 gap-1.5 text-sm">
               <span className="font-medium text-strong">Answer</span>
-              <select disabled={disabled} className="min-h-10 rounded-lg border border-border bg-card px-3 text-sm" value={q.kind} onChange={(e) => set(q.id, { kind: e.target.value as typeof q.kind, walkthroughIf: null })}>
-                <option value="number">A number</option>
-                <option value="yes_no">Yes or no</option>
-                <option value="choice">A choice</option>
-                <option value="text">Words</option>
-              </select>
+              <Select value={q.kind} onValueChange={(next) => set(q.id, { kind: (next ?? "") as typeof q.kind, walkthroughIf: null })} options={[{ value: "number", label: "A number" }, { value: "yes_no", label: "Yes or no" }, { value: "choice", label: "A choice" }, { value: "text", label: "Words" }]} disabled={disabled} />
             </label>
             <Button size="icon-sm" variant="ghost" disabled={disabled} aria-label={`Remove ${q.label}`} onClick={() => edit((s) => ({ ...s, questions: s.questions.filter((x) => x.id !== q.id) }))}>
               <Trash2 aria-hidden />
             </Button>
             {q.kind === "choice" ? (
-              <Field label="Choices" hint="Separate with commas." className="sm:col-span-3">
-                <TextInput disabled={disabled} value={q.options.join(", ")} onChange={(e) => set(q.id, { options: e.target.value.split(",").map((o) => o.trim()).filter(Boolean) })} />
+              <Field label="Choices" hint="Each answer a customer can pick." className="sm:col-span-3">
+                <ListInput disabled={disabled} value={q.options} onChange={(options) => set(q.id, { options })} noun="choice" placeholder="Type a choice and press Enter" />
               </Field>
             ) : null}
             <div className="flex flex-wrap items-center gap-3 text-sm sm:col-span-3">
               <label className="inline-flex items-center gap-1.5">
-                <input type="checkbox" disabled={disabled} checked={q.required} onChange={(e) => set(q.id, { required: e.target.checked })} /> Required for a price
+                <Checkbox disabled={disabled} checked={q.required} onCheckedChange={(checked) => set(q.id, { required: checked })} /> Required for a price
               </label>
               {q.kind === "number" ? (
                 <label className="inline-flex items-center gap-1.5">
@@ -623,14 +597,7 @@ function QuestionsEditor({ spec, edit, disabled }: StepProps) {
               ) : q.kind === "yes_no" || q.kind === "choice" ? (
                 <label className="inline-flex items-center gap-1.5">
                   Walkthrough if the answer is
-                  <select disabled={disabled} className="rounded-md border border-border bg-card px-2 py-1" value={q.walkthroughIf?.equals ?? ""} onChange={(e) => set(q.id, { walkthroughIf: e.target.value ? { equals: e.target.value } : null })}>
-                    <option value="">never</option>
-                    {(q.kind === "yes_no" ? ["yes", "no"] : q.options).map((o) => (
-                      <option key={o} value={o}>
-                        {o}
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={q.walkthroughIf?.equals ?? ""} onValueChange={(next) => set(q.id, { walkthroughIf: (next ?? "") ? { equals: next ?? "" } : null })} options={[...(q.kind === "yes_no" ? ["yes", "no"] : q.options).map((o) => ({ value: o, label: o }))]} emptyLabel="never" placeholder="never" disabled={disabled} searchable="auto" />
                 </label>
               ) : null}
             </div>
@@ -682,12 +649,7 @@ function StrEditor({ spec, edit, disabled }: StepProps) {
                 <li key={item.id} className="grid grid-cols-1 gap-2 rounded-lg border border-border p-2 sm:grid-cols-[minmax(0,1fr)_4.5rem_minmax(0,11rem)_auto] sm:items-center">
                   <input aria-label="Item" disabled={disabled} className="rounded-md border border-border bg-card px-2 py-1.5 text-sm" value={item.label} onChange={(e) => setStr({ restock: str.restock.map((r) => (r.id === item.id ? { ...r, label: e.target.value } : r)) })} />
                   <input aria-label="Per turnover" type="number" min={0} disabled={disabled} className="rounded-md border border-border bg-card px-2 py-1.5 text-sm tabular-nums" value={item.perTurnover} onChange={(e) => setStr({ restock: str.restock.map((r) => (r.id === item.id ? { ...r, perTurnover: Number(e.target.value) } : r)) })} />
-                  <select aria-label="How it's paid for" disabled={disabled} className="rounded-md border border-border bg-card px-2 py-1.5 text-sm" value={item.rule} onChange={(e) => setStr({ restock: str.restock.map((r) => (r.id === item.id ? { ...r, rule: e.target.value as typeof r.rule } : r)) })}>
-                    <option value="included">Included in the price</option>
-                    <option value="at_cost">Billed at cost, after</option>
-                    <option value="cost_plus">Billed at cost plus a markup</option>
-                    <option value="host_supplied">The host supplies it</option>
-                  </select>
+                  <Select value={item.rule} onValueChange={(next) => setStr({ restock: str.restock.map((r) => (r.id === item.id ? { ...r, rule: (next ?? "") as typeof r.rule } : r)) })} options={[{ value: "included", label: "Included in the price" }, { value: "at_cost", label: "Billed at cost, after" }, { value: "cost_plus", label: "Billed at cost plus a markup" }, { value: "host_supplied", label: "The host supplies it" }]} disabled={disabled} aria-label="How it's paid for" />
                   <Button size="icon-xs" variant="ghost" disabled={disabled} aria-label={`Remove ${item.label}`} onClick={() => setStr({ restock: str.restock.filter((r) => r.id !== item.id) })}>
                     <Trash2 aria-hidden />
                   </Button>
@@ -843,11 +805,7 @@ function ExtraRow({ addOn: a, spec, disabled, startOpen, onChange, onRemove }: {
           <div className="grid grid-cols-2 gap-3 @xl:grid-cols-4">
             <label className="grid grid-cols-1 gap-1.5 text-sm">
               <span className="font-medium text-strong">Charged</span>
-              <select disabled={disabled} className="min-h-10 rounded-lg border border-border bg-card px-3 text-sm" value={a.per} onChange={(e) => onChange({ per: e.target.value as AddOn["per"] })}>
-                <option value="visit">Once per visit</option>
-                <option value="item">Per item</option>
-                <option value="hour">Per hour</option>
-              </select>
+              <Select value={a.per} onValueChange={(next) => onChange({ per: (next ?? "") as AddOn["per"] })} options={[{ value: "visit", label: "Once per visit" }, { value: "item", label: "Per item" }, { value: "hour", label: "Per hour" }]} disabled={disabled} />
             </label>
             {a.per === "item" ? (
               <Field label="Item">
@@ -859,15 +817,7 @@ function ExtraRow({ addOn: a, spec, disabled, startOpen, onChange, onRemove }: {
           </div>
           <LabeledField label="Already included as" tip="Link an extra to a task this service already includes and customers see it as included, never charged.">
             {(fieldId) => (
-              <select id={fieldId} disabled={disabled} className="min-h-10 rounded-lg border border-border bg-card px-3 text-sm" value={a.coversItemId ?? ""} onChange={(e) => onChange({ coversItemId: e.target.value || undefined })}>
-                <option value="">Not included: charge it</option>
-                {spec.included.map((i) => (
-                  <option key={i.id} value={i.id}>
-                    {i.section ? `${i.section}: ` : ""}
-                    {i.label}
-                  </option>
-                ))}
-              </select>
+              <Select value={a.coversItemId ?? ""} onValueChange={(next) => onChange({ coversItemId: next || undefined })} options={spec.included.map((i) => ({ value: i.id, label: `${i.section ? `${i.section}: ` : ""}${i.label}` }))} emptyLabel="Not included: charge it" placeholder="Not included: charge it" disabled={disabled} id={fieldId} searchable="auto" />
             )}
           </LabeledField>
         </div>
@@ -922,7 +872,7 @@ export function ExtrasStep({ spec, edit, disabled }: StepProps) {
             return (
               <div key={schedule} className="grid items-end gap-2 sm:grid-cols-[12rem_1fr]">
                 <label className="inline-flex items-center gap-2 text-sm">
-                  <input type="checkbox" disabled={disabled} checked={Boolean(option)} onChange={(e) => setM({ recurring: { ...m.recurring, options: e.target.checked ? [...m.recurring.options, { schedule, discount: { kind: "percent", value: 0 } }] : m.recurring.options.filter((o) => o.schedule !== schedule) } })} />
+                  <Checkbox disabled={disabled} checked={Boolean(option)} onCheckedChange={(checked) => setM({ recurring: { ...m.recurring, options: checked ? [...m.recurring.options, { schedule, discount: { kind: "percent", value: 0 } }] : m.recurring.options.filter((o) => o.schedule !== schedule) } })} />
                   {scheduleLabel(schedule)}
                 </label>
                 {option ? <NumberInput label="Discount" unit="% off each visit's cleaning" step={0.5} disabled={disabled} value={option.discount.value} onValue={(v) => setM({ recurring: { ...m.recurring, options: m.recurring.options.map((o) => (o.schedule === schedule ? { ...o, discount: { kind: "percent", value: v ?? 0 } } : o)) } })} /> : <span />}
@@ -950,7 +900,7 @@ export function ExtrasStep({ spec, edit, disabled }: StepProps) {
                 <NumberInput label="Price" unit="%" min={-100} disabled={disabled || level.requiresWalkthrough} value={level.pricePercent} onValue={(v) => setM({ condition: { ...m.condition, levels: m.condition.levels.map((l) => (l.id === level.id ? { ...l, pricePercent: v ?? 0 } : l)) } })} />
                 <NumberInput label="Time" unit="%" min={-100} disabled={disabled || level.requiresWalkthrough} value={level.timePercent} onValue={(v) => setM({ condition: { ...m.condition, levels: m.condition.levels.map((l) => (l.id === level.id ? { ...l, timePercent: v ?? 0 } : l)) } })} />
                 <label className="inline-flex items-center gap-1.5 pb-2 text-sm">
-                  <input type="checkbox" disabled={disabled} checked={level.requiresWalkthrough} onChange={(e) => setM({ condition: { ...m.condition, levels: m.condition.levels.map((l) => (l.id === level.id ? { ...l, requiresWalkthrough: e.target.checked } : l)) } })} /> Walkthrough
+                  <Checkbox disabled={disabled} checked={level.requiresWalkthrough} onCheckedChange={(checked) => setM({ condition: { ...m.condition, levels: m.condition.levels.map((l) => (l.id === level.id ? { ...l, requiresWalkthrough: checked } : l)) } })} /> Walkthrough
                 </label>
               </li>
             ))}
@@ -991,8 +941,8 @@ export function ExtrasStep({ spec, edit, disabled }: StepProps) {
                   <Trash2 aria-hidden />
                 </Button>
               </div>
-              <Field label="Postal codes" hint="Separate with commas.">
-                <TextInput disabled={disabled} value={zone.postalCodes.join(", ")} onChange={(e) => setM({ area: { ...m.area, zones: m.area.zones.map((z) => (z.id === zone.id ? { ...z, postalCodes: e.target.value.split(/[,\s]+/).filter(Boolean) } : z)) } })} />
+              <Field label="ZIP codes" hint="Paste a list to add several at once.">
+                <ListInput disabled={disabled} value={zone.postalCodes} onChange={(postalCodes) => setM({ area: { ...m.area, zones: m.area.zones.map((z) => (z.id === zone.id ? { ...z, postalCodes } : z)) } })} validate={zipProblem} noun="ZIP code" placeholder="Type a ZIP code and press Enter" />
               </Field>
               <AdjustmentInput label="Adds" value={zone.adjustment} disabled={disabled} base="the cleaning" onChange={(adjustment) => setM({ area: { ...m.area, zones: m.area.zones.map((z) => (z.id === zone.id ? { ...z, adjustment } : z)) } })} />
             </div>
@@ -1039,15 +989,14 @@ export function ExtrasStep({ spec, edit, disabled }: StepProps) {
                     <Trash2 aria-hidden />
                   </Button>
                 </div>
-                <fieldset className="flex flex-wrap gap-1.5 text-sm" disabled={disabled}>
-                  <legend className="sr-only">Weekdays</legend>
-                  {WEEKDAY_SHORT.map((w, i) => (
-                    <label key={w} className={cn("cursor-pointer rounded-full border px-2.5 py-1 text-xs transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-brand-500/40", d.weekdays.includes(i) ? "border-brand-500 bg-brand-500/10 font-medium text-strong" : "border-border text-muted-foreground")}>
-                      <input type="checkbox" className="sr-only" checked={d.weekdays.includes(i)} onChange={(e) => setM({ demand: { ...m.demand, peakDays: m.demand.peakDays.map((x) => (x.id === d.id ? { ...x, weekdays: e.target.checked ? [...x.weekdays, i].sort() : x.weekdays.filter((y) => y !== i) } : x)) } })} />
-                      {w}
-                    </label>
-                  ))}
-                </fieldset>
+                <ChoiceChips
+                  aria-label="Weekdays"
+                  density="compact"
+                  disabled={disabled}
+                  options={WEEKDAY_SHORT.map((w, i) => ({ value: String(i), label: w }))}
+                  value={d.weekdays.map(String)}
+                  onValueChange={(next) => setM({ demand: { ...m.demand, peakDays: m.demand.peakDays.map((x) => (x.id === d.id ? { ...x, weekdays: next.map(Number).sort((a, b) => a - b) } : x)) } })}
+                />
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <Field label="From (optional)">
                     <TextInput type="date" disabled={disabled} value={d.from ?? ""} onChange={(e) => setM({ demand: { ...m.demand, peakDays: m.demand.peakDays.map((x) => (x.id === d.id ? { ...x, from: e.target.value || null } : x)) } })} />
@@ -1107,7 +1056,7 @@ export function ExtrasStep({ spec, edit, disabled }: StepProps) {
                 </Field>
               </div>
               <label className="inline-flex items-center gap-2 text-sm">
-                <input type="checkbox" disabled={disabled} checked={promo.approved} onChange={(e) => setM({ promotions: m.promotions.map((p) => (p.id === promo.id ? { ...p, approved: e.target.checked } : p)) })} /> Approved: it may be applied once this version is published
+                <Checkbox disabled={disabled} checked={promo.approved} onCheckedChange={(checked) => setM({ promotions: m.promotions.map((p) => (p.id === promo.id ? { ...p, approved: checked } : p)) })} /> Approved: it may be applied once this version is published
               </label>
             </div>
           ))}

@@ -6,12 +6,12 @@ import { useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { Suspense, useState } from "react";
 
+import { IssueCards } from "@/components/app/issues/issue-cards";
 import { useCompany } from "@/components/app/company";
 import { useDetail } from "@/components/app/detail-panel";
 import { messageOf } from "@/components/app/form";
 import { AgentsWorking } from "@/components/app/activation/home";
 import { OverviewView } from "@/components/app/overview/overview-view";
-import { IssueCards } from "@/components/app/operations/issue-cards";
 import type { ScheduleView } from "@/components/app/overview/schedule-table";
 import { useNow } from "@/components/app/use-now";
 import { linkTo } from "@/lib/app/navigation-helpers";
@@ -79,7 +79,7 @@ export function OverviewScreen() {
       approving={approving}
       approveError={error}
       checklist={<SetupChecklist />}
-      issues={<IssueCards />}
+      attention={<IssueCards place="home" />}
     />
   );
 }

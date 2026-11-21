@@ -8,8 +8,10 @@ import { money } from "@/lib/app/format";
 import type { api } from "../../../../convex/_generated/api";
 import type { DraftBody } from "../../../../convex/lib/sales/draft";
 import type { PaymentPolicy } from "../../../../convex/lib/sales/schema";
-import { ChoiceCard, fieldClass, FormSection } from "./kit";
+import { ChoiceCard, FormSection } from "./kit";
 import type { Working } from "./use-draft";
+
+import { Checkbox, Select } from "@/components/ui/selection";
 
 type Summary = FunctionReturnType<typeof api.sales.price>;
 
@@ -68,7 +70,7 @@ export function PaymentSection({ n, working, setBody, summary, done }: { n: numb
       <fieldset className="grid gap-2">
         <legend className="mb-1 text-sm font-medium text-strong">Service agreement</legend>
         <label className="flex items-start gap-2 text-sm">
-          <input type="checkbox" className="mt-0.5 accent-brand-500" checked={agreement.required === true} onChange={(e) => setBody((b) => ({ ...b, agreement: { ...b.agreement, required: e.target.checked, docType: b.agreement?.docType ?? types[recurring ? 1 : 0]?.id ?? types[0]?.id } }))} />
+          <Checkbox className="mt-0.5" checked={agreement.required === true} onCheckedChange={(checked) => setBody((b) => ({ ...b, agreement: { ...b.agreement, required: checked, docType: b.agreement?.docType ?? types[recurring ? 1 : 0]?.id ?? types[0]?.id } }))} />
           <span>
             <span className="font-medium text-strong">The customer signs an agreement before service</span>
             <span className="block text-xs text-muted-foreground">Sent as a secure link. Saying the terms were discussed on the phone doesn’t count as a signature.</span>
@@ -77,13 +79,7 @@ export function PaymentSection({ n, working, setBody, summary, done }: { n: numb
         {agreement.required ? (
           <label className="grid max-w-md gap-1.5 text-sm">
             <span className="font-medium text-strong">Agreement</span>
-            <select className={fieldClass()} value={agreement.docType ?? ""} onChange={(e) => setBody((b) => ({ ...b, agreement: { ...b.agreement, docType: e.target.value } }))}>
-              {types.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
+            <Select value={agreement.docType ?? ""} onValueChange={(next) => setBody((b) => ({ ...b, agreement: { ...b.agreement, docType: next ?? "" } }))} options={types.map((t) => ({ value: t.id, label: t.label }))} searchable="auto" />
           </label>
         ) : null}
       </fieldset>

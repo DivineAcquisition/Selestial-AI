@@ -5,10 +5,12 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, messageOf, TextInput } from "@/components/app/form";
+import { Field, messageOf } from "@/components/app/form";
+import { CountField, Disclosure, DurationField, NumberField } from "@/components/ui/fields";
 import { Guard } from "@/components/app/settings/guard";
 import { SaveBar, useSavedDraft, useUnsavedWarning } from "@/components/app/settings/save-bar";
 import { Panel } from "@/components/app/shell";
+import { Requirement, SwitchRow } from "@/components/ui/selection";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import { api } from "../../../../convex/_generated/api";
@@ -20,19 +22,19 @@ type NumberKey = (typeof POLICY_NUMBERS)[number] | (typeof SETTING_NUMBERS)[numb
 type Form = Record<NumberKey, string> & { broadcastEnabled: boolean; sendBeforePhotoLink: boolean };
 
 /** Each number's label with its unit, what it does, and the range the server accepts. */
-const FIELDS: Record<NumberKey, { label: string; hint: string; min: number; max: number }> = {
-  offerWindowMinutes: { label: "Time to accept a job (minutes)", hint: "If a cleaner doesn't answer in time, the next cleaner is asked.", min: 15, max: 2880 },
-  travelBufferMinutes: { label: "Travel time between jobs (minutes)", hint: "Kept free before a cleaner is offered their next job.", min: 0, max: 240 },
-  lookAheadDays: { label: "Plan jobs this far ahead (days)", hint: "Jobs further out wait until they're this close.", min: 1, max: 30 },
-  broadcastSize: { label: "Cleaners asked at once", hint: "Used only when asking several cleaners at once is on.", min: 2, max: 10 },
-  backupOfferWindowMinutes: { label: "Time to accept a replacement job (minutes)", hint: "Shorter than a normal offer, because the job is soon.", min: 5, max: 240 },
-  reminderLeadMinutes: { label: "Send the job reminder (minutes before start)", hint: "For example, 120 sends it two hours before the job.", min: 15, max: 2880 },
-  contactAfterMinutes: { label: "Check on a cleaner who hasn't arrived (minutes after arrival window)", hint: "The cleaner gets a message asking where they are.", min: 0, max: 240 },
-  alertAfterMinutes: { label: "Alert you (minutes after arrival window)", hint: "You get a task to step in.", min: 0, max: 240 },
-  noShowAfterMinutes: { label: "Allow marking a no-show (minutes after arrival window)", hint: "A person decides; it's never marked automatically.", min: 5, max: 480 },
-  beforePhotosRequired: { label: "Before photos required", hint: "0 means none.", min: 0, max: 20 },
-  afterPhotosRequired: { label: "After photos required", hint: "0 means none.", min: 0, max: 20 },
-  jobAccessGraceHours: { label: "Job link keeps working after the job (hours)", hint: "So cleaners can add late photos or notes.", min: 1, max: 168 },
+const FIELDS: Record<NumberKey, { label: string; hint: string; min: number; max: number; unit: "minutes" | "hours" | "days" | "cleaners" | "photos"; step?: number }> = {
+  offerWindowMinutes: { label: "Time to accept a job", hint: "If a cleaner doesn't answer in time, the next cleaner is asked.", min: 15, max: 2880, unit: "minutes", step: 15 },
+  travelBufferMinutes: { label: "Travel time between jobs", hint: "Kept free before a cleaner is offered their next job.", min: 0, max: 240, unit: "minutes", step: 5 },
+  lookAheadDays: { label: "Plan jobs this far ahead", hint: "Jobs further out wait until they're this close.", min: 1, max: 30, unit: "days" },
+  broadcastSize: { label: "Cleaners asked at once", hint: "Used only when asking several cleaners at once is on.", min: 2, max: 10, unit: "cleaners" },
+  backupOfferWindowMinutes: { label: "Time to accept a replacement job", hint: "Shorter than a normal offer, because the job is soon.", min: 5, max: 240, unit: "minutes", step: 5 },
+  reminderLeadMinutes: { label: "Send the job reminder before the start", hint: "For example, 120 sends it two hours before the job.", min: 15, max: 2880, unit: "minutes", step: 15 },
+  contactAfterMinutes: { label: "Check on a cleaner who hasn't arrived", hint: "Counted after the arrival window. The cleaner gets a message asking where they are.", min: 0, max: 240, unit: "minutes", step: 5 },
+  alertAfterMinutes: { label: "Alert you", hint: "Counted after the arrival window. You get a task to step in.", min: 0, max: 240, unit: "minutes", step: 5 },
+  noShowAfterMinutes: { label: "Allow marking a no-show", hint: "Counted after the arrival window. A person decides; it's never marked automatically.", min: 5, max: 480, unit: "minutes", step: 5 },
+  beforePhotosRequired: { label: "Before photos required", hint: "0 means none.", min: 0, max: 20, unit: "photos" },
+  afterPhotosRequired: { label: "After photos required", hint: "0 means none.", min: 0, max: 20, unit: "photos" },
+  jobAccessGraceHours: { label: "Job link keeps working after the job", hint: "So cleaners can add late photos or notes.", min: 1, max: 168, unit: "hours" },
 };
 
 type Policy = NonNullable<ReturnType<typeof useQuery<typeof api.dispatchOps.policy>>>;
@@ -64,16 +66,12 @@ function fieldErrors(form: Form): Partial<Record<NumberKey, string>> {
   return out;
 }
 
-function Checkbox({ checked, disabled, onChange, title, detail }: { checked: boolean; disabled: boolean; onChange: (value: boolean) => void; title: string; detail: React.ReactNode }) {
-  return (
-    <label className="flex items-start gap-2.5 text-sm text-strong sm:col-span-2">
-      <input type="checkbox" className="mt-1" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
-      <span>
-        <span className="font-medium">{title}</span>
-        <span className="block text-xs text-muted-foreground">{detail}</span>
-      </span>
-    </label>
-  );
+/** What asking several cleaners at once does with the numbers on this form. Read from the form, so it matches what will be saved. */
+function offerEffect(form: Form): string {
+  const size = Number.isInteger(num(form.broadcastSize)) ? num(form.broadcastSize) : null;
+  const window = Number.isInteger(num(form.offerWindowMinutes)) ? num(form.offerWindowMinutes) : null;
+  if (form.broadcastEnabled) return `Dispatch offers each job to ${size ? `up to ${size}` : "a few"} cleaners together. The first to accept gets it.`;
+  return `Dispatch asks one cleaner at a time.${window ? ` Each has ${window} minutes to accept before the next cleaner is asked.` : ""}`;
 }
 
 function DispatchForm({ settings, policy, canEdit }: { settings: Settings; policy: Policy; canEdit: boolean }) {
@@ -82,21 +80,30 @@ function DispatchForm({ settings, policy, canEdit }: { settings: Settings; polic
   const savePolicy = useMutation(api.dispatchOps.setPolicy);
   const saved = useMemo(() => formFrom(settings, policy), [settings, policy]);
   const { value: form, dirty, stale, change, reset } = useSavedDraft(saved);
+  // Read-only: whether Dispatch's texts are covered, from the same readiness the Team page shows.
+  const texts = useQuery(api.texting.agentTexting, { companyId })?.find((row) => row.agent === "dispatch");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  useUnsavedWarning(dirty);
+  const leaveGuard = useUnsavedWarning(dirty, undefined, "Dispatch's rules");
   if (!form) return null;
   const errors = canEdit ? fieldErrors(form) : {};
   const set = (patch: Partial<Form>) => {
     setNotice(null);
     change((current) => ({ ...current, ...patch }));
   };
-  const field = (key: NumberKey) => (
-    <Field key={key} label={FIELDS[key].label} hint={FIELDS[key].hint} error={errors[key]}>
-      <TextInput inputMode="numeric" value={form[key]} disabled={!canEdit} onChange={(event) => set({ [key]: event.target.value } as Partial<Form>)} className="max-w-[10rem]" />
-    </Field>
-  );
+  const field = (key: NumberKey) => {
+    const def = FIELDS[key];
+    const change = (text: string) => set({ [key]: text } as Partial<Form>);
+    // What is in use now, shown only while the form holds something different, so a preview is never read as the live setting.
+    const inUse = form[key] !== saved[key] ? `In use now: ${saved[key]} ${def.unit}. Takes effect after you save.` : null;
+    const common = { value: form[key], onChange: change, min: def.min, max: def.max, step: def.step ?? 1, disabled: !canEdit, readOnly: !canEdit, className: "max-w-[16rem]" };
+    return (
+      <Field key={key} label={def.label} hint={inUse ? `${def.hint} ${inUse}` : def.hint} error={errors[key]}>
+        {def.unit === "minutes" ? <DurationField {...common} stepper /> : def.unit === "cleaners" || def.unit === "photos" ? <CountField {...common} noun={def.unit === "cleaners" ? ["cleaner", "cleaners"] : ["photo", "photos"]} /> : <NumberField {...common} stepper suffix={def.unit} preview={def.unit === "hours" ? (n) => (n >= 24 ? `${n} hours = ${Math.floor(n / 24)} day${Math.floor(n / 24) === 1 ? "" : "s"}${n % 24 ? ` ${n % 24} hours` : ""}` : null) : undefined} />}
+      </Field>
+    );
+  };
   const save = async () => {
     if (saving) return;
     setSaving(true);
@@ -125,12 +132,15 @@ function DispatchForm({ settings, policy, canEdit }: { settings: Settings; polic
         <div className="grid gap-4 sm:grid-cols-2">
           {field("offerWindowMinutes")}
           {field("travelBufferMinutes")}
-          <Checkbox
+          <SwitchRow
+            className="sm:col-span-2"
             checked={form.broadcastEnabled}
             disabled={!canEdit}
             onChange={(value) => set({ broadcastEnabled: value })}
             title="Ask several cleaners at once"
-            detail="The job goes to a few cleaners together, and the first to accept gets it. Off means cleaners are asked one at a time."
+            effect="on-save"
+            dirty={form.broadcastEnabled !== saved.broadcastEnabled}
+            consequence={offerEffect(form)}
           />
           {form.broadcastEnabled ? field("broadcastSize") : null}
         </div>
@@ -161,34 +171,46 @@ function DispatchForm({ settings, policy, canEdit }: { settings: Settings; polic
         <div className="grid gap-4 sm:grid-cols-2">
           {field("beforePhotosRequired")}
           {field("afterPhotosRequired")}
-          <Checkbox
+          <SwitchRow
+            className="sm:col-span-2"
             checked={form.sendBeforePhotoLink}
             disabled={!canEdit}
             onChange={(value) => set({ sendBeforePhotoLink: value })}
             title="Text the before-photo link when the cleaner checks in"
-            detail={
-              <>
-                Needs your business texting number.{" "}
-                <Link href="/app/settings/integrations" className="font-medium text-brand-600 underline-offset-2 hover:underline">
-                  Check Connected apps
-                </Link>
-              </>
+            effect="on-save"
+            dirty={form.sendBeforePhotoLink !== saved.sendBeforePhotoLink}
+            consequence={form.sendBeforePhotoLink ? "When a cleaner checks in, Dispatch texts them the link for their before photos." : "No text is sent at check-in."}
+            requirement={
+              texts ? (
+                <Requirement met={texts.state === "ready" || texts.state === "partly"}>
+                  {texts.words}{" "}
+                  {texts.state === "ready" || texts.state === "partly" ? null : (
+                    <Link href="/app/texting" className="font-medium text-brand-600 underline-offset-2 hover:underline">
+                      Set up business texting
+                    </Link>
+                  )}
+                </Requirement>
+              ) : (
+                <Requirement>
+                  Needs an approved business texting number.{" "}
+                  <Link href="/app/settings/integrations" className="font-medium text-brand-600 underline-offset-2 hover:underline">
+                    Check Connected apps
+                  </Link>
+                </Requirement>
+              )
             }
           />
         </div>
       </Panel>
 
-      <details className="group rounded-2xl border border-border bg-card">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-strong focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500 sm:px-5 [&::-webkit-details-marker]:hidden">
-          Cleaner link access and planning ahead
-          <span className="text-xs font-normal text-muted-foreground group-open:hidden">Less often changed</span>
-        </summary>
-        <div className="grid gap-4 border-t border-border px-4 py-4 sm:grid-cols-2 sm:px-5">
+      <Disclosure title="Cleaner link access and planning ahead" summary="Less often changed">
+        <div className="grid gap-4 sm:grid-cols-2">
           {field("jobAccessGraceHours")}
           {field("lookAheadDays")}
         </div>
-      </details>
+      </Disclosure>
 
+      {leaveGuard}
       <SaveBar
         canEdit={canEdit}
         dirty={dirty}

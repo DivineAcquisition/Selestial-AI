@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { Modal } from "@/components/app/modal";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,6 +12,8 @@ import { MANUAL_METHODS, clientKey, moneyInput, parseMoney, todayKey, usd } from
 
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
+import { Checkbox, Select } from "@/components/ui/selection";
+import { MoneyField } from "@/components/ui/fields";
 
 /**
  * The confirmations behind every money action. Each one shows, before anything runs, exactly what will
@@ -84,16 +86,10 @@ function RecordPaymentForm({ invoiceId, owedCents, onDone }: { invoiceId: Id<"in
     >
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Amount received" error={amountError} hint={`${usd(owedCents)} is still owed`}>
-          <TextInput inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus />
+          <MoneyField value={amount} onChange={(text) => setAmount(text)} autoFocus />
         </Field>
         <Field label="How you were paid">
-          <SelectInput value={method} onChange={(e) => setMethod(e.target.value as typeof method)}>
-            {MANUAL_METHODS.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={method} onValueChange={(next) => setMethod((next ?? "") as typeof method)} options={MANUAL_METHODS.map((m) => ({ value: m.id, label: m.label }))} />
         </Field>
         <Field label="Date received">
           <TextInput type="date" value={receivedOn} max={todayKey(timezone)} onChange={(e) => setReceivedOn(e.target.value)} />
@@ -106,7 +102,7 @@ function RecordPaymentForm({ invoiceId, owedCents, onDone }: { invoiceId: Id<"in
         <TextArea value={note} maxLength={500} rows={2} onChange={(e) => setNote(e.target.value)} />
       </Field>
       <label className="flex items-start gap-2.5 rounded-xl border border-border bg-muted/40 px-3.5 py-3 text-sm text-strong">
-        <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} className="mt-0.5 size-4 accent-brand-500" />
+        <Checkbox checked={confirmed} onCheckedChange={(checked) => setConfirmed(checked)} className="mt-0.5" />
         <span>I received this money. It isn&apos;t a promise to pay or a check I haven&apos;t been given yet.</span>
       </label>
       <FormError message={error} />
@@ -150,7 +146,7 @@ function CreditForm({ invoiceId, onDone }: { invoiceId: Id<"invoices">; onDone: 
       }}
     >
       <Field label="Amount to credit">
-        <TextInput inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="25.00" autoFocus />
+        <MoneyField value={amount} onChange={(text) => setAmount(text)} placeholder="25.00" autoFocus />
       </Field>
       <Field label="Reason" hint="Shown on the customer's statement">
         <TextInput value={reason} maxLength={200} onChange={(e) => setReason(e.target.value)} placeholder="Arrived late, 20 minutes" />
@@ -201,7 +197,7 @@ function RefundForm({ paymentId, refundableCents, onDone }: { paymentId: Id<"pay
       }}
     >
       <Field label="Amount to refund" hint={`Up to ${usd(refundableCents)} from this payment`}>
-        <TextInput inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus />
+        <MoneyField value={amount} onChange={(text) => setAmount(text)} autoFocus />
       </Field>
       <Field label="Reason" hint="Kept with the refund and shown on the customer's statement">
         <TextInput value={reason} maxLength={200} onChange={(e) => setReason(e.target.value)} placeholder="Oven wasn't cleaned" />
@@ -224,7 +220,7 @@ function RefundForm({ paymentId, refundableCents, onDone }: { paymentId: Id<"pay
       {cents > 0 ? <Consequences lines={preview?.lines} blocked={preview?.blocked} /> : null}
       {manual ? (
         <label className="flex items-start gap-2.5 rounded-xl border border-border bg-muted/40 px-3.5 py-3 text-sm text-strong">
-          <input type="checkbox" checked={returned} onChange={(e) => setReturned(e.target.checked)} className="mt-0.5 size-4 accent-brand-500" />
+          <Checkbox checked={returned} onCheckedChange={(checked) => setReturned(checked)} className="mt-0.5" />
           <span>I returned this money to the customer myself.</span>
         </label>
       ) : null}

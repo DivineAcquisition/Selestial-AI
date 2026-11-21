@@ -8,12 +8,15 @@ import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { Button } from "@/components/ui/button";
 
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import type { ContactRow, PropertyRow } from "./parts";
+import { Checkbox, Select } from "@/components/ui/selection";
+import { useConfirm } from "@/components/ui/fields/confirm";
+import { EmailInput, PhoneInput } from "@/components/ui/fields";
 
 type Profile = NonNullable<ReturnType<typeof useQuery<typeof api.clients.profile>>>;
 
@@ -46,7 +49,8 @@ export function EditClientForm({ profile, onDone }: { profile: Profile; onDone: 
     privateNotes: profile.privateNotes ?? "",
     owner: profile.owner?.id ?? "",
   });
-  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm((current) => ({ ...current, [key]: event.target.value }));
+  const setField = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
+  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setField(key, event.target.value);
   return (
     <form
       className="grid gap-3"
@@ -74,28 +78,13 @@ export function EditClientForm({ profile, onDone }: { profile: Profile; onDone: 
           <TextInput value={form.name} onChange={set("name")} required maxLength={160} />
         </Field>
         <Field label="Kind of client">
-          <SelectInput value={form.type} onChange={set("type")}>
-            <option value="person">A person or household</option>
-            <option value="business">A business</option>
-          </SelectInput>
+          <Select value={form.type} onValueChange={(next) => setField("type", next ?? "")} options={[{ value: "person", label: "A person or household" }, { value: "business", label: "A business" }]} />
         </Field>
         <Field label="Mainly serves">
-          <SelectInput value={form.kind} onChange={set("kind")}>
-            <option value="home">Homes</option>
-            <option value="short_term_rental">Short-term rentals</option>
-            <option value="commercial">Commercial or office</option>
-            <option value="property_manager">Property management</option>
-          </SelectInput>
+          <Select value={form.kind} onValueChange={(next) => setField("kind", next ?? "")} options={[{ value: "home", label: "Homes" }, { value: "short_term_rental", label: "Short-term rentals" }, { value: "commercial", label: "Commercial or office" }, { value: "property_manager", label: "Property management" }]} />
         </Field>
         <Field label="Account owner" hint="The team member responsible for the relationship.">
-          <SelectInput value={form.owner} onChange={set("owner")}>
-            <option value="">No account owner</option>
-            {overview?.owners.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={form.owner} onValueChange={(next) => setField("owner", next ?? "")} options={[...(overview?.owners?.map((o) => ({ value: o.id, label: o.name })) ?? [])]} emptyLabel="No account owner" placeholder="No account owner" searchable="auto" />
         </Field>
       </div>
       <Field label="Service preferences" hint="What every crew should know about how this client likes things done. Cleaners see it with their visits.">
@@ -104,12 +93,7 @@ export function EditClientForm({ profile, onDone }: { profile: Profile; onDone: 
       <fieldset className="grid gap-3 rounded-xl border border-border p-3 sm:grid-cols-3">
         <legend className="px-1 text-sm font-medium text-strong">Communication</legend>
         <Field label="Prefers">
-          <SelectInput value={form.channel} onChange={set("channel")}>
-            <option value="">No preference</option>
-            <option value="sms">Text</option>
-            <option value="email">Email</option>
-            <option value="phone">Phone call</option>
-          </SelectInput>
+          <Select value={form.channel} onValueChange={(next) => setField("channel", next ?? "")} options={[{ value: "sms", label: "Text" }, { value: "email", label: "Email" }, { value: "phone", label: "Phone call" }]} emptyLabel="No preference" placeholder="No preference" />
         </Field>
         <Field label="Best time">
           <TextInput value={form.bestTime} onChange={set("bestTime")} maxLength={120} placeholder="Weekday mornings" />
@@ -189,6 +173,7 @@ export function ContactForm({ customerId, contact, properties, onDone }: { custo
   const save = useMutation(api.clients.saveContact);
   const remove = useMutation(api.clients.removeContact);
   const { busy, error, run } = useRun();
+  const { ask, element: confirmDialog } = useConfirm();
   const [form, setForm] = useState({ name: contact?.name ?? "", title: contact?.title ?? "", email: contact?.email ?? "", phone: contact?.phone ?? "" });
   const [roles, setRoles] = useState<string[]>(contact?.roles ?? []);
   const [sites, setSites] = useState<string[]>(contact?.propertyIds ?? []);
@@ -212,17 +197,17 @@ export function ContactForm({ customerId, contact, properties, onDone }: { custo
           <TextInput value={form.title} onChange={set("title")} maxLength={80} />
         </Field>
         <Field label="Email">
-          <TextInput type="email" value={form.email} onChange={set("email")} />
+          <EmailInput value={form.email} onChange={(text) => set("email")({ target: { type: "text", value: text } } as unknown as React.ChangeEvent<HTMLInputElement>)} />
         </Field>
         <Field label="Phone">
-          <TextInput type="tel" value={form.phone} onChange={set("phone")} />
+          <PhoneInput value={form.phone} onChange={(text) => set("phone")({ target: { type: "text", value: text } } as unknown as React.ChangeEvent<HTMLInputElement>)} />
         </Field>
       </div>
       <fieldset className="grid gap-2 sm:grid-cols-2">
         <legend className="mb-1 text-sm font-medium text-strong">Roles</legend>
         {ROLES.map((role) => (
           <label key={role.id} className="flex cursor-pointer items-start gap-2 rounded-xl border border-border px-3 py-2 text-sm has-[:checked]:border-brand-500 has-[:checked]:bg-brand-500/[0.06]">
-            <input type="checkbox" checked={roles.includes(role.id)} onChange={(event) => setRoles((current) => (event.target.checked ? [...current, role.id] : current.filter((r) => r !== role.id)))} className="mt-1 accent-brand-500" />
+            <Checkbox checked={roles.includes(role.id)} onCheckedChange={(checked) => setRoles((current) => (checked ? [...current, role.id] : current.filter((r) => r !== role.id)))} className="mt-1" />
             <span>
               <span className="block font-medium text-strong">{role.label}</span>
               <span className="block text-xs text-muted-foreground">{role.detail}</span>
@@ -237,7 +222,7 @@ export function ContactForm({ customerId, contact, properties, onDone }: { custo
             .filter((p) => p.status === "active")
             .map((p) => (
               <label key={p.id} className="flex items-center gap-2 text-sm text-strong">
-                <input type="checkbox" checked={sites.includes(p.id)} onChange={(event) => setSites((current) => (event.target.checked ? [...current, p.id] : current.filter((id) => id !== p.id)))} className="size-4 accent-brand-500" />
+                <Checkbox checked={sites.includes(p.id)} onCheckedChange={(checked) => setSites((current) => (checked ? [...current, p.id] : current.filter((id) => id !== p.id)))} />
                 {p.name}
               </label>
             ))}
@@ -245,10 +230,23 @@ export function ContactForm({ customerId, contact, properties, onDone }: { custo
         </fieldset>
       ) : null}
       <FormError message={error} />
+      {confirmDialog}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Actions busy={busy} label={contact ? "Save contact" : "Add contact"} onCancel={onDone} />
         {contact && !contact.roles.includes("primary") ? (
-          <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => window.confirm(`Remove ${contact.name} from this client?`) && void run(async () => (await remove({ companyId, contactId: contact.id as Id<"clientContacts"> }), onDone()))}>
+          <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() =>
+              void ask({
+                title: `Remove ${contact.name} from this client?`,
+                body: "They are taken off this client's contacts.",
+                confirmLabel: "Remove contact",
+                cancelLabel: "Keep contact",
+                tone: "danger",
+                action: async () => {
+                  await remove({ companyId, contactId: contact.id as Id<"clientContacts"> });
+                  onDone();
+                },
+              })
+            }>
             Remove contact
           </Button>
         ) : null}

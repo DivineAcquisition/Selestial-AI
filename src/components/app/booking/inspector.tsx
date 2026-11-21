@@ -8,7 +8,7 @@
 import Link from "next/link";
 import { useId } from "react";
 
-import { Field, SelectInput, TextArea, TextInput } from "@/components/app/form";
+import { Field, TextArea, TextInput } from "@/components/app/form";
 import { Notice, Segmented, Toggle } from "@/components/app/services/shared";
 import { ArrowDown, ArrowSquareOut as ExternalLink, ArrowUp, Plus, Trash } from "@phosphor-icons/react";
 import { buttonVariants } from "@/components/ui/button-variants";
@@ -35,6 +35,7 @@ import {
   type StepId,
 } from "../../../../convex/lib/booking/definition";
 import { contrast } from "@/components/booking/theme";
+import { Checkbox, ChoiceChips, Select } from "@/components/ui/selection";
 
 export type BuilderData = {
   kind: ExperienceKind;
@@ -260,27 +261,13 @@ function ServicesPanel({ def, change, data }: Props) {
       </ul>
       {addable.length ? (
         <Field label="Add a published service">
-          <SelectInput value="" onChange={(e) => e.target.value && change((d) => void d.services.offered.push({ serviceKey: e.target.value, displayName: "", blurb: "", benefits: [], badge: "", hidden: false }))}>
-            <option value="">Choose…</option>
-            {addable.map((s) => (
-              <option key={s.key} value={s.key}>
-                {s.name} ({s.category})
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={String("")} onValueChange={(next) => (next ?? "") && change((d) => void d.services.offered.push({ serviceKey: next ?? "", displayName: "", blurb: "", benefits: [], badge: "", hidden: false }))} options={addable.map((s) => ({ value: s.key, label: `${s.name} (${s.category})` }))} emptyLabel="Choose…" placeholder="Choose…" searchable="auto" />
         </Field>
       ) : data.services.length === 0 ? (
         <Notice tone="warning" title="No published services yet">Publish a service in Services & Pricing first.</Notice>
       ) : null}
       <Field label="Featured service">
-        <SelectInput value={def.services.featuredKey ?? ""} onChange={(e) => change((d) => void (d.services.featuredKey = e.target.value || null))}>
-          <option value="">None</option>
-          {def.services.offered.map((o) => (
-            <option key={o.serviceKey} value={o.serviceKey}>
-              {o.displayName || data.services.find((s) => s.key === o.serviceKey)?.name || o.serviceKey}
-            </option>
-          ))}
-        </SelectInput>
+        <Select value={def.services.featuredKey ?? ""} onValueChange={(next) => change((d) => void (d.services.featuredKey = (next ?? "") || null))} options={def.services.offered.map((o) => ({ value: o.serviceKey, label: o.displayName || data.services.find((s) => s.key === o.serviceKey)?.name || o.serviceKey }))} emptyLabel="None" placeholder="None" searchable="auto" />
       </Field>
       <Toggle label="Show extras on the selected card" checked={def.services.showExtras} onChange={(v) => change((d) => void (d.services.showExtras = v))} />
       <Toggle label="Show recurring schedules" description="Choosing one sends a request: recurring billing isn't connected yet." checked={def.services.showFrequencies} onChange={(v) => change((d) => void (d.services.showFrequencies = v))} />
@@ -358,16 +345,7 @@ function ComparisonPanel({ def, change, data }: Props) {
                 <Trash aria-hidden />
               </button>
             </div>
-            <div className="flex flex-wrap gap-1.5">
-              {keys.map((k) => {
-                const on = row.included.includes(k);
-                return (
-                  <button key={k} type="button" aria-pressed={on} onClick={() => change((d) => void (d.services.comparison.rows[i].included = on ? row.included.filter((x) => x !== k) : [...row.included, k]))} className={cn("rounded-md border px-2 py-0.5 text-xs", on ? "border-brand-500 bg-brand-500/10 text-strong" : "border-border text-muted-foreground")}>
-                    {data.services.find((s) => s.key === k)?.name ?? k}
-                  </button>
-                );
-              })}
-            </div>
+            <ChoiceChips aria-label={`Services included in ${row.label || "this row"}`} density="compact" options={keys.map((k) => ({ value: k, label: data.services.find((s) => s.key === k)?.name ?? k }))} value={row.included} onValueChange={(next) => change((d) => void (d.services.comparison.rows[i].included = next))} />
           </li>
         ))}
       </ul>
@@ -391,7 +369,7 @@ function ListPanel({ def, change, kind }: Props & { kind: "trust" | "faqs" | "ne
               })} />
               <div className="flex items-center justify-between gap-2">
                 <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" className="size-4 accent-[#6838ef]" checked={t.confirmed} onChange={(e) => change((d) => void (d.content.trust[i].confirmed = e.target.checked))} />
+                  <Checkbox checked={t.confirmed} onCheckedChange={(checked) => change((d) => void (d.content.trust[i].confirmed = checked))} />
                   This is true for our company
                 </label>
                 <span className="flex items-center">
@@ -553,24 +531,13 @@ function QuestionEditor({ q, index, count, earlier, change }: { q: CustomQuestio
         </Field>
         <div className="grid grid-cols-2 gap-2">
           <Field label="Answer type">
-            <SelectInput value={q.type} onChange={(e) => set((x) => {
-              x.type = e.target.value as CustomQuestion["type"];
+            <Select value={q.type} onValueChange={(next) => set((x) => {
+              x.type = (next ?? "") as CustomQuestion["type"];
               if ((x.type === "choice" || x.type === "multi_choice") && x.options.length < 2) x.options = ["Option 1", "Option 2"];
-            })}>
-              {FIELD_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {FIELD_TYPE_LABELS[t]}
-                </option>
-              ))}
-            </SelectInput>
+            })} options={FIELD_TYPES.map((t) => ({ value: t, label: FIELD_TYPE_LABELS[t] }))} />
           </Field>
           <Field label="Who sees the answer">
-            <SelectInput value={q.purpose} onChange={(e) => set((x) => void (x.purpose = e.target.value as CustomQuestion["purpose"]))}>
-              <option value="general">The office</option>
-              <option value="property">The office and crew</option>
-              <option value="scheduling">Scheduling</option>
-              <option value="access">Assigned crew only (access)</option>
-            </SelectInput>
+            <Select value={q.purpose} onValueChange={(next) => set((x) => void (x.purpose = (next ?? "") as CustomQuestion["purpose"]))} options={[{ value: "general", label: "The office" }, { value: "property", label: "The office and crew" }, { value: "scheduling", label: "Scheduling" }, { value: "access", label: "Assigned crew only (access)" }]} />
           </Field>
         </div>
         {q.type === "choice" || q.type === "multi_choice" ? (
@@ -585,20 +552,13 @@ function QuestionEditor({ q, index, count, earlier, change }: { q: CustomQuestio
         ) : null}
         <Toggle label="Required" checked={q.required} onChange={(v) => set((x) => void (x.required = v))} />
         <Field label="Show only when" hint="An earlier question's answer.">
-          <SelectInput value={q.showIf?.kind === "answer_equals" ? `${q.showIf.questionId}::${q.showIf.value}` : ""} onChange={(e) => set((x) => {
-            if (!e.target.value) delete x.showIf;
+          <Select value={q.showIf?.kind === "answer_equals" ? `${q.showIf.questionId}::${q.showIf.value}` : ""} onValueChange={(next) => set((x) => {
+            if (!(next ?? "")) delete x.showIf;
             else {
-              const [questionId, value] = e.target.value.split("::");
+              const [questionId, value] = (next ?? "").split("::");
               x.showIf = { kind: "answer_equals", questionId, value };
             }
-          })}>
-            <option value="">Always</option>
-            {earlier.flatMap((p) => (p.type === "choice" || p.type === "multi_choice" ? p.options.map((o) => ({ value: `${p.id}::${o}`, label: `${p.label} is "${o}"` })) : p.type === "yes_no" ? [{ value: `${p.id}::true`, label: `${p.label} is yes` }] : [])).map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </SelectInput>
+          })} options={earlier.flatMap((p) => (p.type === "choice" || p.type === "multi_choice" ? p.options.map((o) => ({ value: `${p.id}::${o}`, label: `${p.label} is "${o}"` })) : p.type === "yes_no" ? [{ value: `${p.id}::true`, label: `${p.label} is yes` }] : [])).map((opt) => ({ value: opt.value, label: opt.label }))} emptyLabel="Always" placeholder="Always" searchable="auto" />
         </Field>
       </div>
     </details>
@@ -626,14 +586,7 @@ function BehaviorPanel({ def, change, data }: Props) {
       />
       {b.mode === "instant" ? (
         <Field label="Payment when booking" hint={policy ? `${policy.label}. ${policy.balanceTerms}` : "Nothing is charged online; the visit is invoiced as usual."}>
-          <SelectInput value={b.paymentPolicyId ?? ""} onChange={(e) => change((d) => void (d.behavior.paymentPolicyId = e.target.value || null))}>
-            <option value="">No payment online</option>
-            {data.settings.paymentPolicies.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.label}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={b.paymentPolicyId ?? ""} onValueChange={(next) => change((d) => void (d.behavior.paymentPolicyId = (next ?? "") || null))} options={data.settings.paymentPolicies.map((p) => ({ value: p.id, label: p.label }))} emptyLabel="No payment online" placeholder="No payment online" searchable="auto" />
         </Field>
       ) : null}
       {b.mode === "instant" && policy && policy.kind !== "none" && !data.inherited.canPayByCard ? <Notice tone="warning" title="Card payments aren't set up">This page can&apos;t be published with a payment until Finance takes card payments.</Notice> : null}
@@ -641,26 +594,12 @@ function BehaviorPanel({ def, change, data }: Props) {
         {data.settings.paymentPolicies.length} polic{data.settings.paymentPolicies.length === 1 ? "y" : "ies"} defined.
       </Inherited>
       <Field label="Agreement to sign" hint="An approved customer template from Company Agreements, filled with each booking's facts.">
-        <SelectInput value={b.agreementId ?? ""} onChange={(e) => change((d) => void (d.behavior.agreementId = e.target.value || null))}>
-          <option value="">None</option>
-          {data.settings.agreements.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.label}
-            </option>
-          ))}
-        </SelectInput>
+        <Select value={b.agreementId ?? ""} onValueChange={(next) => change((d) => void (d.behavior.agreementId = (next ?? "") || null))} options={data.settings.agreements.map((a) => ({ value: a.id, label: a.label }))} emptyLabel="None" placeholder="None" searchable="auto" />
       </Field>
       <Segmented label="Property details are taken" value={b.detailsTiming} options={[{ id: "before_payment", label: "Before payment" }, { id: "after_payment", label: "After payment" }]} onChange={(v) => change((d) => void (d.behavior.detailsTiming = v))} />
       {b.detailsTiming === "after_payment" ? <Notice tone="info" title="Paid bookings wait for their details">A visit is created only once the customer adds them. Until then the booking shows as &ldquo;payment received, details incomplete&rdquo;.</Notice> : null}
       <Field label="Apply a promotion" hint="Only approved promotions on the offered services, inside their dates.">
-        <SelectInput value={b.promotionId ?? ""} onChange={(e) => change((d) => void (d.behavior.promotionId = e.target.value || null))}>
-          <option value="">None</option>
-          {promotions.map((p) => (
-            <option key={`${p.service}-${p.id}`} value={p.id} disabled={!p.approved}>
-              {p.label} ({p.service}){p.approved ? "" : " — not approved"}
-            </option>
-          ))}
-        </SelectInput>
+        <Select value={b.promotionId ?? ""} onValueChange={(next) => change((d) => void (d.behavior.promotionId = (next ?? "") || null))} options={promotions.map((p) => ({ value: p.id, label: `${p.label} (${p.service})${p.approved ? "" : " — not approved"}`, disabled: !p.approved }))} emptyLabel="None" placeholder="None" searchable="auto" />
       </Field>
       <Inherited title="Hours, notice, horizon and holds" href={RULES} label="Open booking rules">
         {data.inherited.hours.length ? `${data.inherited.hours.length} booking windows set in Business details.` : "No booking hours set: Monday to Saturday, 8 AM to 6 PM."} Notice {data.settings.scheduling.noticeHours}h · up to {data.settings.scheduling.horizonDays} days ahead · held {data.settings.scheduling.holdMinutes} min.

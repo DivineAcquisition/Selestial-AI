@@ -9,7 +9,6 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalAction, internalMutation, internalQuery } from "./_generated/server";
 import { recordEvent } from "./lib/events";
-import { reportSignal } from "./lib/operations/signals";
 import { emailLayout, emailText } from "./lib/email/layout";
 import { emailProvider } from "./lib/email/provider";
 import { appOrigin } from "./lib/invitations";
@@ -39,8 +38,6 @@ export const emailed = internalMutation({
   args: { companyId: v.id("companies"), kind: v.string(), sent: v.number(), failed: v.number() },
   handler: async (ctx, args) => {
     await recordEvent(ctx, { companyId: args.companyId, type: "billing.messaging_notice_emailed", actor: { kind: "system" }, subject: { table: "companies", id: args.companyId }, data: { kind: args.kind, sent: args.sent, failed: args.failed } });
-    // These emails bypass the outbox, so a failure is reported to Operations rather than lost in a count.
-    if (args.failed > 0) await reportSignal(ctx, { companyId: args.companyId, kind: "notice_email_failed", detail: `${args.kind}: ${args.failed} of ${args.sent + args.failed} failed` });
   },
 });
 

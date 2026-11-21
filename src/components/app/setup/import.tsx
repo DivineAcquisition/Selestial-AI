@@ -7,13 +7,14 @@
  * a Jobber or Housecall Pro connection (connectors.tsx) go through the same review, ReviewImport.
  */
 import { useConvex, useMutation } from "convex/react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, messageOf, SelectInput } from "@/components/app/form";
+import { Field, messageOf } from "@/components/app/form";
 import { Check, FileSpreadsheet, TriangleAlert } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { TutorialCard, TutorialLink, TutorialPreview } from "@/components/app/tutorials/offer";
 import { parseCsv } from "@/lib/app/csv";
 import { cn } from "@/lib/utils";
 
@@ -29,6 +30,9 @@ import {
   type ImportField,
   type ImportRow,
 } from "../../../../convex/lib/clients/importing";
+import type { Platform } from "../../../../convex/lib/tutorials/catalog";
+import { Checkbox, Select } from "@/components/ui/selection";
+import { FileDetails } from "@/components/ui/fields";
 
 type Checked = FunctionReturnType<typeof api.clientImports.check>;
 type Result = FunctionReturnType<
@@ -57,13 +61,29 @@ const SHOWN: ImportField[] = [
   "externalId",
 ];
 
+/** A file Selestial can't read, by its name: what it is and which tutorial helps. */
+function unsupported(name: string): { words: string; platform: Platform } | null {
+  const lower = name.toLowerCase();
+  if (/\.(xlsx|xls|xlsm|numbers|ods)$/.test(lower)) return { words: "That's a spreadsheet file, not a .csv. Open it and save or download it as CSV (.csv), then choose it again.", platform: "spreadsheet" };
+  if (/\.vcf$/.test(lower)) return { words: "That's a vCard contact file. Export your clients again and choose CSV as the format, then choose that file.", platform: "jobber" };
+  if (/\.(pdf|docx?|txt|json)$/.test(lower)) return { words: "Selestial reads .csv files only. Export or save your client list as CSV, then choose it.", platform: "spreadsheet" };
+  return null;
+}
+
 export function ClientImport({
   onDone,
+  platform = null,
 }: {
   onDone?: (created: number) => void;
+  /** Where the owner said their records are now, so help shows that system's export. */
+  platform?: Platform | null;
 }) {
+  const input = useRef<HTMLInputElement>(null);
+  const focusUpload = () => input.current?.focus();
+  const [wrongFile, setWrongFile] = useState<Platform | null>(null);
   const [file, setFile] = useState<{
     name: string;
+    size: number;
     header: string[];
     rows: string[][];
     key: string;
@@ -79,6 +99,12 @@ export function ClientImport({
 
   async function choose(chosen: File) {
     setError(null);
+    setWrongFile(null);
+    const wrong = unsupported(chosen.name);
+    if (wrong) {
+      setWrongFile(wrong.platform === "jobber" ? "jobber" : platform && platform !== "spreadsheet" && wrong.platform !== "spreadsheet" ? platform : wrong.platform);
+      return setError(wrong.words);
+    }
     if (chosen.size > 5 * 1024 * 1024)
       return setError("Use a file under 5 MB.");
     const parsed = parseCsv(await chosen.text());
@@ -91,6 +117,7 @@ export function ClientImport({
     const [header, ...body] = parsed;
     setFile({
       name: chosen.name,
+      size: chosen.size,
       header,
       rows: body,
       key: `${chosen.name}:${chosen.size}:${chosen.lastModified}`,
@@ -98,8 +125,16 @@ export function ClientImport({
     setMapping(guessMapping(header));
   }
 
+  const missingName = file !== null && mapping.name === undefined && mapping.firstName === undefined && mapping.company === undefined;
+
   return (
     <div className="grid gap-4">
+      {!file ? (
+        <div className="grid gap-2">
+          <TutorialPreview placement="import.clients.empty" platform={platform} onUpload={focusUpload} />
+          <TutorialLink placement="import.clients.upload" platform={platform} onUpload={focusUpload} />
+        </div>
+      ) : null}
       {!file ? (
         <label className="grid min-h-28 cursor-pointer place-items-center gap-1 rounded-xl border border-dashed border-border bg-muted/30 px-4 py-6 text-center text-sm focus-within:outline-2 focus-within:outline-brand-500">
           <FileSpreadsheet
@@ -114,40 +149,38 @@ export function ClientImport({
             work: export your client list there, then choose it here.
           </span>
           <input
+            ref={input}
             type="file"
             accept=".csv,text/csv"
             className="sr-only"
-            onChange={(event) =>
-              event.target.files?.[0] && void choose(event.target.files[0])
-            }
+            onChange={(event) => {
+              const chosen = event.target.files?.[0];
+              // Cleared so choosing the same file again, once it is fixed, reads it again.
+              event.target.value = "";
+              if (chosen) void choose(chosen);
+            }}
           />
         </label>
       ) : (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl bg-muted/40 px-3 py-2.5 text-sm">
-          <FileSpreadsheet
-            className="size-4 text-muted-foreground"
-            aria-hidden
-          />
-          <span className="font-medium text-strong">{file.name}</span>
-          <span className="text-muted-foreground">
-            · {file.rows.length} rows
-          </span>
-          {detected ? (
-            <Badge variant="info">
-              Looks like a {SOURCE_WORDS[detected]} export
-            </Badge>
-          ) : null}
-          <Button
-            variant="ghost"
-            size="xs"
-            className="ml-auto"
-            onClick={() => setFile(null)}
-          >
-            Choose another file
-          </Button>
-        </div>
+        <FileDetails
+          name={file.name}
+          type="text/csv"
+          size={file.size}
+          state="ready"
+          counts={[{ label: "Rows", value: file.rows.length }, ...(detected ? [{ label: "Looks like", value: `a ${SOURCE_WORDS[detected]} export` }] : [])]}
+          onReplace={() => setFile(null)}
+        />
       )}
 
+      {missingName ? (
+        <div className="grid gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-sm" role="status">
+          <p className="text-strong">
+            Selestial couldn&apos;t find a column with client names. Under <span className="font-medium">Client name</span> below, choose the column that has them, or choose
+            First name and Last name. If your file has no names, add a Name column and choose the file again.
+          </p>
+          <TutorialLink placement="import.clients.missing_columns" platform={platform} label="See how to fix import errors" onUpload={focusUpload} />
+        </div>
+      ) : null}
       {file ? (
         <>
           <fieldset className="grid gap-2">
@@ -157,27 +190,13 @@ export function ClientImport({
             <div className="grid gap-2 sm:grid-cols-2">
               {SHOWN.map((field) => (
                 <Field key={field} label={FIELD_LABELS[field]}>
-                  <SelectInput
-                    value={
-                      mapping[field] === undefined ? "" : String(mapping[field])
-                    }
-                    onChange={(event) =>
-                      setMapping({
+                  <Select value={mapping[field] === undefined ? "" : String(mapping[field])} onValueChange={(next) => setMapping({
                         ...mapping,
                         [field]:
-                          event.target.value === ""
+                          (next ?? "") === ""
                             ? undefined
-                            : Number(event.target.value),
-                      })
-                    }
-                  >
-                    <option value="">Not in this file</option>
-                    {file.header.map((name, index) => (
-                      <option key={`${name}-${index}`} value={index}>
-                        {name || `Column ${index + 1}`}
-                      </option>
-                    ))}
-                  </SelectInput>
+                            : Number(next ?? ""),
+                      })} options={file.header.map((name, index) => ({ value: String(index), label: name || `Column ${index + 1}` }))} emptyLabel="Not in this file" placeholder="Not in this file" searchable="auto" />
                 </Field>
               ))}
             </div>
@@ -199,10 +218,12 @@ export function ClientImport({
               mapping.company !== undefined
             }
             onDone={onDone}
+            platform={detected ?? platform}
           />
         </>
       ) : null}
       {error ? <Problem>{error}</Problem> : null}
+      {error && wrongFile ? <TutorialCard placement="import.clients.unsupported" platform={wrongFile} onUpload={focusUpload} /> : null}
     </div>
   );
 }
@@ -231,6 +252,7 @@ export function ReviewImport({
   keyBase,
   ready = true,
   onDone,
+  platform = null,
 }: {
   rows: ImportRow[];
   source: "csv" | "jobber" | "housecall_pro";
@@ -238,6 +260,7 @@ export function ReviewImport({
   keyBase: string;
   ready?: boolean;
   onDone?: (created: number) => void;
+  platform?: Platform | null;
 }) {
   const { companyId } = useCompany();
   const convex = useConvex();
@@ -366,24 +389,31 @@ export function ReviewImport({
                   </span>
                   {row.matches.length && !row.problems.length ? (
                     <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <input
-                        type="checkbox"
-                        className="size-4 accent-[#6838ef]"
+                      <Checkbox
+                       
+                        
                         checked={addAnyway.includes(row.index)}
-                        onChange={() =>
-                          setAddAnyway(
+                        onCheckedChange={() => setAddAnyway(
                             addAnyway.includes(row.index)
                               ? addAnyway.filter((index) => index !== row.index)
                               : [...addAnyway, row.index],
                           )
-                        }
-                      />
+                        } />
                       Add anyway
                     </label>
                   ) : null}
                 </li>
               ))}
           </ul>
+          {checked.rows.some((row) => !row.problems.length && !row.property) ? (
+            <div className="grid gap-1 rounded-xl bg-muted/50 px-3 py-2.5 text-sm">
+              <p className="text-strong">
+                {checked.rows.filter((row) => !row.problems.length && !row.property).length} clients have no complete address (street, city, state and ZIP), so
+                they will be added without a property. Check that those columns are chosen above, or add the property on the client later.
+              </p>
+              <TutorialLink placement="import.properties.missing" platform={platform} label="Where are service addresses in my export?" />
+            </div>
+          ) : null}
           <p className="flex gap-2 rounded-xl bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">
             <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
             Importing a phone number or email is not permission to text or email

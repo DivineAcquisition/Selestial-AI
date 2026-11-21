@@ -5,7 +5,7 @@ import type { FunctionReturnType } from "convex/server";
 import { useEffect, useMemo, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextInput, useRun } from "@/components/app/form";
 import { Modal } from "@/components/app/modal";
 import { AlertTriangle, CheckCircle2, Clock, Copy, HistoryIcon, Mail, MessageSquareText, Minus, Plus, RotateCcw, Users, Wallet } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,8 @@ import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import type { FinanceNav } from "./finance-screen";
 import { Chip, Empty, Notice, eyebrow } from "./kit";
+import { Checkbox, RadioButtonGroup, SegmentedControl, Select } from "@/components/ui/selection";
+import { MoneyField, PercentField } from "@/components/ui/fields";
 
 /**
  * Finance › Team Pay. Each cleaner's earnings per completed job, worked out by Selestial from their pay
@@ -114,21 +116,7 @@ export function TeamPayTab({ nav }: { nav: Nav }) {
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
           <div className="flex flex-wrap items-center gap-2">
-            <div role="radiogroup" aria-label="Show" className="-mx-3 flex gap-1.5 overflow-x-auto px-3 pb-0.5 sm:mx-0 sm:px-0">
-              {FILTERS.map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={filter === f.id}
-                  onClick={() => nav.set({ filter: f.id === "review" ? null : f.id })}
-                  className={cn("inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-brand-500", filter === f.id ? "border-brand-500/50 bg-brand-500/10 text-strong" : "border-border bg-card text-muted-foreground hover:text-strong")}
-                >
-                  {f.label}
-                  <span className="text-xs tabular-nums text-muted-foreground">{data.counts[f.id]}</span>
-                </button>
-              ))}
-            </div>
+            <SegmentedControl label="Show" hideLabel density="compact" value={filter} options={FILTERS.map((f) => ({ id: f.id, label: <>{f.label}<span className="ml-1.5 text-xs tabular-nums text-muted-foreground">{data.counts[f.id]}</span></> }))} onChange={(id) => nav.set({ filter: id === "review" ? null : id })} />
             {filter === "review" && ready.length > 1 ? (
               <Button size="sm" variant="default" className="ml-auto" onClick={() => setApproveAll(true)}>
                 <CheckCircle2 aria-hidden />
@@ -543,16 +531,16 @@ function AdjustDialog({ open, onClose, earningId }: { open: boolean; onClose: ()
   return (
     <Modal open={open} onClose={onClose} title="Adjust pay for this job" description="Each adjustment keeps its reason, and the cleaner sees it on their statement.">
       <form className="grid gap-4" onSubmit={(event) => (event.preventDefault(), cents && void run(async () => (await add({ companyId, earningId, cents: direction === "add" ? cents : -cents, reason }), onClose())))}>
-        <div role="radiogroup" className="grid grid-cols-2 gap-2">
+        <RadioButtonGroup className="grid grid-cols-2 gap-2">
           {(["add", "take"] as const).map((d) => (
             <button key={d} type="button" role="radio" aria-checked={direction === d} onClick={() => setDirection(d)} className={cn("inline-flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm", direction === d ? "border-brand-500/60 bg-brand-500/8 text-strong" : "border-border text-muted-foreground")}>
               {d === "add" ? <Plus className="size-4" aria-hidden /> : <Minus className="size-4" aria-hidden />}
               {d === "add" ? "Add to pay" : "Take off pay"}
             </button>
           ))}
-        </div>
+        </RadioButtonGroup>
         <Field label="Amount">
-          <TextInput inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="15.00" />
+          <MoneyField value={amount} onChange={(text) => setAmount(text)} placeholder="15.00" />
         </Field>
         <Field label="Reason">
           <TextInput value={reason} maxLength={300} onChange={(e) => setReason(e.target.value)} placeholder="Stayed an extra 30 minutes for the oven" />
@@ -580,13 +568,13 @@ function TipDialog({ open, onClose, jobId }: { open: boolean; onClose: () => voi
     <Modal open={open} onClose={onClose} title="Record a tip" description="A tip the customer gave outside the pay page. All of it goes to this job's crew, split evenly.">
       <form className="grid gap-4" onSubmit={(event) => (event.preventDefault(), cents && void run(async () => (await record({ companyId, jobId, amountCents: cents, note: note || null, confirmedReceived: confirmed }), onClose())))}>
         <Field label="Tip">
-          <TextInput inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="20.00" />
+          <MoneyField value={amount} onChange={(text) => setAmount(text)} placeholder="20.00" />
         </Field>
         <Field label="Note" hint="Optional">
           <TextInput value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} placeholder="Cash left on the counter" />
         </Field>
         <label className="flex items-start gap-2.5 rounded-xl border border-border bg-muted/40 px-3.5 py-3 text-sm text-strong">
-          <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} className="mt-0.5 size-4 accent-brand-500" />
+          <Checkbox checked={confirmed} onCheckedChange={(checked) => setConfirmed(checked)} className="mt-0.5" />
           <span>The customer gave this tip for this job.</span>
         </label>
         <FormError message={error} />
@@ -645,7 +633,7 @@ function PaymentForm({ cleanerId, preselect, onDone }: { cleanerId: Id<"cleaners
           {owed.map((r) => (
             <li key={r.id}>
               <label className="flex items-center gap-3 px-3 py-2 text-sm">
-                <input type="checkbox" checked={chosen.includes(r.id)} onChange={(e) => setPicked(e.target.checked ? [...chosen, r.id] : chosen.filter((id) => id !== r.id))} className="size-4 accent-brand-500" />
+                <Checkbox checked={chosen.includes(r.id)} onCheckedChange={(checked) => setPicked(checked ? [...chosen, r.id] : chosen.filter((id) => id !== r.id))} />
                 <span className="min-w-0 flex-1 truncate text-strong">
                   {r.service} · {r.day}
                   {r.lateTipCents ? <span className="text-muted-foreground"> · tip that came later</span> : null}
@@ -658,19 +646,13 @@ function PaymentForm({ cleanerId, preselect, onDone }: { cleanerId: Id<"cleaners
       </fieldset>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="How you paid">
-          <SelectInput value={method} onChange={(e) => setMethod(e.target.value as typeof method)}>
-            {PAY_METHODS.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={method} onValueChange={(next) => setMethod((next ?? "") as typeof method)} options={PAY_METHODS.map((m) => ({ value: m.id, label: m.label }))} />
         </Field>
         <Field label="Reference" hint="Optional: check number, confirmation">
           <TextInput value={reference} maxLength={80} onChange={(e) => setReference(e.target.value)} />
         </Field>
       </div>
-      <div role="radiogroup" aria-label="Where it stands" className="grid gap-2 sm:grid-cols-2">
+      <RadioButtonGroup aria-label="Where it stands" className="grid gap-2 sm:grid-cols-2">
         {(
           [
             { id: "paid", label: "It's paid", body: "The money reached them." },
@@ -682,14 +664,14 @@ function PaymentForm({ cleanerId, preselect, onDone }: { cleanerId: Id<"cleaners
             <span className="block text-xs text-muted-foreground">{o.body}</span>
           </button>
         ))}
-      </div>
+      </RadioButtonGroup>
       {stage === "paid" ? (
         <>
           <Field label="Day paid">
             <TextInput type="date" value={paidOn} max={todayKey(timezone)} onChange={(e) => setPaidOn(e.target.value)} />
           </Field>
           <label className="flex items-start gap-2.5 rounded-xl border border-border bg-muted/40 px-3.5 py-3 text-sm text-strong">
-            <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} className="mt-0.5 size-4 accent-brand-500" />
+            <Checkbox checked={confirmed} onCheckedChange={(checked) => setConfirmed(checked)} className="mt-0.5" />
             <span>I paid {data.name} this amount. It isn&apos;t only scheduled or promised.</span>
           </label>
         </>
@@ -874,7 +856,7 @@ function ConfirmPaidDialog({ payment, cleaner, onClose }: { payment: CleanerPaym
           <TextInput type="date" value={paidOn} max={todayKey(timezone)} onChange={(e) => setPaidOn(e.target.value)} />
         </Field>
         <label className="flex items-start gap-2.5 rounded-xl border border-border bg-muted/40 px-3.5 py-3 text-sm text-strong">
-          <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} className="mt-0.5 size-4 accent-brand-500" />
+          <Checkbox checked={confirmed} onCheckedChange={(checked) => setConfirmed(checked)} className="mt-0.5" />
           <span>The money reached {cleaner}.</span>
         </label>
         <FormError message={error} />
@@ -963,11 +945,11 @@ function PayMethodEditor({ cleaner }: { cleaner: NonNullable<FunctionReturnType<
       <p className="text-sm font-medium text-strong">How {cleaner.name.split(" ")[0]} is paid</p>
       {employee ? (
         <Field label="Hourly rate">
-          <TextInput inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="22.00" />
+          <MoneyField value={amount} onChange={(text) => setAmount(text)} placeholder="22.00" />
         </Field>
       ) : (
         <>
-          <div role="radiogroup" className="flex flex-wrap gap-2">
+          <RadioButtonGroup className="flex flex-wrap gap-2">
             {(
               [
                 { id: "tier", label: "Pay tier", disabled: cleaner.tiers.length === 0 },
@@ -979,24 +961,18 @@ function PayMethodEditor({ cleaner }: { cleaner: NonNullable<FunctionReturnType<
                 {o.label}
               </button>
             ))}
-          </div>
+          </RadioButtonGroup>
           {kind === "tier" ? (
             <Field label="Tier" hint="Edit tiers in Payments setup">
-              <SelectInput value={tierId} onChange={(e) => setTierId(e.target.value)}>
-                {cleaner.tiers.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name} · {t.shareBps / 100}%
-                  </option>
-                ))}
-              </SelectInput>
+              <Select value={tierId} onValueChange={(next) => setTierId(next ?? "")} options={cleaner.tiers.map((t) => ({ value: t.id, label: `${t.name} · ${t.shareBps / 100}%` }))} searchable="auto" />
             </Field>
           ) : kind === "share" ? (
             <Field label="Share of each job" hint="Of the job price before tax">
-              <TextInput inputMode="decimal" value={percent} onChange={(e) => setPercent(e.target.value)} placeholder="40" />
+              <PercentField value={percent} onChange={(text) => setPercent(text)} placeholder="40" precision={2} />
             </Field>
           ) : (
             <Field label="Amount per job">
-              <TextInput inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="90.00" />
+              <MoneyField value={amount} onChange={(text) => setAmount(text)} placeholder="90.00" />
             </Field>
           )}
         </>

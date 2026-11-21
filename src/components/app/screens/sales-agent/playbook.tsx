@@ -14,7 +14,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { PermissionRow, type Action } from "@/components/app/screens/agent-permissions";
 import { PageHeader, Panel } from "@/components/app/shell";
 import { Plus, Trash2 } from "@/components/icons";
@@ -24,6 +24,8 @@ import { centsFrom } from "@/lib/app/format";
 
 import { api } from "../../../../../convex/_generated/api";
 import { ReadinessPanel } from "./shared";
+import { Checkbox, Select } from "@/components/ui/selection";
+import { MoneyField } from "@/components/ui/fields";
 
 type Playbook = FunctionReturnType<typeof api.salesInquiries.playbook>;
 type Settings = Playbook["settings"];
@@ -155,20 +157,20 @@ function Editor({ playbook, justSaved, onSaved }: { playbook: Playbook; justSave
           <div className="grid gap-1.5 sm:grid-cols-3">
             {KINDS.map((kind) => (
               <label key={kind.id} className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm text-strong">
-                <input type="checkbox" disabled={!can} checked={settings.eligibility.kinds.includes(kind.id)} onChange={(event) => patch("eligibility", { ...settings.eligibility, kinds: event.target.checked ? [...settings.eligibility.kinds, kind.id] : settings.eligibility.kinds.filter((value) => value !== kind.id) })} className="size-4 accent-[var(--color-brand-500)]" />
+                <Checkbox disabled={!can} checked={settings.eligibility.kinds.includes(kind.id)} onCheckedChange={(checked) => patch("eligibility", { ...settings.eligibility, kinds: checked ? [...settings.eligibility.kinds, kind.id] : settings.eligibility.kinds.filter((value) => value !== kind.id) })} />
                 {kind.label}
               </label>
             ))}
           </div>
           <label className="flex items-start gap-2 text-sm text-strong">
-            <input type="checkbox" disabled={!can} checked={settings.eligibility.textInquiries} onChange={(event) => patch("eligibility", { ...settings.eligibility, textInquiries: event.target.checked })} className="mt-0.5 size-4 accent-[var(--color-brand-500)]" />
+            <Checkbox disabled={!can} checked={settings.eligibility.textInquiries} onCheckedChange={(checked) => patch("eligibility", { ...settings.eligibility, textInquiries: checked })} className="mt-0.5" />
             <span>
               Treat a first text from an unknown number as an inquiry
               <span className="block text-xs text-muted-foreground">Texts from existing customers and from cleaners are never treated as sales inquiries.</span>
             </span>
           </label>
           <label className="flex items-start gap-2 text-sm text-strong">
-            <input type="checkbox" disabled={!can} checked={settings.eligibility.commercialNeedsWalkthrough} onChange={(event) => patch("eligibility", { ...settings.eligibility, commercialNeedsWalkthrough: event.target.checked })} className="mt-0.5 size-4 accent-[var(--color-brand-500)]" />
+            <Checkbox disabled={!can} checked={settings.eligibility.commercialNeedsWalkthrough} onCheckedChange={(checked) => patch("eligibility", { ...settings.eligibility, commercialNeedsWalkthrough: checked })} className="mt-0.5" />
             <span>
               Commercial work is quoted after a walkthrough
               <span className="block text-xs text-muted-foreground">Sales gathers the details and hands it to you to arrange the visit, instead of pricing it from answers.</span>
@@ -247,18 +249,14 @@ function Editor({ playbook, justSaved, onSaved }: { playbook: Playbook; justSave
       <Panel title="6 · What a booking needs">
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="flex items-start gap-2 text-sm text-strong sm:col-span-2">
-            <input type="checkbox" disabled={!can} checked={settings.booking.agreementRequired} onChange={(event) => patch("booking", { ...settings.booking, agreementRequired: event.target.checked })} className="mt-0.5 size-4 accent-[var(--color-brand-500)]" />
+            <Checkbox disabled={!can} checked={settings.booking.agreementRequired} onCheckedChange={(checked) => patch("booking", { ...settings.booking, agreementRequired: checked })} className="mt-0.5" />
             <span>
               A signed service agreement before the first visit
               <span className="block text-xs text-muted-foreground">Sales waits for an agreement that is signed and in force under Agreements. It does not write or send one.</span>
             </span>
           </label>
           <Field label="Deposit">
-            <SelectInput value={settings.booking.deposit.kind} disabled={!can} onChange={(event) => patch("booking", { ...settings.booking, deposit: event.target.value === "percent" ? { kind: "percent", percent: 25 } : event.target.value === "fixed" ? { kind: "fixed", cents: 5000 } : { kind: "none" } })}>
-              <option value="none">No deposit</option>
-              <option value="percent">A percent of the quote</option>
-              <option value="fixed">A fixed amount</option>
-            </SelectInput>
+            <Select value={settings.booking.deposit.kind} onValueChange={(next) => patch("booking", { ...settings.booking, deposit: (next ?? "") === "percent" ? { kind: "percent", percent: 25 } : (next ?? "") === "fixed" ? { kind: "fixed", cents: 5000 } : { kind: "none" } })} options={[{ value: "none", label: "No deposit" }, { value: "percent", label: "A percent of the quote" }, { value: "fixed", label: "A fixed amount" }]} disabled={!can} />
           </Field>
           {settings.booking.deposit.kind === "percent" ? (
             <Field label="Percent of the quote">
@@ -266,7 +264,7 @@ function Editor({ playbook, justSaved, onSaved }: { playbook: Playbook; justSave
             </Field>
           ) : settings.booking.deposit.kind === "fixed" ? (
             <Field label="Amount ($)">
-              <TextInput inputMode="decimal" value={depositAmount} disabled={!can} placeholder="50.00" onChange={(event) => (setSaved(false), setDepositAmount(event.target.value))} />
+              <MoneyField value={depositAmount} disabled={!can} placeholder="50.00" onChange={(text) => (setSaved(false), setDepositAmount(text))} />
             </Field>
           ) : (
             <span />
@@ -287,7 +285,7 @@ function Editor({ playbook, justSaved, onSaved }: { playbook: Playbook; justSave
             <TextInput inputMode="numeric" value={String(settings.quotes.validDays)} disabled={!can} onChange={(event) => patch("quotes", { ...settings.quotes, validDays: Math.max(1, Math.min(90, Number(event.target.value.replace(/\D/g, "")) || 1)) })} />
           </Field>
           <Field label="Always review quotes above ($)" hint="Leave empty to review only what your permissions require.">
-            <TextInput inputMode="decimal" value={reviewAbove} disabled={!can} placeholder="No amount" onChange={(event) => (setSaved(false), setReviewAbove(event.target.value))} />
+            <MoneyField value={reviewAbove} disabled={!can} placeholder="No amount" onChange={(text) => (setSaved(false), setReviewAbove(text))} />
           </Field>
           <Field label="Payment terms" className="sm:col-span-2">
             <TextArea value={settings.quotes.paymentTerms} disabled={!can} rows={2} onChange={(event) => patch("quotes", { ...settings.quotes, paymentTerms: event.target.value })} />

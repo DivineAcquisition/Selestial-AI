@@ -22,6 +22,8 @@ import { Faqs } from "./step-service";
 import { TrustRow } from "./step-start";
 import { moneyExact } from "./theme";
 
+import { Checkbox, ChoiceChips, RadioButtonGroup, Select } from "@/components/ui/selection";
+
 // ── Details and agreement ────────────────────────────────────────────────────────────────────────
 
 function QuestionInput({ q, value, onChange }: { q: CustomQuestion; value: unknown; onChange: (v: string | number | boolean | string[] | undefined) => void }) {
@@ -38,34 +40,17 @@ function QuestionInput({ q, value, onChange }: { q: CustomQuestion; value: unkno
       ) : q.type === "date" ? (
         <input id={id} type="date" className="bk-input" value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value)} />
       ) : q.type === "yes_no" ? (
-        <div id={id} role="radiogroup" className="flex gap-2">
+        <RadioButtonGroup id={id} className="flex gap-2">
           {[true, false].map((b) => (
             <button key={String(b)} type="button" role="radio" aria-checked={value === b} className={chip(value === b)} onClick={() => onChange(b)}>
               {b ? "Yes" : "No"}
             </button>
           ))}
-        </div>
+        </RadioButtonGroup>
       ) : q.type === "choice" ? (
-        <select id={id} className="bk-input" value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)}>
-          <option value="">Choose…</option>
-          {q.options.map((o) => (
-            <option key={o} value={o}>
-              {o}
-            </option>
-          ))}
-        </select>
+        <Select value={(value as string) ?? ""} onValueChange={(next) => onChange(next || undefined)} options={q.options.map((o) => ({ value: o, label: o }))} emptyLabel="Choose…" placeholder="Choose…" className="bk-input" id={id} searchable="auto" />
       ) : (
-        <div id={id} className="flex flex-wrap gap-2">
-          {q.options.map((o) => {
-            const list = (value as string[]) ?? [];
-            const on = list.includes(o);
-            return (
-              <button key={o} type="button" aria-pressed={on} className={chip(on)} onClick={() => onChange(on ? list.filter((x) => x !== o) : [...list, o])}>
-                {o}
-              </button>
-            );
-          })}
-        </div>
+        <ChoiceChips aria-label={q.label} options={q.options.map((o) => ({ value: o, label: o }))} value={(value as string[]) ?? []} onValueChange={onChange} />
       )}
     </Field>
   );
@@ -163,7 +148,7 @@ function Agreement() {
             <SignaturePad onChange={setDrawn} />
           </div>
           <label className="flex items-start gap-2 text-sm">
-            <input type="checkbox" className="mt-1 h-4 w-4 accent-[var(--bk-brand)]" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
+            <Checkbox className="mt-1" checked={agreed} onCheckedChange={(checked) => setAgreed(checked)} />
             <span>I have read and agree to the {agreement.title}.</span>
           </label>
           {error ? <Notice tone="bad" title={error} /> : null}

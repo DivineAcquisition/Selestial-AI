@@ -13,7 +13,7 @@ import { useMemo, useState } from "react";
 
 import { canManage, useCompany } from "@/components/app/company";
 import { useDetail } from "@/components/app/detail-panel";
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { Modal } from "@/components/app/modal";
 import { PageHeader } from "@/components/app/shell";
 import { useNow } from "@/components/app/use-now";
@@ -30,6 +30,7 @@ import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { Avatar, ReadinessBadge } from "./bits";
 import { CLEANERS_PATH, profilePath } from "./state";
+import { Checkbox, Select } from "@/components/ui/selection";
 
 type Crew = FunctionReturnType<typeof api.crews.list>[number];
 type ForJob = FunctionReturnType<typeof api.crews.forJob>;
@@ -404,7 +405,7 @@ function CrewBuilder({ jobId, manager }: { jobId: Id<"jobs">; manager: boolean }
               const picked = chosen.includes(person.cleanerId);
               return (
                 <li key={person.cleanerId} className={cn("flex items-start gap-2.5 rounded-xl border px-3 py-2", picked ? "border-brand-500 bg-brand-500/5" : "border-border", !can && "bg-muted/30")}>
-                  <input type="checkbox" aria-label={`Choose ${person.name}`} className="mt-1 size-4 accent-[#6838ef]" disabled={!manager || !can || open === 0} checked={picked} onChange={() => toggle(person)} />
+                  <Checkbox aria-label={`Choose ${person.name}`} className="mt-1" disabled={!manager || !can || open === 0} checked={picked} onCheckedChange={() => toggle(person)} />
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-center gap-1.5">
                       <Link href={profilePath(person.cleanerId)} className="font-medium text-strong underline-offset-4 hover:underline">
@@ -543,21 +544,11 @@ function CrewDialog({ crew, onClose }: { crew?: Crew; onClose: () => void }) {
               <TextInput value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required maxLength={80} placeholder="North Austin crew" />
             </Field>
             <Field label="Supplied by (optional)">
-              <SelectInput
-                value={form.subcontractorId}
-                onChange={(event) => {
-                  setForm({ ...form, subcontractorId: event.target.value });
+              <Select value={form.subcontractorId} onValueChange={(next) => {
+                  setForm({ ...form, subcontractorId: next ?? "" });
                   setMembers([]);
                   setLead("");
-                }}
-              >
-                <option value="">Our own people</option>
-                {(subs ?? []).filter((sub) => sub.status === "active").map((sub) => (
-                  <option key={sub.subcontractorId} value={sub.subcontractorId}>
-                    {sub.name}
-                  </option>
-                ))}
-              </SelectInput>
+                }} options={[...(subs ?? []).filter((sub) => sub.status === "active").map((sub) => ({ value: sub.subcontractorId, label: sub.name }))]} emptyLabel="Our own people" placeholder="Our own people" searchable="auto" />
             </Field>
           </div>
         ) : null}
@@ -569,7 +560,7 @@ function CrewDialog({ crew, onClose }: { crew?: Crew; onClose: () => void }) {
             {people.map((row) => (
               <li key={row.cleanerId}>
                 <label className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm hover:bg-muted/50">
-                  <input type="checkbox" className="size-4 accent-[#6838ef]" checked={members.includes(row.cleanerId)} onChange={() => toggle(row.cleanerId)} />
+                  <Checkbox checked={members.includes(row.cleanerId)} onCheckedChange={() => toggle(row.cleanerId)} />
                   <span className="min-w-0 flex-1 truncate font-medium text-strong">{row.name}</span>
                   <ReadinessBadge state={row.readiness.state} />
                 </label>
@@ -579,14 +570,7 @@ function CrewDialog({ crew, onClose }: { crew?: Crew; onClose: () => void }) {
           </ul>
         </fieldset>
         <Field label="Lead" hint="The lead is offered first on a crew job, and sees the places still open.">
-          <SelectInput value={lead} onChange={(event) => setLead(event.target.value)}>
-            <option value="">No lead</option>
-            {members.map((id) => (
-              <option key={id} value={id}>
-                {names.get(id) ?? crew?.members.find((member) => member.cleanerId === id)?.name ?? "Someone"}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={lead} onValueChange={(next) => setLead(next ?? "")} options={members.map((id) => ({ value: id, label: names.get(id) ?? crew?.members.find((member) => member.cleanerId === id)?.name ?? "Someone" }))} emptyLabel="No lead" placeholder="No lead" searchable="auto" />
         </Field>
         {!crew ? (
           <>

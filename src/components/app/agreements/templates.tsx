@@ -7,7 +7,8 @@ import { useState } from "react";
 
 import { useCompany } from "@/components/app/company";
 import { Empty, Notice, ReadinessBadge, ToneBadge } from "@/components/app/agreements/shared";
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Select } from "@/components/ui/selection";
 import { Panel } from "@/components/app/shell";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -52,12 +53,9 @@ export function Templates() {
           >
             <Field label="Name"><TextInput value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required /></Field>
             <Field label="Kind of document">
-              <SelectInput value={form.docType} onChange={(event) => setForm({ ...form, docType: event.target.value })} required>
-                <option value="">Choose…</option>
-                {catalog.types.filter((t) => t.canDraft).map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
-              </SelectInput>
+              <Select value={form.docType} onValueChange={(next) => setForm({ ...form, docType: next ?? "" })} options={catalog.types.filter((t) => t.canDraft).map((t) => ({ value: t.key, label: t.label }))} emptyLabel="Choose…" placeholder="Choose…" required searchable="auto" />
             </Field>
-            <Field label="Start from"><SelectInput value={form.fromCatalog} onChange={(event) => setForm({ ...form, fromCatalog: event.target.value })}><option value="yes">Selestial&apos;s text</option><option value="no">Selestial&apos;s text, then rewrite</option></SelectInput></Field>
+            <Field label="Start from"><Select value={form.fromCatalog} onValueChange={(next) => setForm({ ...form, fromCatalog: next ?? "" })} options={[{ value: "yes", label: "Selestial's text" }, { value: "no", label: "Selestial's text, then rewrite" }]} /></Field>
             <Button type="submit" variant="primary" size="sm" loading={busy}>Create</Button>
             <div className="sm:col-span-4"><FormError message={error} /></div>
           </form>
@@ -187,7 +185,7 @@ function TemplateForm({ template, templateId }: { template: TemplateData; templa
           <div key={e.key} className="mb-2 grid gap-2 rounded-xl border border-border p-3 sm:grid-cols-4">
             <Field label="Key"><TextInput value={e.key} disabled={!editable} onChange={(event) => setExtra((c) => c.map((x, i) => (i === index ? { ...x, key: event.target.value } : x)))} /></Field>
             <Field label="Label"><TextInput value={e.label} disabled={!editable} onChange={(event) => setExtra((c) => c.map((x, i) => (i === index ? { ...x, label: event.target.value } : x)))} /></Field>
-            <Field label="Kind"><SelectInput value={e.type} disabled={!editable} onChange={(event) => setExtra((c) => c.map((x, i) => (i === index ? { ...x, type: event.target.value as Extra["type"] } : x)))}>{["text", "longtext", "money", "date", "int", "bool", "list"].map((t) => <option key={t} value={t}>{t}</option>)}</SelectInput></Field>
+            <Field label="Kind"><Select value={e.type} onValueChange={(next) => setExtra((c) => c.map((x, i) => (i === index ? { ...x, type: (next ?? "") as Extra["type"] } : x)))} options={["text", "longtext", "money", "date", "int", "bool", "list"].map((t) => ({ value: t, label: t }))} disabled={!editable} /></Field>
             <Field label="Question"><TextInput value={e.ask} disabled={!editable} onChange={(event) => setExtra((c) => c.map((x, i) => (i === index ? { ...x, ask: event.target.value } : x)))} /></Field>
           </div>
         ))}

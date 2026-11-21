@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Markdown } from "@/components/app/chat/markdown";
 import { useCompany } from "@/components/app/company";
 import { messageOf } from "@/components/app/form";
+import { Select } from "@/components/ui/selection";
 import { CheckCircle2, Copy, Download, FileText, Hand, PenLine, Split, TriangleAlert, X } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { diffCounts, diffLines } from "@/lib/app/chat/diff";
@@ -123,15 +124,7 @@ export function DocumentWorkspace({ artifactId, onClose }: { artifactId: string;
         </div>
         <label className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
           Version
-          <select value={doc.version?.version ?? doc.currentVersion} onChange={(event) => setVersion(Number(event.target.value) === doc.currentVersion ? null : Number(event.target.value))} className="h-8 rounded-lg border border-border bg-card px-2 text-xs text-strong">
-            {doc.versions.map((row) => (
-              <option key={row.version} value={row.version}>
-                {row.version}
-                {row.version === doc.currentVersion ? " (latest)" : ""} · {row.author === "assistant" ? "Selestial" : "you"}
-                {row.note ? ` · ${row.note}` : ""}
-              </option>
-            ))}
-          </select>
+          <Select value={String(doc.version?.version ?? doc.currentVersion)} onValueChange={(next) => setVersion(Number(next ?? "") === doc.currentVersion ? null : Number(next ?? ""))} options={doc.versions.map((row) => ({ value: String(row.version), label: `${row.version}${row.version === doc.currentVersion ? " (latest)" : ""} · ${row.author === "assistant" ? "Selestial" : "you"}${row.note ? ` · ${row.note}` : ""}` }))} searchable="auto" density="compact" />
         </label>
       </div>
 
@@ -189,15 +182,8 @@ export function DocumentWorkspace({ artifactId, onClose }: { artifactId: string;
             <div className="grid gap-2">
               <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 Compare version {doc.version?.version} with
-                <select value={compareTo ?? ""} onChange={(event) => setCompareTo(Number(event.target.value) || null)} className="h-8 rounded-lg border border-border bg-card px-2 text-xs text-strong">
-                  {doc.versions
-                    .filter((row) => row.version !== doc.version?.version)
-                    .map((row) => (
-                      <option key={row.version} value={row.version}>
-                        version {row.version}
-                      </option>
-                    ))}
-                </select>
+                <Select value={String(compareTo ?? "")} onValueChange={(next) => setCompareTo(Number(next ?? "") || null)} options={[...(doc.versions
+                    .filter((row) => row.version !== doc.version?.version)?.map((row) => ({ value: String(row.version), label: `version ${row.version}` })) ?? [])]} searchable="auto" density="compact" />
               </label>
               {lines.length ? (
                 <>

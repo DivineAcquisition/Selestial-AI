@@ -15,7 +15,7 @@ export const AGENTS = ["sales", "recruiter", "dispatch", "retention"] as const;
 export type Agent = (typeof AGENTS)[number];
 export const agentValidator = literals(AGENTS);
 
-/** "support": the row a Selestial support session acts through. Never an active membership (convex/lib/support/schema.ts). */
+/** support: the company's Selestial Support member (convex/lib/support/access.ts). It cannot sign in and is never notified. */
 export const MEMBER_STATUSES = ["invited", "active", "removed", "support"] as const;
 export const memberStatusValidator = literals(MEMBER_STATUSES);
 
@@ -119,8 +119,7 @@ export const MESSAGE_CHANGES: Record<MessageStatus, readonly MessageStatus[]> = 
   sent: ["delivered", "failed"],
   delivered: [],
   failed: [],
-  // "queued" only when a text is reconciled with the provider under its own idempotency key (convex/operations.ts).
-  unconfirmed: ["delivered", "failed", "queued"],
+  unconfirmed: ["delivered", "failed"],
   not_sent: [],
 };
 

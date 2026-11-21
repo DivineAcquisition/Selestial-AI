@@ -11,7 +11,9 @@ import { useMemo, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
 import { FormError, useRun } from "@/components/app/form";
+import { Select } from "@/components/ui/selection";
 import { PageHeader } from "@/components/app/shell";
+import { TutorialCard, useSource } from "@/components/app/tutorials/offer";
 import { ArrowLeft, Check, FileSpreadsheet, TriangleAlert, Upload } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,6 +31,7 @@ const SAMPLE = "Name,Type,Phone,Email,Service areas,Skills\nRosa Diaz,Contractor
 
 export function ImportScreen() {
   const { companyId, role } = useCompany();
+  const [source] = useSource();
   const convex = useConvex();
   const importRows = useMutation(api.workforce.importRows);
   const { busy, error, run, setError } = useRun();
@@ -81,6 +84,11 @@ export function ImportScreen() {
         Cleaners
       </Link>
       <PageHeader title="Import cleaners" lead="Bring in a list from a spreadsheet. Nothing is written until you have reviewed every row." />
+      {step === 1 ? (
+        <div className="mb-5">
+          <TutorialCard placement="import.team" platform={source} />
+        </div>
+      ) : null}
       <ol className="mb-5 flex flex-wrap gap-2 text-sm" aria-label="Steps">
         {["Your list", "Match columns", "Review", "Done"].map((label, index) => (
           <li key={label} className={cn("inline-flex items-center gap-2 rounded-full border px-3 py-1", step === index + 1 ? "border-brand-500 bg-brand-500/8 font-medium text-strong" : step > index + 1 ? "border-success/40 text-success-foreground" : "border-border text-muted-foreground")} aria-current={step === index + 1 ? "step" : undefined}>
@@ -126,19 +134,7 @@ export function ImportScreen() {
             {IMPORT_FIELDS.map((field) => (
               <label key={field.key} className="grid gap-1 text-sm">
                 <span className="font-medium text-strong">{field.label}</span>
-                <select
-                  value={columns[field.key] ?? ""}
-                  onChange={(event) => setColumns({ ...columns, [field.key]: event.target.value === "" ? undefined : Number(event.target.value) })}
-                  className="h-10 rounded-lg border border-border bg-card px-2.5 text-sm text-strong sm:h-9"
-                >
-                  <option value="">Not in the file</option>
-                  {columns[field.key] !== undefined && columns[field.key]! < 0 ? <option value={columns[field.key]}>First and last name</option> : null}
-                  {header.map((name, index) => (
-                    <option key={`${name}-${index}`} value={index}>
-                      {name || `Column ${index + 1}`}
-                    </option>
-                  ))}
-                </select>
+                <Select value={String(columns[field.key] ?? "")} onValueChange={(next) => setColumns({ ...columns, [field.key]: (next ?? "") === "" ? undefined : Number(next ?? "") })} options={[...(columns[field.key] !== undefined && columns[field.key]! < 0 ? [{ value: String(columns[field.key]), label: "First and last name" }] : []), ...header.map((name, index) => ({ value: String(index), label: name || `Column ${index + 1}` }))]} emptyLabel="Not in the file" placeholder="Not in the file" searchable="auto" density="compact" />
               </label>
             ))}
           </div>

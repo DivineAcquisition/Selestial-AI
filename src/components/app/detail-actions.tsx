@@ -5,7 +5,8 @@ import { useState } from "react";
 
 import { canManage, useCompany } from "@/components/app/company";
 import { DispatchView } from "@/components/app/dispatch-view";
-import { Field, FormError, SelectInput, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextInput, useRun } from "@/components/app/form";
+import { cleanerOption, SearchableSelect } from "@/components/ui/selection";
 import { HoldButton } from "@/components/app/hold-button";
 import { useNow } from "@/components/app/use-now";
 import { Modal } from "@/components/app/modal";
@@ -16,6 +17,7 @@ import { centsFrom, clock, zonedInstant } from "@/lib/app/format";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import type { Detail } from "../../../convex/details";
+import { DurationField, MoneyField } from "@/components/ui/fields";
 
 /** A button that first asks for a few words (a reason, a note, an outcome), then acts. */
 function WithWords({ label, placeholder, confirm, required = true, variant = "outline", onSubmit }: { label: string; placeholder: string; confirm: string; required?: boolean; variant?: "outline" | "ghost" | "destructive-outline"; onSubmit: (words: string) => Promise<unknown> }) {
@@ -83,21 +85,14 @@ function OfferForm({ jobId, now }: { jobId: Id<"jobs">; now: number }) {
       }}
     >
       <Field label="Cleaner" hint="Only cleaners marked ready are listed. The offer is refused if they cannot work this time.">
-        <SelectInput value={cleanerId} onChange={(event) => setCleanerId(event.target.value)} required>
-          <option value="">Choose a cleaner</option>
-          {cleaners.map((cleaner) => (
-            <option key={cleaner._id} value={cleaner._id}>
-              {cleaner.name}
-            </option>
-          ))}
-        </SelectInput>
+        <SearchableSelect value={cleanerId} onValueChange={(next) => setCleanerId(next ?? "")} options={cleaners.map(cleanerOption)} placeholder="Search cleaners by name or skill" required />
       </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Their pay for this visit">
-          <TextInput inputMode="decimal" value={pay} onChange={(event) => setPay(event.target.value)} placeholder="0.00" required />
+          <MoneyField value={pay} onChange={(text) => setPay(text)} placeholder="0.00" required />
         </Field>
         <Field label="Minutes to answer">
-          <TextInput inputMode="numeric" value={minutes} onChange={(event) => setMinutes(event.target.value)} required />
+          <DurationField value={minutes} onChange={(text) => setMinutes(text)} required stepper />
         </Field>
       </div>
       <FormError message={error} />

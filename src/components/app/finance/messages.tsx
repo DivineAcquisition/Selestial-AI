@@ -6,7 +6,8 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Select } from "@/components/ui/selection";
 import { Modal } from "@/components/app/modal";
 import { AlertTriangle, CheckCircle2, ChevronDown, Clock, Loader2, Mail, MessageSquareText, RotateCcw, SendIcon, ShieldCheck, Sparkles } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -421,13 +422,7 @@ function PermissionForm({ customerId, channel, onDone }: { customerId: Id<"custo
       }}
     >
       <Field label="How they agreed">
-        <SelectInput value={source} onChange={(e) => setSource(e.target.value as typeof source)}>
-          {SOURCES.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.label}
-            </option>
-          ))}
-        </SelectInput>
+        <Select value={source} onValueChange={(next) => setSource((next ?? "") as typeof source)} options={SOURCES.map((s) => ({ value: s.id, label: s.label }))} />
       </Field>
       <Field label="Where the proof is kept" hint={needsProof ? "Required: for example, the signed form in the customer folder, or the call date." : "Optional"}>
         <TextInput value={evidence} maxLength={500} onChange={(e) => setEvidence(e.target.value)} />

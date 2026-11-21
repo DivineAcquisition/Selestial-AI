@@ -6,7 +6,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { FormError, SelectInput, TextInput, useRun } from "@/components/app/form";
+import { FormError, TextInput, useRun } from "@/components/app/form";
+import { Select } from "@/components/ui/selection";
 import { PageHeader, Panel } from "@/components/app/shell";
 import { useNow } from "@/components/app/use-now";
 import { Mail, MessageSquareText, Paperclip, X } from "@/components/icons";
@@ -19,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { CLOSURE_WORDS, CriteriaList, EvidenceTrace, JourneyTimeline, PipelineFlow, RECOMMENDATION, SOURCE_WORDS, STAGE_WORDS, STEPS, stepOf, WhoActs, type ApplicationDetail, type ApplicationRow, type TraceStep } from "./shared";
+import { EmailInput } from "@/components/ui/fields";
 
 /** Applicants: everyone in the pipeline, by step, with one opened beside the list. */
 export function ApplicantsScreen() {
@@ -130,16 +132,9 @@ function AddApplicant() {
         });
       }}
     >
-      <SelectInput aria-label="Role" value={form.needId} onChange={(event) => setForm({ ...form, needId: event.target.value })} required>
-        <option value="">Role…</option>
-        {needs?.map((need) => (
-          <option key={need._id} value={need._id}>
-            {need.title}
-          </option>
-        ))}
-      </SelectInput>
+      <Select value={form.needId} onValueChange={(next) => setForm({ ...form, needId: next ?? "" })} options={[...(needs?.map((need) => ({ value: need._id, label: need.title })) ?? [])]} emptyLabel="Role…" placeholder="Role…" required aria-label="Role" searchable="auto" />
       <TextInput aria-label="Name" placeholder="Name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
-      <TextInput aria-label="Email" type="email" placeholder="Email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required />
+      <EmailInput aria-label="Email" placeholder="Email" value={form.email} onChange={(text) => setForm({ ...form, email: text })} required />
       <TextInput aria-label="Phone" placeholder="Phone (optional)" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
       <Button type="submit" size="sm" variant="primary" loading={busy}>
         Add
@@ -365,14 +360,7 @@ function ApplicantDetail({ applicationId, now, timezone, onClose }: { applicatio
               </Button>
             </form>
             <div className="flex flex-wrap items-center gap-2">
-              <SelectInput aria-label="Close the application" value={closing} onChange={(event) => setClosing(event.target.value as typeof closing)}>
-                <option value="">Close the application…</option>
-                <option value="not_selected">Not selected</option>
-                <option value="requirement_not_met">A requirement is not met</option>
-                <option value="no_response">No response</option>
-                <option value="duplicate">Duplicate</option>
-                <option value="other">Other</option>
-              </SelectInput>
+              <Select value={closing} onValueChange={(next) => setClosing((next ?? "") as typeof closing)} options={[{ value: "not_selected", label: "Not selected" }, { value: "requirement_not_met", label: "A requirement is not met" }, { value: "no_response", label: "No response" }, { value: "duplicate", label: "Duplicate" }, { value: "other", label: "Other" }]} emptyLabel="Close the application…" placeholder="Close the application…" aria-label="Close the application" />
               {closing ? (
                 <Button size="sm" variant="destructive-outline" loading={busy} onClick={() => void run(async () => (await close({ companyId, applicationId, reason: closing }), setClosing("")))}>
                   Close it

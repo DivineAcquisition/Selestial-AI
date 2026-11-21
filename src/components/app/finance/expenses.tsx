@@ -5,7 +5,7 @@ import type { FunctionReturnType } from "convex/server";
 import { useMemo, useRef, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { Modal } from "@/components/app/modal";
 import { AlertTriangle, CameraIcon, CheckCircle2, Download, ExternalLink, FileText, HistoryIcon, Loader2, Plus, ReceiptIcon, Settings2, Sparkles, Trash2, Upload } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,8 @@ import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import type { FinanceNav } from "./finance-screen";
 import { Chip, Empty, Notice, eyebrow } from "./kit";
+import { Checkbox, SegmentedControl, Select } from "@/components/ui/selection";
+import { MoneyField, NumberField } from "@/components/ui/fields";
 
 /**
  * Finance › Expenses. Receipts the Owner snaps or uploads (Selestial reads them into drafts), expenses
@@ -121,13 +123,7 @@ export function ExpensesTab({ nav }: { nav: Nav }) {
       <div className="flex flex-wrap items-center gap-2">
         <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
           <span className="sr-only">Period</span>
-          <select value={nav.period} onChange={(event) => nav.set({ period: event.target.value === "this_month" ? null : (event.target.value as PeriodId) })} className="h-9 cursor-pointer rounded-lg border border-border bg-card px-2.5 text-sm font-medium text-strong focus-visible:outline-2 focus-visible:outline-brand-500">
-            {PERIODS.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.label}
-              </option>
-            ))}
-          </select>
+          <Select value={nav.period} onValueChange={(next) => nav.set({ period: (next ?? "") === "this_month" ? null : ((next ?? "") as PeriodId) })} options={PERIODS.map((p) => ({ value: p.id, label: p.label }))} density="compact" />
         </label>
         <input ref={snapRef} type="file" accept="image/*" capture="environment" className="sr-only" tabIndex={-1} aria-hidden onChange={(e) => (e.target.files && void uploads.upload(e.target.files), (e.target.value = ""))} />
         <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic,application/pdf" multiple className="sr-only" tabIndex={-1} aria-hidden onChange={(e) => (e.target.files && void uploads.upload(e.target.files), (e.target.value = ""))} />
@@ -224,21 +220,7 @@ export function ExpensesTab({ nav }: { nav: Nav }) {
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
           <div className="flex flex-wrap items-center gap-2">
-            <div role="radiogroup" aria-label="Show" className="-mx-3 flex gap-1.5 overflow-x-auto px-3 pb-0.5 sm:mx-0 sm:px-0">
-              {FILTERS.map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={filter === f.id}
-                  onClick={() => nav.set({ filter: f.id === "review" ? null : f.id })}
-                  className={cn("inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-brand-500", filter === f.id ? "border-brand-500/50 bg-brand-500/10 text-strong" : "border-border bg-card text-muted-foreground hover:text-strong")}
-                >
-                  {f.label}
-                  {f.id in data.counts ? <span className="text-xs tabular-nums text-muted-foreground">{data.counts[f.id as keyof typeof data.counts]}</span> : null}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl label="Show" hideLabel density="compact" value={filter} options={FILTERS.map((f) => ({ id: f.id, label: <>{f.label}{f.id in data.counts ? <span className="ml-1.5 text-xs tabular-nums text-muted-foreground">{data.counts[f.id as keyof typeof data.counts]}</span> : null}</> }))} onChange={(id) => nav.set({ filter: id === "review" ? null : id })} />
             <div className="ml-auto flex gap-2">
               {filter === "review" && ready.length > 0 ? (
                 <Button size="sm" variant="default" onClick={() => setDialog("record")}>
@@ -502,34 +484,19 @@ function ExpenseFields({ form, set, categories, unclear, around }: { form: FormS
           <TextInput type="date" value={form.spentOn} onChange={(e) => set({ spentOn: e.target.value })} className={mark("date")} />
         </Field>
         <Field label="Amount paid, tax included" hint={hint("amount")}>
-          <TextInput inputMode="decimal" value={form.amount} onChange={(e) => set({ amount: e.target.value })} placeholder="48.37" className={mark("amount")} />
+          <MoneyField value={form.amount} onChange={(text) => set({ amount: text })} placeholder="48.37" className={mark("amount")} />
         </Field>
         <Field label="Sales tax" hint={hint("tax") ?? "Optional"}>
-          <TextInput inputMode="decimal" value={form.tax} onChange={(e) => set({ tax: e.target.value })} placeholder="3.99" className={mark("tax")} />
+          <NumberField value={form.tax} onChange={(text) => set({ tax: text })} placeholder="3.99" className={mark("tax")} precision={2} />
         </Field>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Category">
-          <SelectInput value={form.categoryId} onChange={(e) => set({ categoryId: e.target.value, ...(categories.find((c) => c.id === e.target.value)?.kind === "overhead" && form.linkKind === "job" ? { linkKind: "overhead" as const, linkId: "" } : {}) })}>
-            <option value="">Choose…</option>
-            {categories
-              .filter((c) => !c.hidden || c.id === form.categoryId)
-              .map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} ({c.kind === "job" ? "job cost" : "overhead"})
-                </option>
-              ))}
-          </SelectInput>
+          <Select value={form.categoryId} onValueChange={(next) => set({ categoryId: next ?? "", ...(categories.find((c) => c.id === (next ?? ""))?.kind === "overhead" && form.linkKind === "job" ? { linkKind: "overhead" as const, linkId: "" } : {}) })} options={categories
+              .filter((c) => !c.hidden || c.id === form.categoryId).map((c) => ({ value: c.id, label: `${c.name} (${c.kind === "job" ? "job cost" : "overhead"})` }))} emptyLabel="Choose…" placeholder="Choose…" searchable="auto" />
         </Field>
         <Field label="Paid with">
-          <SelectInput value={form.paidWith} onChange={(e) => set({ paidWith: e.target.value as FormState["paidWith"] })}>
-            <option value="">Not set</option>
-            {PAID_WITH.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.label}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={form.paidWith} onValueChange={(next) => set({ paidWith: (next ?? "") as FormState["paidWith"] })} options={PAID_WITH.map((p) => ({ value: p.id, label: p.label }))} emptyLabel="Not set" placeholder="Not set" />
         </Field>
       </div>
       {(form.paidWith && form.paidWith !== "cash") || form.paidWithNote ? (
@@ -539,26 +506,11 @@ function ExpenseFields({ form, set, categories, unclear, around }: { form: FormS
       ) : null}
       <div className="grid gap-4 sm:grid-cols-[12rem_minmax(0,1fr)]">
         <Field label="For">
-          <SelectInput value={form.linkKind} onChange={(e) => set({ linkKind: e.target.value as FormState["linkKind"], linkId: "" })}>
-            <option value="">Not linked</option>
-            <option value="job" disabled={category?.kind === "overhead"}>
-              A visit
-            </option>
-            <option value="property">A property</option>
-            <option value="service">A service</option>
-            <option value="overhead">General overhead</option>
-          </SelectInput>
+          <Select value={form.linkKind} onValueChange={(next) => set({ linkKind: (next ?? "") as FormState["linkKind"], linkId: "" })} options={[{ value: "job", label: "A visit", disabled: category?.kind === "overhead" }, { value: "property", label: "A property" }, { value: "service", label: "A service" }, { value: "overhead", label: "General overhead" }]} emptyLabel="Not linked" placeholder="Not linked" />
         </Field>
         {form.linkKind && form.linkKind !== "overhead" ? (
           <Field label={form.linkKind === "job" ? "Visit" : form.linkKind === "property" ? "Property" : "Service"} hint={form.linkKind === "job" ? "Visits within a week of the date paid" : undefined}>
-            <SelectInput value={form.linkId} onChange={(e) => set({ linkId: e.target.value })}>
-              <option value="">{options ? "Choose…" : "Loading…"}</option>
-              {(form.linkKind === "job" ? (options?.jobs ?? []) : form.linkKind === "property" ? (options?.properties ?? []) : (options?.services ?? []).map((s) => ({ id: s.id, label: s.name }))).map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.label}
-                </option>
-              ))}
-            </SelectInput>
+            <Select value={form.linkId} onValueChange={(next) => set({ linkId: next ?? "" })} options={[...((form.linkKind === "job" ? (options?.jobs ?? []) : form.linkKind === "property" ? (options?.properties ?? []) : (options?.services ?? []).map((s) => ({ id: s.id, label: s.name })))?.map((o) => ({ value: o.id, label: o.label })) ?? [])]} emptyLabel={options ? "Choose…" : "Loading…"} placeholder={options ? "Choose…" : "Loading…"} searchable="auto" />
           </Field>
         ) : null}
       </div>
@@ -713,7 +665,7 @@ function ExpenseEditor({ e, onClose }: { e: Detail; onClose: () => void }) {
             {e.repeat.vendor ?? "No vendor"} · {calendarDate(e.repeat.spentOn)} · {e.repeat.amountCents === null ? "—" : usd(e.repeat.amountCents)} <span className="text-muted-foreground">({e.repeat.statusWords}, {e.repeat.sourceWords.toLowerCase()})</span>
           </p>
           <label className="flex items-center gap-2 text-strong">
-            <input type="checkbox" checked={notARepeat} onChange={(ev) => setNotARepeat(ev.target.checked)} className="size-4 accent-brand-500" />
+            <Checkbox checked={notARepeat} onCheckedChange={(checked) => setNotARepeat(checked)} />
             They&apos;re two different purchases
           </label>
           {!notARepeat ? <p className="text-xs text-muted-foreground">If it is the same purchase, void this one.</p> : null}
@@ -775,14 +727,14 @@ function ExpenseEditor({ e, onClose }: { e: Detail; onClose: () => void }) {
       ) : editable && form.vendor && form.categoryId ? (
         <div className="grid gap-1.5 rounded-xl border border-border px-3.5 py-3 text-sm">
           <label className="flex items-start gap-2 text-strong">
-            <input type="checkbox" checked={makeRule} onChange={(ev) => setMakeRule(ev.target.checked)} className="mt-0.5 size-4 accent-brand-500" />
+            <Checkbox checked={makeRule} onCheckedChange={(checked) => setMakeRule(checked)} className="mt-0.5" />
             <span>
               Always file {form.vendor} as {category?.name ?? "this category"}
             </span>
           </label>
           {makeRule ? (
             <label className="ml-6 flex items-start gap-2 text-strong">
-              <input type="checkbox" checked={autoFile} onChange={(ev) => setAutoFile(ev.target.checked)} className="mt-0.5 size-4 accent-brand-500" />
+              <Checkbox checked={autoFile} onCheckedChange={(checked) => setAutoFile(checked)} className="mt-0.5" />
               <span>
                 And record it without asking
                 <span className="block text-xs text-muted-foreground">Only when the vendor, date and amount are read clearly and it isn&apos;t a possible repeat. Otherwise it waits for you.</span>
@@ -958,60 +910,29 @@ function ImportDialog({ onClose }: { onClose: () => void }) {
           <div className="grid gap-3 sm:grid-cols-3">
             {(["date", "description"] as const).map((k) => (
               <Field key={k} label={k === "date" ? "Date column" : "Description column"}>
-                <SelectInput value={columns?.[k] ?? ""} onChange={(e) => setColumns((c) => ({ ...c!, [k]: e.target.value === "" ? null : Number(e.target.value) }))}>
-                  <option value="">Choose…</option>
-                  {header.map((h, i) => (
-                    <option key={i} value={i}>
-                      {h || `Column ${i + 1}`}
-                    </option>
-                  ))}
-                </SelectInput>
+                <Select value={String(columns?.[k] ?? "")} onValueChange={(next) => setColumns((c) => ({ ...c!, [k]: (next ?? "") === "" ? null : Number(next ?? "") }))} options={header.map((h, i) => ({ value: String(i), label: h || `Column ${i + 1}` }))} emptyLabel="Choose…" placeholder="Choose…" searchable="auto" />
               </Field>
             ))}
             <Field label="Money out is shown as">
-              <SelectInput value={sign} onChange={(e) => setSign(e.target.value as SpendSign)}>
-                <option value="negative">Minus (−48.37)</option>
-                <option value="positive">Plus (48.37)</option>
-                <option value="debit_column">Debit column</option>
-              </SelectInput>
+              <Select value={sign} onValueChange={(next) => setSign((next ?? "") as SpendSign)} options={[{ value: "negative", label: "Minus (−48.37)" }, { value: "positive", label: "Plus (48.37)" }, { value: "debit_column", label: "Debit column" }]} />
             </Field>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             {sign === "debit_column" ? (
               (["debit", "credit"] as const).map((k) => (
                 <Field key={k} label={k === "debit" ? "Debit (money out) column" : "Credit (money in) column"}>
-                  <SelectInput value={columns?.[k] ?? ""} onChange={(e) => setColumns((c) => ({ ...c!, [k]: e.target.value === "" ? null : Number(e.target.value) }))}>
-                    <option value="">None</option>
-                    {header.map((h, i) => (
-                      <option key={i} value={i}>
-                        {h || `Column ${i + 1}`}
-                      </option>
-                    ))}
-                  </SelectInput>
+                  <Select value={String(columns?.[k] ?? "")} onValueChange={(next) => setColumns((c) => ({ ...c!, [k]: (next ?? "") === "" ? null : Number(next ?? "") }))} options={header.map((h, i) => ({ value: String(i), label: h || `Column ${i + 1}` }))} emptyLabel="None" placeholder="None" searchable="auto" />
                 </Field>
               ))
             ) : (
               <Field label="Amount column">
-                <SelectInput value={columns?.amount ?? ""} onChange={(e) => setColumns((c) => ({ ...c!, amount: e.target.value === "" ? null : Number(e.target.value) }))}>
-                  <option value="">Choose…</option>
-                  {header.map((h, i) => (
-                    <option key={i} value={i}>
-                      {h || `Column ${i + 1}`}
-                    </option>
-                  ))}
-                </SelectInput>
+                <Select value={String(columns?.amount ?? "")} onValueChange={(next) => setColumns((c) => ({ ...c!, amount: (next ?? "") === "" ? null : Number(next ?? "") }))} options={header.map((h, i) => ({ value: String(i), label: h || `Column ${i + 1}` }))} emptyLabel="Choose…" placeholder="Choose…" searchable="auto" />
               </Field>
             )}
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="This statement is for">
-              <SelectInput value={paidWith} onChange={(e) => setPaidWith(e.target.value as PaidWith)}>
-                {PAID_WITH.filter((p) => p.id !== "cash").map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.label}
-                  </option>
-                ))}
-              </SelectInput>
+              <Select value={paidWith} onValueChange={(next) => setPaidWith((next ?? "") as PaidWith)} options={PAID_WITH.filter((p) => p.id !== "cash").map((p) => ({ value: p.id, label: p.label }))} searchable="auto" />
             </Field>
             <Field label="Card or account name" hint="Optional">
               <TextInput value={note} maxLength={60} onChange={(e) => setNote(e.target.value)} placeholder="Chase Ink ending 1234" />
@@ -1134,18 +1055,11 @@ function RulesBody() {
             <TextInput value={vendor} maxLength={60} onChange={(e) => setVendor(e.target.value)} placeholder="Home Depot" />
           </Field>
           <Field label="File as">
-            <SelectInput value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-              <option value="">Choose…</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </SelectInput>
+            <Select value={categoryId} onValueChange={(next) => setCategoryId(next ?? "")} options={categories.map((c) => ({ value: c.id, label: c.name }))} emptyLabel="Choose…" placeholder="Choose…" searchable="auto" />
           </Field>
         </div>
         <label className="flex items-start gap-2 text-sm text-strong">
-          <input type="checkbox" checked={autoFile} onChange={(e) => setAutoFile(e.target.checked)} className="mt-0.5 size-4 accent-brand-500" />
+          <Checkbox checked={autoFile} onCheckedChange={(checked) => setAutoFile(checked)} className="mt-0.5" />
           <span>
             Record matching expenses without asking
             <span className="block text-xs text-muted-foreground">Only when the receipt is clear and it isn&apos;t a possible repeat.</span>

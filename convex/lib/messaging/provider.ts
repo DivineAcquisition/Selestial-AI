@@ -3,7 +3,6 @@
  * The mock answers from the number alone, so a test can ask for a delivered message, a failure, a
  * carrier that never confirms, or a send that dies half way.
  */
-import { sendIsolation } from "../operations/deployment";
 import { countSegments } from "../messagingBilling/segments";
 import { telnyxProvider } from "./telnyx";
 
@@ -11,18 +10,10 @@ import { telnyxProvider } from "./telnyx";
 export type SendInput = { to: string; from?: string; body: string; idempotencyKey: string; attempt: number };
 
 export type SendResult =
-  /**
-   * The provider took the message. `delivered` is set only when it also confirmed the handset got it.
-   * `replayed`: the provider answered with the response it stored for this idempotency key, so the
-   * message had already been accepted by an earlier attempt and was not sent again.
-   */
-  | { ok: true; providerMessageId: string; delivered: boolean; parts?: number; replayed?: boolean }
-  /**
-   * It did not go. `retryable` means trying again may work. `problem` is words for a person, never a raw
-   * response. `uncertain`: the provider holds a different request under this key, so whether the first
-   * one went is still not known; the message is left unconfirmed rather than failed.
-   */
-  | { ok: false; retryable: boolean; problem: string; uncertain?: boolean };
+  /** The provider took the message. `delivered` is set only when it also confirmed the handset got it. */
+  | { ok: true; providerMessageId: string; delivered: boolean; parts?: number }
+  /** It did not go. `retryable` means trying again may work. `problem` is words for a person, never a raw response. */
+  | { ok: false; retryable: boolean; problem: string };
 
 export interface MessagingProvider {
   name: string;
@@ -30,39 +21,17 @@ export interface MessagingProvider {
 }
 
 /** What the mock was asked to send, newest last. For tests only. */
-export const mockOutbox: (SendInput & { result: "accepted" | "failed" | "threw" | "replayed" })[] = [];
-/**
- * Sends the mock accepted and then lost the answer to (numbers ending 0006). A repeat of the same key, to
- * and body replays the stored answer instead of sending again, as Telnyx does for 24 hours.
- */
-const mockAccepted = new Map<string, { to: string; body: string; providerMessageId: string; parts: number }>();
-/** For tests: forget what the mock accepted. */
-export function resetMockProvider() {
-  mockAccepted.clear();
-  mockOutbox.length = 0;
-}
+export const mockOutbox: (SendInput & { result: "accepted" | "failed" | "threw" })[] = [];
 
 /**
  * Test numbers, by their last four digits:
  * 0001 never deliverable. 0002 fails twice, then goes. 0003 the send dies with no answer.
- * 0004 accepted, but no delivery report ever comes. 0006 accepted, then the connection dies before the
- * answer (the provider timing out after accepting). Anything else is accepted and delivered. A repeat of
- * a key the mock already accepted replays that answer, as Telnyx's idempotency does.
+ * 0004 accepted, but no delivery report ever comes. Anything else is accepted and delivered.
  */
 export const mockProvider: MessagingProvider = {
   name: "mock",
   async send(input) {
     const tail = input.to.slice(-4);
-    const stored = mockAccepted.get(input.idempotencyKey);
-    if (stored && stored.to === input.to && stored.body === input.body) {
-      mockOutbox.push({ ...input, result: "replayed" });
-      return { ok: true, providerMessageId: stored.providerMessageId, delivered: false, parts: stored.parts, replayed: true };
-    }
-    if (tail === "0006") {
-      mockAccepted.set(input.idempotencyKey, { to: input.to, body: input.body, providerMessageId: `mock-${input.idempotencyKey}`, parts: countSegments(input.body).segments });
-      mockOutbox.push({ ...input, result: "accepted" });
-      throw new Error("mock: accepted, then the connection timed out");
-    }
     if (tail === "0003") {
       mockOutbox.push({ ...input, result: "threw" });
       throw new Error("mock: connection lost");
@@ -83,17 +52,7 @@ export const mockProvider: MessagingProvider = {
 export function messagingProvider(): MessagingProvider | null {
   const name = process.env.MESSAGING_PROVIDER?.trim().toLowerCase();
   if (name === "mock") return mockProvider;
-  if (name === "telnyx") {
-    const telnyx = telnyxProvider();
-    // A backend that isn't production texts only its listed test numbers (convex/lib/operations/deployment.ts).
-    return {
-      name: telnyx.name,
-      async send(input) {
-        const refused = sendIsolation("sms", input.to);
-        return refused ? { ok: false, retryable: false, problem: refused } : telnyx.send(input);
-      },
-    };
-  }
+  if (name === "telnyx") return telnyxProvider();
   return null;
 }
 

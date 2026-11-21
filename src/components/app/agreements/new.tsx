@@ -8,7 +8,7 @@ import { useMemo, useRef, useState } from "react";
 import { useCompany } from "@/components/app/company";
 import { Empty, Notice, ReadinessBadge, ToneBadge } from "@/components/app/agreements/shared";
 import type { Catalog } from "@/components/app/agreements/types";
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { Sparkles } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
+import { agreementTypeOptions, Checkbox, cleanerOption, customerOption, SearchableSelect, Select } from "@/components/ui/selection";
 
 type Mode = "selestial" | "template" | "upload";
 const MODES: { id: Mode; label: string; blurb: string }[] = [
@@ -89,24 +90,10 @@ function BuildWithSelestial({ catalog }: { catalog: Catalog }) {
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Kind of agreement (optional)" hint="Leave blank and Selestial will work out which fits.">
-          <SelectInput value={type} onChange={(event) => setType(event.target.value)}>
-            <option value="">Let Selestial choose</option>
-            {catalog.types.filter((t) => t.canDraft).map((t) => (
-              <option key={t.key} value={t.key}>
-                {t.label}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={type} onValueChange={(next) => setType(next ?? "")} options={agreementTypeOptions(catalog.types.filter((t) => t.canDraft))} emptyLabel="Let Selestial choose" placeholder="Let Selestial choose" />
         </Field>
         <Field label="For a customer (optional)" hint="Their details are filled in from your records.">
-          <SelectInput value={customerId} onChange={(event) => setCustomerId(event.target.value)}>
-            <option value="">No one yet</option>
-            {customers?.map((c) => (
-              <option key={c._id} value={c._id}>
-                {c.name}
-              </option>
-            ))}
-          </SelectInput>
+          <SearchableSelect value={customerId} onValueChange={(next) => setCustomerId(next ?? "")} options={(customers ?? []).map(customerOption)} loading={customers === undefined} placeholder="No one yet" />
         </Field>
       </div>
       <FormError message={error} />
@@ -139,23 +126,10 @@ function FromTemplate({ catalog }: { catalog: Catalog }) {
     <div className="grid gap-4">
       <div className="grid gap-3 sm:grid-cols-[1fr_1fr]">
         <Field label="Kind of document">
-          <SelectInput value={category} onChange={(event) => setCategory(event.target.value)}>
-            {Object.entries(CATEGORY).map(([key, label]) => (
-              <option key={key} value={key}>
-                {label}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={category} onValueChange={(next) => setCategory(next ?? "")} options={Object.entries(CATEGORY).map(([key, label]) => ({ value: key, label: label }))} />
         </Field>
         <Field label="For a customer (optional)" hint="Fills in their details from your records.">
-          <SelectInput value={customerId} onChange={(event) => setCustomerId(event.target.value)}>
-            <option value="">No one yet</option>
-            {customers?.map((c) => (
-              <option key={c._id} value={c._id}>
-                {c.name}
-              </option>
-            ))}
-          </SelectInput>
+          <SearchableSelect value={customerId} onValueChange={(next) => setCustomerId(next ?? "")} options={(customers ?? []).map(customerOption)} loading={customers === undefined} placeholder="No one yet" />
         </Field>
       </div>
       <FormError message={error} />
@@ -269,27 +243,17 @@ function UploadAgreement({ catalog }: { catalog: Catalog }) {
           {status.extraction.state !== "read" ? <Notice tone="warning">{status.extraction.note}</Notice> : <Notice>The text was read from the file.</Notice>}
           {suggestion ? <p className="text-xs text-muted-foreground">Selestial&apos;s guess: {suggestion.reasons.join(" ")} ({suggestion.confidence} confidence). You decide.</p> : null}
           <Field label="What is this?">
-            <SelectInput value={form.classification} onChange={set("classification")}>
-              <option value="agreement">An agreement</option>
-              <option value="supporting">A supporting record (insurance, license, official form)</option>
-            </SelectInput>
+            <Select value={form.classification} onValueChange={(next) => setForm((f) => ({ ...f, classification: next ?? "" }))} options={[{ value: "agreement", label: "An agreement" }, { value: "supporting", label: "A supporting record (insurance, license, official form)" }]} />
           </Field>
           {form.classification === "agreement" ? (
             <>
               <Field label="Kind of agreement">
-                <SelectInput value={form.docType} onChange={set("docType")}>
-                  <option value="">Choose…</option>
-                  {catalog.types.filter((t) => t.canDraft).map((t) => (
-                    <option key={t.key} value={t.key}>
-                      {t.label}
-                    </option>
-                  ))}
-                </SelectInput>
+                <SearchableSelect value={form.docType} onValueChange={(next) => setForm((f) => ({ ...f, docType: next ?? "" }))} options={agreementTypeOptions(catalog.types.filter((t) => t.canDraft))} placeholder="Search kinds of agreement" />
               </Field>
               {canVerify ? (
                 <div className="grid gap-2 rounded-xl border border-border p-3">
                   <label className="flex items-start gap-2 text-sm text-strong">
-                    <input type="checkbox" className="mt-1" checked={form.signedElsewhere} onChange={set("signedElsewhere")} />
+                    <Checkbox className="mt-1" checked={form.signedElsewhere} onCheckedChange={(checked) => set("signedElsewhere")({ target: { type: "checkbox", checked } } as unknown as React.ChangeEvent<HTMLInputElement>)} />
                     <span>This copy was already signed outside Selestial, and I checked it<span className="block text-xs text-muted-foreground">Selestial did not collect these signatures. Your name and what you checked are recorded as the verification. Leave this off and the upload is just a document that has not been signed.</span></span>
                   </label>
                   {form.signedElsewhere ? (
@@ -305,21 +269,15 @@ function UploadAgreement({ catalog }: { catalog: Catalog }) {
           ) : (
             <>
               <Field label="Kind of record">
-                <SelectInput value={form.supportingKind} onChange={set("supportingKind")}>
-                  {catalog.supportingKinds.map((k) => (
-                    <option key={k.key} value={k.key}>
-                      {k.label}
-                    </option>
-                  ))}
-                </SelectInput>
+                <Select value={form.supportingKind} onValueChange={(next) => setForm((f) => ({ ...f, supportingKind: next ?? "" }))} options={catalog.supportingKinds.map((k) => ({ value: k.key, label: k.label }))} searchable="auto" />
               </Field>
               <Field label="Expires (optional)"><TextInput type="date" value={form.expiresOn} onChange={set("expiresOn")} /></Field>
               <Notice>Official forms are kept as you uploaded them. Selestial never writes or replaces one.</Notice>
             </>
           )}
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Link to a customer (optional)"><SelectInput value={form.customerId} onChange={set("customerId")}><option value="">None</option>{customers?.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}</SelectInput></Field>
-            <Field label="Link to a worker (optional)"><SelectInput value={form.workerId} onChange={set("workerId")}><option value="">None</option>{cleaners?.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}</SelectInput></Field>
+            <Field label="Link to a customer (optional)"><SearchableSelect value={form.customerId} onValueChange={(next) => setForm((f) => ({ ...f, customerId: next ?? "" }))} options={(customers ?? []).map(customerOption)} loading={customers === undefined} placeholder="None" /></Field>
+            <Field label="Link to a worker (optional)"><SearchableSelect value={form.workerId} onValueChange={(next) => setForm((f) => ({ ...f, workerId: next ?? "" }))} options={(cleaners ?? []).map(cleanerOption)} loading={cleaners === undefined} placeholder="None" /></Field>
           </div>
           <div className="flex gap-2">
             <Button variant="primary" loading={busy} disabled={form.classification === "agreement" && !form.docType} onClick={() => void file()}>File it</Button>

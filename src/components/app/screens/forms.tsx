@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import { AddressField } from "@/components/app/address-field";
 import { Guard } from "@/components/app/settings/guard";
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { Button } from "@/components/ui/button";
 import { centsFrom, zonedInstant } from "@/lib/app/format";
 
@@ -18,6 +18,11 @@ import { quote as runQuote, type PropertyExtra, type QuoteInput } from "../../..
 import type { Spec } from "../../../../convex/lib/services/spec";
 import { visitScope } from "../../../../convex/lib/services/operations";
 import { lowerFirst } from "../../../../convex/lib/services/words";
+import { Checkbox, ChoiceChips, customerOption, propertyOption, SearchableSelect, Select, serviceOption } from "@/components/ui/selection";
+import { markComposite } from "@/components/ui/selection/field-context";
+import { AssistedTextArea, CountField, DurationField, EmailInput, PhoneInput, organizeIntoSteps, type WritingAction } from "@/components/ui/fields";
+
+const STEPS: WritingAction[] = [{ id: "steps", label: "Organize into steps", kind: "template", run: organizeIntoSteps }];
 
 const KINDS = [
   { id: "home", label: "Home" },
@@ -52,7 +57,12 @@ export function NewCustomerForm({ onDone }: { onDone: () => void }) {
   // The place picked from address search. Typing in the street field afterwards drops it, so a changed
   // address never keeps the old map location.
   const [place, setPlace] = useState<{ placeId: string; lat?: number; lng?: number } | null>(null);
-  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm((current) => ({ ...current, [key]: event.target.value }));
+  const setValue = (key: keyof typeof form, value: string) => {
+    // A changed city, state or ZIP no longer matches the picked map location, so it is dropped.
+    if (key === "city" || key === "region" || key === "postalCode") setPlace(null);
+    setForm((current) => ({ ...current, [key]: value }));
+  };
+  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setValue(key, event.target.value);
   return (
     <form
       className="grid gap-3"
@@ -76,19 +86,13 @@ export function NewCustomerForm({ onDone }: { onDone: () => void }) {
           <TextInput value={form.name} onChange={set("name")} required maxLength={160} />
         </Field>
         <Field label="Kind of work">
-          <SelectInput value={form.kind} onChange={set("kind")}>
-            {KINDS.map((kind) => (
-              <option key={kind.id} value={kind.id}>
-                {kind.label}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={form.kind} onValueChange={(next) => setValue("kind", next ?? "")} options={KINDS.map((kind) => ({ value: kind.id, label: kind.label }))} searchable="auto" />
         </Field>
         <Field label="Email (optional)">
-          <TextInput type="email" value={form.email} onChange={set("email")} />
+          <EmailInput value={form.email} onChange={(text) => set("email")({ target: { type: "text", value: text } } as unknown as React.ChangeEvent<HTMLInputElement>)} />
         </Field>
         <Field label="Phone (optional)">
-          <TextInput type="tel" value={form.phone} onChange={set("phone")} />
+          <PhoneInput value={form.phone} onChange={(text) => set("phone")({ target: { type: "text", value: text } } as unknown as React.ChangeEvent<HTMLInputElement>)} />
         </Field>
       </div>
       <AddressField
@@ -101,7 +105,7 @@ export function NewCustomerForm({ onDone }: { onDone: () => void }) {
         }}
         onPick={({ placeId, lat, lng, ...picked }) => {
           setPlace({ placeId, lat, lng });
-          setForm((current) => ({ ...current, line1: picked.line1, line2: picked.line2 ?? "", city: picked.city, region: picked.region, postalCode: picked.postalCode }));
+          setForm((current) => ({ ...current, line1: picked.line1, line2: picked.line2 || current.line2, city: picked.city, region: picked.region, postalCode: picked.postalCode }));
         }}
       />
       {form.line2 ? (
@@ -145,7 +149,8 @@ export function NewCleanerForm({ onDone }: { onDone: () => void }) {
   const [form, setForm] = useState({ name: "", engagement: "contractor" as "contractor" | "employee", phone: "", skills: "", areas: "", from: "", to: "" });
   const [days, setDays] = useState<number[]>([]);
   const [ready, setReady] = useState(false);
-  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm((current) => ({ ...current, [key]: event.target.value }));
+  const setValue = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
+  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setValue(key, event.target.value);
   return (
     <form
       className="grid gap-3"
@@ -167,13 +172,10 @@ export function NewCleanerForm({ onDone }: { onDone: () => void }) {
           <TextInput value={form.name} onChange={set("name")} required maxLength={160} />
         </Field>
         <Field label="Works as">
-          <SelectInput value={form.engagement} onChange={set("engagement")}>
-            <option value="contractor">Contractor, paid a share of the job</option>
-            <option value="employee">Employee, paid hourly</option>
-          </SelectInput>
+          <Select value={form.engagement} onValueChange={(next) => setValue("engagement", next ?? "")} options={[{ value: "contractor", label: "Contractor, paid a share of the job" }, { value: "employee", label: "Employee, paid hourly" }]} />
         </Field>
         <Field label="Phone (optional)">
-          <TextInput type="tel" value={form.phone} onChange={set("phone")} />
+          <PhoneInput value={form.phone} onChange={(text) => set("phone")({ target: { type: "text", value: text } } as unknown as React.ChangeEvent<HTMLInputElement>)} />
         </Field>
         <Field label="Skills (optional)" hint="Separate with commas.">
           <TextInput value={form.skills} onChange={set("skills")} />
@@ -185,22 +187,7 @@ export function NewCleanerForm({ onDone }: { onDone: () => void }) {
       <fieldset>
         <legend className="text-sm font-medium text-strong">Days they said they can work</legend>
         <p className="text-xs text-muted-foreground">Choose only what the cleaner told you. With none chosen, no hours are recorded and they cannot be offered visits yet.</p>
-        <div className="mt-1.5 flex flex-wrap gap-1.5">
-          {DAYS.map((day, index) => {
-            const on = days.includes(index);
-            return (
-              <button
-                key={day}
-                type="button"
-                aria-pressed={on}
-                onClick={() => setDays((current) => (on ? current.filter((value) => value !== index) : [...current, index].sort()))}
-                className={`min-h-9 rounded-lg border px-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-brand-500 ${on ? "border-brand-500/60 bg-brand-500/10 text-strong" : "border-border bg-background text-muted-foreground"}`}
-              >
-                {day}
-              </button>
-            );
-          })}
-        </div>
+        <ChoiceChips className="mt-1.5" aria-label="Days they said they can work" density="compact" options={DAYS.map((day, index) => ({ value: String(index), label: day }))} value={days.map(String)} onValueChange={(next) => setDays(next.map(Number).sort((a, b) => a - b))} />
       </fieldset>
       <div className="grid grid-cols-2 gap-3">
         <Field label="From">
@@ -211,7 +198,7 @@ export function NewCleanerForm({ onDone }: { onDone: () => void }) {
         </Field>
       </div>
       <label className="flex items-start gap-2 text-sm text-strong">
-        <input type="checkbox" checked={ready} onChange={(event) => setReady(event.target.checked)} className="mt-1 size-4 accent-[var(--color-brand-400)]" />
+        <Checkbox checked={ready} onCheckedChange={(checked) => setReady(checked)} className="mt-1" />
         <span>
           Ready for work now
           <span className="block text-xs text-muted-foreground">Only a cleaner a person marked ready is offered visits.</span>
@@ -227,16 +214,11 @@ function PropertySelect({ customerId, value, onChange }: { customerId: Id<"custo
   const { companyId } = useCompany();
   const found = useQuery(api.customers.get, { companyId, customerId });
   return (
-    <SelectInput value={value} onChange={(event) => onChange(event.target.value)} required disabled={!found}>
-      <option value="">{found ? "Choose a property" : "Loading…"}</option>
-      {found?.properties.map((property) => (
-        <option key={property._id} value={property._id}>
-          {property.label ?? `${property.address.line1}, ${property.address.city}`}
-        </option>
-      ))}
-    </SelectInput>
+    <SearchableSelect value={value} onValueChange={(next) => onChange(next ?? "")} options={(found?.properties ?? []).map((property) => propertyOption(property))} loading={found === undefined} placeholder="Search this customer's properties" emptyText="This customer has no properties yet. Add one on their profile." required />
   );
 }
+// Its SearchableSelect names itself from the Field, so the Field must not wrap it in a label.
+markComposite(PropertySelect);
 
 type Template = { id: string; name: string; scope: string; skills: string[]; startingPriceCents?: number; durationMinutes: number; defaultCrew: number };
 
@@ -249,14 +231,7 @@ function TemplateField({ serviceId, onChoose }: { serviceId: string; onChoose: (
   const template = templates.find((service) => service.id === serviceId);
   return (
     <Field label="Service template" hint={template ? `${template.durationMinutes} minutes, ${template.defaultCrew} ${template.defaultCrew === 1 ? "cleaner" : "cleaners"}. Fields below can still be changed.` : "Optional. Fills the fields below from Settings."}>
-      <SelectInput value={serviceId} onChange={(event) => onChoose(templates.find((service) => service.id === event.target.value) ?? null)}>
-        <option value="">No template</option>
-        {templates.map((service) => (
-          <option key={service.id} value={service.id}>
-            {service.name}
-          </option>
-        ))}
-      </SelectInput>
+      <SearchableSelect value={serviceId} onValueChange={(next) => onChoose(templates.find((service) => service.id === next) ?? null)} options={templates.map(serviceOption)} placeholder="No template" />
     </Field>
   );
 }
@@ -277,14 +252,7 @@ function ServiceField({ value, onChoose, onLegacy }: { value: string; onChoose: 
   const picked = live.find((s) => s.key === value);
   return (
     <Field label="Service" hint={picked ? `Live version ${picked.version} from Services & Pricing. Its scope, crew and price are filled in; the visit keeps this version.` : "From Services & Pricing. Or leave it and type the service below."}>
-      <SelectInput value={value} onChange={(event) => onChoose(live.find((s) => s.key === event.target.value) ?? null)}>
-        <option value="">Type it instead</option>
-        {live.map((s) => (
-          <option key={s.key} value={s.key}>
-            {s.name}
-          </option>
-        ))}
-      </SelectInput>
+      <Select value={value} onValueChange={(next) => onChoose(live.find((s) => s.key === (next ?? "")) ?? null)} options={live.map((s) => ({ value: s.key, label: s.name }))} emptyLabel="Type it instead" placeholder="Type it instead" searchable="auto" />
     </Field>
   );
 }
@@ -340,7 +308,8 @@ export function NewVisitForm({ onDone, initial }: { onDone: () => void; initial?
       const end = hours * 60 + minutes + visitMinutes;
       return end < 24 * 60 ? { ...current, from, to: `${String(Math.floor(end / 60)).padStart(2, "0")}:${String(end % 60).padStart(2, "0")}` } : { ...current, from };
     });
-  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm((current) => ({ ...current, [key]: event.target.value }));
+  const setValue = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
+  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setValue(key, event.target.value);
   if (customers && customers.length === 0) return <p className="text-sm text-muted-foreground">Add a customer under Customers & Properties first, then schedule their visit here.</p>;
   return (
     <form
@@ -384,22 +353,13 @@ export function NewVisitForm({ onDone, initial }: { onDone: () => void; initial?
     >
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Customer">
-          <SelectInput value={form.customerId} onChange={(event) => setForm((current) => ({ ...current, customerId: event.target.value, propertyId: "" }))} required>
-            <option value="">{customers ? "Choose a customer" : "Loading…"}</option>
-            {customers?.map((customer) => (
-              <option key={customer._id} value={customer._id}>
-                {customer.name}
-              </option>
-            ))}
-          </SelectInput>
+          <SearchableSelect value={form.customerId} onValueChange={(next) => setForm((current) => ({ ...current, customerId: next ?? "", propertyId: "" }))} options={(customers ?? []).map(customerOption)} loading={customers === undefined} placeholder="Search customers by name, email or phone" required />
         </Field>
         <Field label="Property">
           {form.customerId ? (
             <PropertySelect customerId={form.customerId as Id<"customers">} value={form.propertyId} onChange={(propertyId) => setForm((current) => ({ ...current, propertyId }))} />
           ) : (
-            <SelectInput disabled>
-              <option>Choose a customer first</option>
-            </SelectInput>
+            <Select value={null} onValueChange={() => undefined} options={[]} placeholder="Choose a customer first" disabled />
           )}
         </Field>
         <Guard fallback={() => null}>
@@ -437,7 +397,7 @@ export function NewVisitForm({ onDone, initial }: { onDone: () => void; initial?
         </div>
       ) : null}
       <Field label="Scope" hint="What the cleaner will be told to do.">
-        <TextArea value={form.scope} onChange={set("scope")} required rows={2} />
+        <AssistedTextArea value={form.scope} onChange={(text) => setForm((current) => ({ ...current, scope: text }))} required rows={3} actions={STEPS} />
       </Field>
       <Field label="Skills needed (optional)" hint="Separate with commas. Only cleaners with these skills can be offered the visit.">
         <TextInput value={form.skills} onChange={set("skills")} />
@@ -455,10 +415,10 @@ export function NewVisitForm({ onDone, initial }: { onDone: () => void; initial?
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Cleaners needed" hint="The visit is staffed only when this many have accepted.">
-          <TextInput inputMode="numeric" value={form.crew} onChange={set("crew")} required />
+          <CountField value={form.crew} onChange={(text) => setForm((current) => ({ ...current, crew: text }))} required noun={["cleaner", "cleaners"]} min={1} max={20} />
         </Field>
         <Field label="Arrival window, minutes" hint="0 means arrive at the start time. 30 means any time in the half hour after it.">
-          <TextInput inputMode="numeric" value={form.arrival} onChange={set("arrival")} />
+          <DurationField value={form.arrival} onChange={(text) => setForm((current) => ({ ...current, arrival: text }))} min={0} max={240} step={15} stepper />
         </Field>
         <Field label="Must be finished by, day (optional)" hint="For example a guest check-in.">
           <TextInput type="date" value={form.deadlineDate} onChange={set("deadlineDate")} />
@@ -467,8 +427,8 @@ export function NewVisitForm({ onDone, initial }: { onDone: () => void; initial?
           <TextInput type="time" value={form.deadlineTime} onChange={set("deadlineTime")} />
         </Field>
       </div>
-      <Field label="Instructions for the crew (optional)" hint="What the crew needs to know that is not the scope. A cleaner sees it only after they accept.">
-        <TextArea value={form.instructions} onChange={set("instructions")} rows={2} maxLength={4000} />
+      <Field label="Instructions for the crew (optional)" hint="What the crew needs to know that is not the scope.">
+        <AssistedTextArea value={form.instructions} onChange={(text) => setForm((current) => ({ ...current, instructions: text }))} rows={3} maxLength={4000} audience={{ label: "Visible to the assigned cleaner after they accept." }} actions={STEPS} />
       </Field>
       <p className="text-xs text-muted-foreground">Times are on the company’s clock ({timezone}). A new visit has no cleaner until one accepts it.</p>
       <FormError message={error} />

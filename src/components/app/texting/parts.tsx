@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
-
-import { Check, CheckCircle2, CircleDashed, Info, TriangleAlert } from "@/components/icons";
+import { CheckCircle2, CircleDashed, Info, TriangleAlert } from "@/components/icons";
+import { Disclosure as SharedDisclosure } from "@/components/ui/fields";
+import { FieldSource, SelectionCard } from "@/components/ui/selection";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -39,29 +39,17 @@ export function Note({ children, tone = "info" }: { children: React.ReactNode; t
   );
 }
 
-/** Where a prefilled detail came from, with a way to confirm it. Shown until the owner confirms or changes it. */
+/**
+ * Where a prefilled detail came from, with a way to confirm it. Shown until the owner confirms or changes
+ * it. The words come from the record's own source, so nothing is labelled without data behind it.
+ */
 export function SourceChip({ field }: { field: string }) {
   const { view, commit, locked } = useSetup();
   const source = view.sources.find((row) => row.field === field);
   if (!source || source.source === "owner") return null;
-  if (source.confirmed) {
-    return (
-      <span className="inline-flex items-center gap-1 text-xs text-success-foreground">
-        <Check className="size-3" aria-hidden />
-        Confirmed
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-      <span>From {source.words}</span>
-      {!locked ? (
-        <button type="button" onClick={() => void commit({ confirm: [field] })} className="font-medium text-brand-300 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-brand-500">
-          It&apos;s right
-        </button>
-      ) : null}
-    </span>
-  );
+  if (source.confirmed) return <FieldSource source={{ kind: "confirmed" }} />;
+  const kind = source.source === "website" ? "website" : source.source === "onboarding" ? "onboarding" : "needs-confirmation";
+  return <FieldSource source={{ kind, label: kind === "needs-confirmation" ? `From ${source.words}` : undefined }} onConfirm={locked ? undefined : () => void commit({ confirm: [field] })} />;
 }
 
 /** What a step still needs, or that it is ready. */
@@ -96,20 +84,12 @@ export function Bubble({ from, children }: { from: string; children: React.React
   );
 }
 
+/** A texting choice. The shared selection card, kept under its old name for the texting steps. */
 export function ChoiceCard({ selected, onPress, title, hint, multi, disabled, children }: { selected: boolean; onPress: () => void; title: string; hint?: React.ReactNode; multi?: boolean; disabled?: boolean; children?: React.ReactNode }) {
   return (
-    <div className={cn("rounded-xl border transition-colors motion-reduce:transition-none", selected ? "border-brand-500 bg-brand-500/5" : "border-border bg-card")}>
-      <button type="button" role={multi ? "checkbox" : "radio"} aria-checked={selected} onClick={onPress} disabled={disabled} className="flex w-full items-start gap-3 rounded-xl px-3.5 py-3 text-left focus-visible:outline-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed">
-        <span className={cn("mt-0.5 grid size-5 shrink-0 place-items-center border", multi ? "rounded-md" : "rounded-full", selected ? "border-brand-500 bg-brand-500 text-white" : "border-border bg-background")} aria-hidden>
-          {selected ? <Check className="size-3.5" /> : null}
-        </span>
-        <span className="min-w-0">
-          <span className="block text-sm font-medium text-strong">{title}</span>
-          {hint ? <span className="block text-xs text-muted-foreground">{hint}</span> : null}
-        </span>
-      </button>
-      {children ? <div className="px-3.5 pb-3 pl-11.5">{children}</div> : null}
-    </div>
+    <SelectionCard selected={selected} onPress={onPress} title={title} description={hint} multi={multi} disabled={disabled}>
+      {children}
+    </SelectionCard>
   );
 }
 
@@ -123,13 +103,12 @@ export function PageState({ state }: { state: keyof typeof PAGE_STATE }) {
   return <Badge variant={PAGE_STATE[state].variant}>{PAGE_STATE[state].label}</Badge>;
 }
 
+/** The texting steps' disclosure: the shared one, kept under its old name. */
 export function Disclosure({ summary, children, defaultOpen = false }: { summary: React.ReactNode; children: React.ReactNode; defaultOpen?: boolean }) {
-  const [open, setOpen] = useState(defaultOpen);
   return (
-    <details open={open} onToggle={(event) => setOpen((event.target as HTMLDetailsElement).open)} className="group rounded-xl border border-border bg-card">
-      <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-3.5 py-2.5 text-sm font-medium text-strong focus-visible:outline-2 focus-visible:outline-brand-500 [&::-webkit-details-marker]:hidden">{summary}</summary>
-      <div className="border-t border-border p-3.5">{children}</div>
-    </details>
+    <SharedDisclosure title={summary} defaultOpen={defaultOpen}>
+      {children}
+    </SharedDisclosure>
   );
 }
 

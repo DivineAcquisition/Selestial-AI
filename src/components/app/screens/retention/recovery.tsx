@@ -9,7 +9,7 @@ import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextArea, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, useRun } from "@/components/app/form";
 import { Modal } from "@/components/app/modal";
 import { PageHeader, Panel } from "@/components/app/shell";
 import { useNow } from "@/components/app/use-now";
@@ -22,6 +22,7 @@ import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { CaseDrawer } from "./drawer";
 import { CaseCardView, Empty, useCaseParam } from "./shared";
+import { Checkbox, customerOption, SearchableSelect, Select } from "@/components/ui/selection";
 
 function NewCase({ open, onClose, onOpened }: { open: boolean; onClose: () => void; onOpened: (id: string) => void }) {
   const { companyId } = useCompany();
@@ -38,37 +39,19 @@ function NewCase({ open, onClose, onOpened }: { open: boolean; onClose: () => vo
     <Modal open={open} onClose={onClose} title="Open a case" description="Record what was reported, linked to the service it is about. Retention gathers that visit's record and prepares a first step for you to review.">
       <div className="grid gap-3">
         <Field label="Customer">
-          <SelectInput value={customerId} onChange={(event) => (setCustomerId(event.target.value), setJobId(""))}>
-            <option value="">Choose a customer</option>
-            {(customers ?? []).map((row) => (
-              <option key={row._id} value={row._id}>
-                {row.name}
-              </option>
-            ))}
-          </SelectInput>
+          <SearchableSelect value={customerId} onValueChange={(next) => (setCustomerId(next ?? ""), setJobId(""))} options={(customers ?? []).map(customerOption)} loading={customers === undefined} placeholder="Search customers by name, email or phone" />
         </Field>
         <Field label="The service this is about" hint={customerId && sources && !sources.visits.length ? "No completed visit is on record for this customer." : "A case about a visit can read its scope, checklist and photos."}>
-          <SelectInput value={jobId} onChange={(event) => setJobId(event.target.value)} disabled={!sources}>
-            <option value="">Not about one visit</option>
-            {(sources?.visits ?? []).map((row) => (
-              <option key={row.id} value={row.id}>
-                {row.label}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={jobId} onValueChange={(next) => setJobId(next ?? "")} options={[...((sources?.visits ?? [])?.map((row) => ({ value: row.id, label: row.label })) ?? [])]} emptyLabel="Not about one visit" placeholder="Not about one visit" disabled={!sources} searchable="auto" />
         </Field>
         <Field label="How it reached you">
-          <SelectInput value={origin} onChange={(event) => setOrigin(event.target.value as typeof origin)}>
-            <option value="conversation">A conversation with the customer</option>
-            <option value="inspection">An inspection</option>
-            <option value="staff">A report from the team</option>
-          </SelectInput>
+          <Select value={origin} onValueChange={(next) => setOrigin((next ?? "") as typeof origin)} options={[{ value: "conversation", label: "A conversation with the customer" }, { value: "inspection", label: "An inspection" }, { value: "staff", label: "A report from the team" }]} />
         </Field>
         <Field label="What was reported" hint="In the customer's words where you can. Name the room or task.">
           <TextArea rows={4} value={description} onChange={(event) => setDescription(event.target.value)} />
         </Field>
         <label className="flex items-start gap-2 text-sm text-foreground">
-          <input type="checkbox" className="mt-1" checked={cleaner} onChange={(event) => setCleaner(event.target.checked)} />
+          <Checkbox className="mt-1" checked={cleaner} onCheckedChange={(checked) => setCleaner(checked)} />
           <span>The customer asked for a different cleaner.</span>
         </label>
         <FormError message={error} />

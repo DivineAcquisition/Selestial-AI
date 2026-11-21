@@ -1,392 +1,301 @@
-/**
- * Operations: incidents, detection, recovery and controls, as scenarios (docs/operations/04-verification.md).
- * Providers are the repository's stand-ins: the mock text service (with a number that is accepted and then
- * loses its answer), the mock email service and the fake Autumn sandbox.
- */
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { mockOutbox, resetMockProvider } from "./lib/messaging/provider";
-import { CHECKS } from "./lib/operations/checks";
-import { stripeConfig } from "./lib/finance/stripe";
-import { autumnConfig } from "./lib/billing/autumn";
-import { company, dispatchJob, HOUR, NOW, readyMessaging, refusal, start, type T } from "../tests/harness";
-import { dispatchTestEnv, flush, setup } from "../tests/dispatchHarness";
+import type { Check } from "./lib/operations/catalog";
+import { company, refusal, start, type T } from "../tests/harness";
 
-const MINUTE = 60_000;
-const ADMIN = { subject: "user_staff_admin", email: "ops-admin@selestial.example", emailVerified: true, name: "Avery Ops", issuer: "https://clerk.selestial.test" };
+const admin = { subject: "user_ops_admin", email: "ops@selestial.example", emailVerified: true, name: "Ops Admin" };
+const MINUTE = 60 * 1000;
+const HOUR = 60 * MINUTE;
+const BRAND = { displayName: "Alpha Cleaning", companyName: "Alpha Cleaning LLC", phone: "+15125550199", street: "1 Main St", city: "Austin", state: "TX", postalCode: "78701", email: "owner@alpha.example", website: "https://alpha.example", vertical: "PROFESSIONAL" };
 
-async function runChecks(t: T) {
-  for (const check of CHECKS) await t.mutation(internal.operations.runCheck, { name: check.name });
+async function ownerOf(t: T, companyId: Id<"companies">) {
+  return t.run(async (ctx) => (await ctx.db.query("members").withIndex("by_company", (q) => q.eq("companyId", companyId)).first())!);
 }
 
-async function ownerMember(t: T, companyId: Id<"companies">) {
-  return t.run(async (ctx) => (await ctx.db.query("members").withIndex("by_company", (q) => q.eq("companyId", companyId)).collect()).find((m) => m.role === "owner")!._id);
+async function openIncidents(t: T) {
+  return t.run((ctx) => ctx.db.query("incidents").withIndex("by_resolved_seen", (q) => q.eq("resolvedAt", 0)).collect());
 }
 
-async function openIncidents(t: T, companyId?: Id<"companies">) {
-  return t.run(async (ctx) => (await ctx.db.query("incidents").collect()).filter((row) => row.open && (!companyId || row.companyId === companyId)));
+async function mailbox(t: T, companyId: Id<"companies">, status: "connected" | "expired" | "error", failures = 0) {
+  const owner = await ownerOf(t, companyId);
+  return t.run((ctx) => ctx.db.insert("mailboxConnections", { companyId, provider: "gmail", address: "jobs@alpha.example", sources: [], processFrom: Date.now(), status, failures, purposes: ["hiring"], createdBy: owner._id, createdAt: Date.now() - HOUR }));
 }
 
-async function expiredMailbox(t: T, companyId: Id<"companies">, address = "hiring@example.com") {
-  const createdBy = await ownerMember(t, companyId);
-  return t.run((ctx) => ctx.db.insert("mailboxConnections", { companyId, provider: "gmail", address, sources: [], processFrom: 0, status: "expired", problem: "invalid_grant", failures: 1, purposes: ["hiring"], createdBy, createdAt: Date.now() }));
+async function message(t: T, companyId: Id<"companies">, key: string, status: "unconfirmed" | "sending" | "failed" | "delivered", attemptedAt: number, extra: Record<string, unknown> = {}) {
+  return t.run((ctx) => ctx.db.insert("messages", { companyId, purpose: "reminder", body: "See you tomorrow", dedupeKey: key, status, attempts: 1, provider: "telnyx", queuedAt: attemptedAt, attemptedAt, ...extra }));
 }
 
-describe("Operations: a provider that accepts a text and then times out", () => {
-  let undo: () => void;
+const run = (t: T, check: Check) => t.mutation(internal.operations.runCheck, { check });
+
+describe("Operations incidents", () => {
   beforeEach(() => {
-    undo = dispatchTestEnv();
-    resetMockProvider();
-  });
-  afterEach(() => undo());
-
-  test("is reconciled under the message's own key and never sent twice", async () => {
-    const s = await setup(["Lena"], { Lena: "+15550100006" });
-    // A confirmation to a cleaner who agreed to work texts: still relevant after the first attempt.
-    const messageId = await s.t.run((ctx) => ctx.db.insert("messages", { companyId: s.companyId, purpose: "assignment_confirmed", channel: "sms", cleanerId: s.cleaners.Lena, to: s.phone.Lena, body: "You're confirmed for tomorrow at 9.", dedupeKey: "confirm-1", status: "queued", attempts: 0, queuedAt: Date.now() }));
-    await s.t.action(internal.messaging.deliver, { messageId }).catch(() => undefined);
-    // The mock accepted the text, then the answer was lost: the message is stuck "sending".
-    expect(mockOutbox.map((row) => row.result)).toEqual(["accepted"]);
-    vi.advanceTimersByTime(6 * MINUTE);
-    await s.t.mutation(internal.messaging.sweepStuck, {});
-    expect((await s.t.run((ctx) => ctx.db.get(messageId)))?.status).toBe("unconfirmed");
-
-    // The monitor finds it, tells the owner what is happening, and checks with the provider by itself.
-    await runChecks(s.t);
-    const [incident] = await openIncidents(s.t, s.companyId);
-    expect(incident).toMatchObject({ kind: "comms.unconfirmed", state: "recovering", ownerVisible: true });
-    await flush(s.t);
-
-    // The provider replayed its stored answer: the original had gone. Exactly one send, one replay.
-    const after = await s.t.run((ctx) => ctx.db.get(messageId));
-    expect(after).toMatchObject({ status: "sent", providerMessageId: `mock-${messageId}` });
-    expect(after?.replayedAt).toBeTypeOf("number");
-    expect(mockOutbox.map((row) => row.result)).toEqual(["accepted", "replayed"]);
-
-    // Verified on the next run: no retry click ever closes it.
-    await runChecks(s.t);
-    const closed = await s.t.run((ctx) => ctx.db.get(incident._id));
-    expect(closed).toMatchObject({ open: false, state: "resolved", resolution: { how: "verified" } });
-  });
-
-  test("is not sent when the work moved on: Dispatch already offered the visit to someone else", async () => {
-    const s = await setup(["Lena"], { Lena: "+15550100006" });
-    await s.autonomous();
-    await dispatchJob(s.as, s.companyId, s.place);
-    await flush(s.t);
-    vi.advanceTimersByTime(6 * MINUTE);
-    await s.t.mutation(internal.messaging.sweepStuck, {});
-    await runChecks(s.t);
-    await flush(s.t);
-    const offer = await s.t.run(async (ctx) => (await ctx.db.query("messages").collect()).find((m) => m.purpose === "offer")!);
-    // The old offer's link was closed when Dispatch moved on, so the check refused to send it, and it stays unconfirmed.
-    expect(offer).toMatchObject({ status: "unconfirmed" });
-    expect(offer.problem).toMatch(/Not checked with the provider: The link was closed/);
-    expect(mockOutbox.map((row) => row.result)).toEqual(["accepted"]);
-  });
-
-  test("a company that pauses the agent before the check runs gets nothing sent; the message stays unconfirmed", async () => {
-    const s = await setup(["Lena"], { Lena: "+15550100006" });
-    await s.autonomous();
-    await dispatchJob(s.as, s.companyId, s.place);
-    await flush(s.t);
-    vi.advanceTimersByTime(6 * MINUTE);
-    await s.t.mutation(internal.messaging.sweepStuck, {});
-    await runChecks(s.t);
-    // Paused between the reconcile being queued and it running.
-    await s.as.mutation(api.companies.setPausedAgents, { companyId: s.companyId, agents: ["dispatch"] });
-    await flush(s.t);
-    const offer = await s.t.run(async (ctx) => (await ctx.db.query("messages").collect()).find((m) => m.purpose === "offer")!);
-    expect(offer.status).toBe("unconfirmed");
-    expect(offer.problem).toMatch(/Not checked with the provider/);
-    expect(mockOutbox.map((row) => row.result)).toEqual(["accepted"]);
-  });
-
-  test("an owner can leave an unconfirmed message; it is no longer tracked, and nothing is sent", async () => {
-    const s = await setup(["Lena"], { Lena: "+15550100006" });
-    await s.autonomous();
-    await dispatchJob(s.as, s.companyId, s.place);
-    await flush(s.t);
-    vi.advanceTimersByTime(40 * MINUTE);
-    await s.t.mutation(internal.messaging.sweepStuck, {});
-    await runChecks(s.t);
-    // Older than the automatic window: a person decides.
-    const [incident] = await openIncidents(s.t, s.companyId);
-    expect(incident.state).toBe("waiting_owner");
-    const rows = await s.as.query(api.operations.uncertainMessages, { companyId: s.companyId, incidentId: incident._id });
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ canCheck: true, to: "…0006" });
-    await s.as.mutation(api.operations.leaveMessage, { companyId: s.companyId, messageId: rows[0].id });
-    await runChecks(s.t);
-    expect(await openIncidents(s.t, s.companyId)).toHaveLength(0);
-    expect(mockOutbox.map((row) => row.result)).toEqual(["accepted"]);
-  });
-});
-
-describe("Operations: detection, deduplication and verified resolution", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-    vi.setSystemTime(NOW);
-    process.env.EMAIL_PROVIDER = "mock";
+    process.env.STAFF_BOOTSTRAP_EMAIL = admin.email;
   });
   afterEach(() => {
-    vi.useRealTimers();
-    delete process.env.EMAIL_PROVIDER;
+    delete process.env.STAFF_BOOTSTRAP_EMAIL;
   });
 
-  test("an expired hiring inbox is one incident however often it is seen, the owner is emailed once, and it closes when reconnected", async () => {
+  test("only Selestial staff can read or act on incidents, and members get Not found.", async () => {
     const t = start();
-    const { as, companyId } = await company(t, "owner-a", "Brightside Cleaning Co.");
-    const mailbox = await expiredMailbox(t, companyId);
-    await runChecks(t);
-    await runChecks(t);
-    const open = await openIncidents(t, companyId);
-    expect(open).toHaveLength(1);
-    expect(open[0]).toMatchObject({ title: "Your hiring inbox needs reconnecting", state: "waiting_owner", action: { kind: "reconnect", href: "/app/settings/integrations?tool=gmail" } });
-    // What the owner sees: plain words, the one action, no provider codes.
-    const view = await as.query(api.operations.forCompany, { companyId });
-    expect(view.issues).toHaveLength(1);
-    expect(JSON.stringify(view)).not.toContain("invalid_grant");
-    // One notice planned for the hour, however many runs.
-    const notices = await t.run(async (ctx) => (await ctx.db.query("messages").collect()).filter((m) => m.purpose === "member_notice" && m.notice?.event === "operations_attention"));
-    expect(notices).toHaveLength(1);
-
-    // Reconnecting (the record changing) is the evidence; the next run closes it and plans the recovery notice.
-    await t.run((ctx) => ctx.db.patch(mailbox, { status: "connected", problem: undefined }));
-    await runChecks(t);
-    expect(await openIncidents(t, companyId)).toHaveLength(0);
-    const [closed] = await t.run((ctx) => ctx.db.query("incidents").collect());
-    expect(closed.resolution?.evidence).toMatch(/no longer found/);
+    const { as, companyId } = await company(t, "owner_a", "Alpha");
+    await mailbox(t, companyId, "expired");
+    await run(t, "mailboxes");
+    const [incident] = await openIncidents(t);
+    expect(await refusal(as.query(api.operations.overview, {}))).toBe("Not found.");
+    expect(await refusal(as.query(api.operations.incident, { id: incident._id }))).toBe("Not found.");
+    expect(await refusal(as.mutation(api.operations.resolve, { id: incident._id, reason: "I fixed it myself somehow" }))).toBe("Not found.");
+    expect(await refusal(t.query(api.operations.list, {}))).toBe("Not found.");
+    const overview = await t.withIdentity(admin).query(api.operations.overview, {});
+    expect(overview.openCount).toBe(1);
   });
 
-  test("a worker that stops mid-task is tracked until the task record itself moves on", async () => {
+  test("an expired inbox opens one incident waiting for the owner, is not duplicated, and resolves only once reconnected", async () => {
     const t = start();
-    const { companyId } = await company(t, "owner-a", "Brightside Cleaning Co.");
-    const startedBy = await ownerMember(t, companyId);
-    const taskId = await t.run(async (ctx) => {
-      const activationId = await ctx.db.insert("activations", { companyId, focus: "sales", secondary: [], source: "workspace", contextVersion: "v1", context: [], status: "running", startedBy, startedAt: NOW - HOUR, budget: { estimatedCredits: 10, ceilingCredits: 20, allowance: "none" }, noticed: {}, updatedAt: NOW });
-      return ctx.db.insert("activationTasks", { companyId, activationId, template: "sales.booking_page", agent: "sales", title: "Draft your booking page", objective: "o", sources: [], expectedOutput: "e", prerequisites: [], authority: { action: null, words: "" }, estimate: { credits: 1, externalCents: 0, words: "" }, priority: 1, dependsOn: [], completion: "c", state: "working", statusLine: "Working", steps: [], outputs: [], attempts: 2, leaseUntil: NOW - 30 * MINUTE, nextRunAt: NOW, charges: [], approvals: [], createdAt: NOW - HOUR, updatedAt: NOW - 30 * MINUTE });
-    });
-    await runChecks(t);
-    const [incident] = await openIncidents(t, companyId);
-    expect(incident).toMatchObject({ kind: "agent.activation_stalled", state: "needs_staff", recoveryAttempts: 2 });
-    await t.run((ctx) => ctx.db.patch(taskId, { state: "completed", leaseUntil: undefined, finishedAt: NOW }));
-    await runChecks(t);
-    expect(await openIncidents(t, companyId)).toHaveLength(0);
-  });
-
-  test("three companies losing Google authorization share a platform incident; each keeps its own", async () => {
-    const t = start();
-    const boxes: Id<"mailboxConnections">[] = [];
-    for (const name of ["One", "Two", "Three"]) {
-      const { companyId } = await company(t, `owner-${name}`, `${name} Cleaning`);
-      boxes.push(await expiredMailbox(t, companyId, `${name.toLowerCase()}@example.com`));
-    }
-    await runChecks(t);
+    const { companyId } = await company(t, "owner_a", "Alpha");
+    const boxId = await mailbox(t, companyId, "expired");
+    await run(t, "mailboxes");
+    await run(t, "mailboxes");
     const open = await openIncidents(t);
-    const platform = open.filter((row) => row.scope === "platform");
-    expect(platform).toHaveLength(1);
-    expect(platform[0]).toMatchObject({ severity: "critical", occurrences: 3 });
-    expect(open.filter((row) => row.scope === "company" && row.parentId === platform[0]._id)).toHaveLength(3);
-    // Two reconnect: one company left, so the platform incident closes and the last company keeps its own.
+    expect(open).toHaveLength(1);
+    expect(open[0]).toMatchObject({ kind: "mailbox_reconnect", state: "waiting_owner", companyId, area: "connections" });
+    expect(open[0].impact).toContain("Recruiter cannot check new applications");
+    // Diagnostics mask the address.
+    expect(open[0].diagnostics).toContain("j•••@alpha.example");
+    expect(open[0].diagnostics).not.toContain("jobs@alpha.example");
+
+    // Staff cannot close it while the inbox is still expired.
+    const staff = t.withIdentity(admin);
+    expect(await refusal(staff.mutation(api.operations.resolve, { id: open[0]._id, reason: "Told the owner to reconnect it" }))).toContain("still happening");
+    expect((await staff.mutation(api.operations.recheck, { id: open[0]._id })).resolved).toBe(false);
+
+    // The owner reconnects: the next check verifies it and resolves it with evidence.
+    await t.run((ctx) => ctx.db.patch(boxId, { status: "connected", failures: 0 }));
+    await run(t, "mailboxes");
+    expect(await openIncidents(t)).toHaveLength(0);
+    const resolved = await t.run(async (ctx) => (await ctx.db.query("incidents").collect())[0]);
+    expect(resolved).toMatchObject({ state: "resolved", resolvedBy: "system" });
+    expect(resolved.evidence).toContain("none still shows it");
+
+    // It comes back the same day: the same incident is reopened, not a second one.
+    await t.run((ctx) => ctx.db.patch(boxId, { status: "expired" }));
+    await run(t, "mailboxes");
+    const all = await t.run((ctx) => ctx.db.query("incidents").collect());
+    expect(all).toHaveLength(1);
+    expect(all[0].resolvedAt).toBe(0);
+    const detail = await staff.query(api.operations.incident, { id: all[0]._id });
+    expect(detail.updates.map((u) => u.kind)).toEqual(["reopened", "resolved", "opened"]);
+  });
+
+  test("an inbox whose reads keep failing is recovering at first and needs staff once retries pile up", async () => {
+    const t = start();
+    const { companyId } = await company(t, "owner_a", "Alpha");
+    const boxId = await mailbox(t, companyId, "connected", 3);
+    await run(t, "mailboxes");
+    expect((await openIncidents(t))[0]).toMatchObject({ kind: "mailbox_read_failing", state: "recovering", recoveryAttempts: 3 });
+    await t.run((ctx) => ctx.db.patch(boxId, { failures: 6 }));
+    await run(t, "mailboxes");
+    const [incident] = await openIncidents(t);
+    expect(incident).toMatchObject({ state: "needs_staff", recoveryAttempts: 6 });
+    const detail = await t.withIdentity(admin).query(api.operations.incident, { id: incident._id });
+    expect(detail.updates.map((u) => u.kind)).toEqual(expect.arrayContaining(["state", "recovery"]));
+  });
+
+  test("messages with an uncertain outcome are one incident per company, and a delivery report resolves it", async () => {
+    const t = start();
+    const a = await company(t, "owner_a", "Alpha");
+    const b = await company(t, "owner_b", "Bravo");
+    const now = Date.now();
+    const m1 = await message(t, a.companyId, "a1", "unconfirmed", now - 10 * MINUTE);
+    const m2 = await message(t, a.companyId, "a2", "unconfirmed", now - 2 * HOUR);
+    await message(t, b.companyId, "b1", "unconfirmed", now - 5 * MINUTE);
+    // A member notice is not a business message: it is watched by its own check.
+    await message(t, a.companyId, "a3", "unconfirmed", now - 5 * MINUTE, { purpose: "member_notice" });
+    await run(t, "uncertain_messages");
+    const open = await openIncidents(t);
+    expect(open).toHaveLength(2);
+    const alpha = open.find((row) => row.companyId === a.companyId)!;
+    // One is waiting for its delivery report, one has waited too long: the worse decides.
+    expect(alpha).toMatchObject({ occurrences: 2, state: "needs_staff" });
+    expect(alpha.title).toContain("2 messages");
+    expect(open.find((row) => row.companyId === b.companyId)).toMatchObject({ occurrences: 1, state: "recovering" });
+
     await t.run(async (ctx) => {
-      await ctx.db.patch(boxes[0], { status: "connected" });
-      await ctx.db.patch(boxes[1], { status: "connected" });
+      await ctx.db.patch(m1, { status: "delivered", deliveredAt: Date.now() });
+      await ctx.db.patch(m2, { status: "failed", failedAt: Date.now() });
     });
-    await runChecks(t);
-    const after = await openIncidents(t);
-    expect(after.map((row) => row.scope)).toEqual(["company"]);
+    await run(t, "uncertain_messages");
+    const left = await openIncidents(t);
+    expect(left.map((row) => row.companyId)).toEqual([b.companyId]);
   });
 
-  test("messages waiting for funds keep their words, and the owner is asked to add funds", async () => {
+  test("normal waiting is not an incident: a registration with the carriers that is being checked", async () => {
     const t = start();
-    const { as, companyId } = await company(t, "owner-a", "Brightside Cleaning Co.");
+    const { companyId } = await company(t, "owner_a", "Alpha");
+    const owner = await ownerOf(t, companyId);
+    const now = Date.now();
+    const requestId = await t.run((ctx) => ctx.db.insert("textingRequests", { companyId, phoneNumber: "+15125550100", status: "waiting_on_carriers", brand: BRAND, consentWording: "Reply STOP to opt out.", requestedBy: owner._id, requestedAt: now - 3 * 24 * HOUR, lastCheckedAt: now - HOUR }));
+    await run(t, "texting");
+    expect(await openIncidents(t)).toHaveLength(0);
+
+    // Nobody has read the carriers' answer back for a day: the reconcile has stopped.
+    await t.run((ctx) => ctx.db.patch(requestId, { lastCheckedAt: now - 24 * HOUR }));
+    await run(t, "texting");
+    expect((await openIncidents(t))[0]).toMatchObject({ kind: "texting_stalled", state: "needs_staff" });
+
+    // The carriers asked for a correction: it is the owner's move, with the fields named.
+    await t.run((ctx) => ctx.db.patch(requestId, { status: "needs_you", needs: { kind: "correction", words: "Fix the address", fields: ["street"], at: now } }));
+    await run(t, "texting");
+    const open = await openIncidents(t);
+    expect(open).toHaveLength(1);
+    expect(open[0]).toMatchObject({ kind: "texting_needs_owner", state: "waiting_owner" });
+    expect(open[0].impact).toContain("street");
+  });
+
+  test("a worker that stopped mid-task is found, and the incident resolves once recovery moves the task on", async () => {
+    const t = start();
+    const { companyId } = await company(t, "owner_a", "Alpha");
+    const owner = await ownerOf(t, companyId);
+    const now = Date.now();
+    const taskId = await t.run(async (ctx) => {
+      const activationId = await ctx.db.insert("activations", { companyId, focus: "sales", secondary: [], source: "setup", contextVersion: "v1", context: [], status: "running", startedBy: owner._id, startedAt: now - HOUR, budget: { estimatedCredits: 1, ceilingCredits: 2, allowance: "none" }, noticed: {}, updatedAt: now - HOUR });
+      return ctx.db.insert("activationTasks", { companyId, activationId, template: "sales.booking_page", agent: "sales", title: "Make a booking page", objective: "x", sources: [], expectedOutput: "x", prerequisites: [], authority: { action: null, words: "x" }, estimate: { credits: 1, externalCents: 0, words: "x" }, priority: 1, dependsOn: [], completion: "x", state: "working", statusLine: "Working", steps: [], outputs: [], attempts: 1, leaseUntil: now - 30 * MINUTE, nextRunAt: now - HOUR, charges: [], approvals: [], createdAt: now - HOUR, updatedAt: now - 30 * MINUTE });
+    });
+    await run(t, "agent_work");
+    expect((await openIncidents(t))[0]).toMatchObject({ kind: "agent_task_lease_expired", area: "agents", severity: "high", state: "needs_staff" });
+    // A lease that ran out a moment ago is the recovery job's to handle: not an incident yet.
+    await t.run((ctx) => ctx.db.patch(taskId, { leaseUntil: Date.now() - MINUTE }));
+    await run(t, "agent_work");
+    expect(await openIncidents(t)).toHaveLength(0);
+  });
+
+  test("a failed final record can be closed by staff with a reason; that is recorded with the staff member", async () => {
+    const t = start();
+    const { companyId } = await company(t, "owner_a", "Alpha");
+    await t.run((ctx) => ctx.db.insert("googleJobs", { companyId, kind: "sheet_export", key: "k1", status: "failed", payload: "{}", attempts: 5, nextAt: 0, lastError: "403 from Sheets", createdAt: Date.now() - HOUR, updatedAt: Date.now() - HOUR }));
+    await run(t, "google");
+    const [incident] = await openIncidents(t);
+    expect(incident).toMatchObject({ kind: "google_job_failed", state: "needs_staff", recoveryAttempts: 5 });
+    const staff = t.withIdentity(admin);
+    expect(await refusal(staff.mutation(api.operations.resolve, { id: incident._id, reason: "ok" }))).toContain("Say what was done");
+    await staff.mutation(api.operations.resolve, { id: incident._id, reason: "Owner re-shared the sheet; export ran again fine." });
+    const detail = await staff.query(api.operations.incident, { id: incident._id });
+    expect(detail).toMatchObject({ state: "resolved", resolvedBy: "Ops Admin", evidence: "Owner re-shared the sheet; export ran again fine." });
+  });
+
+  test("the same provider failure in three companies is one shared incident, and each company keeps its own", async () => {
+    const t = start();
+    const companies = [await company(t, "owner_a", "Alpha"), await company(t, "owner_b", "Bravo"), await company(t, "owner_c", "Charlie")];
+    const jobs: Id<"googleJobs">[] = [];
+    for (const { companyId } of companies) {
+      jobs.push(await t.run((ctx) => ctx.db.insert("googleJobs", { companyId, kind: "calendar_event", key: "k", status: "uncertain", payload: "{}", attempts: 1, nextAt: 0, createdAt: Date.now(), updatedAt: Date.now() - 2 * HOUR })));
+    }
+    await run(t, "google");
+    const open = await openIncidents(t);
+    const parent = open.find((row) => row.kind === "provider_outage")!;
+    // Three companies with the same medium problem: the shared incident is one step more serious.
+    expect(parent).toMatchObject({ provider: "google", severity: "high", occurrences: 3 });
+    expect(parent.companyId).toBeUndefined();
+    const children = open.filter((row) => row.kind === "google_job_uncertain");
+    expect(children).toHaveLength(3);
+    expect(children.every((row) => row.parentId === parent._id)).toBe(true);
+    const detail = await t.withIdentity(admin).query(api.operations.incident, { id: parent._id });
+    expect(detail.children.map((c) => c.company?.name).sort()).toEqual(["Alpha", "Bravo", "Charlie"]);
+
+    // Staff cannot close the shared one while companies under it are still affected.
+    expect(await refusal(t.withIdentity(admin).mutation(api.operations.resolve, { id: parent._id, reason: "Google says it is fixed now" }))).toContain("still have open incidents");
     await t.run(async (ctx) => {
-      for (let i = 0; i < 2; i += 1) await ctx.db.insert("messages", { companyId, purpose: "reminder", channel: "sms", to: `+1512555000${i}`, body: "See you tomorrow", dedupeKey: `held-${i}`, status: "held", holdReason: "messaging_balance", heldAt: NOW - HOUR, attempts: 0, queuedAt: NOW - HOUR });
+      for (const id of jobs) await ctx.db.patch(id, { status: "done" });
     });
-    await runChecks(t);
-    const view = await as.query(api.operations.forCompany, { companyId, area: "billing" });
-    expect(view.issues[0]).toMatchObject({ title: "2 messages are waiting for funds", action: { kind: "add_funds", href: "/app/settings/billing?tab=messaging#add-funds" } });
-    expect(view.issues[0].done).toMatch(/Kept every message and its words/);
+    await run(t, "google");
+    expect(await openIncidents(t)).toHaveLength(0);
   });
 
-  test("monitoring that stopped reads stale, to owners and to staff", async () => {
-    process.env.STAFF_BOOTSTRAP_EMAIL = ADMIN.email;
+  test("callbacks that cannot be processed become a platform incident, and quiet resolves it", async () => {
     const t = start();
-    const { as, companyId } = await company(t, "owner-a", "Brightside Cleaning Co.");
-    await runChecks(t);
-    expect((await as.query(api.operations.forCompany, { companyId })).stale).toBe(false);
-    vi.advanceTimersByTime(3 * HOUR);
-    expect((await as.query(api.operations.forCompany, { companyId })).stale).toBe(true);
-    const overview = await t.withIdentity(ADMIN).query(api.operations.overview, { asOf: Date.now() });
-    expect(overview.monitorStale).toBe(true);
-    expect(overview.monitor.every((row) => row.stale)).toBe(true);
-    delete process.env.STAFF_BOOTSTRAP_EMAIL;
+    for (let i = 0; i < 3; i += 1) await t.mutation(internal.operations.webhookFailed, { source: "/webhooks/telnyx", detail: "Uncaught Error: boom\n    at handler (secret stack)" });
+    await run(t, "inbound_processing");
+    const [incident] = await openIncidents(t);
+    expect(incident).toMatchObject({ kind: "inbound_processing_failed", provider: "telnyx", state: "investigating", occurrences: 1 });
+    expect(incident.companyId).toBeUndefined();
+    // Only the first line of the error is kept.
+    expect(incident.diagnostics).not.toContain("secret stack");
+    await t.run(async (ctx) => {
+      for (const row of await ctx.db.query("opsSignals").collect()) await ctx.db.patch(row._id, { at: Date.now() - HOUR });
+    });
+    await run(t, "inbound_processing");
+    expect(await openIncidents(t)).toHaveLength(0);
   });
 
-  test("another company cannot read or act on an incident", async () => {
+  test("a charge that could not be settled says the work itself is done and will not run again", async () => {
     const t = start();
-    const a = await company(t, "owner-a", "Alpha");
-    const b = await company(t, "owner-b", "Beta");
-    await expiredMailbox(t, a.companyId);
-    await runChecks(t);
-    const [incident] = await openIncidents(t, a.companyId);
-    expect((await b.as.query(api.operations.forCompany, { companyId: b.companyId })).issues).toHaveLength(0);
-    expect(await refusal(b.as.mutation(api.operations.requestSupport, { companyId: b.companyId, incidentId: incident._id }))).toBe("Not found.");
-    expect(await refusal(b.as.query(api.operations.forCompany, { companyId: a.companyId }))).toBe("Not found.");
+    const { companyId } = await company(t, "owner_a", "Alpha");
+    await t.run((ctx) => ctx.db.insert("aiExecutions", { companyId, env: "sandbox", key: "e1", agent: "recruiter", task: "applicant_evaluation", units: 1, rateCardVersion: "v1", rate: 2, credits: 2, autonomous: true, state: "completed", lockAttempts: 0, settlement: "unverified", settleAttempts: 6, settleProblem: "Autumn could not be reached.", createdAt: Date.now() - HOUR, updatedAt: Date.now() - HOUR }));
+    await run(t, "ai_billing");
+    const [incident] = await openIncidents(t);
+    expect(incident).toMatchObject({ kind: "ai_settlement_unverified", area: "billing", state: "needs_staff", recoveryAttempts: 6 });
+    expect(incident.impact).toContain("will not run again");
   });
 
-  test("asking for support attaches what Selestial knows and is recorded once an hour", async () => {
+  test("monitoring shows each check's freshness: never run, ok, and stale once it stops finishing", async () => {
     const t = start();
-    const { as, companyId } = await company(t, "owner-a", "Alpha");
-    await expiredMailbox(t, companyId);
-    await runChecks(t);
-    const [incident] = await openIncidents(t, companyId);
-    const ref = await as.mutation(api.operations.requestSupport, { companyId, incidentId: incident._id, note: "It keeps asking me" });
-    expect(ref).toMatch(/^INC-[A-Z0-9]{6}$/);
-    await as.mutation(api.operations.requestSupport, { companyId, incidentId: incident._id });
-    const log = await t.run(async (ctx) => (await ctx.db.query("opsLog").collect()).filter((row) => row.kind === "support_requested"));
-    expect(log).toHaveLength(1);
-    const view = await as.query(api.operations.forCompany, { companyId });
-    expect(view.issues[0].supportRequestedAt).toBeTypeOf("number");
-  });
-});
+    const staff = t.withIdentity(admin);
+    let overview = await staff.query(api.operations.overview, {});
+    expect(overview.checks.every((check) => check.freshness === "never_run")).toBe(true);
+    expect(overview.monitoringHealthy).toBe(false);
 
-describe("Operations: staff actions", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-    vi.setSystemTime(NOW);
-    process.env.STAFF_BOOTSTRAP_EMAIL = ADMIN.email;
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-    delete process.env.STAFF_BOOTSTRAP_EMAIL;
+    const started = await t.mutation(internal.operations.tick, {});
+    expect(started).toBe(overview.checks.length);
+    // A tick right after starts nothing: every check is on its own schedule.
+    expect(await t.mutation(internal.operations.tick, {})).toBe(0);
+    for (const check of overview.checks) await t.mutation(internal.operations.runCheck, { check: check.check });
+    overview = await staff.query(api.operations.overview, {});
+    expect(overview.monitoringHealthy).toBe(true);
+
+    await t.run(async (ctx) => {
+      const row = (await ctx.db.query("monitorChecks").withIndex("by_check", (q) => q.eq("check", "mailboxes")).first())!;
+      await ctx.db.patch(row._id, { lastStartedAt: Date.now() - 2 * HOUR, lastFinishedAt: Date.now() - 2 * HOUR });
+      const failing = (await ctx.db.query("monitorChecks").withIndex("by_check", (q) => q.eq("check", "texting")).first())!;
+      await ctx.db.patch(failing._id, { lastStartedAt: Date.now(), lastFinishedAt: Date.now() - HOUR });
+    });
+    overview = await staff.query(api.operations.overview, {});
+    expect(overview.checks.find((check) => check.check === "mailboxes")!.freshness).toBe("stale");
+    expect(overview.checks.find((check) => check.check === "texting")!.freshness).toBe("failing");
+    expect(overview.monitoringHealthy).toBe(false);
   });
 
-  test("a reviewer can look but not act; an admin's actions are logged with their name and reason", async () => {
+  test("the overview counts only real open incidents and names the companies affected", async () => {
     const t = start();
-    const { companyId } = await company(t, "owner-a", "Alpha");
-    await expiredMailbox(t, companyId);
-    await runChecks(t);
-    const [incident] = await openIncidents(t, companyId);
-    const admin = t.withIdentity(ADMIN);
-    await admin.mutation(api.staff.add, { email: "reviewer@selestial.example", name: "Rae Reviewer", role: "reviewer" });
-    const reviewer = t.withIdentity({ subject: "user_reviewer", email: "reviewer@selestial.example", emailVerified: true, name: "Rae" });
-    expect((await reviewer.query(api.operations.incidents, { view: "attention" })).length).toBe(1);
-    expect(await refusal(reviewer.mutation(api.operations.assign, { id: incident._id }))).toBe("Not allowed.");
-    expect(await refusal(reviewer.mutation(api.operations.stopOutbound, { companyId, reason: "Testing the stop control" }))).toBe("Not allowed.");
-    await admin.mutation(api.operations.assign, { id: incident._id });
-    await admin.mutation(api.operations.note, { id: incident._id, words: "Owner says they changed their Google password." });
-    const detail = await admin.query(api.operations.incident, { id: incident._id });
-    expect(detail.assignedTo).toBe("Avery Ops");
-    expect(detail.log.map((row) => row.actor)).toContain("Avery Ops");
-    // Staff notes never reach the owner's card.
-    const owner = t.withIdentity({ subject: "owner-a", email: "owner-a@example.com", emailVerified: true, name: "owner-a", issuer: "https://clerk.selestial.test", tokenIdentifier: "https://clerk.selestial.test|owner-a" });
-    expect(JSON.stringify(await owner.query(api.operations.forCompany, { companyId }))).not.toContain("Google password");
+    const a = await company(t, "owner_a", "Alpha");
+    const b = await company(t, "owner_b", "Bravo");
+    await mailbox(t, a.companyId, "expired");
+    await message(t, b.companyId, "b1", "unconfirmed", Date.now() - 2 * HOUR);
+    await message(t, b.companyId, "b2", "sending", Date.now() - HOUR);
+    await run(t, "mailboxes");
+    await run(t, "uncertain_messages");
+    await run(t, "stuck_sends");
+    const overview = await t.withIdentity(admin).query(api.operations.overview, {});
+    expect(overview.openCount).toBe(3);
+    expect(overview.byArea).toMatchObject({ connections: 1, communications: 1, platform: 1 });
+    expect(overview.platform.map((row) => row.kind)).toEqual(["send_recovery_stopped"]);
+    expect(overview.waitingOwner.map((row) => row.company?.name)).toEqual(["Alpha"]);
+    expect(overview.affectedCompanies.map((row) => row.name).sort()).toEqual(["Alpha", "Bravo"]);
+    expect(overview.needsStaff.map((row) => row.nextActor)).toEqual(["Selestial staff", "Selestial staff"]);
   });
 
-  test("dismissing needs a reason, and the same problem stays dismissed for a week unless it grows", async () => {
+  test("owner notifications that keep failing are found, and one that goes through again clears it", async () => {
     const t = start();
-    const { companyId } = await company(t, "owner-a", "Alpha");
-    await expiredMailbox(t, companyId);
-    await runChecks(t);
-    const [incident] = await openIncidents(t, companyId);
-    const admin = t.withIdentity(ADMIN);
-    expect(await refusal(admin.mutation(api.operations.dismiss, { id: incident._id, reason: "no" }))).toMatch(/Say why/);
-    await admin.mutation(api.operations.dismiss, { id: incident._id, reason: "Company is closing; owner asked us to ignore this inbox." });
-    await runChecks(t);
-    expect(await openIncidents(t, companyId)).toHaveLength(0);
-  });
-
-  test("verify resolves only when the check no longer finds the problem", async () => {
-    const t = start();
-    const { companyId } = await company(t, "owner-a", "Alpha");
-    const box = await expiredMailbox(t, companyId);
-    await runChecks(t);
-    const [incident] = await openIncidents(t, companyId);
-    const admin = t.withIdentity(ADMIN);
-    expect(await admin.mutation(api.operations.verify, { id: incident._id })).toEqual({ open: true });
-    await t.run((ctx) => ctx.db.patch(box, { status: "connected" }));
-    expect(await admin.mutation(api.operations.verify, { id: incident._id })).toEqual({ open: false });
-  });
-});
-
-describe("Operations: Selestial's outbound stop", () => {
-  let undo: () => void;
-  beforeEach(() => {
-    undo = dispatchTestEnv();
-    resetMockProvider();
-    process.env.STAFF_BOOTSTRAP_EMAIL = ADMIN.email;
-  });
-  afterEach(() => {
-    undo();
-    delete process.env.STAFF_BOOTSTRAP_EMAIL;
-  });
-
-  test("refuses every outbound text while set, keeps STOP answers flowing, and releases nothing on resume", async () => {
-    const s = await setup(["Lena"]);
-    await s.autonomous();
-    const admin = s.t.withIdentity(ADMIN);
-    await admin.mutation(api.operations.stopOutbound, { companyId: s.companyId, reason: "Investigating duplicate texts reported by the owner" });
-    await dispatchJob(s.as, s.companyId, s.place);
-    await flush(s.t);
-    expect(mockOutbox.filter((row) => row.result === "accepted")).toHaveLength(0);
-    const offer = await s.t.run(async (ctx) => (await ctx.db.query("messages").collect()).find((m) => m.purpose === "offer")!);
-    expect(offer).toMatchObject({ status: "not_sent", refusal: "outbound_stopped" });
-    // A STOP from the cleaner is still honored and answered.
-    await s.t.mutation(internal.inbound.sms, { to: s.smsNumber, from: s.phone.Lena, body: "STOP", receivedAt: Date.now() });
-    await flush(s.t);
-    expect(mockOutbox.filter((row) => row.result === "accepted" && row.to === s.phone.Lena)).toHaveLength(1);
-    await admin.mutation(api.operations.resumeOutbound, { companyId: s.companyId, reason: "Cause found and fixed" });
-    await flush(s.t);
-    expect((await s.t.run((ctx) => ctx.db.get(offer._id)))?.status).toBe("not_sent");
-    const overview = await admin.query(api.operations.overview, { asOf: Date.now() });
-    expect(overview.outboundStops).toHaveLength(0);
-  });
-});
-
-describe("Deployment isolation", () => {
-  let undo: () => void;
-  beforeEach(() => {
-    undo = dispatchTestEnv();
-    resetMockProvider();
-  });
-  afterEach(() => {
-    undo();
-    process.env.SELESTIAL_DEPLOYMENT = "local";
-    delete process.env.SELESTIAL_TEST_RECIPIENTS;
-    delete process.env.STRIPE_SECRET_KEY;
-  });
-
-  test("a test backend texts only its listed recipients", async () => {
-    process.env.SELESTIAL_DEPLOYMENT = "test";
-    process.env.SELESTIAL_TEST_RECIPIENTS = "+15550102020, qa@selestial.example";
-    const s = await setup(["Lena", "Rosa"]);
-    await s.autonomous();
-    await dispatchJob(s.as, s.companyId, s.place);
-    await flush(s.t);
-    const messages = await s.t.run((ctx) => ctx.db.query("messages").collect());
-    const lena = messages.find((m) => m.to === s.phone.Lena);
-    expect(lena).toMatchObject({ status: "not_sent", refusal: "not_test_recipient" });
-    expect(mockOutbox.some((row) => row.to === s.phone.Lena)).toBe(false);
-  });
-
-  test("a restored backend runs no scheduled job, sends nothing and calls no payment provider", async () => {
-    process.env.SELESTIAL_DEPLOYMENT = "restore";
-    const t = start();
-    expect(await t.mutation(internal.cronGate.gate, { job: "assignments.expireDue" })).toBe("held");
-    process.env.STRIPE_SECRET_KEY = "sk_test_123";
-    expect(stripeConfig()).toBeNull();
-    expect(autumnConfig()).toBeNull();
-    process.env.SELESTIAL_DEPLOYMENT = "test";
-    process.env.STRIPE_SECRET_KEY = "sk_live_123";
-    expect(stripeConfig()).toBeNull();
-    process.env.STRIPE_SECRET_KEY = "sk_test_123";
-    expect(stripeConfig()).toMatchObject({ livemode: false });
-    expect(await t.mutation(internal.cronGate.gate, { job: "assignments.expireDue" })).toBe("scheduled");
-    const { companyId } = await company(t, "owner-x", "Xeno");
-    await readyMessaging(t, companyId);
+    const { companyId } = await company(t, "owner_a", "Alpha");
+    const owner = await ownerOf(t, companyId);
+    const now = Date.now();
+    for (let i = 0; i < 3; i += 1) await message(t, companyId, `n${i}`, "failed", now - (i + 1) * MINUTE, { purpose: "member_notice", memberId: owner._id, channel: "email", provider: "resend", problem: "Mailbox full" });
+    await run(t, "owner_notices");
+    const [incident] = await openIncidents(t);
+    expect(incident).toMatchObject({ kind: "owner_notice_failing", severity: "high", state: "needs_staff" });
+    expect(incident.impact).not.toContain(owner.email);
+    await message(t, companyId, "n-ok", "delivered", now, { purpose: "member_notice", memberId: owner._id, channel: "email", provider: "resend" });
+    await run(t, "owner_notices");
+    expect(await openIncidents(t)).toHaveLength(0);
   });
 });

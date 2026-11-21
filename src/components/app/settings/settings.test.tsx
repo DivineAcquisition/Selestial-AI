@@ -387,7 +387,6 @@ describe("the overview and navigation", () => {
       const html = renderToStaticMarkup(<OverviewGrid sections={sectionsFor(role)} />);
       expect(html).not.toContain("/app/settings/billing");
       expect(html).not.toContain("/app/settings/activity");
-      expect(html).not.toContain("/app/settings/support-access");
       expect(html).toContain("/app/settings/business");
     }
   });

@@ -357,6 +357,7 @@ export const recruiterTables = {
   })
     .index("by_company", ["companyId"])
     .index("by_address", ["address"])
+    // Operations checks (convex/lib/operations/detectors.ts) find expired and failing inboxes by status.
     .index("by_status", ["status"]),
 
   /**

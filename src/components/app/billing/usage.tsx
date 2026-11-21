@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextInput, useRun } from "@/components/app/form";
 import { Panel } from "@/components/app/shell";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,6 +16,8 @@ import { cn } from "@/lib/utils";
 
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
+import { Checkbox, SegmentedControl, Select } from "@/components/ui/selection";
+import { ListInput, NumberField } from "@/components/ui/fields";
 
 type Usage = Extract<NonNullable<ReturnType<typeof useQuery<typeof api.billingUsage.usage>>>, { connected: true }>;
 
@@ -154,14 +156,7 @@ function UsageOverTime({ data, range, onRange }: { data: Usage; range: { from?: 
     <Panel title="Usage over time">
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <Field label="Period">
-          <SelectInput value={cycleIndex >= 0 ? String(cycleIndex) : "custom"} onChange={(event) => (event.target.value === "custom" ? onRange({ from: data.range.from, to: data.range.to }) : onRange(event.target.value === "0" ? {} : { from: data.cycles[Number(event.target.value)].from, to: data.cycles[Number(event.target.value)].to }))}>
-            {data.cycles.map((cycle, index) => (
-              <option key={cycle.from} value={index}>
-                {cycle.label}
-              </option>
-            ))}
-            <option value="custom">Custom dates</option>
-          </SelectInput>
+          <Select value={cycleIndex >= 0 ? String(cycleIndex) : "custom"} onValueChange={(next) => ((next ?? "") === "custom" ? onRange({ from: data.range.from, to: data.range.to }) : onRange((next ?? "") === "0" ? {} : { from: data.cycles[Number(next ?? "")].from, to: data.cycles[Number(next ?? "")].to }))} options={[...data.cycles.map((cycle, index) => ({ value: String(index), label: cycle.label })), { value: "custom", label: "Custom dates" }]} searchable="auto" />
         </Field>
         <Field label="From">
           <TextInput type="date" value={dayInput(data.range.from)} onChange={(event) => event.target.value && onRange({ ...range, from: Date.parse(`${event.target.value}T00:00:00Z`), to: range.to ?? data.range.to })} />
@@ -169,19 +164,13 @@ function UsageOverTime({ data, range, onRange }: { data: Usage; range: { from?: 
         <Field label="To">
           <TextInput type="date" value={dayInput(data.range.to - 1)} onChange={(event) => event.target.value && onRange({ ...range, from: range.from ?? data.range.from, to: Date.parse(`${event.target.value}T00:00:00Z`) + 86_400_000 })} />
         </Field>
-        <div role="group" aria-label="Break down by" className="flex rounded-lg border border-border p-0.5 text-sm">
-          {(["agent", "task"] as const).map((value) => (
-            <button key={value} type="button" aria-pressed={group === value} onClick={() => setGroup(value)} className={cn("rounded-md px-3 py-1", group === value ? "bg-muted font-medium text-strong" : "text-muted-foreground")}>
-              {value === "agent" ? "By agent" : "By action"}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl label="Break down by" hideLabel density="compact" value={group} options={[{ id: "agent", label: "By agent" }, { id: "task", label: "By action" }]} onChange={setGroup} />
         <label className="flex items-center gap-1.5 text-sm text-strong">
-          <input type="checkbox" checked={compare} onChange={(event) => setCompare(event.target.checked)} />
+          <Checkbox checked={compare} onCheckedChange={(checked) => setCompare(checked)} />
           Compare with the previous period
         </label>
         <label className="flex items-center gap-1.5 text-sm text-strong">
-          <input type="checkbox" checked={asTable} onChange={(event) => setAsTable(event.target.checked)} />
+          <Checkbox checked={asTable} onCheckedChange={(checked) => setAsTable(checked)} />
           Show as a table
         </label>
       </div>
@@ -325,13 +314,7 @@ function WhereCreditsWent({ data }: { data: Usage }) {
     <Panel
       title="Agents at work"
       action={
-        <div role="group" aria-label="View" className="flex rounded-lg border border-border p-0.5 text-sm">
-          {(["agent", "task"] as const).map((value) => (
-            <button key={value} type="button" aria-pressed={view === value} onClick={() => setView(value)} className={cn("rounded-md px-3 py-1", view === value ? "bg-muted font-medium text-strong" : "text-muted-foreground")}>
-              {value === "agent" ? "By agent" : "By action"}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl label="View" hideLabel density="compact" value={view} options={[{ id: "agent", label: "By agent" }, { id: "task", label: "By action" }]} onChange={setView} />
       }
     >
       {view === "agent" ? (
@@ -424,49 +407,17 @@ function ActivityAndHistory({ data, filters, onFilters }: { data: Usage; filters
     <Panel
       title="Activity and credit history"
       action={
-        <div role="group" aria-label="View" className="flex rounded-lg border border-border p-0.5 text-sm">
-          {(["activity", "balance"] as const).map((value) => (
-            <button key={value} type="button" aria-pressed={view === value} onClick={() => setView(value)} className={cn("rounded-md px-3 py-1", view === value ? "bg-muted font-medium text-strong" : "text-muted-foreground")}>
-              {value === "activity" ? "Usage activity" : "Balance history"}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl label="View" hideLabel density="compact" value={view} options={[{ id: "activity", label: "Usage activity" }, { id: "balance", label: "Balance history" }]} onChange={setView} />
       }
     >
       {view === "activity" ? (
         <>
           <div className="mb-3 grid gap-2 sm:grid-cols-5">
             <TextInput aria-label="Search activity" placeholder="Search" value={filters.search ?? ""} onChange={(event) => set("search", event.target.value)} />
-            <SelectInput aria-label="Agent" value={filters.agent ?? ""} onChange={(event) => set("agent", event.target.value)}>
-              <option value="">Every agent</option>
-              {data.filters.agents.map((row) => (
-                <option key={row.key} value={row.key}>
-                  {row.label}
-                </option>
-              ))}
-            </SelectInput>
-            <SelectInput aria-label="Action" value={filters.task ?? ""} onChange={(event) => set("task", event.target.value)}>
-              <option value="">Every action</option>
-              {data.filters.tasks.map((row) => (
-                <option key={row.key} value={row.key}>
-                  {row.label}
-                </option>
-              ))}
-            </SelectInput>
-            <SelectInput aria-label="Status" value={filters.status ?? ""} onChange={(event) => set("status", event.target.value)}>
-              <option value="">Every status</option>
-              {data.filters.statuses.map((status) => (
-                <option key={status}>{status}</option>
-              ))}
-            </SelectInput>
-            <SelectInput aria-label="Initiated by" value={filters.memberId ?? ""} onChange={(event) => set("memberId", event.target.value)}>
-              <option value="">Anyone or automatic</option>
-              {data.filters.members.map((row) => (
-                <option key={row.id} value={row.id}>
-                  {row.name}
-                </option>
-              ))}
-            </SelectInput>
+            <Select value={filters.agent ?? ""} onValueChange={(next) => set("agent", next ?? "")} options={data.filters.agents.map((row) => ({ value: row.key, label: row.label }))} emptyLabel="Every agent" placeholder="Every agent" aria-label="Agent" searchable="auto" />
+            <Select value={filters.task ?? ""} onValueChange={(next) => set("task", next ?? "")} options={data.filters.tasks.map((row) => ({ value: row.key, label: row.label }))} emptyLabel="Every action" placeholder="Every action" aria-label="Action" searchable="auto" />
+            <Select value={filters.status ?? ""} onValueChange={(next) => set("status", next ?? "")} options={data.filters.statuses.map((status) => ({ value: status, label: status }))} emptyLabel="Every status" placeholder="Every status" aria-label="Status" searchable="auto" />
+            <Select value={filters.memberId ?? ""} onValueChange={(next) => set("memberId", next ?? "")} options={data.filters.members.map((row) => ({ value: row.id, label: row.name }))} emptyLabel="Anyone or automatic" placeholder="Anyone or automatic" aria-label="Initiated by" searchable="auto" />
           </div>
           {data.activity.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">No AI work matches.</p>
@@ -625,13 +576,13 @@ function SpendingControls({ data }: { data: Usage }) {
     approvalThreshold: text(controls?.approvalThreshold ?? controls?.perRunLimit),
     autonomousMonthly: text(controls?.autonomousMonthly),
     lowBalance: text(controls?.lowBalance),
-    alertPercents: (controls?.alertPercents ?? [50, 80, 100]).join(", "),
+    alertPercents: (controls?.alertPercents ?? [50, 80, 100]).map(String),
     budgets: Object.fromEntries(Object.entries(controls?.agentBudgets ?? {}).map(([key, value]) => [key, String(value)])) as Record<string, string>,
     autoCap: text(controls?.autoTopUp.maxPerMonth),
   }));
   const [saved, setSaved] = useState(false);
   const number = (value: string) => (value.trim() ? Number(value.replace(/,/g, "")) : null);
-  const set = (key: Exclude<keyof typeof form, "budgets">, value: string) => {
+  const set = <K extends Exclude<keyof typeof form, "budgets">>(key: K, value: (typeof form)[K]) => {
     setSaved(false);
     setForm((current) => ({ ...current, [key]: value }));
   };
@@ -660,7 +611,7 @@ function SpendingControls({ data }: { data: Usage }) {
                 autonomousMonthly: number(form.autonomousMonthly),
                 lowBalance: number(form.lowBalance),
                 agentBudgets: Object.fromEntries(Object.entries(form.budgets).filter(([, value]) => value.trim()).map(([key, value]) => [key, Number(value.replace(/,/g, ""))])),
-                alertPercents: form.alertPercents.split(",").map((value) => Number(value.trim())).filter((value) => value > 0),
+                alertPercents: form.alertPercents.map(Number).filter((value) => value > 0).sort((a, b) => a - b),
                 autoTopUp: { enabled: false, maxPerMonth: number(form.autoCap) ?? undefined },
               });
               setSaved(true);
@@ -668,26 +619,26 @@ function SpendingControls({ data }: { data: Usage }) {
           }}
         >
           <Field label="Maximum per piece of work (hard limit)" hint="Nothing larger starts. Empty: no maximum.">
-            <TextInput inputMode="numeric" value={form.maxPerExecution} onChange={(event) => set("maxPerExecution", event.target.value)} />
+            <NumberField value={form.maxPerExecution} onChange={(text) => set("maxPerExecution", text)} />
           </Field>
           <Field label="Approval threshold" hint="Work estimated above this waits for the Owner. Empty: none.">
-            <TextInput inputMode="numeric" value={form.approvalThreshold} onChange={(event) => set("approvalThreshold", event.target.value)} />
+            <NumberField value={form.approvalThreshold} onChange={(text) => set("approvalThreshold", text)} />
           </Field>
           <Field label="Monthly budget for automatic work (hard limit)" hint="Work no one asked for, such as reading the hiring inbox. When it is used, those emails are read by rules instead.">
-            <TextInput inputMode="numeric" value={form.autonomousMonthly} onChange={(event) => set("autonomousMonthly", event.target.value)} />
+            <NumberField value={form.autonomousMonthly} onChange={(text) => set("autonomousMonthly", text)} />
           </Field>
           <Field label="Low-balance alert (credits)" hint="Tell the Owner when available credits fall below this.">
-            <TextInput inputMode="numeric" value={form.lowBalance} onChange={(event) => set("lowBalance", event.target.value)} />
+            <NumberField value={form.lowBalance} onChange={(text) => set("lowBalance", text)} suffix="credits" />
           </Field>
-          <Field label="Usage alerts (% of monthly credits)" hint="For example 50, 80, 100.">
-            <TextInput value={form.alertPercents} onChange={(event) => set("alertPercents", event.target.value)} />
+          <Field label="Usage alerts (% of monthly credits)" hint="The Owner is told when monthly use reaches each of these.">
+            <ListInput value={form.alertPercents} onChange={(next) => set("alertPercents", next)} validate={(entry) => (/^\d{1,3}$/.test(entry) && Number(entry) >= 1 && Number(entry) <= 100 ? null : `“${entry}” isn't a whole percent from 1 to 100.`)} normalize={(entry) => entry.trim().replace(/%$/, "")} noun="alert" placeholder="Type a percent, like 80" max={10} />
           </Field>
           <fieldset className="sm:col-span-2 lg:col-span-3">
             <legend className="text-sm font-medium text-strong">Monthly budget per agent (hard limit, optional)</legend>
             <div className="mt-2 grid gap-2 sm:grid-cols-3">
               {data.budgetAgents.map((agent) => (
                 <Field key={agent.key} label={agent.label}>
-                  <TextInput inputMode="numeric" placeholder="No budget" value={form.budgets[agent.key] ?? ""} onChange={(event) => setForm((current) => ({ ...current, budgets: { ...current.budgets, [agent.key]: event.target.value } }))} />
+                  <NumberField placeholder="No budget" value={form.budgets[agent.key] ?? ""} onChange={(text) => setForm((current) => ({ ...current, budgets: { ...current.budgets, [agent.key]: text } }))} />
                 </Field>
               ))}
             </div>
@@ -697,7 +648,7 @@ function SpendingControls({ data }: { data: Usage }) {
             <p className="text-muted-foreground">Not available yet. Credits are never bought without you. When automatic top-ups arrive, they stay off until you turn them on, and never go past this monthly purchase cap.</p>
             <div className="mt-2 max-w-xs">
               <Field label="Monthly purchase cap (credits)">
-                <TextInput inputMode="numeric" value={form.autoCap} onChange={(event) => set("autoCap", event.target.value)} />
+                <NumberField value={form.autoCap} onChange={(text) => set("autoCap", text)} suffix="credits" />
               </Field>
             </div>
           </div>

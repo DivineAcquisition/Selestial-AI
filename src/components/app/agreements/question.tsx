@@ -1,6 +1,7 @@
 "use client";
 
-import { Field, SelectInput, TextArea, TextInput } from "@/components/app/form";
+import { Field, TextArea, TextInput } from "@/components/app/form";
+import { Select } from "@/components/ui/selection";
 import { cn } from "@/lib/utils";
 
 export type Q = { key: string; label: string; ask: string; type: string; choices?: readonly string[] | null; help?: string | null; value?: unknown; source?: string | null; skipped?: boolean };
@@ -23,20 +24,9 @@ export function QuestionField({ q, draft, onChange, disabled }: { q: Q; draft: s
   return (
     <Field label={q.ask} hint={hint}>
       {q.type === "choice" && q.choices ? (
-        <SelectInput value={draft} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
-          <option value="">Choose…</option>
-          {q.choices.map((choice) => (
-            <option key={choice} value={choice}>
-              {choice}
-            </option>
-          ))}
-        </SelectInput>
+        <Select value={draft} onValueChange={(next) => onChange(next ?? "")} options={q.choices.map((choice) => ({ value: choice, label: choice }))} emptyLabel="Choose…" placeholder="Choose…" disabled={disabled} searchable="auto" />
       ) : q.type === "bool" ? (
-        <SelectInput value={draft} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
-          <option value="">Choose…</option>
-          <option value="yes">Yes</option>
-          <option value="no">No</option>
-        </SelectInput>
+        <Select value={draft} onValueChange={(next) => onChange(next ?? "")} options={[{ value: "yes", label: "Yes" }, { value: "no", label: "No" }]} emptyLabel="Choose…" placeholder="Choose…" disabled={disabled} />
       ) : q.type === "longtext" || q.type === "list" ? (
         <TextArea value={draft} disabled={disabled} rows={q.type === "list" ? 2 : 3} onChange={(event) => onChange(event.target.value)} placeholder={q.type === "list" ? "Separate with commas" : undefined} />
       ) : (

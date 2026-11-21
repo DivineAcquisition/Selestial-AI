@@ -8,8 +8,7 @@ export const NOT_ALLOWED = "Not allowed.";
  * in production; a ConvexError's data reaches the caller, so every message meant for a person uses this.
  * Never put provider responses, tokens or stack text in `message`.
  */
-/** "support_ended": the support session a request named has ended; the workspace returns to the staff console. "verify": sign in again with a second factor. */
-export type UserErrorCode = "invalid" | "not_found" | "not_allowed" | "limit" | "support_ended" | "verify";
+export type UserErrorCode = "invalid" | "not_found" | "not_allowed" | "limit";
 export type UserErrorData = { code: UserErrorCode; message: string };
 
 export function userError(message: string, code: UserErrorCode = "invalid") {

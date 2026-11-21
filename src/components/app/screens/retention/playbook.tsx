@@ -17,6 +17,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "../../../../../convex/_generated/api";
 import type { FunctionReturnType } from "convex/server";
 import { NotConnected } from "./shared";
+import { Checkbox } from "@/components/ui/selection";
+import { NumberField } from "@/components/ui/fields";
 
 type Settings = FunctionReturnType<typeof api.retentionAgent.settings>;
 
@@ -51,18 +53,18 @@ function Rules({ data }: { data: Settings }) {
           <TextArea rows={2} disabled={!edit} value={guarantee} onChange={(event) => setGuarantee(event.target.value)} />
         </Field>
         <Field label="Days it covers">
-          <TextInput inputMode="numeric" disabled={!edit} value={days} onChange={(event) => setDays(event.target.value)} />
+          <NumberField disabled={!edit} value={days} onChange={(text) => setDays(text)} suffix="days" stepper />
         </Field>
       </div>
       <Field label="Public review page" hint="Shown to everyone who gives feedback, whatever they answered. Nobody is steered to or away from it.">
         <TextInput type="url" placeholder="https://" disabled={!edit} value={review} onChange={(event) => setReview(event.target.value)} />
       </Field>
       <label className="flex items-start gap-2 text-sm text-foreground">
-        <input type="checkbox" className="mt-1" disabled={!edit} checked={first} onChange={(event) => setFirst(event.target.checked)} />
+        <Checkbox className="mt-1" disabled={!edit} checked={first} onCheckedChange={(checked) => setFirst(checked)} />
         <span>Ask for feedback after a customer&rsquo;s first completed and reviewed service. Later visits are asked only when a person chooses to.</span>
       </label>
       <label className="flex items-start gap-2 text-sm text-foreground">
-        <input type="checkbox" className="mt-1" disabled={!edit} checked={inbox} onChange={(event) => setInbox(event.target.checked)} />
+        <Checkbox className="mt-1" disabled={!edit} checked={inbox} onCheckedChange={(checked) => setInbox(checked)} />
         <span>
           Read customers&rsquo; email replies in the inbox connected for Care &amp; Retention.
           <span className="mt-0.5 block text-xs text-muted-foreground">
@@ -74,16 +76,16 @@ function Rules({ data }: { data: Settings }) {
       </label>
       <div className="grid gap-3 sm:grid-cols-4">
         <Field label="Days a customer link stays open">
-          <TextInput inputMode="numeric" disabled={!edit} value={linkDays} onChange={(event) => setLinkDays(event.target.value)} />
+          <NumberField disabled={!edit} value={linkDays} onChange={(text) => setLinkDays(text)} suffix="days" stepper />
         </Field>
         <Field label="Hours to act on a concern">
-          <TextInput inputMode="numeric" disabled={!edit} value={due} onChange={(event) => setDue(event.target.value)} />
+          <NumberField disabled={!edit} value={due} onChange={(text) => setDue(text)} suffix="hours" stepper />
         </Field>
         <Field label="Days to wait for a customer">
-          <TextInput inputMode="numeric" disabled={!edit} value={quiet} onChange={(event) => setQuiet(event.target.value)} />
+          <NumberField disabled={!edit} value={quiet} onChange={(text) => setQuiet(text)} suffix="days" stepper />
         </Field>
         <Field label="Days before a renewal">
-          <TextInput inputMode="numeric" disabled={!edit} value={lead} onChange={(event) => setLead(event.target.value)} />
+          <NumberField disabled={!edit} value={lead} onChange={(text) => setLead(text)} suffix="days" stepper />
         </Field>
       </div>
       <fieldset className="grid gap-2">
@@ -91,7 +93,7 @@ function Rules({ data }: { data: Settings }) {
         <div className="flex flex-wrap gap-x-5 gap-y-2">
           {data.changes.map((change) => (
             <label key={change.id} className="flex items-center gap-2 text-sm text-foreground">
-              <input type="checkbox" disabled={!edit || change.id === "end_service"} checked={offered.includes(change.id) || change.id === "end_service"} onChange={(event) => setOffered((list) => (event.target.checked ? [...list, change.id] : list.filter((id) => id !== change.id)))} />
+              <Checkbox disabled={!edit || change.id === "end_service"} checked={offered.includes(change.id) || change.id === "end_service"} onCheckedChange={(checked) => setOffered((list) => (checked ? [...list, change.id] : list.filter((id) => id !== change.id)))} />
               {change.words}
             </label>
           ))}

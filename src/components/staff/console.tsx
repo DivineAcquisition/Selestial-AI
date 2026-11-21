@@ -1,11 +1,13 @@
 "use client";
 
+import { useAuth } from "@clerk/nextjs";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import Link from "next/link";
-import { useParams, usePathname } from "next/navigation";
-import { useState } from "react";
+import { useParams, usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
-import { Field, FormError, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Modal } from "@/components/app/modal";
 import { missingSetup } from "@/components/app/not-set-up";
 import { PageHeader, Panel } from "@/components/app/shell";
 import { UserMenu } from "@/components/auth/user-menu";
@@ -14,10 +16,14 @@ import { ArrowLeft } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { OpenWorkspaceDialog } from "@/components/staff/operations";
+import { AUTH, withNext } from "@/lib/auth/routes";
 import { cn } from "@/lib/utils";
 
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+import { Checkbox, Select } from "@/components/ui/selection";
+import { EmailInput, NumberField } from "@/components/ui/fields";
 
 /**
  * Selestial's own staff console: the public request queues, the trust records the public pages are
@@ -39,10 +45,25 @@ function NotFound() {
   );
 }
 
+/**
+ * Signed out: off to sign-in, which remembers the page. On the staff host the sign-in page lives on the
+ * workspace host, and the person comes back here afterwards (src/lib/hosts.ts).
+ */
+function ToSignIn() {
+  const router = useRouter();
+  const pathname = usePathname();
+  useEffect(() => {
+    router.replace(withNext(AUTH.login, pathname));
+  }, [pathname, router]);
+  return null;
+}
+
 function StaffCheck({ children }: { children: React.ReactNode }) {
   const { isLoading, isAuthenticated } = useConvexAuth();
+  const { isLoaded, isSignedIn } = useAuth();
   const me = useQuery(api.staff.me, isAuthenticated ? {} : "skip");
-  if (isLoading || (isAuthenticated && me === undefined)) {
+  if (isLoaded && !isSignedIn) return <ToSignIn />;
+  if (isLoading || !isLoaded || (isAuthenticated && me === undefined)) {
     return (
       <div className="mx-auto max-w-6xl p-6" aria-busy="true" aria-label="Loading">
         <Skeleton className="h-10 w-60" />
@@ -60,6 +81,9 @@ const NAV = [
   { href: "/staff/trust", label: "Trust records" },
   { href: "/staff/companies", label: "Companies" },
   { href: "/staff/setup", label: "Setup funnel" },
+  { href: "/staff/tutorials", label: "Tutorials" },
+  { href: "/staff/selection", label: "Selection system" },
+  { href: "/staff/fields", label: "Form fields" },
   { href: "/staff/texting", label: "Texting" },
   { href: "/staff/messaging", label: "Messaging money" },
   { href: "/staff/agent-requests", label: "Agent requests" },
@@ -67,19 +91,17 @@ const NAV = [
   { href: "/staff/ai", label: "AI models" },
 ];
 
-const ROLE_LABEL: Record<string, string> = { admin: "Admin", support_lead: "Support lead", support: "Support", billing: "Billing", reviewer: "Reviewer" };
-
-function StaffShell({ role, children }: { role: string; children: React.ReactNode }) {
+function StaffShell({ role, children }: { role: "admin" | "support" | "reviewer"; children: React.ReactNode }) {
   const pathname = usePathname();
   return (
     <div className="min-h-dvh bg-muted/50">
       <header className="sticky top-0 z-20 border-b border-border bg-card/95 backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-5 gap-y-2 px-4 py-2.5 sm:px-6">
-          <Link href="/staff" className="flex items-center gap-2 font-heading text-base text-strong">
+          <Link href="/staff/operations" className="flex items-center gap-2 font-heading text-base text-strong">
             <LogoMark className="size-7" />
             Selestial staff
           </Link>
-          <Badge variant={role === "admin" ? "info" : "outline"}>{ROLE_LABEL[role] ?? role}</Badge>
+          <Badge variant={role === "admin" ? "info" : "outline"}>{role === "admin" ? "Admin" : role === "support" ? "Support" : "Reviewer"}</Badge>
           <nav aria-label="Staff" className="order-last flex w-full gap-1 overflow-x-auto sm:order-none sm:w-auto">
             {NAV.map((item) => {
               const active = item.href === "/staff" ? pathname === "/staff" || pathname.startsWith("/staff/requests") : pathname.startsWith(item.href);
@@ -138,24 +160,10 @@ export function RequestQueue() {
       <PageHeader title="Requests" lead="Privacy requests, vulnerability reports and security questions from the public site. Each one was saved before anyone was told." />
       <div className="mb-4 flex flex-wrap gap-3">
         <Field label="Kind" className="w-48">
-          <SelectInput value={kind} onChange={(event) => setKind(event.target.value as typeof kind)}>
-            <option value="">All kinds</option>
-            {Object.entries(KIND_LABEL).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={kind} onValueChange={(next) => setKind((next ?? "") as typeof kind)} options={Object.entries(KIND_LABEL).map(([value, label]) => ({ value: value, label: label }))} emptyLabel="All kinds" placeholder="All kinds" />
         </Field>
         <Field label="Status" className="w-56">
-          <SelectInput value={status} onChange={(event) => setStatus(event.target.value)}>
-            <option value="">Any status</option>
-            {Object.entries(STATUS_LABEL).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </SelectInput>
+          <Select value={status} onValueChange={(next) => setStatus(next ?? "")} options={Object.entries(STATUS_LABEL).map(([value, label]) => ({ value: value, label: label }))} emptyLabel="Any status" placeholder="Any status" />
         </Field>
       </div>
       <Panel flush>
@@ -322,27 +330,26 @@ function Handling({ requestId, status, dueOn }: { requestId: Id<"trustRequests">
   const verify = useMutation(api.requests.recordVerification);
   const { busy, error, run } = useRun();
   const [method, setMethod] = useState("");
+  const [assignee, setAssignee] = useState<string | null>(null);
   const [due, setDueValue] = useState(dueOn);
   return (
     <div className="grid gap-4 border-t border-border pt-4">
       <Field label="Assign to">
-        <SelectInput defaultValue="" onChange={(event) => void run(() => assign({ requestId, staffId: (event.target.value || null) as Id<"staff"> | null }))}>
-          <option value="">Choose</option>
-          {(staff ?? []).map((person) => (
-            <option key={person.id} value={person.id}>
-              {person.name}
-            </option>
-          ))}
-        </SelectInput>
+        <Select
+          value={assignee}
+          onValueChange={(next) => {
+            setAssignee(next);
+            void run(() => assign({ requestId, staffId: next as Id<"staff"> | null }));
+          }}
+          options={(staff ?? []).map((person) => ({ value: person.id, label: person.name }))}
+          loading={staff === undefined}
+          emptyLabel="Choose"
+          placeholder="Choose"
+          searchable="auto"
+        />
       </Field>
       <Field label="Status">
-        <SelectInput value={status} onChange={(event) => void run(() => setStatus({ requestId, status: event.target.value as "received" }))}>
-          {["received", "verifying", "in_progress", "waiting_on_requester", "routed_to_business", "spam"].map((value) => (
-            <option key={value} value={value}>
-              {STATUS_LABEL[value]}
-            </option>
-          ))}
-        </SelectInput>
+        <Select value={status} onValueChange={(next) => void run(() => setStatus({ requestId, status: (next ?? "") as "received" }))} options={["received", "verifying", "in_progress", "waiting_on_requester", "routed_to_business", "spam"].map((value) => ({ value: value, label: STATUS_LABEL[value] }))} />
       </Field>
       <form
         className="flex items-end gap-2"
@@ -524,7 +531,7 @@ function OperatorSettings({ settings, canEdit }: { settings: Settings; canEdit: 
       </Field>
       {verifiedKey ? (
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          <input type="checkbox" checked={form.verified[verifiedKey]} disabled={!canEdit} onChange={(event) => (setSaved(false), setForm({ ...form, verified: { ...form.verified, [verifiedKey]: event.target.checked } }))} className="size-3.5 accent-[#6838ef]" />
+          <Checkbox checked={form.verified[verifiedKey]} disabled={!canEdit} onCheckedChange={(checked) => (setSaved(false), setForm({ ...form, verified: { ...form.verified, [verifiedKey]: checked } }))} />
           Verified, show it in public
         </label>
       ) : null}
@@ -577,7 +584,8 @@ function ProviderRow({ provider, canEdit }: { provider: Provider; canEdit: boole
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ ...provider, locations: provider.locations ?? "", agreementRef: provider.agreementRef ?? "", policyUrl: provider.policyUrl ?? "", publicNote: provider.publicNote ?? "" });
   const [note, setNote] = useState("");
-  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm({ ...form, [key]: event.target.value });
+  const setValue = (key: keyof typeof form, value: string) => setForm({ ...form, [key]: value });
+  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setValue(key, event.target.value);
   return (
     <li className="rounded-xl border border-border px-3.5 py-3 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -625,13 +633,7 @@ function ProviderRow({ provider, canEdit }: { provider: Provider; canEdit: boole
             <TextInput value={form.name} onChange={set("name")} required />
           </Field>
           <Field label="Status">
-            <SelectInput value={form.status} onChange={set("status")}>
-              {Object.entries(PROVIDER_STATUS_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </SelectInput>
+            <Select value={form.status} onValueChange={(next) => setValue("status", next ?? "")} options={Object.entries(PROVIDER_STATUS_LABEL).map(([value, label]) => ({ value: value, label: label }))} searchable="auto" />
           </Field>
           <Field label="What it does for us" className="sm:col-span-2">
             <TextInput value={form.purpose} onChange={set("purpose")} required />
@@ -652,10 +654,7 @@ function ProviderRow({ provider, canEdit }: { provider: Provider; canEdit: boole
             <TextInput value={form.publicNote} onChange={set("publicNote")} />
           </Field>
           <Field label="Review">
-            <SelectInput value={form.reviewStatus} onChange={set("reviewStatus")}>
-              <option value="verified">Reviewed</option>
-              <option value="needs_review">Needs review</option>
-            </SelectInput>
+            <Select value={form.reviewStatus} onValueChange={(next) => setValue("reviewStatus", next ?? "")} options={[{ value: "verified", label: "Reviewed" }, { value: "needs_review", label: "Needs review" }]} />
           </Field>
           <Field label="Reviewed on">
             <TextInput type="date" value={form.reviewedOn} onChange={set("reviewedOn")} required />
@@ -769,7 +768,7 @@ export function Companies() {
   const [picked, setPicked] = useState<{ id: Id<"companies">; name: string; plan: "operate" | "expand" | "growth" | "scale" } | null>(null);
   return (
     <>
-      <PageHeader title="Companies" lead="Confirm a carrier registration after checking it with the texting provider, or suspend a company's sending. Staff see names only, never a company's records." />
+      <PageHeader title="Companies" lead="Confirm a carrier registration after checking it with the texting provider, suspend a company's sending, or open its workspace in an Admin Support Session. Outside a session, staff see names only." />
       <Panel>
         <Field label="Find a company">
           <TextInput value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Two letters or more" />
@@ -797,8 +796,10 @@ function CompanyActions({ company }: { company: { id: Id<"companies">; name: str
   const [reference, setReference] = useState("");
   const [note, setNote] = useState("");
   const [done, setDone] = useState<string | null>(null);
+  const [opening, setOpening] = useState(false);
   return (
-    <Panel title={company.name} className="mt-5">
+    <Panel title={company.name} className="mt-5" action={<Button size="sm" variant="primary" onClick={() => setOpening(true)}>Open company workspace</Button>}>
+      <OpenWorkspaceDialog open={opening} onClose={() => setOpening(false)} company={{ id: company.id, name: company.name }} />
       <form
         className="grid gap-3 sm:grid-cols-3"
         onSubmit={(event) => {
@@ -810,12 +811,7 @@ function CompanyActions({ company }: { company: { id: Id<"companies">; name: str
         }}
       >
         <Field label="Carrier registration">
-          <SelectInput value={status} onChange={(event) => setStatus(event.target.value as typeof status)}>
-            <option value="approved">Approved</option>
-            <option value="rejected">Rejected</option>
-            <option value="submitted">Submitted</option>
-            <option value="not_started">Not started</option>
-          </SelectInput>
+          <Select value={status} onValueChange={(next) => setStatus((next ?? "") as typeof status)} options={[{ value: "approved", label: "Approved" }, { value: "rejected", label: "Rejected" }, { value: "submitted", label: "Submitted" }, { value: "not_started", label: "Not started" }]} />
         </Field>
         <Field label="Provider reference">
           <TextInput value={reference} onChange={(event) => setReference(event.target.value)} />
@@ -836,7 +832,9 @@ function CompanyActions({ company }: { company: { id: Id<"companies">; name: str
         <Button size="sm" variant="outline" loading={busy} disabled={!note.trim()} onClick={() => void run(async () => (await setSuspended({ companyId: company.id, suspended: false, note }), setDone("Sending resumed.")))}>
           Lift suspension
         </Button>
-        <p className="w-full text-xs text-muted-foreground">Suspending needs a note above, and stops every message for this company until lifted.</p>
+        <p className="w-full text-xs text-muted-foreground">
+          Emergency suspension (needs the Emergency suspension capability and a note above): every outbound text and email for this company, from people and agents, is refused at the moment it would go, until lifted. Incoming texts are still received and opt-outs (STOP) are still recorded and honored, but their confirmation replies aren&rsquo;t sent while suspended. Delivery reports and billing keep working. A message the provider already accepted can&rsquo;t be recalled. Lifting it releases nothing that was refused.
+        </p>
       </div>
       <p className="mt-5 border-t border-border pt-4 text-sm text-muted-foreground">
         Plan: {company.plan === "operate" ? "Operate" : company.plan === "expand" ? "Expand" : "none verified"}. Plans are bought and changed through Autumn, never set here.
@@ -849,41 +847,50 @@ function CompanyActions({ company }: { company: { id: Id<"companies">; name: str
 
 // ── Staff ─────────────────────────────────────────────────────────────────────────────────────────
 
-type StaffRole = "admin" | "support_lead" | "support" | "billing" | "reviewer";
+type StaffRole = "admin" | "support" | "reviewer";
+const ROLE_NAME: Record<StaffRole, string> = { admin: "Admin", support: "Support", reviewer: "Reviewer" };
+const SENSITIVE = ["communications.send", "billing.adjust", "records.destroy"] as const;
+const CAPABILITY_NAME: Record<string, string> = {
+  "workspace.view": "View workspaces",
+  "records.edit": "Edit records",
+  "agents.recover": "Recover agent work",
+  "communications.send": "Communication actions",
+  "billing.adjust": "Billing adjustments",
+  "records.destroy": "Destructive actions",
+};
 
 export function StaffPeople() {
   const me = useQuery(api.staff.me, {});
   const people = useQuery(api.staff.list, {});
-  const catalog = useQuery(api.staff.catalog, {});
   const add = useMutation(api.staff.add);
   const remove = useMutation(api.staff.remove);
+  const setRole = useMutation(api.staff.setRole);
+  const revoke = useMutation(api.staff.revokeCapability);
   const { busy, error, run } = useRun();
-  const [form, setForm] = useState({ name: "", email: "", role: "support" as StaffRole });
-  const [editing, setEditing] = useState<string | null>(null);
+  const [form, setForm] = useState({ name: "", email: "", role: "reviewer" as StaffRole });
+  const [granting, setGranting] = useState<{ staffId: Id<"staff">; name: string } | null>(null);
   const admin = me?.role === "admin";
   return (
     <>
-      <PageHeader title="Staff" lead="Selestial people, their role and what each may do. Being staff gives no access to any company's records: entering a workspace needs a recorded, time-bound support session." />
+      <PageHeader title="Staff" lead="Selestial people who handle requests, trust records and operations. Admins and Support can open a company's workspace only in an Admin Support Session; sensitive capabilities are granted to each person." />
       <Panel>
         {people === undefined ? (
           <Skeleton className="h-24" />
         ) : (
           <ul className="grid gap-1.5">
             {people.map((person) => (
-              <li key={person.id} className="rounded-lg border border-border px-3 py-2 text-sm">
+              <li key={person.id} className="grid gap-2 rounded-lg border border-border px-3 py-2 text-sm">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span>
                     <span className="font-medium text-strong">{person.name}</span> <span className="text-muted-foreground">{person.email}</span>
                   </span>
                   <span className="flex items-center gap-2">
-                    <Badge variant={person.role === "admin" ? "info" : "outline"}>{ROLE_LABEL[person.role] ?? person.role}</Badge>
-                    {person.grants.length || person.removed.length ? <Badge variant="warning">Adjusted</Badge> : null}
+                    {admin && person.email !== me?.email ? (
+                      <Select value={person.role} onValueChange={(next) => void run(() => setRole({ staffId: person.id, role: (next ?? "") as StaffRole }))} options={[{ value: "reviewer", label: "Reviewer" }, { value: "support", label: "Support" }, { value: "admin", label: "Admin" }]} className="h-8 w-32 py-0 text-xs" aria-label={`Role for ${person.name}`} />
+                    ) : (
+                      <Badge variant={person.role === "admin" ? "info" : "outline"}>{ROLE_NAME[person.role]}</Badge>
+                    )}
                     {!person.joined ? <Badge variant="warning">Not signed in yet</Badge> : null}
-                    {admin ? (
-                      <Button size="sm" variant="ghost" onClick={() => setEditing(editing === person.id ? null : person.id)}>
-                        Access
-                      </Button>
-                    ) : null}
                     {admin && person.email !== me?.email ? (
                       <Button size="sm" variant="ghost" loading={busy} onClick={() => void run(() => remove({ staffId: person.id }))}>
                         Remove
@@ -891,8 +898,27 @@ export function StaffPeople() {
                     ) : null}
                   </span>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">Can: {person.capabilities.map((c) => catalog?.capabilities.find((x) => x.id === c)?.label ?? c).join(" · ") || "nothing"}</p>
-                {editing === person.id && catalog ? <StaffAccess person={person} catalog={catalog} onDone={() => setEditing(null)} /> : null}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {person.capabilities.length === 0 ? <span className="text-xs text-muted-foreground">Request queues only. Opens no company workspace.</span> : null}
+                  {person.capabilities.map((capability) => {
+                    const granted = person.granted.includes(capability);
+                    return (
+                      <Badge key={capability} variant={granted ? "warning" : "outline"} size="sm">
+                        {CAPABILITY_NAME[capability] ?? capability}
+                        {granted && admin ? (
+                          <button type="button" aria-label={`Take back ${CAPABILITY_NAME[capability]} from ${person.name}`} className="ml-1 font-semibold" onClick={() => void run(() => revoke({ staffId: person.id, capability: capability as (typeof SENSITIVE)[number] }))}>
+                            ×
+                          </button>
+                        ) : null}
+                      </Badge>
+                    );
+                  })}
+                  {admin ? (
+                    <Button size="xs" variant="ghost" onClick={() => setGranting({ staffId: person.id, name: person.name })}>
+                      Grant a capability
+                    </Button>
+                  ) : null}
+                </div>
               </li>
             ))}
           </ul>
@@ -904,7 +930,7 @@ export function StaffPeople() {
               event.preventDefault();
               void run(async () => {
                 await add(form);
-                setForm({ name: "", email: "", role: "support" });
+                setForm({ name: "", email: "", role: "reviewer" });
               });
             }}
           >
@@ -912,16 +938,10 @@ export function StaffPeople() {
               <TextInput value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
             </Field>
             <Field label="Email" className="sm:col-span-2">
-              <TextInput type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required />
+              <EmailInput value={form.email} onChange={(text) => setForm({ ...form, email: text })} required />
             </Field>
             <Field label="Role">
-              <SelectInput value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value as StaffRole })}>
-                {(catalog?.roles ?? []).map((role) => (
-                  <option key={role.id} value={role.id}>
-                    {role.label}
-                  </option>
-                ))}
-              </SelectInput>
+              <Select value={form.role} onValueChange={(next) => setForm({ ...form, role: (next ?? "") as StaffRole })} options={[{ value: "reviewer", label: "Reviewer" }, { value: "support", label: "Support" }, { value: "admin", label: "Admin" }]} />
             </Field>
             <div className="sm:col-span-4">
               <Button type="submit" size="sm" loading={busy}>
@@ -932,71 +952,30 @@ export function StaffPeople() {
         ) : null}
         <FormError message={error} />
       </Panel>
+      <Modal open={granting !== null} onClose={() => setGranting(null)} title={`Grant a capability to ${granting?.name ?? ""}`} description="Sensitive capabilities are never part of a role. Each grant is recorded with your reason. No support-session action uses them yet; they are ready for the actions that will.">
+        {granting ? <GrantForm staffId={granting.staffId} onDone={() => setGranting(null)} /> : null}
+      </Modal>
     </>
   );
 }
 
-type Catalog = NonNullable<ReturnType<typeof useQuery<typeof api.staff.catalog>>>;
-type Person = NonNullable<ReturnType<typeof useQuery<typeof api.staff.list>>>[number];
-
-/** Role plus single-capability overrides, with a reason. Narrowing workspace access ends their live sessions. */
-function StaffAccess({ person, catalog, onDone }: { person: Person; catalog: Catalog; onDone: () => void }) {
-  const save = useMutation(api.staff.setAccess);
-  const { busy, error, run } = useRun();
-  const [role, setRole] = useState(person.role as StaffRole);
-  const [grants, setGrants] = useState<string[]>([...person.grants]);
-  const [removed, setRemoved] = useState<string[]>([...person.removed]);
+function GrantForm({ staffId, onDone }: { staffId: Id<"staff">; onDone: () => void }) {
+  const grant = useMutation(api.staff.grantCapability);
+  const [capability, setCapability] = useState<(typeof SENSITIVE)[number]>("communications.send");
   const [reason, setReason] = useState("");
-  const fromRole = new Set<string>(catalog.roles.find((r) => r.id === role)?.capabilities ?? []);
-  const toggle = (id: string) => {
-    if (fromRole.has(id)) setRemoved(removed.includes(id) ? removed.filter((x) => x !== id) : [...removed, id]);
-    else setGrants(grants.includes(id) ? grants.filter((x) => x !== id) : [...grants, id]);
-  };
-  const has = (id: string) => (fromRole.has(id) ? !removed.includes(id) : grants.includes(id));
+  const { busy, error, run } = useRun();
   return (
-    <form
-      className="mt-3 grid gap-3 border-t border-border pt-3"
-      onSubmit={(event) => {
-        event.preventDefault();
-        void run(async () => {
-          await save({ staffId: person.id, role, grants: grants.filter((g) => !fromRole.has(g)) as never, removed: removed.filter((r) => fromRole.has(r)) as never, reason });
-          onDone();
-        });
-      }}
-    >
-      <Field label="Role" className="max-w-xs">
-        <SelectInput value={role} onChange={(event) => setRole(event.target.value as StaffRole)}>
-          {catalog.roles.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.label}
-            </option>
-          ))}
-        </SelectInput>
+    <form className="grid gap-3" onSubmit={(event) => (event.preventDefault(), void run(async () => (await grant({ staffId, capability, reason }), onDone())))}>
+      <Field label="Capability">
+        <Select value={capability} onValueChange={(next) => setCapability((next ?? "") as typeof capability)} options={SENSITIVE.map((item) => ({ value: item, label: CAPABILITY_NAME[item] }))} />
       </Field>
-      <fieldset className="grid gap-1.5 sm:grid-cols-2">
-        <legend className="mb-1 text-xs font-medium text-muted-foreground">Capabilities (role defaults, with this person&apos;s changes)</legend>
-        {catalog.capabilities.map((cap) => (
-          <label key={cap.id} className="flex items-start gap-2 rounded-md border border-border px-2 py-1.5 text-xs">
-            <input type="checkbox" checked={has(cap.id)} onChange={() => toggle(cap.id)} className="mt-0.5 accent-[#6838ef]" />
-            <span>
-              <span className="font-medium text-strong">
-                {cap.label}
-                {cap.sensitive ? " · sensitive" : ""}
-              </span>
-              <span className="block text-muted-foreground">{cap.about}</span>
-            </span>
-          </label>
-        ))}
-      </fieldset>
-      <Field label="Reason (recorded)">
-        <TextInput value={reason} onChange={(event) => setReason(event.target.value)} required />
+      <Field label="Why they need it">
+        <TextInput value={reason} onChange={(event) => setReason(event.target.value)} maxLength={300} required />
       </Field>
       <FormError message={error} />
-      <div>
-        <Button type="submit" size="sm" loading={busy}>
-          Save access
-        </Button>
-      </div>
+      <Button type="submit" variant="primary" size="sm" loading={busy} disabled={reason.trim().length < 5}>
+        Grant
+      </Button>
     </form>
   );
 }
@@ -1201,7 +1180,7 @@ function RegistrationFee({ requestId }: { requestId: Id<"textingRequests"> }) {
     >
       <p className="w-full text-xs text-muted-foreground">Registration fee at actual cost, as the carrier registry billed it. The same fee entered twice is charged once.</p>
       <TextInput value={what} onChange={(event) => setWhat(event.target.value)} placeholder="What it is, e.g. Campaign vetting" aria-label="What the fee is" required className="max-w-xs" />
-      <TextInput value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="15.00" aria-label="Amount in dollars" inputMode="decimal" required className="w-24" />
+      <NumberField value={amount} onChange={(text) => setAmount(text)} placeholder="15.00" aria-label="Amount in dollars" required className="w-24" precision={2} />
       <Button type="submit" size="sm" variant="outline" loading={busy} disabled={!cents}>
         Charge fee
       </Button>
@@ -1275,7 +1254,7 @@ function AttentionItem({ row }: { row: AttentionRow }) {
           }}
         >
           <TextInput value={note} onChange={(event) => setNote(event.target.value)} placeholder="What was done, e.g. Spoke to the Owner; spam blocked" aria-label="What was done" required className="max-w-md" />
-          <TextInput value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="Credit $ (optional)" aria-label="Credit in dollars, optional" inputMode="decimal" className="w-36" />
+          <NumberField value={amount} onChange={(text) => setAmount(text)} placeholder="Credit $ (optional)" aria-label="Credit in dollars, optional" className="w-36" precision={2} />
           <Button type="submit" size="sm" variant="outline" loading={busy}>
             {cents ? `Credit ${dollars(cents)} and close` : "Close"}
           </Button>

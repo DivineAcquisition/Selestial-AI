@@ -1,9 +1,9 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { ConvexProviderWithAuth, useConvexAuth, useMutation, useQuery } from "convex/react";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { AgentDock } from "@/components/app/agent-dock";
 import { ChatBoundary } from "@/components/app/chat/boundary";
@@ -11,27 +11,31 @@ import { ChatProvider, useChat } from "@/components/app/chat/chat-context";
 import { AskButton, ChatPanel } from "@/components/app/chat/panel";
 import { SidebarChatList } from "@/components/app/chat/sessions";
 import { CompanyProvider, type Role, useCompany } from "@/components/app/company";
+import { TutorialHost } from "@/components/app/tutorials/host";
 import { DetailProvider, useDetail } from "@/components/app/detail-panel";
 import { useRun } from "@/components/app/form";
 import { missingSetup, NotSetUp } from "@/components/app/not-set-up";
 import type { TeamDepartment } from "@/components/app/overview/team-at-work";
 import { NotificationBell } from "@/components/app/activation/bell";
 import { AppShell } from "@/components/app/shell";
+import { useRecordAuth } from "@/components/app/providers";
+import { SupportBanner, type SupportSession } from "@/components/app/support/banner";
+import { clearSupportSession, readSupportSession, supportClient } from "@/components/app/support/client";
 import { Notice, SubmitButton, TextField } from "@/components/auth/fields";
 import { AuthShell, useEvents, type TraceStep } from "@/components/auth/shell";
 import { UserMenu, useSignOut } from "@/components/auth/user-menu";
 import { Sidebar, SidebarStateProvider, type BusinessOption } from "@/components/app/sidebar";
 import { useNow } from "@/components/app/use-now";
 import { Button } from "@/components/ui/button";
-import { storeSession, SupportSessionProvider } from "@/components/support/client";
-import { SupportBanner, SupportBoundary, SupportEnded, useMounted, useSupportTab } from "@/components/support/workspace";
 import { Skeleton } from "@/components/ui/skeleton";
+import { convexUrl } from "@/lib/app/config";
 import { LANDING_PATH, SETUP_PAGES } from "@/lib/app/navigation";
 import { AUTH, withNext } from "@/lib/auth/routes";
 
 import { api } from "../../../convex/_generated/api";
 import { currentVersion } from "../../../convex/lib/trust/documents";
 import type { Id } from "../../../convex/_generated/dataModel";
+import { Checkbox } from "@/components/ui/selection";
 
 const STORED = "selestial.company";
 const SETUP_PATH = SETUP_PAGES[0].path;
@@ -137,7 +141,7 @@ function Onboarding() {
         <TextField label="Company name" name="organization" value={name} onChange={(event) => setName(event.target.value)} required maxLength={160} autoComplete="organization" autoFocus={!hasInvitations} />
         <TextField label="Time zone" name="timezone" value={timezone} onChange={(event) => setTimezone(event.target.value)} required autoComplete="off" hint="The IANA name of your zone, such as America/Chicago. Schedules, availability and deadlines are shown on this clock." />
         <label className="flex items-start gap-2.5 text-sm text-[#3d3654]">
-          <input type="checkbox" checked={agreed} onChange={(event) => setAgreed(event.target.checked)} required className="mt-0.5 size-4 shrink-0 accent-[#6838ef]" />
+          <Checkbox checked={agreed} onCheckedChange={(checked) => setAgreed(checked)} required className="mt-0.5 shrink-0" />
           <span>
             I accept the{" "}
             <a href="/terms" target="_blank" rel="noreferrer" className="font-medium text-[#5126c7] underline underline-offset-2">
@@ -183,7 +187,7 @@ function LiveSidebar({ businesses, onSwitch, onNavigate }: { businesses: Busines
       )} />;
 }
 
-function Workspace({ companyId, role, userId, businesses, onSwitch, banner, children }: { companyId: Id<"companies">; role: Role; userId: string; businesses: BusinessOption[]; onSwitch: (companyId: string) => void; banner?: React.ReactNode; children: React.ReactNode }) {
+function Workspace({ companyId, role, userId, businesses, onSwitch, support, children }: { companyId: Id<"companies">; role: Role; userId: string; businesses: BusinessOption[]; onSwitch: (companyId: string) => void; support?: { session: SupportSession; onExit: () => void }; children: React.ReactNode }) {
   const company = useQuery(api.companies.get, { companyId });
   const count = useQuery(api.overview.decisionCount, { companyId });
   const team = useQuery(api.overview.team, { companyId });
@@ -198,15 +202,18 @@ function Workspace({ companyId, role, userId, businesses, onSwitch, banner, chil
   }, [sendToSetup, router]);
   if (company === undefined || setup === undefined || sendToSetup) return <Loading />;
   // Setup is its own full screen: no sidebar, dock or chat until the owner opens the workspace.
-  if (inSetup)
+  const banner = support ? <SupportBanner session={support.session} onExit={support.onExit} /> : undefined;
+  if (inSetup) {
     return (
       <CompanyProvider company={{ companyId, name: company.name, timezone: company.timezone, role }}>
-        {banner}
-        {children}
+        {banner ? <div className="[&>div]:top-0">{banner}</div> : null}
+        <TutorialHost>{children}</TutorialHost>
       </CompanyProvider>
     );
+  }
   return (
     <CompanyProvider company={{ companyId, name: company.name, timezone: company.timezone, role }}>
+      <TutorialHost>
       <ChatProvider userId={userId} companyId={companyId}>
         <DetailProvider>
           <SidebarStateProvider userId={userId} companyId={companyId}>
@@ -215,17 +222,19 @@ function Workspace({ companyId, role, userId, businesses, onSwitch, banner, chil
               decisionCount={count}
               sidebar={(close) => <LiveSidebar businesses={businesses} onSwitch={onSwitch} onNavigate={close} />}
               userSlot={<UserMenu />}
-              assistant={<AskButton />}
-              notices={<NotificationBell />}
-              panel={<ChatPanel />}
-              dock={<Dock departments={team?.departments} />}
               banner={banner}
+              // A support session has no chat and no notification inbox: those belong to the company's own people.
+              assistant={support ? null : <AskButton />}
+              notices={support ? null : <NotificationBell />}
+              panel={support ? null : <ChatPanel />}
+              dock={<Dock departments={team?.departments} />}
             >
               {children}
             </AppShell>
           </SidebarStateProvider>
         </DetailProvider>
       </ChatProvider>
+      </TutorialHost>
     </CompanyProvider>
   );
 }
@@ -291,50 +300,51 @@ function ToSignIn() {
   return <Loading />;
 }
 
+/** A support session that ended or was never this person's: nothing of the company is shown. */
+function SupportEnded({ reason }: { reason: string | null }) {
+  useEffect(() => clearSupportSession(), []);
+  const words = reason === "expired" ? "It expired." : reason === "revoked" ? "Access was ended." : reason === "exited" ? "You exited it." : "It is not available.";
+  return <NotSetUp title="This support session has ended" body={`${words} Start a new one from the staff console if you still need to help.`} action={{ label: "Back to Operations", href: "/staff/operations" }} />;
+}
+
+/**
+ * A browser tab in an Admin Support Session (docs/operations/03-support-sessions.md). The company comes
+ * from the session, never from the company chosen in other tabs, and every request carries the session
+ * through this tab's own record client. The server checks the session on each one.
+ */
+function SupportWorkspace({ sessionId, userId, children }: { sessionId: Id<"supportSessions">; userId: string; children: React.ReactNode }) {
+  const session = useQuery(api.support.session, { sessionId });
+  const client = useMemo(() => supportClient(convexUrl()!, sessionId), [sessionId]);
+  if (session === undefined) return <Loading />;
+  if (session === null || !session.open) return <SupportEnded reason={session?.endReason ?? null} />;
+  const onExit = () => {
+    clearSupportSession();
+    // A full page load on purpose: it drops this tab's support client and everything it had read.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.assign("/staff/operations");
+  };
+  return (
+    <ConvexProviderWithAuth client={client} useAuth={useRecordAuth}>
+      <Workspace key={session.companyId} companyId={session.companyId as Id<"companies">} role={session.previewRole} userId={userId} businesses={[]} onSwitch={() => undefined} support={{ session, onExit }}>
+        {children}
+      </Workspace>
+    </ConvexProviderWithAuth>
+  );
+}
+
 function SignedIn({ children }: { children: React.ReactNode }) {
   const { isLoading, isAuthenticated } = useConvexAuth();
   const { isLoaded, isSignedIn, userId } = useAuth();
+  // Read once per tab: a support session lives in this tab only.
+  const [supportSessionId] = useState(() => (typeof window === "undefined" ? null : readSupportSession()));
   if (isLoading || !isLoaded) return <Loading />;
   if (!isSignedIn || !userId) return <ToSignIn />;
   if (!isAuthenticated) {
     // The sign-in service knows this person, but the record did not accept their session. That is a setup gap.
     return <NotSetUp title="You are signed in, but the workspace did not accept it" body="We couldn’t open your workspace just now. Nothing is wrong with your account. Please try again in a few minutes." />;
   }
-  return <WorkspaceOrSupport userId={userId}>{children}</WorkspaceOrSupport>;
-}
-
-/** A tab holding a Selestial support session opens that company's workspace through the session; any other tab is the person's own. */
-function WorkspaceOrSupport({ userId, children }: { userId: string; children: React.ReactNode }) {
-  const mounted = useMounted();
-  const support = useSupportTab();
-  if (!mounted || support === undefined) return <Loading />;
-  if (support) return <SupportWorkspace sessionId={support} userId={userId}>{children}</SupportWorkspace>;
+  if (supportSessionId) return <SupportWorkspace sessionId={supportSessionId as Id<"supportSessions">} userId={userId}>{children}</SupportWorkspace>;
   return <Companies userId={userId}>{children}</Companies>;
-}
-
-/**
- * A Selestial admin inside a company's workspace (docs/operations/03-support-sessions.md). The workspace is
- * the company's own, drawn the same way, with every company request carrying this tab's session and the
- * banner on every screen. The server decides everything; this only draws.
- */
-function SupportWorkspace({ sessionId, userId, children }: { sessionId: Id<"supportSessions">; userId: string; children: React.ReactNode }) {
-  const router = useRouter();
-  const session = useQuery(api.support.current, { sessionId });
-  const back = () => {
-    storeSession(null);
-    router.push("/staff/operations");
-  };
-  if (session === undefined) return <Loading />;
-  if (session === null || session.ended) return <SupportEnded reason={session?.endReason ?? null} onBack={back} />;
-  return (
-    <SupportBoundary onEnded={back}>
-      <SupportSessionProvider sessionId={sessionId}>
-        <Workspace key={`${sessionId}:${session.previewRole}`} companyId={session.company.id} role={session.previewRole} userId={userId} businesses={[{ companyId: session.company.id, name: session.company.name }]} onSwitch={() => undefined} banner={<SupportBanner session={session} />}>
-          {children}
-        </Workspace>
-      </SupportSessionProvider>
-    </SupportBoundary>
-  );
 }
 
 /** Everything under /app passes through here: set up, signed in, accepted by the record, and inside a company. */

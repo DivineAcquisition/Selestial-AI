@@ -3,7 +3,8 @@
 import { useMutation, useQuery } from "convex/react";
 
 import { useCompany } from "@/components/app/company";
-import { FormError, SelectInput, useRun } from "@/components/app/form";
+import { FormError, useRun } from "@/components/app/form";
+import { Select } from "@/components/ui/selection";
 import { Invitations } from "@/components/app/screens/misc";
 import { Panel } from "@/components/app/shell";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import { api } from "../../../../convex/_generated/api";
+import { useConfirm } from "@/components/ui/fields/confirm";
 
 const ROLE_WORDS: Record<string, string> = {
   owner: "Everything, including people, authority, rules and billing.",
@@ -24,9 +26,11 @@ export function PeopleAccess() {
   const setRole = useMutation(api.members.setRole);
   const remove = useMutation(api.members.remove);
   const { busy, error, run } = useRun();
+  const { ask, element: confirmDialog } = useConfirm();
   const owner = role === "owner";
   return (
     <div className="grid gap-5">
+      {confirmDialog}
       <Panel title="People">
         {members ? (
           <ul className="divide-y divide-border">
@@ -42,23 +46,25 @@ export function PeopleAccess() {
                 <span className="flex flex-wrap items-center gap-2">
                   {owner && member.role !== "owner" ? (
                     <>
-                      <SelectInput
-                        aria-label={`Role for ${member.name}`}
-                        className="w-auto min-w-32 py-1.5"
-                        disabled={busy}
-                        value={member.role}
-                        onChange={(event) => void run(() => setRole({ companyId, memberId: member.id, role: event.target.value as "manager" | "office" }))}
-                      >
-                        <option value="manager">Manager</option>
-                        <option value="office">Office</option>
-                      </SelectInput>
+                      <Select value={member.role} onValueChange={(next) => void run(() => setRole({ companyId, memberId: member.id, role: (next ?? "") as "manager" | "office" }))} options={[{ value: "manager", label: "Manager" }, { value: "office", label: "Office" }]} className="w-auto min-w-32 py-1.5" disabled={busy} aria-label={`Role for ${member.name}`} />
                       <Button
                         size="sm"
                         variant="ghost"
                         disabled={busy}
-                        onClick={() => {
-                          if (window.confirm(`Remove ${member.name}? They lose access at once. Records they made stay.`)) void run(() => remove({ companyId, memberId: member.id }));
-                        }}
+                        onClick={() =>
+                          void ask({
+                            title: `Remove ${member.name}'s access?`,
+                            body: "They lose access to this company at once. Records they made stay.",
+                            details: [
+                              { label: "Email", value: member.email },
+                              { label: "Role", value: member.role },
+                            ],
+                            confirmLabel: "Remove access",
+                            cancelLabel: "Keep access",
+                            tone: "danger",
+                            action: () => remove({ companyId, memberId: member.id }),
+                          })
+                        }
                       >
                         Remove access
                       </Button>

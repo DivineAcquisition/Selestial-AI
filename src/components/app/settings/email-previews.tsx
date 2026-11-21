@@ -7,6 +7,8 @@ import { Panel } from "@/components/app/shell";
 import { cn } from "@/lib/utils";
 
 import { PREVIEWS, type Preview } from "../../../../convex/lib/email/templates/gallery";
+import { Field } from "@/components/app/form";
+import { SegmentedControl, Select } from "@/components/ui/selection";
 
 type Width = "desktop" | "mobile";
 const noSubscription = () => () => {};
@@ -23,21 +25,14 @@ function inScheme(html: string, scheme: Scheme): string {
 
 function Toggle<T extends string>({ value, onChange, options, label }: { value: T; onChange: (v: T) => void; options: { id: T; label: string; icon: React.ComponentType<{ className?: string }> }[]; label: string }) {
   return (
-    <div role="radiogroup" aria-label={label} className="inline-flex rounded-lg border border-border bg-muted/60 p-0.5">
-      {options.map((o) => (
-        <button
-          key={o.id}
-          type="button"
-          role="radio"
-          aria-checked={value === o.id}
-          onClick={() => onChange(o.id)}
-          className={cn("inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors", value === o.id ? "bg-card text-strong shadow-sm ring-1 ring-border" : "text-muted-foreground hover:text-strong")}
-        >
-          <o.icon className="size-3.5" />
-          {o.label}
-        </button>
-      ))}
-    </div>
+    <SegmentedControl
+      label={label}
+      hideLabel
+      density="compact"
+      value={value}
+      onChange={onChange}
+      options={options.map((o) => ({ id: o.id, label: <span className="inline-flex items-center gap-1.5"><o.icon className="size-3.5" />{o.label}</span> }))}
+    />
   );
 }
 
@@ -106,20 +101,9 @@ export function EmailPreviews() {
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
       {/* On a phone, one menu instead of a long list. */}
-      <label className="grid gap-1 text-sm lg:hidden">
-        <span className="font-medium text-strong">Email</span>
-        <select value={id} onChange={(event) => setId(event.target.value)} className="h-10 rounded-lg border border-border bg-card px-3 text-sm text-strong">
-          {groups.map((g) => (
-            <optgroup key={g.kind} label={g.label}>
-              {PREVIEWS.filter((p) => p.kind === g.kind).map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
-      </label>
+      <Field label="Email" className="lg:hidden">
+        <Select value={id} onValueChange={(next) => next && setId(next)} options={groups.flatMap((g) => PREVIEWS.filter((p) => p.kind === g.kind).map((p) => ({ value: p.id, label: p.name, group: g.label })))} searchable="auto" />
+      </Field>
       <nav aria-label="Emails" className="hidden content-start gap-4 lg:grid">
         {groups.map((g) => (
           <div key={g.kind}>

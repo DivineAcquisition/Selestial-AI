@@ -62,8 +62,7 @@ export const messagingTables = {
   })
     .index("by_company_created", ["companyId", "createdAt"])
     .index("by_invoice", ["invoiceId"])
-    .index("by_intent", ["intentId"])
-    .index("by_status_updated", ["status", "updatedAt"]),
+    .index("by_intent", ["intentId"]),
 
   messagingCharges: defineTable({
     companyId: v.id("companies"),

@@ -1,205 +1,250 @@
-/**
- * Admin support sessions (docs/operations/03-support-sessions.md): the acceptance tests from the brief.
- */
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { mockOutbox, resetMockProvider } from "./lib/messaging/provider";
-import { company, NOW, refusal, start, type T } from "../tests/harness";
-import { dispatchTestEnv, flush, setup } from "../tests/dispatchHarness";
+import { redactingDb } from "./lib/support/access";
+import { HIDDEN_WORDS, SUPPORT_NAME } from "./lib/support/catalog";
+import { company, person, refusal, start, type T } from "../tests/harness";
 
-const MINUTE = 60_000;
-const ISSUER = "https://clerk.selestial.test";
-const ADMIN = { subject: "user_ops_admin", email: "admin@selestial.example", emailVerified: true, name: "Avery Admin", issuer: ISSUER };
-const fresh = { fva: [2, 2] };
+const MINUTE = 60 * 1000;
+const HOUR = 60 * MINUTE;
+/** A staff admin whose second factor was confirmed a minute ago (the sign-in token's fva claim). */
+const admin = { subject: "user_support_admin", email: "support@selestial.example", emailVerified: true, name: "Sam Support", fva: [1, 1] };
+const helperIdentity = { subject: "user_helper", email: "helper@selestial.example", emailVerified: true, name: "Helper", fva: [1, 1] };
 
-function staffIdentity(name: string, extra: Record<string, unknown> = {}) {
-  return { subject: `user_${name}`, email: `${name}@selestial.example`, emailVerified: true, name, issuer: ISSUER, ...extra };
+async function ownerOf(t: T, companyId: Id<"companies">) {
+  return t.run(async (ctx) => (await ctx.db.query("members").withIndex("by_company", (q) => q.eq("companyId", companyId)).first())!);
 }
 
-async function staffWith(t: T, name: string, role: "support" | "support_lead" | "billing" | "reviewer") {
-  await t.withIdentity(ADMIN).mutation(api.staff.add, { email: `${name}@selestial.example`, name, role });
-  return { plain: t.withIdentity(staffIdentity(name)), strong: t.withIdentity(staffIdentity(name, fresh)) };
+async function failedTask(t: T, companyId: Id<"companies">) {
+  const owner = await ownerOf(t, companyId);
+  const now = Date.now();
+  return t.run(async (ctx) => {
+    const activationId = await ctx.db.insert("activations", { companyId, focus: "sales", secondary: [], source: "setup", contextVersion: "v1", context: [], status: "partial", startedBy: owner._id, startedAt: now - HOUR, budget: { estimatedCredits: 1, ceilingCredits: 2, allowance: "none" }, noticed: {}, updatedAt: now - HOUR });
+    return ctx.db.insert("activationTasks", { companyId, activationId, template: "sales.booking_page", agent: "sales", title: "Make a booking page", objective: "x", sources: [], expectedOutput: "x", prerequisites: [], authority: { action: null, words: "x" }, estimate: { credits: 1, externalCents: 0, words: "x" }, priority: 1, dependsOn: [], completion: "x", state: "failed", statusLine: "Failed", steps: [], outputs: [], attempts: 3, nextRunAt: now, charges: [], approvals: [], createdAt: now - HOUR, updatedAt: now - HOUR });
+  });
 }
 
-async function begin(t: T, as: ReturnType<T["withIdentity"]>, companyId: Id<"companies">) {
-  return as.mutation(api.support.start, { companyId, reason: "Owner reported their hiring inbox stopped syncing" });
+async function openIncident(t: T, companyId: Id<"companies">) {
+  const now = Date.now();
+  return t.run((ctx) => ctx.db.insert("incidents", { key: `mailbox_reconnect:${companyId}`, check: "mailboxes", kind: "mailbox_reconnect", area: "connections", companyId, severity: "high", state: "waiting_owner", title: "Inbox needs reconnecting", impact: "x", nextAction: "x", related: [], occurrences: 1, recoveryAttempts: 0, firstSeenAt: now, lastSeenAt: now, lastCheckedAt: now, resolvedAt: 0, updatedAt: now }));
 }
 
-describe("Admin support sessions", () => {
+describe("Admin Support Sessions", () => {
   beforeEach(() => {
-    vi.useFakeTimers();
-    vi.setSystemTime(NOW);
-    process.env.STAFF_BOOTSTRAP_EMAIL = ADMIN.email;
-    process.env.EMAIL_PROVIDER = "mock";
+    process.env.STAFF_BOOTSTRAP_EMAIL = admin.email;
+    process.env.SUPPORT_ACCESS = "on";
   });
   afterEach(() => {
-    vi.useRealTimers();
     delete process.env.STAFF_BOOTSTRAP_EMAIL;
-    delete process.env.EMAIL_PROVIDER;
+    delete process.env.SUPPORT_ACCESS;
   });
 
-  test("only staff holding workspace access can start a session, and only with a reason", async () => {
+  test("only staff with workspace access, a recent second factor and a reason can start one; it is off unless the deployment turns it on", async () => {
     const t = start();
-    const { companyId } = await company(t, "owner-a", "Brightside Cleaning Co.");
-    await t.withIdentity(ADMIN).query(api.staff.me, {});
-    const reviewer = await staffWith(t, "rae", "reviewer");
-    const outsider = t.withIdentity({ subject: "user_x", email: "x@example.com", emailVerified: true, name: "X", issuer: ISSUER });
-    expect(await refusal(outsider.mutation(api.support.start, { companyId, reason: "Just looking around" }))).toBe("Not found.");
-    expect(await refusal(reviewer.plain.mutation(api.support.start, { companyId, reason: "Just looking around" }))).toBe("Not allowed.");
-    const support = await staffWith(t, "sam", "support");
-    expect(await refusal(support.plain.mutation(api.support.start, { companyId, reason: "hi" }))).toMatch(/Say why/);
-    expect(await begin(t, support.plain, companyId)).toBeTruthy();
+    const { companyId, as: owner } = await company(t, "owner_a", "Alpha");
+    const staff = t.withIdentity(admin);
+    // A member of the company is not staff.
+    expect(await refusal(owner.mutation(api.support.start, { companyId, reason: "Checking the inbox setup" }))).toBe("Not found.");
+    expect(await refusal(staff.mutation(api.support.start, { companyId, reason: "short" }))).toContain("Say why");
+    expect(await refusal(t.withIdentity({ ...admin, fva: [30, 30] }).mutation(api.support.start, { companyId, reason: "Checking the inbox setup" }))).toContain("last confirmed 30 minutes ago");
+    expect(await refusal(t.withIdentity({ ...admin, fva: [1, -1] }).mutation(api.support.start, { companyId, reason: "Checking the inbox setup" }))).toContain("two-step verification");
+    const noClaim = { subject: admin.subject, email: admin.email, emailVerified: true, name: admin.name };
+    expect(await refusal(t.withIdentity(noClaim).mutation(api.support.start, { companyId, reason: "Checking the inbox setup" }))).toContain("doesn't say when");
+    // A reviewer works the request queues and opens no workspace.
+    await staff.mutation(api.staff.add, { email: helperIdentity.email, name: "Helper", role: "reviewer" });
+    expect(await refusal(t.withIdentity(helperIdentity).mutation(api.support.start, { companyId, reason: "Checking the inbox setup" }))).toBe("Not allowed.");
+    process.env.SUPPORT_ACCESS = "off";
+    expect(await refusal(staff.mutation(api.support.start, { companyId, reason: "Checking the inbox setup" }))).toContain("turned off");
+    process.env.SUPPORT_ACCESS = "on";
+    expect(await staff.mutation(api.support.start, { companyId, reason: "Checking the inbox setup" })).toBeTruthy();
   });
 
-  test("View mode reads the workspace and refuses every write on the server", async () => {
+  test("View reads what the owner sees, refuses every write at the backend, and is bound to its company", async () => {
     const t = start();
-    const { companyId } = await company(t, "owner-a", "Brightside Cleaning Co.");
-    await t.withIdentity(ADMIN).query(api.staff.me, {});
-    const support = await staffWith(t, "sam", "support");
-    const sessionId = await begin(t, support.plain, companyId);
-    expect(await support.plain.query(api.companies.get, { companyId, supportSessionId: sessionId })).toMatchObject({ name: "Brightside Cleaning Co." });
-    expect(await refusal(support.plain.mutation(api.companies.setPausedAgents, { companyId, supportSessionId: sessionId, agents: ["sales"] }))).toMatch(/View only/);
-    // Without naming the session, the admin is nobody in this company: other tabs never change context.
-    expect(await refusal(support.plain.query(api.companies.get, { companyId }))).toBe("Not found.");
+    const a = await company(t, "owner_a", "Alpha");
+    const b = await company(t, "owner_b", "Bravo");
+    const staff = t.withIdentity(admin);
+    const sessionId = await staff.mutation(api.support.start, { companyId: a.companyId, reason: "Owner reported a setup problem" });
+    const read = await staff.query(api.companies.get, { companyId: a.companyId, supportSessionId: sessionId });
+    expect(read.name).toBe("Alpha");
+    // Without the session, staff are not members.
+    expect(await refusal(staff.query(api.companies.get, { companyId: a.companyId }))).toBe("Not found.");
+    // The session cannot be pointed at another company.
+    expect(await refusal(staff.query(api.companies.get, { companyId: b.companyId, supportSessionId: sessionId }))).toBe("Not found.");
+    expect(await refusal(staff.mutation(api.companies.setPausedAgents, { companyId: a.companyId, supportSessionId: sessionId, agents: ["sales"] }))).toContain("view only");
+    // Another person cannot use this staff member's session.
+    expect(await refusal(a.as.query(api.companies.get, { companyId: a.companyId, supportSessionId: sessionId }))).toBe("Not found.");
   });
 
-  test("a session reaches only its own company, and each tab keeps its own session", async () => {
+  test("Manage needs the owner's grant or an open incident, and only opened changes work, as Selestial Support", async () => {
     const t = start();
-    const a = await company(t, "owner-a", "Alpha");
-    const b = await company(t, "owner-b", "Beta");
-    await t.withIdentity(ADMIN).query(api.staff.me, {});
-    const support = await staffWith(t, "sam", "support");
-    const sessionA = await begin(t, support.plain, a.companyId);
-    const sessionB = await begin(t, support.plain, b.companyId);
-    expect(await refusal(support.plain.query(api.companies.get, { companyId: b.companyId, supportSessionId: sessionA }))).toBe("Not found.");
-    expect((await support.plain.query(api.companies.get, { companyId: a.companyId, supportSessionId: sessionA })).name).toBe("Alpha");
-    expect((await support.plain.query(api.companies.get, { companyId: b.companyId, supportSessionId: sessionB })).name).toBe("Beta");
-    // Another staff member cannot use someone else's session.
-    const other = await staffWith(t, "kim", "support");
-    expect(await refusal(other.plain.query(api.companies.get, { companyId: a.companyId, supportSessionId: sessionA }))).toBe("Not found.");
+    const { companyId, as: owner } = await company(t, "owner_a", "Alpha");
+    const ownerRow = await ownerOf(t, companyId);
+    const staff = t.withIdentity(admin);
+    const sessionId = await staff.mutation(api.support.start, { companyId, reason: "Owner reported a setup problem" });
+    expect(await refusal(staff.mutation(api.support.switchToManage, { sessionId, reason: "Pause sales while we look" }))).toContain("owner's permission");
+
+    await owner.mutation(api.support.grantManage, { companyId, hours: 4 });
+    await staff.mutation(api.support.switchToManage, { sessionId, reason: "Pause sales while we look" });
+    // The owner is told in the app at once.
+    const notices = await t.run((ctx) => ctx.db.query("memberNotices").collect());
+    expect(notices.filter((row) => row.kind === "support_access" && row.memberId === ownerRow._id)).toHaveLength(1);
+
+    // An opened change works, and is recorded as Selestial Support, never the owner.
+    await staff.mutation(api.companies.setPausedAgents, { companyId, supportSessionId: sessionId, agents: ["sales"] });
+    const after = await t.run(async (ctx) => {
+      const event = (await ctx.db.query("events").collect()).find((row) => row.type === "company.agents_paused_changed")!;
+      const actor = event.actor.kind === "member" ? await ctx.db.get(event.actor.memberId) : null;
+      const changes = await ctx.db.query("supportEvents").collect();
+      return { actor, changes, company: await ctx.db.get(companyId) };
+    });
+    expect(after.company!.pausedAgents).toEqual(["sales"]);
+    expect(after.actor).toMatchObject({ name: SUPPORT_NAME, status: "support" });
+    expect(after.actor!._id).not.toBe(ownerRow._id);
+    const change = after.changes.find((row) => row.kind === "change")!;
+    expect(change).toMatchObject({ summary: "paused agents", fields: ["agents"] });
+    // The actual admin is kept with every change.
+    const staffRow = await t.run(async (ctx) => (await ctx.db.query("staff").collect())[0]);
+    expect(change.staffId).toBe(staffRow._id);
+
+    // Support can pause, never resume.
+    expect(await refusal(staff.mutation(api.companies.setPausedAgents, { companyId, supportSessionId: sessionId, agents: [] }))).toContain("Only the company can resume");
+    // Changes not opened to support sessions stay closed, even in Manage: owner-only settings and anything else.
+    expect(await refusal(staff.mutation(api.companies.update, { companyId, supportSessionId: sessionId, name: "Renamed", timezone: "America/Chicago" }))).toContain("can't do this");
+    // Approvals stay the company's: staff never decide one, even in Manage.
+    const approvalId = await t.run((ctx) => ctx.db.insert("approvals", { companyId, agent: "sales", action: "sales.discount_out_of_band", summary: "Discount", reason: "Asked", status: "pending", decideBy: Date.now() + HOUR, createdAt: Date.now() }));
+    expect(await refusal(staff.mutation(api.approvals.decide, { companyId, supportSessionId: sessionId, approvalId, decision: "approved" }))).toContain("can't do this");
+    expect((await t.run((ctx) => ctx.db.get(approvalId)))!.status).toBe("pending");
+    // The Selestial Support member is not on the team list.
+    const team = await owner.query(api.members.list, { companyId });
+    expect(team.map((row) => row.name)).not.toContain(SUPPORT_NAME);
   });
 
-  test("Manage needs the capability, a reason and a fresh two-step sign-in; the owner is emailed once", async () => {
+  test("an open incident allows Manage, and resolving it ends the ability to change things", async () => {
     const t = start();
-    const { companyId } = await company(t, "owner-a", "Brightside Cleaning Co.");
-    await t.withIdentity(ADMIN).query(api.staff.me, {});
-    const billing = await staffWith(t, "bea", "billing");
-    const billingSession = await begin(t, billing.strong, companyId);
-    expect(await refusal(billing.strong.mutation(api.support.setMode, { sessionId: billingSession, mode: "manage", reason: "Fix their pricing draft" }))).toMatch(/can't manage/);
-    const support = await staffWith(t, "sam", "support");
-    const sessionId = await begin(t, support.plain, companyId);
-    expect(await refusal(support.plain.mutation(api.support.setMode, { sessionId, mode: "manage", reason: "Pause Sales while we fix the inbox" }))).toMatch(/two-step verification/);
-    const stale = t.withIdentity(staffIdentity("sam", { fva: [90, 90] }));
-    expect(await refusal(stale.mutation(api.support.setMode, { sessionId, mode: "manage", reason: "Pause Sales while we fix the inbox" }))).toMatch(/more than 15 minutes/);
-    await support.strong.mutation(api.support.setMode, { sessionId, mode: "manage", reason: "Pause Sales while we fix the inbox" });
-    await support.strong.mutation(api.support.setMode, { sessionId, mode: "view" });
-    await support.strong.mutation(api.support.setMode, { sessionId, mode: "manage", reason: "Pause Sales while we fix the inbox" });
-    const notices = await t.run(async (ctx) => (await ctx.db.query("messages").collect()).filter((m) => m.notice?.event === "support_session"));
-    expect(notices).toHaveLength(1);
+    const { companyId } = await company(t, "owner_a", "Alpha");
+    const incidentId = await openIncident(t, companyId);
+    const taskId = await failedTask(t, companyId);
+    const staff = t.withIdentity(admin);
+    const sessionId = await staff.mutation(api.support.start, { companyId, reason: "Incident: first work failed", incidentId });
+    await staff.mutation(api.support.switchToManage, { sessionId, reason: "Retry the failed booking page work" });
+    await staff.mutation(api.activation.retry, { companyId, supportSessionId: sessionId, taskId });
+    const task = await t.run((ctx) => ctx.db.get(taskId));
+    expect(task!.state).toBe("queued");
+    expect(task!.steps.at(-1)!.words).toBe("Selestial Support tried it again.");
+    // Retrying what is already going does not run it twice.
+    expect(await refusal(staff.mutation(api.activation.retry, { companyId, supportSessionId: sessionId, taskId }))).toContain("already going");
+
+    await t.run((ctx) => ctx.db.patch(incidentId, { resolvedAt: Date.now(), state: "resolved" }));
+    expect(await refusal(staff.mutation(api.companies.setPausedAgents, { companyId, supportSessionId: sessionId, agents: ["sales"] }))).toContain("Manage access has ended");
   });
 
-  test("in Manage, only functions with a support rule run; approvals stay the owner's; every change names Selestial Support", async () => {
+  test("the owner revoking Manage drops the session back to View at once", async () => {
     const t = start();
-    const { as: owner, companyId } = await company(t, "owner-a", "Brightside Cleaning Co.");
-    await t.withIdentity(ADMIN).query(api.staff.me, {});
-    const support = await staffWith(t, "sam", "support");
-    const sessionId = await begin(t, support.plain, companyId);
-    await support.strong.mutation(api.support.setMode, { sessionId, mode: "manage", reason: "Pause Sales while we fix the inbox" });
-    // No support rule: refused, even in Manage.
-    expect(await refusal(support.strong.mutation(api.companies.update, { companyId, supportSessionId: sessionId, name: "Hacked" }))).toMatch(/can't make this change/);
-    const approvalId = await t.run((ctx) => ctx.db.insert("approvals", { companyId, agent: "sales", action: "sales.send_quote", summary: "Send a quote", reason: "r", status: "pending", decideBy: NOW + 60 * MINUTE, createdAt: NOW }));
-    expect(await refusal(support.strong.mutation(api.approvals.decide, { companyId, supportSessionId: sessionId, approvalId, decision: "approved" }))).toMatch(/can't make this change/);
-    // A support rule: it runs, and the record says who did it.
-    await support.strong.mutation(api.companies.setPausedAgents, { companyId, supportSessionId: sessionId, agents: ["sales"] });
-    expect((await owner.query(api.companies.get, { companyId })).pausedAgents).toEqual(["sales"]);
-    const event = await t.run(async (ctx) => (await ctx.db.query("events").collect()).find((e) => e.type === "company.agents_paused_changed")!);
-    const actor = await t.run(async (ctx) => (event.actor.kind === "member" ? ctx.db.get(event.actor.memberId) : null));
-    expect(actor).toMatchObject({ name: "Selestial Support", status: "support" });
-    // The support row is never one of the team, and never one of the admin's companies.
-    expect((await owner.query(api.members.list, { companyId })).map((m) => m.name)).not.toContain("Selestial Support");
-    expect(await support.plain.query(api.companies.mine, {})).toEqual([]);
-    // The owner's history shows the session, why, and what changed; exiting ends it and sends one summary.
-    await support.plain.mutation(api.support.exit, { sessionId });
+    const { companyId, as: owner } = await company(t, "owner_a", "Alpha");
+    const staff = t.withIdentity(admin);
+    await owner.mutation(api.support.grantManage, { companyId });
+    const sessionId = await staff.mutation(api.support.start, { companyId, reason: "Help with booking settings" });
+    await staff.mutation(api.support.switchToManage, { sessionId, reason: "Fix the booking hours" });
+    await owner.mutation(api.support.revokeManage, { companyId });
+    expect(await refusal(staff.mutation(api.companies.setPausedAgents, { companyId, supportSessionId: sessionId, agents: ["sales"] }))).toContain("view only");
+  });
+
+  test("expired, exited and revoked sessions stop working, and removing staff ends theirs", async () => {
+    const t = start();
+    const { companyId } = await company(t, "owner_a", "Alpha");
+    const staff = t.withIdentity(admin);
+    const expired = await staff.mutation(api.support.start, { companyId, reason: "Looking at the setup" });
+    await t.run((ctx) => ctx.db.patch(expired, { expiresAt: Date.now() - 1 }));
+    expect(await refusal(staff.query(api.companies.get, { companyId, supportSessionId: expired }))).toContain("has ended");
+    expect(await t.mutation(internal.support.expireDue, {})).toBe(1);
+    expect((await t.run((ctx) => ctx.db.get(expired)))!.endReason).toBe("expired");
+
+    const exited = await staff.mutation(api.support.start, { companyId, reason: "Looking at the setup" });
+    await staff.mutation(api.support.exit, { sessionId: exited });
+    expect(await refusal(staff.query(api.companies.get, { companyId, supportSessionId: exited }))).toContain("has ended");
+
+    // A support staff member, removed while a session is open.
+    await staff.mutation(api.staff.add, { email: helperIdentity.email, name: "Helper", role: "support" });
+    const helper = t.withIdentity(helperIdentity);
+    const theirs = await helper.mutation(api.support.start, { companyId, reason: "Looking at the setup" });
+    expect((await helper.query(api.companies.get, { companyId, supportSessionId: theirs })).name).toBe("Alpha");
+    const helperRow = await t.run(async (ctx) => (await ctx.db.query("staff").withIndex("by_email", (q) => q.eq("email", helperIdentity.email)).first())!);
+    await staff.mutation(api.staff.remove, { staffId: helperRow._id });
+    expect(await refusal(helper.query(api.companies.get, { companyId, supportSessionId: theirs }))).toBe("Not found.");
+    expect((await t.run((ctx) => ctx.db.get(theirs)))!.endReason).toBe("staff_removed");
+  });
+
+  test("two sessions for two companies keep their own company, as two browser tabs would", async () => {
+    const t = start();
+    const a = await company(t, "owner_a", "Alpha");
+    const b = await company(t, "owner_b", "Bravo");
+    const staff = t.withIdentity(admin);
+    const first = await staff.mutation(api.support.start, { companyId: a.companyId, reason: "Looking at Alpha's setup" });
+    const second = await staff.mutation(api.support.start, { companyId: b.companyId, reason: "Looking at Bravo's setup" });
+    expect((await staff.query(api.companies.get, { companyId: a.companyId, supportSessionId: first })).name).toBe("Alpha");
+    expect((await staff.query(api.companies.get, { companyId: b.companyId, supportSessionId: second })).name).toBe("Bravo");
+    expect(await refusal(staff.query(api.companies.get, { companyId: a.companyId, supportSessionId: second }))).toBe("Not found.");
+    expect((await staff.query(api.support.mine, {})).map((row) => row.companyName).sort()).toEqual(["Alpha", "Bravo"]);
+  });
+
+  test("the owner sees each session in Support access history, and a Manage session that changed something sends one summary", async () => {
+    const t = start();
+    const { companyId, as: owner } = await company(t, "owner_a", "Alpha");
+    const staff = t.withIdentity(admin);
+    await owner.mutation(api.support.grantManage, { companyId, hours: 2 });
+    const sessionId = await staff.mutation(api.support.start, { companyId, reason: "Owner asked for help pausing Sales", ticket: "T-1042" });
+    await staff.mutation(api.support.switchToManage, { sessionId, reason: "Pause Sales as asked" });
+    await staff.mutation(api.companies.setPausedAgents, { companyId, supportSessionId: sessionId, agents: ["sales"] });
+    await staff.mutation(api.support.exit, { sessionId });
+    await staff.mutation(api.support.exit, { sessionId });
     const history = await owner.query(api.support.history, { companyId });
-    expect(history[0]).toMatchObject({ everManaged: true, reason: "Owner reported their hiring inbox stopped syncing", live: false });
-    expect(history[0].changes.map((c) => c.summary)).toEqual(["Changed which agents are paused"]);
-    const summaries = await t.run(async (ctx) => (await ctx.db.query("messages").collect()).filter((m) => m.notice?.event === "support_session" && m.notice.facts?.kind === "summary"));
+    expect(history.sessions[0]).toMatchObject({ mode: "manage", reason: "Owner asked for help pausing Sales", ticket: "T-1042", basis: "owner_grant", open: false });
+    expect(history.sessions[0].changes.map((row) => row.summary)).toEqual(["paused agents"]);
+    const summaries = await t.run(async (ctx) => (await ctx.db.query("messages").collect()).filter((row) => row.notice?.event === "support_summary"));
     expect(summaries).toHaveLength(1);
-    expect(await refusal(support.plain.query(api.companies.get, { companyId, supportSessionId: sessionId }))).toMatch(/ended/);
+    // Only the Owner reads the history.
+    await t.run(async (ctx) => {
+      const ownerRow = (await ctx.db.query("members").withIndex("by_company", (q) => q.eq("companyId", companyId)).first())!;
+      await ctx.db.insert("members", { companyId, userId: "office_1", userIssuer: ownerRow.userIssuer, email: "office_1@example.com", name: "Office", role: "office", status: "active", createdAt: Date.now() });
+    });
+    expect(await refusal(t.withIdentity(person("office_1")).query(api.support.history, { companyId }))).toBe("Not allowed.");
   });
 
-  test("an expired session stops working at once, and removing staff access revokes it", async () => {
+  test("customer message content is hidden from support reads, and the stored record is untouched", async () => {
     const t = start();
-    const { companyId } = await company(t, "owner-a", "Brightside Cleaning Co.");
-    await t.withIdentity(ADMIN).query(api.staff.me, {});
-    const support = await staffWith(t, "sam", "support");
-    const sessionId = await support.plain.mutation(api.support.start, { companyId, reason: "Check onboarding readiness", minutes: 10 });
-    vi.advanceTimersByTime(11 * MINUTE);
-    expect(await refusal(support.plain.query(api.companies.get, { companyId, supportSessionId: sessionId }))).toMatch(/ended/);
-    await t.mutation(internal.support.expire, { sessionId });
-    expect((await support.plain.query(api.support.current, { sessionId }))?.endReason).toBe("expired");
-
-    const second = await begin(t, support.plain, companyId);
-    const sam = (await t.withIdentity(ADMIN).query(api.staff.list, {})).find((row) => row.name === "sam")!;
-    await t.withIdentity(ADMIN).mutation(api.staff.remove, { staffId: sam.id as Id<"staff"> });
-    expect(await refusal(support.plain.query(api.companies.get, { companyId, supportSessionId: second }))).toBe("Not found.");
-  });
-});
-
-describe("Admin support sessions: background work rechecks the session", () => {
-  let undo: () => void;
-  beforeEach(() => {
-    undo = dispatchTestEnv();
-    resetMockProvider();
-    process.env.STAFF_BOOTSTRAP_EMAIL = ADMIN.email;
-  });
-  afterEach(() => {
-    undo();
-    delete process.env.STAFF_BOOTSTRAP_EMAIL;
+    const { companyId } = await company(t, "owner_a", "Alpha");
+    const messageId = await t.run((ctx) => ctx.db.insert("messages", { companyId, purpose: "customer_message", body: "Your gate code is 4471", subject: "Gate", to: "+15125550123", dedupeKey: "m1", status: "sent", attempts: 1, queuedAt: Date.now() }));
+    const seen = await t.run(async (ctx) => {
+      const db = redactingDb(ctx.db);
+      const one = await db.get(messageId);
+      const listed = await db.query("messages").withIndex("by_company_queued", (q) => q.eq("companyId", companyId)).collect();
+      const page = await db.query("messages").withIndex("by_company_queued", (q) => q.eq("companyId", companyId)).paginate({ numItems: 5, cursor: null });
+      const iterated: unknown[] = [];
+      for await (const row of db.query("messages").withIndex("by_company_queued", (q) => q.eq("companyId", companyId))) iterated.push(row);
+      const company = await db.get(companyId);
+      return { one, listed, page, iterated, company, stored: await ctx.db.get(messageId) };
+    });
+    expect(seen.one).toMatchObject({ body: HIDDEN_WORDS, subject: HIDDEN_WORDS, to: "•••0123", status: "sent" });
+    // The company's welcome notice is in the same list; look at the customer message itself.
+    const mine = (rows: unknown[]) => (rows as { _id: string }[]).find((row) => row._id === messageId);
+    expect(mine(seen.listed)).toMatchObject({ body: HIDDEN_WORDS });
+    expect(mine(seen.page.page)).toMatchObject({ body: HIDDEN_WORDS });
+    expect(mine(seen.iterated)).toMatchObject({ body: HIDDEN_WORDS });
+    // Other tables read as they are.
+    expect(seen.company!.name).toBe("Alpha");
+    expect(seen.stored!.body).toBe("Your gate code is 4471");
   });
 
-  test("a check support asked for does not run after the session ended, and no retry can send twice", async () => {
-    const s = await setup(["Lena"], { Lena: "+15550100006" });
-    await s.t.withIdentity(ADMIN).query(api.staff.me, {});
-    const lead = await staffWith(s.t, "lee", "support_lead");
-    const messageId = await s.t.run((ctx) => ctx.db.insert("messages", { companyId: s.companyId, purpose: "assignment_confirmed", channel: "sms", cleanerId: s.cleaners.Lena, to: s.phone.Lena, body: "You're confirmed for tomorrow at 9.", dedupeKey: "confirm-2", status: "queued", attempts: 0, queuedAt: Date.now() }));
-    await s.t.action(internal.messaging.deliver, { messageId }).catch(() => undefined);
-    vi.advanceTimersByTime(40 * MINUTE);
-    await s.t.mutation(internal.messaging.sweepStuck, {});
-    const sessionId = await begin(s.t, lead.plain, s.companyId);
-    await lead.strong.mutation(api.support.setMode, { sessionId, mode: "manage", reason: "Check the unconfirmed confirmation text" });
-    await lead.strong.mutation(api.operations.checkMessage, { companyId: s.companyId, supportSessionId: sessionId, messageId });
-    // The admin leaves before the scheduled send runs.
-    await lead.plain.mutation(api.support.exit, { sessionId });
-    await flush(s.t);
-    const message = await s.t.run((ctx) => ctx.db.get(messageId));
-    expect(message).toMatchObject({ status: "unconfirmed" });
-    expect(message?.problem).toMatch(/support session that asked for this check ended/);
-    expect(mockOutbox.map((row) => row.result)).toEqual(["accepted"]);
-    const actions = await s.t.run(async (ctx) => (await ctx.db.query("supportActions").collect()).filter((row) => row.kind === "external"));
-    expect(actions.map((row) => row.summary)).toEqual(["Checked with the texting provider whether a message went"]);
-  });
-});
-
-describe("Admin support sessions: every company function is bound to the session", () => {
-  test("every public function that takes a companyId also takes supportSessionId (it goes through the company builders)", async () => {
-    const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./_generated/**", "!./lib/**"], { eager: true }) as Record<string, Record<string, unknown>>;
-    const missing: string[] = [];
-    for (const [path, mod] of Object.entries(modules)) {
-      for (const [name, fn] of Object.entries(mod)) {
-        if (typeof fn !== "function") continue;
-        const f = fn as unknown as { isPublic?: boolean; exportArgs?: () => string };
-        if (!f.isPublic || typeof f.exportArgs !== "function") continue;
-        const args = JSON.parse(f.exportArgs()) as { type: string; value?: Record<string, unknown> };
-        if (args.type !== "object" || !args.value) continue;
-        if ("companyId" in args.value && !("supportSessionId" in args.value)) missing.push(`${path}:${name}`);
-      }
-    }
-    // Staff functions that name a company (credits, suspension, the outbound stop) act from the staff console, not inside a workspace.
-    // members.join runs before a person has any membership (the onboarding screen), never inside a workspace.
-    const STAFF_CONSOLE = ["./members.ts:join", "./compliance.ts:setRegistration", "./requests.ts:route", "./messagingFunds.ts:supportCredit", "./compliance.ts:setSuspended", "./operations.ts:stopOutbound", "./operations.ts:resumeOutbound", "./operations.ts:incidents", "./support.ts:start", "./support.ts:sessions"];
-    expect(missing.filter((name) => !STAFF_CONSOLE.includes(name))).toEqual([]);
+  test("revealing content needs a reason and is shown to the owner", async () => {
+    const t = start();
+    const { companyId, as: owner } = await company(t, "owner_a", "Alpha");
+    const staff = t.withIdentity(admin);
+    const sessionId = await staff.mutation(api.support.start, { companyId, reason: "Customer says a text never arrived" });
+    expect(await refusal(staff.mutation(api.support.reveal, { sessionId, reason: "x" }))).toContain("Say why");
+    await staff.mutation(api.support.reveal, { sessionId, reason: "Check the wording of the missing text" });
+    const history = await owner.query(api.support.history, { companyId });
+    expect(history.sessions[0].revealed[0].summary).toContain("Check the wording");
   });
 });

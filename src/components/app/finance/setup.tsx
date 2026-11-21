@@ -17,6 +17,8 @@ import { cn } from "@/lib/utils";
 import { api } from "../../../../convex/_generated/api";
 import type { FunctionReturnType } from "convex/server";
 import { Notice, Section } from "./kit";
+import { Checkbox, Select } from "@/components/ui/selection";
+import { EmailInput, PercentField } from "@/components/ui/fields";
 
 type Settings = FunctionReturnType<typeof api.finance.settings>;
 
@@ -216,14 +218,14 @@ function Reminders({ data }: { data: Settings }) {
         }}
       >
         <label className="flex items-start gap-2.5 text-sm text-strong">
-          <input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} className="mt-0.5 size-4 accent-brand-500" />
+          <Checkbox checked={on} onCheckedChange={(checked) => setOn(checked)} className="mt-0.5" />
           <span>
             Prepare payment reminders on a schedule
             <span className="block text-xs text-muted-foreground">3 days before the due date, then 1, 7 and 14 days late. After that, Selestial flags the invoice for you instead.</span>
           </span>
         </label>
         <Field label="Replies go to" hint="Leave empty to use your own email. Emails go out under your company's name.">
-          <TextInput type="email" value={replyTo} onChange={(e) => setReplyTo(e.target.value)} placeholder="billing@yourcompany.com" />
+          <EmailInput value={replyTo} onChange={(text) => setReplyTo(text)} placeholder="billing@yourcompany.com" />
         </Field>
         <p className="text-xs text-muted-foreground">
           Email or text, the shared sending rules apply: your sending setup (Settings › Compliance), each customer&apos;s recorded permission, the do-not-contact list and quiet hours.
@@ -274,10 +276,7 @@ function InvoiceSettings({ data }: { data: Settings }) {
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Sales tax rate" hint="Leave empty if you don't charge tax. Selestial doesn't file tax." error={Number.isNaN(taxBps) ? "Enter a percentage like 8.25" : null}>
-            <div className="relative">
-              <TextInput inputMode="decimal" value={tax} onChange={(e) => setTax(e.target.value)} placeholder="8.25" className="pr-8" />
-              <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-sm text-muted-foreground">%</span>
-            </div>
+            <PercentField value={tax} onChange={(text) => setTax(text)} placeholder="8.25" precision={3} />
           </Field>
           <Field label="Tax name on invoices">
             <TextInput value={taxLabel} maxLength={40} onChange={(e) => setTaxLabel(e.target.value)} />
@@ -291,7 +290,7 @@ function InvoiceSettings({ data }: { data: Settings }) {
                 const on = taxable.includes(service.id);
                 return (
                   <label key={service.id} className={cn("inline-flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm", on ? "border-brand-500/50 bg-brand-500/8 text-strong" : "border-border text-muted-foreground")}>
-                    <input type="checkbox" checked={on} onChange={(e) => setTaxable((c) => (e.target.checked ? [...c, service.id] : c.filter((id) => id !== service.id)))} className="size-3.5 accent-brand-500" />
+                    <Checkbox checked={on} onCheckedChange={(checked) => setTaxable((c) => (checked ? [...c, service.id] : c.filter((id) => id !== service.id)))} />
                     {service.name}
                   </label>
                 );
@@ -309,7 +308,7 @@ function InvoiceSettings({ data }: { data: Settings }) {
           </Field>
         </div>
         <label className="flex items-start gap-2.5 text-sm text-strong">
-          <input type="checkbox" checked={partial} onChange={(e) => setPartial(e.target.checked)} className="mt-0.5 size-4 accent-brand-500" />
+          <Checkbox checked={partial} onCheckedChange={(checked) => setPartial(checked)} className="mt-0.5" />
           <span>
             Let customers pay part of a balance
             <span className="block text-xs text-muted-foreground">They choose the amount on the pay page. Deposits are always paid in full.</span>
@@ -377,10 +376,7 @@ function TeamPaySettings({ data }: { data: Settings }) {
               {rows.map((row, i) => (
                 <li key={row.id ?? `new-${i}`} className="grid grid-cols-[minmax(0,1fr)_6.5rem_auto] items-center gap-2">
                   <TextInput aria-label="Tier name" value={row.name} maxLength={30} onChange={(e) => change(i, { name: e.target.value })} />
-                  <div className="relative">
-                    <TextInput aria-label={`${row.name || "Tier"} share`} inputMode="decimal" value={row.percent} onChange={(e) => change(i, { percent: e.target.value })} className="pr-7" />
-                    <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-sm text-muted-foreground">%</span>
-                  </div>
+                  <PercentField aria-label={`${row.name || "Tier"} share`} value={row.percent} onChange={(text) => change(i, { percent: text })} precision={2} />
                   <Button
                     size="icon-sm"
                     variant="ghost"
@@ -405,7 +401,7 @@ function TeamPaySettings({ data }: { data: Settings }) {
         <fieldset className="grid gap-2">
           <legend className="mb-1 text-sm font-medium text-strong">Tips</legend>
           <label className="flex items-start gap-2.5 rounded-xl border border-border bg-muted/30 px-3.5 py-3 text-sm text-strong">
-            <input type="checkbox" checked={tipsOn} onChange={(e) => setTipsOn(e.target.checked)} className="mt-0.5 size-4 accent-brand-500" />
+            <Checkbox checked={tipsOn} onCheckedChange={(checked) => setTipsOn(checked)} className="mt-0.5" />
             <span>
               Let customers add a tip when they pay
               <span className="block text-xs text-muted-foreground">Offered on the pay page once a job is done, never chosen for them. All of it goes to that job&apos;s crew, split evenly; your company covers Stripe&apos;s fee on it.</span>
@@ -456,10 +452,7 @@ function ExpenseCategories({ data }: { data: Settings }) {
           {rows.map((row, i) => (
             <li key={row.id || `new-${i}`} className={cn("grid grid-cols-[minmax(0,1fr)_8.5rem_auto] items-center gap-2", row.hidden && "opacity-60")}>
               <TextInput aria-label="Category name" value={row.name} maxLength={40} onChange={(e) => change(i, { name: e.target.value })} />
-              <select aria-label={`${row.name || "Category"} kind`} value={row.kind} onChange={(e) => change(i, { kind: e.target.value as "job" | "overhead" })} className="h-10 rounded-lg border border-border bg-card px-2 text-sm text-strong sm:h-9">
-                <option value="job">Job cost</option>
-                <option value="overhead">Overhead</option>
-              </select>
+              <Select value={row.kind} onValueChange={(next) => change(i, { kind: (next ?? "") as "job" | "overhead" })} options={[{ value: "job", label: "Job cost" }, { value: "overhead", label: "Overhead" }]} aria-label={`${row.name || "Category"} kind`} density="compact" />
               <Button size="xs" variant="ghost" onClick={() => change(i, { hidden: !row.hidden })}>
                 {row.hidden ? "Show" : "Hide"}
               </Button>

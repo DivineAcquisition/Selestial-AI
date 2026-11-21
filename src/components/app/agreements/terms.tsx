@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, SelectInput, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, TextInput, useRun } from "@/components/app/form";
 import { Notice } from "@/components/app/agreements/shared";
 import { QuestionField, shown, type Q } from "@/components/app/agreements/question";
 import type { Detail } from "@/components/app/agreements/types";
@@ -13,6 +13,8 @@ import { Panel } from "@/components/app/shell";
 
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
+import { Checkbox, cleanerOption, customerOption, propertyOption, SearchableSelect, Select } from "@/components/ui/selection";
+import { EmailInput } from "@/components/ui/fields";
 
 type Section = { group: string; label: string; answered: number; total: number; questions: Q[] };
 
@@ -156,13 +158,13 @@ export function PartiesAndLinks({ detail, editable }: { detail: Detail; editable
                 <TextInput value={party.name} disabled={!editable} onChange={(event) => edit(index, { name: event.target.value })} />
               </Field>
               <Field label="Email for signing">
-                <TextInput type="email" value={party.email ?? ""} disabled={!editable} onChange={(event) => edit(index, { email: event.target.value })} />
+                <EmailInput value={party.email ?? ""} disabled={!editable} onChange={(text) => edit(index, { email: text })} />
               </Field>
               <Field label="Order">
                 <TextInput inputMode="numeric" value={String(party.order ?? index + 1)} disabled={!editable} onChange={(event) => edit(index, { order: Number(event.target.value) || undefined })} />
               </Field>
               <label className="flex items-center gap-2 pb-2 text-sm text-strong">
-                <input type="checkbox" checked={party.signer} disabled={!editable} onChange={(event) => edit(index, { signer: event.target.checked })} />
+                <Checkbox checked={party.signer} disabled={!editable} onCheckedChange={(checked) => edit(index, { signer: checked })} />
                 Signs
               </label>
               {editable ? (
@@ -209,35 +211,25 @@ export function PartiesAndLinks({ detail, editable }: { detail: Detail; editable
         {editable ? (
           <div className="mt-3 grid gap-2 sm:grid-cols-[8rem_1fr_1fr_auto] sm:items-end">
             <Field label="Link a">
-              <SelectInput value={kind} onChange={(event) => (setKind(event.target.value as never), setRecordId(""), setCustomerId(""))}>
-                {KINDS.map((k) => (
-                  <option key={k.id} value={k.id}>
-                    {k.label}
-                  </option>
-                ))}
-              </SelectInput>
+              <Select value={kind} onValueChange={(next) => (setKind((next ?? "") as never), setRecordId(""), setCustomerId(""))} options={KINDS.map((k) => ({ value: k.id, label: k.label }))} />
             </Field>
             {kind === "properties" ? (
               <Field label="Customer">
-                <SelectInput value={customerId} onChange={(event) => (setCustomerId(event.target.value), setRecordId(""))}>
-                  <option value="">Choose…</option>
-                  {customers?.map((c) => (
-                    <option key={c._id} value={c._id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </SelectInput>
+                <SearchableSelect value={customerId} onValueChange={(next) => (setCustomerId(next ?? ""), setRecordId(""))} options={(customers ?? []).map(customerOption)} loading={customers === undefined} placeholder="Search customers" />
               </Field>
             ) : (
               <span className="hidden sm:block" />
             )}
             <Field label={KINDS.find((k) => k.id === kind)!.label}>
-              <SelectInput value={recordId} onChange={(event) => setRecordId(event.target.value)}>
-                <option value="">Choose…</option>
-                {kind === "customers" ? customers?.map((c) => <option key={c._id} value={c._id}>{c.name}</option>) : null}
-                {kind === "cleaners" ? cleaners?.map((c) => <option key={c._id} value={c._id}>{c.name}</option>) : null}
-                {kind === "properties" ? property?.properties.map((p) => <option key={p._id} value={p._id}>{p.label ?? `${p.address.line1}, ${p.address.city}`}</option>) : null}
-              </SelectInput>
+              <SearchableSelect
+                key={kind}
+                value={recordId}
+                onValueChange={(next) => setRecordId(next ?? "")}
+                options={kind === "customers" ? (customers ?? []).map(customerOption) : kind === "cleaners" ? (cleaners ?? []).map(cleanerOption) : (property?.properties ?? []).map((p) => propertyOption(p, property?.customer.name))}
+                loading={kind === "customers" ? customers === undefined : kind === "cleaners" ? cleaners === undefined : Boolean(customerId) && property === undefined}
+                disabled={kind === "properties" && !customerId}
+                placeholder={kind === "properties" && !customerId ? "Choose the customer first" : "Search…"}
+              />
             </Field>
             <Button size="sm" variant="secondary" disabled={!recordId} onClick={() => void run(async () => { await link({ companyId, agreementId: detail.id as Id<"agreements">, link: { table: kind, id: recordId } }); setRecordId(""); })}>
               Link

@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, messageOf, SelectInput, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, messageOf, TextArea, TextInput, useRun } from "@/components/app/form";
 import { Guard } from "@/components/app/settings/guard";
 import { SaveBar, useSavedDraft, useUnsavedWarning } from "@/components/app/settings/save-bar";
 import { Plus, Trash2 } from "@/components/icons";
@@ -19,6 +19,8 @@ import { timeZoneLabel } from "@/lib/app/timezones";
 
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
+import { Checkbox, Select } from "@/components/ui/selection";
+import { NumberField } from "@/components/ui/fields";
 
 function RecruitingInner() {
   const { companyId, role } = useCompany();
@@ -123,7 +125,7 @@ function HiringInbox({ canEdit, companyId }: { canEdit: boolean; companyId: Id<"
               <TextInput value={label} onChange={(event) => setLabel(event.target.value)} placeholder="Hiring" />
             </Field>
             <label className="flex items-center gap-2 text-sm text-strong">
-              <input type="checkbox" checked={canSend} onChange={(event) => setCanSend(event.target.checked)} />
+              <Checkbox checked={canSend} onCheckedChange={(checked) => setCanSend(checked)} />
               Also send applicant email from this inbox
             </label>
           </div>
@@ -166,7 +168,7 @@ function RecruitingFormView({ saved, timezone, canEdit, companyId }: { saved: Re
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  useUnsavedWarning(dirty);
+  const leaveGuard = useUnsavedWarning(dirty, undefined, "the Recruiter's hiring settings");
   const problems = useMemo(() => (form && canEdit ? recruitingProblems(form) : []), [form, canEdit]);
   if (!form) return null;
   const savedKeys = new Set(saved.onboardingRequirements.map((row) => row.key));
@@ -201,10 +203,7 @@ function RecruitingFormView({ saved, timezone, canEdit, companyId }: { saved: Re
       <Panel title="Application invitations">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Inviting applicants" hint="Automatic invitations only go out when every check in Recruiter's rules passes.">
-            <SelectInput value={form.invitationMode} disabled={!canEdit} onChange={(event) => set("invitationMode", event.target.value as "review" | "auto")}>
-              <option value="review">Ask me first</option>
-              <option value="auto">Act automatically</option>
-            </SelectInput>
+            <Select value={form.invitationMode} onValueChange={(next) => set("invitationMode", (next ?? "") as "review" | "auto")} options={[{ value: "review", label: "Ask me first" }, { value: "auto", label: "Act automatically" }]} disabled={!canEdit} />
           </Field>
           {text("linkTtlDays", "Application link works for (days)", "After this, the applicant needs a new invitation.")}
         </div>
@@ -217,14 +216,12 @@ function RecruitingFormView({ saved, timezone, canEdit, companyId }: { saved: Re
           {reminders.map((value, index) => (
             <li key={index} className="flex flex-wrap items-center gap-2 text-sm">
               <span className="w-24 font-medium text-strong">Reminder {index + 1}</span>
-              <TextInput
+              <NumberField
                 aria-label={`Reminder ${index + 1}, hours after the invitation`}
-                inputMode="numeric"
                 value={value}
                 disabled={!canEdit}
-                onChange={(event) => set("followUpHours", reminders.map((row, i) => (i === index ? event.target.value : row)))}
-                className="w-24 py-1.5"
-              />
+                onChange={(text) => set("followUpHours", reminders.map((row, i) => (i === index ? text : row)))}
+                className="w-24 py-1.5" />
               <span className="text-muted-foreground">hours after the invitation{hoursWords(value) ? ` (${hoursWords(value)})` : ""}</span>
               {canEdit ? (
                 <Button
@@ -261,13 +258,7 @@ function RecruitingFormView({ saved, timezone, canEdit, companyId }: { saved: Re
           ) : null}
           {reminders.length > 0 ? (
             <Field label="Reminders to send at most" className="w-48">
-              <SelectInput value={form.maxFollowUps} disabled={!canEdit} onChange={(event) => set("maxFollowUps", event.target.value)}>
-                {maxChoices.map((n) => (
-                  <option key={n} value={String(n)}>
-                    {n === 0 ? "None" : n === reminders.length ? `All ${n}` : String(n)}
-                  </option>
-                ))}
-              </SelectInput>
+              <Select value={form.maxFollowUps} onValueChange={(next) => set("maxFollowUps", next ?? "")} options={maxChoices.map((n) => ({ value: String(n), label: n === 0 ? "None" : n === reminders.length ? `All ${n}` : String(n) }))} disabled={!canEdit} searchable="auto" />
             </Field>
           ) : null}
         </div>
@@ -338,7 +329,7 @@ function RecruitingFormView({ saved, timezone, canEdit, companyId }: { saved: Re
           <div className="mt-1.5 flex flex-wrap gap-2">
             {WEEKDAYS.map((day, weekday) => (
               <label key={day} className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-sm text-strong has-[:checked]:border-brand-500/60 has-[:checked]:bg-brand-500/5 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-brand-500">
-                <input type="checkbox" disabled={!canEdit} checked={form.sendDays.includes(weekday)} onChange={(event) => set("sendDays", event.target.checked ? [...form.sendDays, weekday] : form.sendDays.filter((value) => value !== weekday))} />
+                <Checkbox disabled={!canEdit} checked={form.sendDays.includes(weekday)} onCheckedChange={(checked) => set("sendDays", checked ? [...form.sendDays, weekday] : form.sendDays.filter((value) => value !== weekday))} />
                 {day.slice(0, 3)}
               </label>
             ))}
@@ -374,6 +365,7 @@ function RecruitingFormView({ saved, timezone, canEdit, companyId }: { saved: Re
         </div>
       </details>
 
+      {leaveGuard}
       <SaveBar
         canEdit={canEdit}
         dirty={dirty}
