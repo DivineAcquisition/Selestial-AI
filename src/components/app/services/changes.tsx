@@ -120,7 +120,7 @@ export function ChangeReview({ changeId }: { changeId: string }) {
       {open && change.liveMoved ? <Notice tone="warning" title="The live version changed">Another change went live after this one was submitted. Review the newer version first.</Notice> : null}
       {open && ownPrice?.moved ? <Notice tone="warning" title="This property's price changed">{ownPrice.moved} It can&apos;t be approved; send it back and propose again from the current price.</Notice> : null}
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
+      <div className="grid grid-cols-1 gap-5 @4xl/main:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
         <div className="grid grid-cols-1 gap-5">
           {ownPrice ? <ProposedPrice price={ownPrice} /> : null}
           <Panel title="Why">

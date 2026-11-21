@@ -81,7 +81,7 @@ export function SubcontractorsScreen() {
           <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">Add one when another business supplies cleaners to you. Its workers are then added as subcontractor workers.</p>
         </div>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+        <div className="grid gap-4 @3xl/main:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
           <ul className="grid content-start gap-2" aria-label="Subcontractor companies">
             {rows.map((row) => (
               <li key={row.subcontractorId}>

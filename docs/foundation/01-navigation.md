@@ -50,22 +50,32 @@ Two pairs of names are close and stay with their owners:
 
 ## 2. The sidebar, top to bottom
 
-The order is fixed (`SIDEBAR_SECTIONS`).
+The order is fixed (`SIDEBAR_SECTIONS`). It changed on November 21, 2026: the
+company-wide shortcuts moved above the department tabs, so the tabs sit
+directly above the agents they choose between.
 
 1. **Business selector.** The active cleaning company. Switching changes the
    whole workspace and its data. There is no client selector: customers and
    properties are records inside a company. No location selector until
    multi-location support exists.
-2. **Department tabs.** Growth | Operations | Team. Choosing one changes which
-   agents are listed below. It does not change the business, and it does not
-   filter Home, Approvals, Inbox or the shared records.
-3. **Persistent navigation.** Home, Approvals, Inbox, Search. Always visible.
+2. **Persistent navigation.** Home, Approvals, Inbox, Search. Always visible,
+   whichever department is selected.
+3. **Department tabs.** Growth | Operations | Team, under an "Agents" heading.
+   Choosing one changes which agents are listed directly below. It does not
+   change the business, it does not navigate, and it does not filter Home,
+   Approvals, Inbox or the shared records. A small mark on a tab shows which
+   department holds the page that is open.
 4. **The selected department's agents.** Each agent has a name that opens its
    overview, a separate arrow that opens its tabs, the nested work tabs, and
-   room for one status or attention badge.
-5. **Shared business navigation.** Customers & Properties, Cleaners, Finance,
-   Reports, Integrations. Company-wide.
-6. **Footer.** Settings only.
+   one status beneath the name. An agent that is not released has no arrow
+   unless one of its tabs is really built (`disclosedTabs`): its name opens
+   the coming-soon page, which says what each tab will do.
+5. **Shared business navigation.** Chat, Services & Pricing, Clients &
+   Properties, Cleaners, Agreements, Finance, Reports. Company-wide.
+6. **Footer.** Settings only, pinned below the scrolling list.
+
+How the rows line up, how the active page and an open group differ, and the
+rest of the frame are in [07-layout.md](07-layout.md).
 
 **Shared records are shared.** An agent tab is a view over the company's
 records, never a second copy. Dispatch's availability view and Team

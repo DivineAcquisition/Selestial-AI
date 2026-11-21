@@ -33,7 +33,7 @@ export function BillingTab({ profile }: { profile: Profile }) {
         <Lock className="size-3.5" aria-hidden /> Only the Owner sees this tab. Billing changes are made in Finance.
       </p>
       <Amounts billing={billing} />
-      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="grid min-w-0 gap-4 @4xl/main:grid-cols-[minmax(0,1fr)_20rem]">
         <Card
           title="Invoices"
           action={

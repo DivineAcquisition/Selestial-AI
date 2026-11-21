@@ -11,6 +11,7 @@ import {
   agentsIn,
   allDestinations,
   breadcrumbsFor,
+  disclosedTabs,
   hrefFor,
   initialSidebarState,
   linkTo,
@@ -81,7 +82,8 @@ describe("the navigation definition", () => {
     expect(DEPARTMENTS.map((row) => row.label)).toEqual(Object.keys(SPEC));
     for (const department of DEPARTMENTS) expect(agentsIn(department.id).map((agent) => agent.label)).toEqual(Object.keys(SPEC[department.label]));
     expect(AGENTS).toHaveLength(8);
-    expect(SIDEBAR_SECTIONS).toEqual(["business", "departments", "persistent", "agents", "shared", "footer"]);
+    // The department tabs sit directly above the agents they list; the company-wide shortcuts come first.
+    expect(SIDEBAR_SECTIONS).toEqual(["business", "persistent", "departments", "agents", "shared", "footer"]);
     expect(PERSISTENT_ITEMS.map((item) => item.label)).toEqual(["Home", "Approvals", "Inbox", "Search"]);
     // Chat leads Company (November 16, 2026). Integrations moved into Settings the same day, on the owner's request.
     // Services & Pricing joined Company on November 16, 2026, moved out of Settings at the owner's request.
@@ -215,6 +217,15 @@ describe("what is available today", () => {
     }
     expect(BACKEND_DEPARTMENTS.flatMap((row) => row.agents).sort()).toEqual([...BACKEND_AGENTS].sort());
     expect(AGENTS.filter((agent) => agent.workflow === "built").map((agent) => agent.id)).toEqual(["sales", "retention", "dispatch", "recruiter"]);
+    // Beneath an agent that is not released, the sidebar lists only tabs that open a real page, never a row
+    // of links to the same coming-soon page. A released agent lists every tab.
+    for (const agent of AGENTS) {
+      const listed = disclosedTabs(agent);
+      if (agent.workflow === "built") expect(listed, agent.id).toEqual([...agent.tabs]);
+      else for (const tab of listed) expect(hrefFor(tab), `${agent.id}.${tab.id}`).not.toBeNull();
+    }
+    expect(disclosedTabs(AGENTS.find((agent) => agent.id === "marketing")!).map((tab) => tab.id)).toEqual(["content-creative"]);
+    for (const id of ["quality", "customer-care", "team-coordinator"]) expect(disclosedTabs(AGENTS.find((agent) => agent.id === id)!), id).toEqual([]);
     // The plan carries no numbers or states of its own: badges get their values from the record.
     expect(JSON.stringify({ AGENTS, NAV_ITEMS })).not.toMatch(/"count"|"badge"|"status":"(working|active)"/);
   });

@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 
 import { SearchableSelect } from "./combobox";
 import { joinIds, markComposite, useFieldControl } from "./field-context";
-import { controlHeight, controlPadding, fieldSurface, focusRing, optionRow, popupSurface, type Density } from "./tokens";
+import { controlHeight, controlPadding, fieldSurface, focusRing, optionRow, overlayCollisionPadding, popupSurface, type Density } from "./tokens";
 import { groupOptions, type ListState, type Option } from "./types";
 
 export type SelectProps<V extends string> = ListState & {
@@ -90,7 +90,7 @@ export function Select<V extends string>({ value, onValueChange, options, placeh
         </SelectPrimitive.Icon>
       </SelectPrimitive.Trigger>
       <SelectPrimitive.Portal>
-        <SelectPrimitive.Positioner className="z-[80] outline-none" sideOffset={6} collisionPadding={12} alignItemWithTrigger={false}>
+        <SelectPrimitive.Positioner className="z-popover outline-none" sideOffset={6} collisionPadding={overlayCollisionPadding()} alignItemWithTrigger={false}>
           <SelectPrimitive.Popup className={popupSurface}>
             {loading ? (
               <p className="flex items-center gap-2 px-2 py-2 text-sm text-muted-foreground" role="status">

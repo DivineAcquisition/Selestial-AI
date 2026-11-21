@@ -40,7 +40,7 @@ export function SetupDetail({ setupId }: { setupId: Id<"serviceSetups"> }) {
     return (h ?? 0) * 60 + (m ?? 0);
   };
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto w-full min-w-0 max-w-(--app-width-detail)">
       <PageHeader title={`Service setup · ${data.proposal?.title ?? ""}`} lead={`Accepted version ${setup.version}${data.acceptedBy ? ` by ${data.acceptedBy.name}${data.acceptedBy.title ? `, ${data.acceptedBy.title}` : ""}` : ""}. Nothing is scheduled until each site's requirements are met.`} />
       {done ? (
         <p role="status" className="mb-3 rounded-lg border border-success/30 bg-success/8 px-3 py-2 text-sm text-success-foreground">

@@ -40,9 +40,11 @@ export function AgentDock({ departments, activity, now, timezone, onOpen }: { de
   };
 
   return (
-    <div className="pointer-events-none fixed inset-x-3 bottom-3 z-30 flex flex-col items-end gap-2 sm:inset-x-auto sm:right-5 sm:bottom-5">
+    // It sits in the corner, above any bar fixed to the bottom and any save bar stuck there, and inside the
+    // phone's safe area. Below a modal it is covered like the rest of the page (globals.css, overlay layers).
+    <div className="pointer-events-none fixed right-(--app-dock-offset) bottom-[calc(var(--app-dock-offset)+max(var(--app-bottom-bar),var(--app-dock-lift))+env(safe-area-inset-bottom))] left-(--app-dock-offset) z-floating flex flex-col items-end gap-2 sm:left-auto">
       {open ? (
-        <section aria-label="Your team" className="live-enter pointer-events-auto flex max-h-[min(34rem,calc(100dvh-7rem))] w-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-[0_24px_60px_-20px_rgba(81,38,199,0.35)] sm:w-[23rem]">
+        <section aria-label="Your team" className="live-enter pointer-events-auto flex max-h-[min(34rem,calc(100dvh-var(--app-chrome-height)-var(--app-dock-size)-var(--app-dock-offset)*3-max(var(--app-bottom-bar),var(--app-dock-lift))))] w-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-[0_24px_60px_-20px_rgba(81,38,199,0.35)] sm:w-[23rem]">
           <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
             <div>
               <h2 className="font-heading text-base tracking-tight text-strong">Your team</h2>
@@ -107,7 +109,7 @@ export function AgentDock({ departments, activity, now, timezone, onOpen }: { de
         onClick={() => setOpen((current) => !current)}
         aria-expanded={open}
         className={cn(
-          "pointer-events-auto relative inline-flex h-12 items-center gap-2.5 overflow-hidden rounded-full border bg-card py-1.5 pr-3.5 pl-2 text-sm shadow-[0_12px_32px_-12px_rgba(81,38,199,0.45)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500",
+          "pointer-events-auto relative inline-flex h-(--app-dock-size) max-w-full items-center gap-2.5 overflow-hidden rounded-full border bg-card py-1.5 pr-3.5 pl-2 text-sm shadow-[0_12px_32px_-12px_rgba(81,38,199,0.45)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500",
           needsYou ? "border-warning/60" : "border-brand-500/40",
         )}
       >
@@ -117,9 +119,9 @@ export function AgentDock({ departments, activity, now, timezone, onOpen }: { de
             <AgentAvatar key={agent.agent} agent={agent.agent} state={agent.state} size="sm" />
           ))}
         </span>
-        <span className="text-left leading-tight">
+        <span className="min-w-0 text-left leading-tight">
           <span className="block text-xs font-semibold text-strong">Your team</span>
-          <span className={cn("block text-[11px]", needsYou ? "font-medium text-warning-foreground" : "text-muted-foreground")}>{teamLine(agents)}</span>
+          <span className={cn("block truncate text-[11px]", needsYou ? "font-medium text-warning-foreground" : "text-muted-foreground")}>{teamLine(agents)}</span>
         </span>
         <ChevronDown className={cn("size-3.5 text-muted-foreground transition-transform", open ? "" : "rotate-180")} aria-hidden />
       </button>

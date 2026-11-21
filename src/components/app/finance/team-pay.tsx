@@ -113,7 +113,7 @@ export function TeamPayTab({ nav }: { nav: Nav }) {
         </Notice>
       ) : null}
 
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="grid items-start gap-5 @4xl/main:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <SegmentedControl label="Show" hideLabel density="compact" value={filter} options={FILTERS.map((f) => ({ id: f.id, label: <>{f.label}<span className="ml-1.5 text-xs tabular-nums text-muted-foreground">{data.counts[f.id]}</span></> }))} onChange={(id) => nav.set({ filter: id === "review" ? null : id })} />
@@ -156,7 +156,7 @@ export function TeamPayTab({ nav }: { nav: Nav }) {
           </section>
         </div>
 
-        <aside className="grid min-w-0 gap-4 lg:sticky lg:top-20">
+        <aside className="grid min-w-0 gap-4 @4xl/main:sticky @4xl/main:top-app-sticky">
           <section className="rounded-2xl border border-border bg-card" aria-labelledby="owed-title">
             <header className="flex items-center gap-2 border-b border-border px-4 py-3">
               <Wallet className="size-4 text-muted-foreground" aria-hidden />

@@ -111,8 +111,8 @@ export function ProposalWorkspace({ data, working, update, setBody, summary, flu
   const str = working.segment === "str";
 
   return (
-    <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-      <div className="grid gap-5 xl:col-span-8">
+    <div className="grid grid-cols-1 gap-6 @4xl/main:grid-cols-12">
+      <div className="grid min-w-0 gap-5 @4xl/main:col-span-8">
         <CustomerSection n={1} data={data} working={working} update={update} setBody={setBody} done={doneFor("customer")} companyId={companyId} />
 
         <FormSection n={2} id="sites" title={str ? "Properties" : "Sites"} lead={`Each ${str ? "property" : "site"} on this proposal, with its address.`} done={doneFor("sites")}>
@@ -414,8 +414,8 @@ export function ProposalWorkspace({ data, working, update, setBody, summary, flu
           <FormError message={error} />
         </FormSection>
       </div>
-      <aside className="xl:col-span-4" aria-label="Proposal summary">
-        <div className="xl:sticky xl:top-24">
+      <aside className="min-w-0 @4xl/main:col-span-4" aria-label="Proposal summary">
+        <div className="@4xl/main:sticky @4xl/main:top-app-sticky @4xl/main:max-h-app-sticky @4xl/main:overflow-y-auto">
           <ProposalSummary preview={preview} />
         </div>
       </aside>

@@ -206,7 +206,7 @@ function Workspace({ companyId, role, userId, businesses, onSwitch, support, chi
   if (inSetup) {
     return (
       <CompanyProvider company={{ companyId, name: company.name, timezone: company.timezone, role }}>
-        {banner ? <div className="[&>div]:top-0">{banner}</div> : null}
+        {banner ? <div className="sticky top-0 z-header">{banner}</div> : null}
         <TutorialHost>{children}</TutorialHost>
       </CompanyProvider>
     );

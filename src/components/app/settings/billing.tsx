@@ -367,7 +367,8 @@ function Comparison({ catalog, current, canBuy }: { catalog: Data["catalog"]; cu
       </div>
       <details className="group mt-4">
         <summary className="cursor-pointer text-sm font-medium text-brand-600 focus-visible:outline-2 focus-visible:outline-brand-500">Compare everything in each plan</summary>
-      <table className="mt-4 w-full text-sm">
+      <div className="mt-4 overflow-x-auto">
+      <table className="w-full min-w-[32rem] text-sm">
         <thead>
           <tr className="text-left text-xs text-muted-foreground">
             <th className="py-1 font-medium">Agent</th>
@@ -396,6 +397,7 @@ function Comparison({ catalog, current, canBuy }: { catalog: Data["catalog"]; cu
           ))}
         </tbody>
       </table>
+      </div>
       </details>
       <p className="mt-3 text-xs text-muted-foreground">Both plans include: {catalog.bothInclude.join("; ")}. Expand includes a larger monthly credit allowance. Bespoke implementation, migration and custom development are scoped separately.</p>
       <FormError message={error} />

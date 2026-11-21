@@ -11,6 +11,7 @@ import { CHANGE_STATE_WORDS, centsFrom, dollarsText } from "@/lib/app/services";
 import { cn } from "@/lib/utils";
 
 import { formatCents } from "../../../../convex/lib/services/words";
+import { overlayCollisionPadding } from "@/components/ui/selection/tokens";
 
 export { formatCents };
 
@@ -32,7 +33,7 @@ export function InfoTip({ label, children, className }: { label: string; childre
         <Info aria-hidden className="size-4" />
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Positioner side="top" align="start" sideOffset={6} collisionPadding={12} className="z-[70]">
+        <Popover.Positioner side="top" align="start" sideOffset={6} collisionPadding={overlayCollisionPadding()} className="z-popover">
           <Popover.Popup className="max-w-[min(20rem,calc(100vw-1.5rem))] origin-[var(--transform-origin)] rounded-xl border border-border bg-popover px-3 py-2.5 text-xs leading-relaxed text-popover-foreground shadow-lg shadow-black/10 outline-none transition-[opacity,scale] duration-150 data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0">
             <Popover.Title className="mb-0.5 text-[13px] font-semibold text-strong">{label}</Popover.Title>
             <Popover.Description render={<div />} className="grid gap-1 text-muted-foreground">

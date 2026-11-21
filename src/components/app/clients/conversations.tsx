@@ -44,7 +44,7 @@ export function ConversationsTab({ profile }: { profile: Profile }) {
   const thread = useQuery(api.clientConversations.thread, { companyId, customerId: profile.id });
   if (thread === undefined) return <Skeleton className="h-96 rounded-2xl" />;
   return (
-    <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+    <div className="grid min-w-0 gap-4 @4xl/main:grid-cols-[minmax(0,1fr)_20rem]">
       <div className="grid min-w-0 content-start gap-4">
         <Handling profile={profile} thread={thread} />
         <section aria-label="Conversation" className="min-w-0 rounded-2xl border border-border bg-card">

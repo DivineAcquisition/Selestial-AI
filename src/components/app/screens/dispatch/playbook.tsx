@@ -387,7 +387,7 @@ export function PlaybookScreen() {
       {!ready ? (
         <Skeleton className="h-64 rounded-2xl" />
       ) : (
-        <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="grid items-start gap-5 @4xl/main:grid-cols-[minmax(0,1fr)_20rem]">
           <Panel>
             <div className="grid gap-6">
               {section === "assignment" || section === "coverage" || section === "day-of" ? (

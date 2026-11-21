@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { agreementPath, CATEGORY, READINESS, templatePath, when } from "@/lib/app/agreements";
 
 import { api } from "../../../../convex/_generated/api";
+import { StickyBar } from "@/components/app/layout";
 
 const STATUS: Record<string, { label: string; tone: "neutral" | "info" | "success" }> = { draft: { label: "Draft", tone: "neutral" }, in_review: { label: "In review", tone: "info" }, approved: { label: "Approved", tone: "success" }, archived: { label: "Archived", tone: "neutral" } };
 
@@ -192,14 +193,14 @@ function TemplateForm({ template, templateId }: { template: TemplateData; templa
         {editable ? <Button size="sm" variant="secondary" onClick={() => setExtra((c) => [...c, { key: "x_", label: "", type: "text", group: "scope", ask: "" }])}>Add a field</Button> : null}
       </Panel>
       {editable ? (
-        <div className="sticky bottom-3 z-10 grid gap-2 rounded-2xl border border-border bg-card/95 p-3 shadow-sm backdrop-blur">
+        <StickyBar className="grid gap-2 rounded-2xl border border-border bg-card/95 p-3 shadow-sm backdrop-blur">
           <Field label="What changed (optional)"><TextInput value={note} onChange={(event) => setNote(event.target.value)} /></Field>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="primary" loading={busy} disabled={!dirty} onClick={() => void run(async () => { await save({ companyId, templateId, baseVersion: template.currentVersion, clauses: clauses as never, extra: extra as never, note: note || undefined }); setNote(""); })}>Save as version {template.currentVersion + 1}</Button>
             {!dirty && template.status !== "approved" ? <Button size="sm" variant="secondary" loading={busy} onClick={() => void run(() => approve({ companyId, templateId, version: template.currentVersion }))}>Approve version {template.currentVersion} for use</Button> : null}
             <Button size="sm" variant="ghost" onClick={() => void run(() => archive({ companyId, templateId, archived: true }))}>Archive</Button>
           </div>
-        </div>
+        </StickyBar>
       ) : template.status === "archived" && template.canEdit ? (
         <div><Button size="sm" variant="secondary" onClick={() => void run(() => archive({ companyId, templateId, archived: false }))}>Restore this template</Button></div>
       ) : null}
