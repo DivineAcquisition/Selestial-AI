@@ -9,7 +9,7 @@ import { v } from "convex/values";
 
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { internalAction, internalMutation, internalQuery } from "./_generated/server";
+import { internalAction, internalMutation, internalQuery, type MutationCtx } from "./_generated/server";
 import { managerMutation, managerQuery, staffMutation, staffQuery } from "./lib/builders";
 import { notFound, userError } from "./lib/errors";
 import { AREAS, CLOSE_BY_HAND, KIND_LABELS, SEVERITIES, areaValidator, checkValidator, nextActor, severityRank, stateValidator, type Area, type Severity, type State } from "./lib/operations/catalog";
@@ -18,6 +18,8 @@ import { reevaluate, resolveIncident, runDetector, stateWords, verifyIncident } 
 import { ALERT_CHANNELS, type AlertLine } from "./lib/operations/alerts";
 import { queueStaffAlert } from "./lib/operations/notify";
 import { incidentReference, ownerCard, ownerUpdate } from "./lib/operations/owner";
+import { AUTO_RECONCILE_MS, reconcilable, startReconcile } from "./lib/operations/reconcile";
+import { recordEvent } from "./lib/events";
 import { text } from "./lib/text";
 
 const MINUTE = 60 * 1000;
@@ -57,6 +59,8 @@ export const runCheck = internalMutation({
   handler: async (ctx, args) => {
     const now = Date.now();
     const result = await runDetector(ctx, detectorFor(args.check), now);
+    // A fresh unconfirmed text is checked with the provider by Selestial itself; an older one waits for a person.
+    if (args.check === "uncertain_messages") await autoReconcile(ctx, now);
     if (args.check === "inbound_processing") {
       const old = await ctx.db
         .query("opsSignals")
@@ -73,6 +77,14 @@ export const runCheck = internalMutation({
     return result;
   },
 });
+
+async function autoReconcile(ctx: MutationCtx, now: number) {
+  const rows = await ctx.db
+    .query("messages")
+    .withIndex("by_status_attempted", (q) => q.eq("status", "unconfirmed").gte("attemptedAt", now - AUTO_RECONCILE_MS))
+    .take(50);
+  for (const message of rows) if (reconcilable(message, now) && !message.reconcile) await startReconcile(ctx, message, { kind: "system" });
+}
 
 /** A provider callback that verified but could not be processed (convex/lib/builders.ts providerWebhook). */
 export const webhookFailed = internalMutation({
@@ -485,5 +497,86 @@ export const contactSupport = managerMutation({
       `What Selestial has done: ${card.done}`,
     ];
     return { reference, subject: `Help with ${reference}: ${card.title}`, body: `${lines.join("\n")}\n\n(Add anything else you'd like us to know here.)` };
+  },
+});
+
+// ── Unconfirmed messages: check with the provider, or leave it ───────────────────────────────────────
+
+const PURPOSE: Record<string, string> = { offer: "Job offer", backup_offer: "Job offer", assignment_confirmed: "Job confirmation", reminder: "Visit reminder", before_photos: "Photo reminder", check_in_nudge: "Check-in reminder", offer_withdrawn: "Offer withdrawn", assignment_ended: "Assignment ended" };
+
+function masked(to: string | undefined, channel: string) {
+  if (!to) return "";
+  if (channel === "email") {
+    const [name, domain] = to.split("@");
+    return `${name.slice(0, 1)}…@${domain ?? ""}`;
+  }
+  return `…${to.slice(-4)}`;
+}
+
+/**
+ * The messages behind "we're checking whether a message was sent": what each was, to whom (masked),
+ * and whether it can still be checked with the provider. Never the message's words.
+ */
+export const uncertainMessages = managerQuery({
+  args: { incidentId: v.id("incidents") },
+  handler: async (ctx, args) => {
+    const incident = await ctx.db.get(args.incidentId);
+    if (!incident || incident.companyId !== ctx.companyId || incident.kind !== "message_unconfirmed") notFound();
+    const now = Date.now();
+    const out = [];
+    for (const related of incident.related) {
+      if (related.table !== "messages") continue;
+      const id = ctx.db.normalizeId("messages", related.id);
+      const message = id ? await ctx.db.get(id) : null;
+      if (!message || message.companyId !== ctx.companyId || message.status !== "unconfirmed" || message.reviewedAt !== undefined) continue;
+      const channel = message.channel ?? "sms";
+      out.push({
+        id: message._id,
+        what: PURPOSE[message.purpose] ?? (channel === "email" ? "Email" : "Text"),
+        channel,
+        to: masked(message.to, channel),
+        attemptedAt: message.attemptedAt ?? message.queuedAt,
+        checking: message.reconcile !== undefined,
+        canCheck: reconcilable(message, now),
+        visit: message.jobId ?? null,
+      });
+    }
+    return out;
+  },
+});
+
+async function unconfirmedOf(ctx: { db: MutationCtx["db"]; companyId: Id<"companies"> }, messageId: Id<"messages">) {
+  const message = await ctx.db.get(messageId);
+  if (!message || message.companyId !== ctx.companyId) notFound();
+  return message;
+}
+
+/**
+ * Check with the texting provider whether an unconfirmed text went, and send it only if it never did
+ * (convex/lib/operations/reconcile.ts). It reaches a person, so a support session needs communications.send.
+ */
+export const checkMessage = managerMutation({
+  args: { messageId: v.id("messages") },
+  support: { capability: "communications.send", summary: "checked with the texting provider whether a message went" },
+  handler: async (ctx, args) => {
+    const message = await unconfirmedOf(ctx, args.messageId);
+    if (message.status !== "unconfirmed" && !message.reconcile) throw userError("This message isn't waiting on a check any more.");
+    if (!message.reconcile && !reconcilable(message, Date.now())) throw userError("It's too late to check this one with the provider: its 24-hour window has passed.");
+    const started = await startReconcile(ctx, message, ctx.support ? { kind: "support", staffId: ctx.support.staff._id, sessionId: ctx.support.session._id } : { kind: "member", memberId: ctx.member._id });
+    await recordEvent(ctx, { companyId: ctx.companyId, type: "message.reconcile_requested", actor: { kind: "member", memberId: ctx.member._id }, subject: { table: "messages", id: message._id } });
+    return started;
+  },
+});
+
+/** Leave an unconfirmed message as it is: nothing is sent, and it is no longer tracked. */
+export const leaveMessage = managerMutation({
+  args: { messageId: v.id("messages") },
+  support: { capability: "records.edit", summary: "marked an unconfirmed message as handled" },
+  handler: async (ctx, args) => {
+    const message = await unconfirmedOf(ctx, args.messageId);
+    if (message.status !== "unconfirmed" || message.reconcile) return null;
+    await ctx.db.patch(message._id, { reviewedAt: Date.now(), reviewedBy: ctx.support ? `staff:${ctx.support.staff._id}` : `member:${ctx.member._id}` });
+    await recordEvent(ctx, { companyId: ctx.companyId, type: "message.left_unconfirmed", actor: { kind: "member", memberId: ctx.member._id }, subject: { table: "messages", id: message._id } });
+    return null;
   },
 });

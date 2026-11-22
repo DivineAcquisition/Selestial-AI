@@ -119,7 +119,8 @@ export const MESSAGE_CHANGES: Record<MessageStatus, readonly MessageStatus[]> = 
   sent: ["delivered", "failed"],
   delivered: [],
   failed: [],
-  unconfirmed: ["delivered", "failed"],
+  // "queued" only when a text is checked with the provider under its own idempotency key (convex/lib/operations/reconcile.ts).
+  unconfirmed: ["delivered", "failed", "queued"],
   not_sent: [],
 };
 

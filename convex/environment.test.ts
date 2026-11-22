@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import { autumnConfig } from "./lib/billing/autumn";
 import { emailProvider } from "./lib/email/provider";
-import { environment, NOT_SENT_ON_TEST, PRODUCTION_DEPLOYMENTS, testRecipientAllowed } from "./lib/environment";
+import { environment, movedTo, NOT_SENT_ON_TEST, PRODUCTION_DEPLOYMENTS, testRecipientAllowed } from "./lib/environment";
 import { stripeConfig } from "./lib/finance/stripe";
 import { orderNumber, searchNumbers } from "./lib/messaging/telnyxAccount";
 import { telnyxProvider } from "./lib/messaging/telnyx";
@@ -17,7 +17,7 @@ import { company, readyMessaging, refusal, start, staffWith } from "../tests/har
 
 const TEST_BACKEND = "https://happy-otter-123.convex.cloud";
 const LIVE_BACKEND = `https://${PRODUCTION_DEPLOYMENTS[0]}.convex.cloud`;
-const SAVED = ["CONVEX_CLOUD_URL", "TEST_RECIPIENTS", "EMAIL_PROVIDER", "RESEND_API_KEY", "EMAIL_FROM", "TELNYX_API_KEY", "STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "AUTUMN_SECRET_KEY", "STAFF_BOOTSTRAP_EMAIL"];
+const SAVED = ["CONVEX_CLOUD_URL", "MOVED_TO", "TEST_RECIPIENTS", "EMAIL_PROVIDER", "RESEND_API_KEY", "EMAIL_FROM", "TELNYX_API_KEY", "STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "AUTUMN_SECRET_KEY", "STAFF_BOOTSTRAP_EMAIL"];
 const raw = (to: string) => btoa(`To: Customer <${to}>\r\nSubject: Hi\r\n\r\nHello`).replace(/\+/g, "-").replace(/\//g, "_");
 
 describe("Which backend this is, and what a backend that is not production may do", () => {
@@ -113,6 +113,44 @@ describe("Which backend this is, and what a backend that is not production may d
     process.env.CONVEX_CLOUD_URL = LIVE_BACKEND;
     process.env.STRIPE_SECRET_KEY = "sk_live_example";
     expect(stripeConfig()).toMatchObject({ livemode: true });
+  });
+
+  test("a backend that used to be live forwards only to a Convex site, and never while it is production", () => {
+    const live = `https://${PRODUCTION_DEPLOYMENTS[0]}.convex.site`;
+    expect(movedTo({ CONVEX_CLOUD_URL: TEST_BACKEND, MOVED_TO: `${live}/` })).toBe(live);
+    expect(movedTo({ CONVEX_CLOUD_URL: TEST_BACKEND })).toBeNull();
+    expect(movedTo({ CONVEX_CLOUD_URL: LIVE_BACKEND, MOVED_TO: "https://other-name-1.convex.site" })).toBeNull();
+    expect(movedTo({ CONVEX_CLOUD_URL: TEST_BACKEND, MOVED_TO: "https://example.com" })).toBeNull();
+    expect(movedTo({ CONVEX_CLOUD_URL: TEST_BACKEND, MOVED_TO: "https://happy-otter-123.convex.site" })).toBeNull();
+    expect(movedTo({ MOVED_TO: live })).toBeNull();
+  });
+
+  test("old addresses on a backend that used to be live are answered by the live backend, unchanged", async () => {
+    const live = `https://${PRODUCTION_DEPLOYMENTS[0]}.convex.site`;
+    const seen: { url: string; method: string; body: string | null; signature: string | null }[] = [];
+    vi.stubGlobal("fetch", async (input: string | URL, init: RequestInit = {}) => {
+      seen.push({ url: String(input), method: init.method ?? "GET", body: init.body ? String(init.body) : null, signature: new Headers(init.headers).get("telnyx-signature-ed25519") });
+      return new Response(JSON.stringify({ ok: true }), { status: 202, headers: { "content-type": "application/json" } });
+    });
+    try {
+      const t = start();
+      process.env.CONVEX_CLOUD_URL = TEST_BACKEND;
+      process.env.MOVED_TO = live;
+      const webhook = await t.fetch("/webhooks/telnyx?x=1", { method: "POST", headers: { "content-type": "application/json", "telnyx-signature-ed25519": "sig" }, body: '{"data":{}}' });
+      expect(webhook.status).toBe(202);
+      const unsubscribe = await t.fetch("/notify/unsubscribe?t=token-1", { method: "POST", body: "List-Unsubscribe=One-Click" });
+      expect(unsubscribe.status).toBe(202);
+      expect(seen).toEqual([
+        { url: `${live}/webhooks/telnyx?x=1`, method: "POST", body: '{"data":{}}', signature: "sig" },
+        { url: `${live}/notify/unsubscribe?t=token-1`, method: "POST", body: "List-Unsubscribe=One-Click", signature: null },
+      ]);
+      // Without MOVED_TO the route answers itself again (an unsigned callback is refused).
+      delete process.env.MOVED_TO;
+      expect((await t.fetch("/webhooks/telnyx", { method: "POST", body: "{}" })).status).toBe(401);
+      expect(seen.length).toBe(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

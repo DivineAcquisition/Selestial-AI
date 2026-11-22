@@ -55,6 +55,36 @@ provider incident is one step more serious than its companies'.
   keeps its own incident and impact. Waiting-for-owner incidents (an expired authorization) are never
   grouped: each company's reconnect is its own. The shared one resolves when none of its companies' is open.
 
+## Unconfirmed messages: settled with the provider, never sent twice
+
+A send that started and never answered is `unconfirmed` (`messaging.sweepStuck`). Nobody knows whether it
+went, so it is never simply sent again. Telnyx settles that question: `POST /v2/messages` keeps a successful
+response for 24 hours under its `Idempotency-Key` and replays it, marked `Idempotent-Replayed: true`, when
+the same key and body come again; the same key still in progress is a 409, and the same key with a
+different body is a 422 (verified in Telnyx's OpenAPI on November 21, 2026). Every attempt of one message
+uses one key, `selestial-<message id>`.
+
+So a check (`convex/lib/operations/reconcile.ts`) puts the message back through the outbox under that key:
+
+- **It went:** Telnyx replays its answer. The message becomes `sent` with the provider's id and
+  `replayedAt`; nothing new is sent and nothing is charged twice (the original hold carries over).
+- **It never arrived at Telnyx:** it goes now, but only after the send policy (consent, STOP, pauses,
+  suspension, quiet hours), billing and the record's own checks run again. A text that is no longer
+  relevant (Dispatch already offered the visit to someone else, so the old link is closed) is not sent.
+- **Telnyx holds a different body under the key:** still unknown; it stays `unconfirmed`.
+- **Any refusal on the way** leaves it `unconfirmed` with the reason, never `not_sent`, because the first
+  attempt may still have gone. A check is never held for later: past 23 hours from the first attempt, the
+  replay window could close, so nothing is sent.
+
+Who checks: the monitor checks a text that went unanswered in the last 30 minutes by itself, while it is
+almost certainly still wanted. An older one waits for a person: the owner's card lists each message
+(masked recipient, never its words) with **Check, and send only if it never went** and **Leave it**. Leaving
+it stops tracking it and sends nothing. In a support session, checking needs `communications.send`, and the
+send is refused if the session has ended by the time it runs. While a check is in flight the incident stays
+open as *recovering automatically*; it closes when the next run finds the message settled.
+
+Email is not checked this way: Selestial has not verified replay behavior for its email routes.
+
 ## The checks
 
 One cron (`operations checks find and verify incidents`, every 5 minutes) starts each check whose interval

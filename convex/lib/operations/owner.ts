@@ -17,6 +17,8 @@ export type CardAction =
   | { kind: "link"; label: string; href: string }
   /** Runs the existing retry for one piece of first agent work (activation.retry, Owner only). */
   | { kind: "retry"; label: string; taskId: string }
+  /** Each unconfirmed message, with "check with the provider" and "leave it" (convex/operations.ts uncertainMessages). */
+  | { kind: "messages"; label: string }
   /** Nothing for the company to do: the card shows what Selestial is doing, and support is a click away. */
   | { kind: "none" };
 
@@ -110,9 +112,12 @@ export function ownerCard(incident: Doc<"incidents">): OwnerCard | null {
     case "message_unconfirmed":
       return {
         title: incident.occurrences === 1 ? "We're checking whether a message was sent" : `We're checking whether ${incident.occurrences} messages were sent`,
-        affected: "It isn't known yet whether they reached the person.",
-        done: "Selestial paused any further attempt while it checks the delivery status, so nobody gets the same message twice.",
-        action: { kind: "none" },
+        affected: incident.occurrences === 1 ? "It isn't known yet whether it reached the person." : "It isn't known yet whether they reached the people they were for.",
+        done:
+          incident.state === "recovering"
+            ? "Selestial paused any further attempt while it checks the delivery status with the texting provider, so nobody gets the same message twice."
+            : "Selestial paused any further attempt. The provider's delivery report never arrived, so you decide whether each one is still worth checking.",
+        action: incident.state === "recovering" ? { kind: "none" } : { kind: "messages", label: incident.occurrences === 1 ? "View message" : "Review messages" },
         places: ["home"],
         tone: "info",
       };

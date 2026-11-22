@@ -27,6 +27,8 @@ import { EXECUTORS } from "./googleExecutors";
 
 const STUCK_MS = 15 * 60 * 1000;
 const READS: Doc<"googleJobs">["kind"][] = ["calendar_sync", "lsa_poll", "knowledge_import"];
+/** Writes other people see: a public review reply, an ad going live, a conversion reported. Held while Selestial has suspended the company's outbound activity. */
+const PUBLIC_WRITES: Doc<"googleJobs">["kind"][] = ["review_reply", "ads_campaign", "ads_activate", "conversion"];
 
 export const tick = internalMutation({
   args: {},
@@ -36,6 +38,14 @@ export const tick = internalMutation({
     for (const status of ["queued", "uncertain"] as const) {
       const due = await ctx.db.query("googleJobs").withIndex("by_status_next", (q) => q.eq("status", status).lte("nextAt", now)).take(25);
       for (const job of due) {
+        // A suspension stops public writes too, not only texts and emails (docs/operations/05-recovery-runbook.md).
+        if (PUBLIC_WRITES.includes(job.kind)) {
+          const company = await ctx.db.get(job.companyId);
+          if (!company || company.suspendedAt !== undefined) {
+            await ctx.db.patch(job._id, { nextAt: now + 15 * 60_000, lastError: "Held: Selestial suspended this company's outbound activity.", updatedAt: now });
+            continue;
+          }
+        }
         // A company's Google work is paced, so one busy company cannot exhaust the shared quota.
         if (!(await allow(ctx, `google.jobs:${job.companyId}`, 30, 60_000))) {
           await ctx.db.patch(job._id, { nextAt: now + 60_000 });

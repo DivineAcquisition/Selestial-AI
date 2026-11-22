@@ -4,8 +4,11 @@ Two Convex backends, with one rule: **only `main` changes what the live site run
 
 | Backend | Used by | Who deploys to it |
 |---|---|---|
-| Live: `terrific-avocet-835` | www, app and link.selestial.io (Vercel production). Real companies' data. | Only Vercel's production build, on a merge to `main` (`scripts/build.mjs`). Never by hand. |
-| Test: a separate deployment in the same Convex project | Work in progress: Claude sessions, local development, trying a branch. Sample data only. | Anyone, any branch, any time. |
+| Live: `stoic-gazelle-731` (Convex's production deployment) | www, app and link.selestial.io (Vercel production). Real companies' data. | Only Vercel's production build, on a merge to `main` (`scripts/build.mjs`). Never by hand. |
+| Test: `terrific-avocet-835` (a development deployment) | Work in progress: Claude sessions, local development, trying a branch. | Anyone, any branch, any time. |
+
+Until November 2026 the live site ran on `terrific-avocet-835`. It moved to the production deployment so that
+nothing users touch lives on a development deployment; see "The move to the production deployment" below.
 
 Why: both used to share the live backend, and `npx convex deploy` from one branch replaces every function
 and index another branch had deployed. On November 18, 2026 a deploy of `main` removed unmerged onboarding
@@ -83,3 +86,37 @@ can sign in on one.
   deployments (a backend per preview) fix that and need a paid Convex plan.
 - Older docs that say "run `npx convex deploy`" (for example `docs/ai/02-status.md`) describe what a deploy
   does. On the live backend it now happens through the merge, not by hand.
+
+## The move to the production deployment (November 2026)
+
+The live site ran on the development deployment `terrific-avocet-835` while Convex's production deployment
+`stoic-gazelle-731` sat empty, with some providers already pointed at it (the Stripe Connect webhook, the
+Telnyx messaging profile, a Resend webhook). The move puts every user-facing thing on `stoic-gazelle-731`.
+
+Order of the cut-over (each step checked before the next):
+
+1. **Settings.** `stoic-gazelle-731` carries the same values as the live backend for everything that reads
+   stored data: `MAILBOX_TOKEN_KEY` (sealed tokens and tax IDs), `ACTION_LINK_SECRET` and `PUBLIC_FORM_SECRET`
+   (links and forms already sent), and the provider keys. Webhook secrets are each provider endpoint's own:
+   they match the endpoint that points at `stoic-gazelle-731`.
+2. **Code.** The current `main` is deployed to `stoic-gazelle-731` before any data, so the import is checked
+   against today's schema. Until the switch it is not production by name, so it sends nothing.
+3. **Rollback point.** A backup of each deployment, with file storage.
+4. **Data.** A snapshot of `terrific-avocet-835`, with file storage, imported into `stoic-gazelle-731`. Record
+   and file IDs are kept, so every reference and signed link still works. Row counts are compared table by
+   table. (There were no pending scheduled functions to carry over.)
+5. **Switch.** Vercel's production `CONVEX_DEPLOY_KEY` becomes the production deployment's key and the pull
+   request that names `stoic-gazelle-731` in `PRODUCTION_DEPLOYMENTS` merges: the build deploys the backend
+   and builds the site against it. From that moment `terrific-avocet-835` is a test backend: it sends only to
+   `TEST_RECIPIENTS` and ignores live Stripe and Autumn keys.
+6. **Old addresses.** `MOVED_TO=https://stoic-gazelle-731.convex.site` on `terrific-avocet-835`: Unsubscribe
+   buttons, crew photo links, OAuth returns and provider webhooks that still carry the old address are passed
+   on unchanged and answered by the live backend (`forwardIfMoved`, convex/lib/builders.ts).
+7. **Providers** pointed at `https://stoic-gazelle-731.convex.site`: Stripe (Connect `/webhooks/stripe`, and
+   `/webhooks/stripe-billing`), Resend (`/webhooks/resend`; the old endpoint removed), Telnyx messaging profile
+   (`/webhooks/telnyx`), Autumn (`/webhooks/autumn`), Google Cloud (OAuth redirect URIs `/oauth/google/callback`,
+   the Pub/Sub push subscription `/webhooks/google/pubsub`), Jobber (`/oauth/jobber/callback`), and any Google
+   Ads lead form (`/webhooks/google/leads`).
+8. **Claude's environments.** "Selestial Production" keeps the production key (it now reads live data);
+   "Selestial" keeps the `terrific-avocet-835` key (the test backend). After a week with no rollback, the test
+   backend's copy of real data is cleared and its provider keys replaced with test keys.

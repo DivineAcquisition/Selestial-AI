@@ -31,6 +31,7 @@ import { inboxPurposeOf, routeFor, threadFor, WAITING_FOR_INBOX } from "./lib/in
 import { MailboxAuthError } from "./lib/recruiter/mailbox";
 import { unseal } from "./lib/recruiter/secrets";
 import { messagingProvider } from "./lib/messaging/provider";
+import { reconcileStop } from "./lib/operations/reconcile";
 import { afterApplicantMessage } from "./lib/recruiter/delivery";
 import { applicantLinkPath, applicantLinkState } from "./lib/recruiter/links";
 import { cleanerMessageAtSend } from "./lib/cleaners/outbox";
@@ -75,6 +76,12 @@ export const claim = internalMutation({
   handler: async (ctx, args) => {
     const message = await ctx.db.get(args.messageId);
     if (!message || (message.status !== "queued" && message.status !== "held") || !message.to) return null;
+    // A check with the provider (convex/lib/operations/reconcile.ts) goes only inside the provider's replay
+    // window from the first attempt; past it, the same key could send a second copy.
+    if (message.reconcile) {
+      const stop = await reconcileStop(ctx, message);
+      if (stop) return backToUnconfirmed(ctx, message, stop);
+    }
     // A notice to a member of the company is Selestial's own mail: its checks are the member's, not a contact's.
     if (message.purpose === "member_notice") return claimNotice(ctx, message);
     // The policy is asked again now: a STOP, a withdrawn permission, a suspension or a pause that came
@@ -83,12 +90,16 @@ export const claim = internalMutation({
     const answer = await checkSend(ctx, { companyId: message.companyId, channel: message.channel ?? "sms", to: message.to, now: Date.now(), messageId: message._id, ...(await intentOf(ctx, message)) });
     if (!answer.ok) {
       // A sign-in code is only useful now, and its code travels only in this call: it is never held for later.
+      // A check with the provider is never held for later (the replay window would pass): a person decides again.
+      if (message.reconcile) return backToUnconfirmed(ctx, message, `Not checked with the provider: ${answer.words}`);
       if (answer.retryAt !== undefined && message.purpose !== "verification_code") {
         await ctx.db.patch(message._id, { status: "held", problem: answer.words });
         await ctx.scheduler.runAt(answer.retryAt, internal.messaging.deliver, { messageId: message._id });
         await logStep(ctx, message, { type: "message.held", data: { purpose: message.purpose, policy: answer.code, retryAt: answer.retryAt } });
         return null;
       }
+      // Refused while checking with the provider: still not known whether the first attempt went, so it stays unconfirmed.
+      if (message.reconcile) return backToUnconfirmed(ctx, message, `Not checked with the provider: ${answer.words}`);
       await ctx.db.patch(message._id, { status: "not_sent", problem: answer.words, refusal: answer.code });
       await logStep(ctx, message, { type: "message.not_sent", data: { purpose: message.purpose, policy: answer.code } });
       if (message.assignmentId && (message.purpose === "offer" || message.purpose === "backup_offer")) {
@@ -104,6 +115,8 @@ export const claim = internalMutation({
       const token = link ? await tokenFor(link) : null;
       // A text is never sent with a link that is already closed.
       if (!link || !token || linkState(link, Date.now()) !== "active") {
+        // Refused while checking with the provider: still not known whether the first attempt went, so it stays unconfirmed.
+        if (message.reconcile) return backToUnconfirmed(ctx, message, `Not checked with the provider: ${"The link was closed before the text went out."}`);
         await ctx.db.patch(message._id, { status: "not_sent", problem: "The link was closed before the text went out." });
         await logStep(ctx, message, { type: "message.not_sent", data: { purpose: message.purpose } });
         return null;
@@ -116,6 +129,8 @@ export const claim = internalMutation({
       // A Cleaners message is checked once more as it goes: the link still open, the follow-up still needed.
       const checked = await cleanerMessageAtSend(ctx, message, (token) => portalUrl(token));
       if (!checked.ok) {
+        // Refused while checking with the provider: still not known whether the first attempt went, so it stays unconfirmed.
+        if (message.reconcile) return backToUnconfirmed(ctx, message, `Not checked with the provider: ${checked.problem}`);
         await ctx.db.patch(message._id, { status: "not_sent", problem: checked.problem });
         await logStep(ctx, message, { type: "message.not_sent", data: { purpose: message.purpose } });
         return null;
@@ -125,6 +140,8 @@ export const claim = internalMutation({
     // A sign-in code travels only in the scheduled call, never in the stored message. Without it, nothing goes.
     if (message.purpose === "verification_code") {
       if (!args.code) {
+        // Refused while checking with the provider: still not known whether the first attempt went, so it stays unconfirmed.
+        if (message.reconcile) return backToUnconfirmed(ctx, message, `Not checked with the provider: ${"The sign-in code wasn't available when this was due to go, so nothing was sent. Ask for a new code."}`);
         await ctx.db.patch(message._id, { status: "not_sent", problem: "The sign-in code wasn't available when this was due to go, so nothing was sent. Ask for a new code." });
         await logStep(ctx, message, { type: "message.not_sent", data: { purpose: message.purpose } });
         return null;
@@ -158,6 +175,8 @@ export const claim = internalMutation({
     if (message.purpose === "earnings_statement") {
       const statement = await statementClaim(ctx, message);
       if ("problem" in statement) {
+        // Refused while checking with the provider: still not known whether the first attempt went, so it stays unconfirmed.
+        if (message.reconcile) return backToUnconfirmed(ctx, message, `Not checked with the provider: ${statement.problem}`);
         await ctx.db.patch(message._id, { status: "not_sent", problem: statement.problem });
         await logStep(ctx, message, { type: "message.not_sent", data: { purpose: message.purpose } });
         return null;
@@ -169,6 +188,8 @@ export const claim = internalMutation({
       // A message to a customer about an invoice: still true now, and its pay link made only now.
       const customer = await customerClaim(ctx, message);
       if ("problem" in customer) {
+        // Refused while checking with the provider: still not known whether the first attempt went, so it stays unconfirmed.
+        if (message.reconcile) return backToUnconfirmed(ctx, message, `Not checked with the provider: ${customer.problem}`);
         await ctx.db.patch(message._id, { status: "not_sent", problem: customer.problem });
         await logStep(ctx, message, { type: "message.not_sent", data: { purpose: message.purpose } });
         return null;
@@ -181,6 +202,8 @@ export const claim = internalMutation({
       // A message to a customer about their booking: still true now, with a fresh private link made only now.
       const booking = await bookingClaim(ctx, message);
       if ("problem" in booking) {
+        // Refused while checking with the provider: still not known whether the first attempt went, so it stays unconfirmed.
+        if (message.reconcile) return backToUnconfirmed(ctx, message, `Not checked with the provider: ${booking.problem}`);
         await ctx.db.patch(message._id, { status: "not_sent", problem: booking.problem });
         await logStep(ctx, message, { type: "message.not_sent", data: { purpose: message.purpose } });
         return null;
@@ -191,6 +214,8 @@ export const claim = internalMutation({
       // A Retention message: the case still open and Retention's to write in, and its private link made only now.
       const care = await careClaim(ctx, message);
       if ("problem" in care) {
+        // Refused while checking with the provider: still not known whether the first attempt went, so it stays unconfirmed.
+        if (message.reconcile) return backToUnconfirmed(ctx, message, `Not checked with the provider: ${care.problem}`);
         await ctx.db.patch(message._id, { status: "not_sent", problem: care.problem });
         await recordEvent(ctx, { companyId: message.companyId, type: "message.not_sent", actor: { kind: "system" }, subject: { table: "messages", id: message._id }, data: { purpose: message.purpose } });
         await afterCareMessage(ctx, { ...message, status: "not_sent", problem: care.problem });
@@ -203,6 +228,8 @@ export const claim = internalMutation({
       // A Sales message to a customer: every record it links still open, and its links made only now.
       const sales = await salesClaim(ctx, message, (await intentOf(ctx, message)).agent !== undefined);
       if ("problem" in sales) {
+        // Refused while checking with the provider: still not known whether the first attempt went, so it stays unconfirmed.
+        if (message.reconcile) return backToUnconfirmed(ctx, message, `Not checked with the provider: ${sales.problem}`);
         await ctx.db.patch(message._id, { status: "not_sent", problem: sales.problem });
         await logStep(ctx, message, { type: "message.not_sent", data: { purpose: message.purpose } });
         if (message.opportunityId) await afterSalesMessage(ctx, { ...message, status: "not_sent", problem: sales.problem });
@@ -219,6 +246,7 @@ export const claim = internalMutation({
     const inboxPurpose = inboxPurposeOf(message);
     if (inboxPurpose) {
       const route = await routeFor(ctx, message.companyId, inboxPurpose);
+      if (route.kind === "wait" && message.reconcile) return backToUnconfirmed(ctx, message, `Not checked with the provider: ${route.words}`);
       if (route.kind === "wait") {
         await ctx.db.patch(message._id, { status: "held", problem: route.words, refusal: WAITING_FOR_INBOX });
         await logStep(ctx, message, { type: "message.held", data: { purpose: message.purpose, policy: WAITING_FOR_INBOX } });
@@ -232,11 +260,14 @@ export const claim = internalMutation({
     const sendIntent = await intentOf(ctx, message);
     const billed = await planOutbound(ctx, message, { body, viaGmail: via !== null, agent: message.agent ?? sendIntent.agent, memberId: message.authorId, origin: sendIntent.origin });
     if (billed.kind === "refuse") {
+      // Refused while checking with the provider: still not known whether the first attempt went, so it stays unconfirmed.
+      if (message.reconcile) return backToUnconfirmed(ctx, message, `Not checked with the provider: ${billed.words}`);
       await ctx.db.patch(message._id, { status: "not_sent", problem: billed.words, refusal: billed.code });
       await logStep(ctx, message, { type: "message.not_sent", data: { purpose: message.purpose, policy: billed.code } });
       if (message.assignmentId && (message.purpose === "offer" || message.purpose === "backup_offer")) await ctx.scheduler.runAfter(0, internal.dispatchOps.offerTextRefused, { messageId: message._id, byAgent: sendIntent.agent !== undefined });
       return null;
     }
+    if (billed.kind === "hold" && message.reconcile) return backToUnconfirmed(ctx, message, `Not checked with the provider: ${billed.words}`);
     if (billed.kind === "hold") {
       await ctx.db.patch(message._id, { status: "held", holdReason: billed.reason, heldAt: message.heldAt ?? Date.now(), problem: billed.words });
       await logStep(ctx, message, { type: "message.held", data: { purpose: message.purpose, policy: billed.reason } });
@@ -250,6 +281,8 @@ export const claim = internalMutation({
     if (channel === "email" && !via) {
       const framed = await companyEmail(ctx, message, { fromName, text: body });
       if (!framed.ok) {
+        // Refused while checking with the provider: still not known whether the first attempt went, so it stays unconfirmed.
+        if (message.reconcile) return backToUnconfirmed(ctx, message, `Not checked with the provider: ${framed.problem}`);
         await ctx.db.patch(message._id, { status: "not_sent", problem: framed.problem });
         await logStep(ctx, message, { type: "message.not_sent", data: { purpose: message.purpose } });
         // Nothing went: whatever was set aside for it is returned.
@@ -308,8 +341,8 @@ async function claimNotice(ctx: MutationCtx, message: Doc<"messages">) {
 }
 
 const resultValidator = v.union(
-  v.object({ ok: v.literal(true), providerMessageId: v.string(), delivered: v.boolean(), parts: v.optional(v.number()) }),
-  v.object({ ok: v.literal(false), retryable: v.boolean(), problem: v.string(), bounced: v.optional(v.boolean()), waitForInbox: v.optional(v.boolean()) }),
+  v.object({ ok: v.literal(true), providerMessageId: v.string(), delivered: v.boolean(), parts: v.optional(v.number()), replayed: v.optional(v.boolean()) }),
+  v.object({ ok: v.literal(false), retryable: v.boolean(), problem: v.string(), bounced: v.optional(v.boolean()), waitForInbox: v.optional(v.boolean()), uncertain: v.optional(v.boolean()) }),
 );
 
 export const settle = internalMutation({
@@ -325,7 +358,8 @@ export const settle = internalMutation({
       .withIndex("by_message", (q) => q.eq("messageId", message._id))
       .first();
     if (result.ok) {
-      await ctx.db.patch(message._id, { status: result.delivered ? "delivered" : "sent", providerMessageId: result.providerMessageId, sentAt: now, ...(result.delivered ? { deliveredAt: now } : {}), ...(result.parts ? { segments: result.parts } : {}), problem: undefined });
+      await ctx.db.patch(message._id, { status: result.delivered ? "delivered" : "sent", providerMessageId: result.providerMessageId, sentAt: message.reconcile && result.replayed ? (message.attemptedAt ?? now) : now, ...(result.delivered ? { deliveredAt: now } : {}), ...(result.parts ? { segments: result.parts } : {}), problem: undefined, reconcile: undefined, ...(result.replayed ? { replayedAt: now } : {}) });
+      if (message.reconcile) await logStep(ctx, message, { type: result.replayed ? "message.reconciled_sent" : "message.reconciled_now", data: { purpose: message.purpose } });
       // Charged on what the provider took: the segments it counted for a text, the recipients for an email.
       if (charge) await captureCharge(ctx, charge._id, { count: (message.channel ?? "sms") === "sms" ? result.parts : message.recipients, provider: message.provider ?? "unknown", providerMessageId: result.providerMessageId });
       await logStep(ctx, message, { type: "message.sent", data: { purpose: message.purpose, attempt: message.attempts } });
@@ -354,6 +388,13 @@ export const settle = internalMutation({
       await ctx.db.patch(message._id, { status: "held", problem: result.problem, refusal: WAITING_FOR_INBOX });
       await logStep(ctx, message, { type: "message.held", data: { purpose: message.purpose, policy: WAITING_FOR_INBOX } });
       if (charge) await releaseCharge(ctx, charge._id, "Nothing was sent; the message waits for the inbox to be reconnected.");
+      return null;
+    }
+    // The provider holds another request under this key: the first attempt reached it. Still not known, never failed.
+    if (result.uncertain) {
+      await ctx.db.patch(message._id, { status: "unconfirmed", problem: result.problem, reconcile: undefined });
+      if (charge) await markPending(ctx, charge._id);
+      await logStep(ctx, message, { type: "message.unconfirmed", data: { purpose: message.purpose } });
       return null;
     }
     if (result.retryable && message.attempts < MAX_ATTEMPTS && message.purpose !== "verification_code") {
@@ -575,6 +616,13 @@ async function applyOutcome(ctx: MutationCtx, message: Doc<"messages">, outcome:
     else if (!message.invoiceId && !message.bookingSessionId && !message.salesLinks && message.purpose !== "earnings_statement") await afterMessageFailed(ctx, { ...message, status: "failed", problem });
     else if (message.opportunityId) await afterSalesMessage(ctx, { ...message, status: "failed", problem });
     return bounced ? ("bounced" as const) : ("failed" as const);
+}
+
+/** A check with the provider that cannot go now: the message is unconfirmed again, exactly as before, and nothing was sent. */
+async function backToUnconfirmed(ctx: MutationCtx, message: Doc<"messages">, problem: string) {
+  await ctx.db.patch(message._id, { status: "unconfirmed", problem, reconcile: undefined });
+  await logStep(ctx, message, { type: "message.reconcile_stopped", data: { purpose: message.purpose } });
+  return null;
 }
 
 /** Run on a schedule: a send that started and never settled is marked unconfirmed and handed on. */

@@ -15,7 +15,7 @@
  */
 
 /** The live backend. Keep scripts/build.mjs's copy the same (convex/environment.test.ts checks). */
-export const PRODUCTION_DEPLOYMENTS: readonly string[] = ["terrific-avocet-835"];
+export const PRODUCTION_DEPLOYMENTS: readonly string[] = ["stoic-gazelle-731"];
 
 export type Environment = "production" | "non_production" | "unknown";
 
@@ -36,6 +36,21 @@ export function environment(env: Record<string, string | undefined> = process.en
 /** True only on a deployment known not to be production. */
 export function isNonProduction(): boolean {
   return environment() === "non_production";
+}
+
+/**
+ * Where a backend that used to be live passes on requests for its old addresses: MOVED_TO, the live
+ * backend's site address (https://<name>.convex.site). Emails, texts and providers sent before the move
+ * still carry the old address (an Unsubscribe button, a crew photo, a webhook), so those requests are
+ * forwarded unchanged and answered by the live backend. Only a non-production backend forwards, and only
+ * to a Convex site address.
+ */
+export function movedTo(env: Record<string, string | undefined> = process.env): string | null {
+  const value = env.MOVED_TO?.trim().replace(/\/+$/, "");
+  if (!value || environment(env) !== "non_production") return null;
+  const match = /^https:\/\/([a-z0-9-]+)\.convex\.site$/i.exec(value);
+  if (!match || match[1].toLowerCase() === deploymentName(env)) return null;
+  return value;
 }
 
 const phoneDigits = (value: string) => value.replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
