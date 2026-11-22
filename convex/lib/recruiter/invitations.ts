@@ -8,6 +8,7 @@
  * Review first. An invitation goes out without a person only when the Owner chose automatic
  * invitations AND raised the permission above Propose AND every item in `autoEligible` holds.
  */
+import { reportAction } from "../controls/report";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import { requestApproval } from "../approvalQueue";
@@ -144,6 +145,7 @@ export async function routeApplication(ctx: MutationCtx, applicationId: Id<"appl
   if (settings.invitationMode === "auto" && authority.level !== "propose" && eligible.ok) {
     if (application.stage !== "received") application = await setStage(ctx, application, "received", RECRUITER, { nextAction: application.nextAction });
     await sendInvitation(ctx, application._id, RECRUITER);
+    await reportAction(ctx, { companyId: company._id, agent: "recruiter", action: SEND_INVITATION, level: authority.level, subject: { table: "applications", id: application._id }, ref: application._id, stage: "queued", kind: "invitation", data: { applicationId: application._id } });
     return;
   }
 
@@ -251,6 +253,7 @@ export async function followUpSweep(ctx: MutationCtx, now: number): Promise<numb
       if (authority.kind !== "level" || authority.level === "off") continue;
       if (authority.level !== "propose") {
         await sendFollowUp(ctx, application._id, attempt, RECRUITER);
+        await reportAction(ctx, { companyId: company._id, agent: "recruiter", action: FOLLOW_UP, level: authority.level, subject: { table: "applications", id: application._id }, ref: `${application._id}:${attempt}`, stage: "queued", kind: "follow_up", data: { applicationId: application._id } });
         acted += 1;
         continue;
       }

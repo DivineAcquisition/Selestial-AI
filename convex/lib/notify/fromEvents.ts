@@ -7,6 +7,7 @@
  * whether (their settings), once (dedupe) and when (night hours); what it says is written when it goes.
  * Nothing here can stop the event from being recorded: a notice that can't be planned is skipped.
  */
+import { approversFor, OWNER_DECIDES } from "../controls/readiness";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx } from "../../_generated/server";
 import type { Actor } from "../events";
@@ -35,6 +36,7 @@ export const NOTICE_EVENT_TYPES = new Set([
   "dispatch.reported",
   "sales.reported",
   "retention.reported",
+  "recruiter.reported",
   // Customer cases (docs/retention/00-architecture.md §9).
   "retention_case.opened",
   "retention_case.needs_attention",
@@ -109,6 +111,20 @@ export async function noticesForEvent(ctx: MutationCtx, event: Recorded): Promis
       return;
     }
     case "approval.requested": {
+      // Routed to the people who can decide it (Agent Controls): a chosen person and backup, or Owners only.
+      const approval = await ctx.db.get(event.subject.id as Id<"approvals">);
+      const company = await ctx.db.get(event.companyId);
+      const row = approval
+        ? await ctx.db
+            .query("permissions")
+            .withIndex("by_company_action", (q) => q.eq("companyId", event.companyId).eq("action", approval.action))
+            .unique()
+        : null;
+      if (approval && company && (row?.approver || OWNER_DECIDES.has(approval.action))) {
+        const approvers = await approversFor(ctx, company, { action: approval.action, level: row?.level ?? "propose", approver: row?.approver, backupMemberId: row?.backupMemberId });
+        await notifyMembers(ctx, { ...base, event: "approval_needed", ref: event.subject.id, only: approvers.people.map((p) => p.memberId) });
+        return;
+      }
       await notifyMembers(ctx, { ...base, event: "approval_needed", ref: event.subject.id });
       return;
     }
@@ -167,14 +183,19 @@ export async function noticesForEvent(ctx: MutationCtx, event: Recorded): Promis
     }
     case "dispatch.reported":
     case "sales.reported":
-    case "retention.reported": {
+    case "retention.reported":
+    case "recruiter.reported": {
       if (event.actor.kind !== "agent") return;
       const data = event.data ?? {};
       // A step that didn't go through moves its case to Needs attention, which sends its own notice.
       if (data.ok === false) return;
-      const facts: NoticeFacts = { agent: event.actor.agent, action: typeof data.action === "string" ? data.action : null, kind: typeof data.kind === "string" ? data.kind : null, at };
-      for (const key of ["jobId", "cleanerId", "opportunityId", "caseId"] as const) if (typeof data[key] === "string") facts[key] = data[key] as string;
-      await notifyMembers(ctx, { ...base, event: "agent_acted", ref: event.id, facts });
+      const action = typeof data.action === "string" ? data.action : null;
+      const stage = typeof data.stage === "string" ? data.stage : "completed";
+      const facts: NoticeFacts = { agent: event.actor.agent, action, kind: typeof data.kind === "string" ? data.kind : null, stage, at };
+      for (const key of ["jobId", "cleanerId", "opportunityId", "caseId", "applicationId"] as const) if (typeof data[key] === "string") facts[key] = data[key] as string;
+      // One notice per piece of work and stage: a retry that reports the same thing again sends nothing new.
+      const ref = typeof data.ref === "string" ? data.ref : event.subject.id;
+      await notifyMembers(ctx, { ...base, event: "agent_acted", ref, key: `${event.actor.agent}:${action ?? "-"}:${stage}`, facts });
       return;
     }
     case "payment.failed": {

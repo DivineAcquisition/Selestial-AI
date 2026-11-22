@@ -37,6 +37,10 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   { table: "tasks", index: "by_company_status_due" },
   { table: "permissions", index: "by_company_action" },
   { table: "approvals", index: "by_company_status_decideBy" },
+  // Agent Controls (convex/lib/controls/schema.ts): every settings change with the policy before and after, and the daily allowance ledger.
+  { table: "controlChanges", index: "by_company_revision" },
+  { table: "allowanceDays", index: "by_company_action_day" },
+  { table: "allowanceReservations", index: "by_company_action_day" },
   { table: "messages", index: "by_company_queued" },
   { table: "coverageRequests", index: "by_company_job" },
   { table: "checklistItems", index: "by_company_job" },

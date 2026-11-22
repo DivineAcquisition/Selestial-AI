@@ -19,6 +19,7 @@ import { caseTables } from "./lib/texting/caseSchema";
 import { financeTables } from "./lib/finance/schema";
 import { clientsTables, communicationValidator, propertyDetailsValidator, propertyKindValidator, relationshipValidator } from "./lib/clients/schema";
 import { trustTables } from "./lib/trust/schema";
+import { approverValidator, controlsTables } from "./lib/controls/schema";
 import { staffTables } from "./lib/trust/staffSchema";
 import { v } from "convex/values";
 
@@ -254,6 +255,8 @@ export default defineSchema({
     timezone: v.string(),
     /** Agents the owner has paused. Pausing all four pauses everything. */
     pausedAgents: v.array(agentValidator),
+    /** Counts every change to the agent policy (permissions, routing, pauses), so a stale preview or tab cannot overwrite a newer one. */
+    controlsRevision: v.optional(v.number()),
     dispatch: v.optional(dispatchSettingsValidator),
     dispatchPolicy: v.optional(dispatchPolicyValidator),
     recruiter: v.optional(recruiterSettingsValidator),
@@ -620,6 +623,14 @@ export default defineSchema({
     /** Money actions only. */
     perActionCents: v.optional(v.number()),
     perDayCents: v.optional(v.number()),
+    /**
+     * Who decides this action's approvals (Agent Controls). Absent: any Owner or Manager. "owner": Owners only.
+     * A member: that person (an Owner or Manager), with `backupMemberId` and any Owner able to decide too.
+     */
+    approver: v.optional(approverValidator),
+    backupMemberId: v.optional(v.id("members")),
+    /** A level above Ask me first is temporary until this instant; after it, the action asks first (convex/lib/authority.ts). */
+    until: v.optional(v.number()),
     updatedBy: v.id("members"),
     updatedAt: v.number(),
   }).index("by_company_action", ["companyId", "action"]),
@@ -1038,6 +1049,9 @@ export default defineSchema({
   ...operationsTables,
   // ── Admin Support Sessions: staff inside a company, for a reason and a time (convex/lib/support) ─────
   ...supportTables,
+
+  // ── Agent Controls: policy history and money allowances (convex/lib/controls/schema.ts) ─────────
+  ...controlsTables,
 
   // ── Events: append-only ────────────────────────────────────────────────────────────────────────
   events: defineTable({

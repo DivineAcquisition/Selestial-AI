@@ -33,32 +33,36 @@ describe("permissions per action", () => {
     expect(await level("dispatch.send_reminder")).toEqual({ kind: "level", level: "execute" });
     // Permission to send a reminder grants nothing else.
     expect(await level("dispatch.reassign_confirmed_visit")).toEqual({ kind: "level", level: "propose" });
-    expect(await level("sales.discount_in_band")).toEqual({ kind: "level", level: "propose" });
+    // No agent discounts: the catalog lists it, no execution path does it, so nothing can switch it on.
+    expect(await level("sales.discount_in_band")).toMatchObject({ kind: "unavailable" });
+    expect(await refusal(as.mutation(api.permissions.set, { companyId, action: "sales.discount_in_band", level: "propose" }))).toContain("never discounts");
 
-    expect(await refusal(as.mutation(api.permissions.set, { companyId, action: "retention.refund_above_limit", level: "execute" }))).toContain("cannot be set higher than Propose");
+    expect(await refusal(as.mutation(api.permissions.set, { companyId, action: "retention.refund_above_limit", level: "execute" }))).toContain("can't be set above Ask me first");
     expect(await refusal(as.mutation(api.permissions.set, { companyId, action: "person.pay_run", level: "execute" }))).toContain("always needs a person");
     expect(await refusal(as.mutation(api.permissions.set, { companyId, action: "dispatch.fire_cleaner", level: "execute" }))).toContain("not an action");
     expect(await level("person.pay_run")).toEqual({ kind: "person_only" });
     expect(await level("dispatch.fire_cleaner")).toEqual({ kind: "unknown" });
 
     // Money needs the Owner's limits before it runs without review, and the limits are whole cents.
-    const money = (fields: object) => as.mutation(api.permissions.set, { companyId, action: "sales.discount_in_band", level: "execute_and_report", ...fields });
+    const money = (fields: object) => as.mutation(api.permissions.set, { companyId, action: "retention.remedy_within_limit", level: "execute_and_report", ...fields });
     expect(await refusal(money({}))).toContain("Set a limit");
     expect(await refusal(money({ perActionCents: 5000, perDayCents: 2000 }))).toContain("cannot be more than");
     expect(await refusal(money({ perActionCents: 10.5, perDayCents: 2000 }))).toContain("whole number of cents");
     expect(await refusal(as.mutation(api.permissions.set, { companyId, action: "dispatch.send_reminder", level: "execute", perDayCents: 100 }))).toContain("only to actions that move money");
     await money({ perActionCents: 2000, perDayCents: 10000 });
-    expect(await level("sales.discount_in_band")).toEqual({ kind: "level", level: "execute_and_report", perActionCents: 2000, perDayCents: 10000 });
+    expect(await level("retention.remedy_within_limit")).toEqual({ kind: "level", level: "execute_and_report", perActionCents: 2000, perDayCents: 10000 });
 
     // Off is a level too, and pausing an agent stops all of its actions without touching the others.
     await as.mutation(api.permissions.set, { companyId, action: "dispatch.send_reminder", level: "off" });
     expect(await level("dispatch.send_reminder")).toEqual({ kind: "level", level: "off" });
-    await as.mutation(api.companies.setPausedAgents, { companyId, agents: ["sales"] });
-    expect(await level("sales.discount_in_band")).toEqual({ kind: "paused" });
+    await as.mutation(api.companies.setPausedAgents, { companyId, agents: ["retention"] });
+    expect(await level("retention.remedy_within_limit")).toEqual({ kind: "paused" });
     expect(await level("dispatch.send_reminder")).toEqual({ kind: "level", level: "off" });
 
     const changes = (await as.query(api.events.recent, { companyId })).filter((event) => event.type === "permission.changed");
-    expect(changes.map((event) => event.data)).toContainEqual({ action: "dispatch.send_reminder", from: "propose", to: "execute" });
+    expect(changes.map((event) => event.data)).toContainEqual(expect.objectContaining({ action: "dispatch.send_reminder", from: "propose", to: "execute" }));
+    // A change to limits carries them before and after, so the history says exactly what authority moved.
+    expect(changes.map((event) => event.data)).toContainEqual(expect.objectContaining({ action: "retention.remedy_within_limit", toPerActionCents: 2000, toPerDayCents: 10000 }));
   });
 });
 

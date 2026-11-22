@@ -123,7 +123,7 @@ async function remind(ctx: MutationCtx, loaded: Loaded, policy: DispatchPolicy, 
   }
   const message = await queueReminder(ctx, loaded, DISPATCH);
   if (authority.level === "execute_and_report") {
-    await recordEvent(ctx, { companyId: company._id, type: "dispatch.reported", actor: DISPATCH, subject: { table: "messages", id: message._id }, data: { action: SEND_REMINDER, jobId: job._id, cleanerId: cleaner._id } });
+    await recordEvent(ctx, { companyId: company._id, type: "dispatch.reported", actor: DISPATCH, subject: { table: "messages", id: message._id }, data: { action: SEND_REMINDER, jobId: job._id, cleanerId: cleaner._id, ref: message._id, stage: "queued" } });
   }
 }
 

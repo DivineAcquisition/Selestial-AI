@@ -392,7 +392,7 @@ export async function coverJob(ctx: MutationCtx, jobId: Id<"jobs">): Promise<Cov
     const assignmentId = await placeOffer(ctx, { company, job, cleaner, respondBy, payCents, rules: DISPATCH_RULES, afterStart: lateCover }, DISPATCH, { action }, { kind: offerKindFor(action), coverageRequestId: request?._id });
     assignments.push((await ctx.db.get(assignmentId))!);
     if (authority.level === "execute_and_report") {
-      await recordEvent(ctx, { companyId: job.companyId, type: "dispatch.reported", actor: DISPATCH, subject: { table: "assignments", id: assignmentId }, data: { action, jobId: job._id, cleanerId: cleaner._id } });
+      await recordEvent(ctx, { companyId: job.companyId, type: "dispatch.reported", actor: DISPATCH, subject: { table: "assignments", id: assignmentId }, data: { action, jobId: job._id, cleanerId: cleaner._id, ref: assignmentId, stage: "queued" } });
     }
     offered += 1;
   }
