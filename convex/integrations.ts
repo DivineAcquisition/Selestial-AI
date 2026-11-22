@@ -9,6 +9,7 @@
 import { v } from "convex/values";
 
 import { companyQuery, ownerMutation } from "./lib/builders";
+import { publicApiOrigin } from "./lib/environment";
 import { notFound, userError } from "./lib/errors";
 import { byMember, recordEvent } from "./lib/events";
 import { BUILT, isIntegrationId } from "./lib/integrations";
@@ -83,6 +84,8 @@ export const overview = companyQuery({
       .withIndex("by_company_integration", (q) => q.eq("companyId", ctx.companyId))
       .take(100);
     return {
+      /** The address people see for Selestial's HTTP routes: integration webhooks today, the API and MCP later. */
+      publicApi: publicApiOrigin(),
       live: {
         stripe: stripeCard,
         gmail: { state: gmailState, detail: brokenGmail ? "Reconnect needed" : gmail ? gmail.address : null },

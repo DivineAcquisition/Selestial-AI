@@ -19,6 +19,7 @@ const { ApplicantsScreen } = await import("./applicants");
 const { ScreeningScreen } = await import("./screening");
 const { InterviewsScreen } = await import("./interviews");
 const { OffersScreen } = await import("./offers");
+const { OnboardingScreen } = await import("./onboarding");
 const { HiringNeedsScreen } = await import("./hiring-needs");
 
 const DAY = 86_400_000;
@@ -133,7 +134,24 @@ function fill() {
     signing: null,
   };
   data["onboarding:queue"] = [
-    { handoffId: "h1", applicationId: "a6", applicant: "Noah Kim", role: "House Cleaner", approvedTerms: { payWords: "$22.00 an hour", role: "House Cleaner", engagement: "contractor", pay: { kind: "hourly", hourlyCents: 2200 }, startConditions: "", expectations: "" }, information: [], requirements: [{ key: "agreement", label: "Agreement signed", status: "done" }, { key: "background", label: "Background check recorded", status: "outstanding" }, { key: "availability", label: "Availability confirmed", status: "done" }], responsible: "Owner A", nextAction: "Record the background check", dueAt: T + 3 * DAY, status: "open", cleanerId: "cl1", workerStatus: "onboarding", dispatchReady: false },
+    { handoffId: "h1", applicationId: "a6", applicant: "Noah Kim", role: "House Cleaner", approvedTerms: { payWords: "$22.00 an hour", role: "House Cleaner", engagement: "contractor", pay: { kind: "hourly", hourlyCents: 2200 }, startConditions: "", expectations: "" }, information: [], requirements: [{ key: "agreement", label: "Agreement signed", status: "done" }, { key: "background", label: "Background check recorded", status: "outstanding" }, { key: "availability", label: "Availability confirmed", status: "done" }], responsible: "Owner A", nextAction: "Record the background check", dueAt: T + 3 * DAY, status: "open", cleanerId: "cl1", workerStatus: "onboarding", dispatchReady: false,
+      readiness: {
+        items: [
+          { key: "agreement", label: "Agreement signed", state: "approved", fromRecord: false, blocksWork: true, confirmedBy: "Owner A", confirmedAt: T - DAY, note: null },
+          { key: "background", label: "Background check recorded", state: "received", fromRecord: false, blocksWork: true, confirmedBy: null, confirmedAt: null, note: null },
+          { key: "availability", label: "Weekly availability", state: "approved", fromRecord: true, blocksWork: true, confirmedBy: null, confirmedAt: null, note: null },
+          { key: "service_areas", label: "Service areas", state: "missing", fromRecord: true, blocksWork: true, confirmedBy: null, confirmedAt: null, note: null },
+        ],
+        decisions: [],
+        skillsConfirmed: [],
+        serviceAreas: [],
+        canApprove: false,
+        approved: false,
+        stillNeeded: ["Background check recorded (received)", "Service areas (missing)"],
+        dispatchEligible: false,
+        summary: "Still needed before work: background check recorded, service areas.",
+      },
+    },
   ];
 }
 
@@ -182,7 +200,12 @@ describe("Recruiter's screens", () => {
     keep("offers", offers);
     keep("hiring-needs", needs);
     for (const text of ["Waiting for times", "Booked", "Lee Wong", "Open time", "Offer interview times"]) expect(interviews, text).toContain(text);
-    for (const text of ["Ava Chen", "Accepted", "Agreement: not started", "Noah Kim", "Not ready yet", "Background check recorded"]) expect(offers, text).toContain(text);
+    for (const text of ["Ava Chen", "Accepted", "Agreement: not started", "1 new worker is onboarding", "Onboarding &amp; Readiness"]) expect(offers, text).toContain(text);
+    // Onboarding is its own tab: each item's state and who confirmed it. Received is never shown as approved.
+    const onboarding = html(<OnboardingScreen />);
+    keep("onboarding-readiness", onboarding);
+    for (const text of ["Noah Kim", "Not ready yet", "Background check recorded", "Received", "Approved", "Confirmed by Owner A", "On their record", "Add it on their record in Cleaners", "Still needed before work: Background check recorded (received), Service areas (missing)."]) expect(onboarding, text).toContain(text);
+    expect(onboarding).not.toContain("Approve readiness</button>");
     for (const text of ["House Cleaner", "1/3", "$22 an hour", "Deep-Clean Specialist", "Paused", "Required: "]) expect(needs, text).toContain(text);
   });
 });

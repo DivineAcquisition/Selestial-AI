@@ -95,5 +95,5 @@ the product is sold.
   before large volumes.
 - The shared link error page (`src/app/c/error.tsx`) says "text message" and "the office"; applicants
   arrive from email. It was left as Dispatch wrote it.
-- The other four agents named in the navigation are not built; onboarding is an owner-worked queue
-  until Team Coordinator exists.
+- Onboarding is Recruiter's through the readiness approval (docs/recruiter/06-readiness.md); Team
+  Coordinator was retired on November 22, 2026.

@@ -17,7 +17,7 @@ describe("sidebar badges", () => {
 
   it("never gives an unbuilt agent a badge", () => {
     const busy = facts({ withYou: 3, unfilled: 2, unfilledWithinDay: 2, inProgress: 4 }, 5);
-    for (const agent of ["marketing", "quality", "customer-care", "recruiter", "team-coordinator"] as const) {
+    for (const agent of ["marketing", "quality", "customer-care", "recruiter"] as const) {
       expect(agentBadges(agent, busy)).toEqual([]);
       expect(tabBadge(agent, "playbook", busy)).toBeNull();
     }

@@ -120,3 +120,19 @@ Order of the cut-over (each step checked before the next):
 8. **Claude's environments.** "Selestial Production" keeps the production key (it now reads live data);
    "Selestial" keeps the `terrific-avocet-835` key (the test backend). After a week with no rollback, the test
    backend's copy of real data is cleared and its provider keys replaced with test keys.
+
+## Addresses: what the app connects to, and what people see (November 22, 2026)
+
+A Convex custom domain serves one side only: the client API (the app's WebSocket) or HTTP actions (webhooks,
+links, the future public API and MCP).
+
+| Address | Serves | Used for |
+|---|---|---|
+| `https://stoic-gazelle-731.convex.cloud` | Client API | The app's own connection. Production builds always use the deployment's own address (`scripts/convex-address.mjs`, run by `scripts/next-build.mjs`), whatever custom domain Convex names. The build log says when it replaced one. |
+| `https://api.selestial.io` | HTTP actions | What people see: integration webhooks (Google Ads lead forms), public review-copy links, and later the API and MCP (`publicApiOrigin()` in `convex/lib/environment.ts`; `PUBLIC_API_ORIGIN` overrides it). |
+| `https://stoic-gazelle-731.convex.site` | HTTP actions | What providers are registered with (OAuth returns, Stripe, Telnyx, Resend, Google Pub/Sub). Unchanged. |
+
+On November 22 the build was handed `api.selestial.io` as the app's address while that domain served HTTP
+actions, and no signed-in screen loaded. The guard prevents that. Production detection also recognises the
+custom domain (`DEPLOYMENT_DOMAINS`), so a backend whose `CONVEX_CLOUD_URL` is the domain is still production.
+Staff can check both in the readiness panel on `/staff/texting` ("Production detection", "Public API address").

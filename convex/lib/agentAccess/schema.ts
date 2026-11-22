@@ -1,8 +1,8 @@
 import { defineTable } from "convex/server";
 import { v } from "convex/values";
 
-/** The agents a company can ask for before they are released. */
-export const PLANNED_AGENT_IDS = ["marketing", "quality", "customer-care", "team-coordinator"] as const;
+/** The agents a company can ask for before they are released. Team Coordinator was retired (its work is Recruiter's and Dispatch's). */
+export const PLANNED_AGENT_IDS = ["marketing", "quality", "customer-care"] as const;
 export type PlannedAgentId = (typeof PLANNED_AGENT_IDS)[number];
 
 export const agentAccessTables = {

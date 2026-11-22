@@ -318,6 +318,8 @@ export function IntegrationsScreen({ embedded = false }: { embedded?: boolean })
         </p>
       </section>
 
+      {overview?.publicApi ? <SelestialAddress origin={overview.publicApi} /> : null}
+
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <label className="relative block w-full sm:max-w-xs">
           <span className="sr-only">Find an integration</span>
@@ -382,5 +384,33 @@ export function IntegrationsScreen({ embedded = false }: { embedded?: boolean })
         </SheetPopup>
       </Sheet>
     </>
+  );
+}
+
+/**
+ * The address other services use to reach Selestial: integration webhooks today (Google Ads lead forms), and
+ * the API and MCP once they exist. Shown as it is; API keys and MCP access are not offered yet.
+ */
+function SelestialAddress({ origin }: { origin: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <Panel className="mb-5">
+      <div className="flex flex-wrap items-start justify-between gap-3 text-sm">
+        <div className="grid min-w-0 gap-1">
+          <p className="font-semibold text-strong">Your Selestial address for connections</p>
+          <code className="w-fit max-w-full break-all rounded bg-muted px-2 py-1 text-xs text-strong">{origin}</code>
+          <p className="text-xs text-muted-foreground">Services that send Selestial information, like Google Ads lead forms, use this address. API and MCP access will use it too; they aren&rsquo;t available yet.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            void navigator.clipboard?.writeText(origin).then(() => setCopied(true), () => setCopied(false));
+          }}
+          className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-strong hover:bg-muted focus-visible:outline-2 focus-visible:outline-brand-500"
+        >
+          {copied ? "Copied" : "Copy address"}
+        </button>
+      </div>
+    </Panel>
   );
 }

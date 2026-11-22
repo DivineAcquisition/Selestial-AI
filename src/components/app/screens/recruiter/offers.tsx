@@ -17,8 +17,7 @@ import { cn } from "@/lib/utils";
 
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
-import { ProgressRing, STAGE_WORDS } from "./shared";
-import { Checkbox } from "@/components/ui/selection";
+import { STAGE_WORDS } from "./shared";
 
 type Board = NonNullable<ReturnType<typeof useQuery<typeof api.hiringOffers.board>>>;
 type Row = Board["rows"][number];
@@ -33,7 +32,7 @@ const OFFER_STEPS: { id: Offer["status"]; label: string }[] = [
 ];
 const ENDED: Partial<Record<Offer["status"], string>> = { declined: "Declined", expired: "Expired", withdrawn: "Withdrawn" };
 
-/** Offers & Agreements: each offer's path to acceptance, its agreement, and onboarding until ready for Dispatch. */
+/** Offers & Agreements: each offer's path to acceptance and its agreement. Onboarding is its own tab. */
 export function OffersScreen() {
   const { companyId } = useCompany();
   const board = useQuery(api.hiringOffers.board, { companyId });
@@ -41,14 +40,14 @@ export function OffersScreen() {
   if (!board || !queue) {
     return (
       <>
-        <PageHeader title="Offers & Agreements" lead="Offers you approve, the agreement each needs, and onboarding until a new worker is ready." />
+        <PageHeader title="Offers & Agreements" lead="Offers you approve and the agreement each needs. Onboarding continues in its own tab." />
         <Skeleton className="h-96 rounded-2xl" />
       </>
     );
   }
   return (
     <>
-      <PageHeader title="Offers & Agreements" lead="Offers you approve, the agreement each needs, and onboarding until a new worker is ready." />
+      <PageHeader title="Offers & Agreements" lead="Offers you approve and the agreement each needs. Onboarding continues in its own tab." />
       <div className="grid gap-5">
         <Badge variant={board.signing ? "success" : "outline"} size="sm" className="justify-self-start">
           <FileText aria-hidden /> {board.signing ? `Signing: ${board.signing}` : "No signing service connected: a person records each signed agreement"}
@@ -64,17 +63,13 @@ export function OffersScreen() {
             </ul>
           )}
         </Panel>
-        <Panel title={`Onboarding · ${queue.length}`}>
-          {queue.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nobody is onboarding. When an offer is accepted, the new worker&apos;s checklist appears here.</p>
-          ) : (
-            <div className="grid gap-4 lg:grid-cols-2">
-              {queue.map((row) => (
-                <Onboarding key={row.handoffId} row={row} />
-              ))}
-            </div>
-          )}
-        </Panel>
+        <p className="text-sm text-muted-foreground">
+          {queue.length === 0 ? "Nobody is onboarding." : `${queue.length} new ${queue.length === 1 ? "worker is" : "workers are"} onboarding.`} Accepted offers continue in{" "}
+          <Link href="/app/agents/recruiter/onboarding-readiness" className="font-medium text-strong underline-offset-2 hover:underline">
+            Onboarding &amp; Readiness
+          </Link>
+          , through to your readiness approval.
+        </p>
       </div>
     </>
   );
@@ -194,52 +189,5 @@ function OfferRow({ row }: { row: Row }) {
       ) : null}
       <FormError message={error} />
     </li>
-  );
-}
-
-function Onboarding({ row }: { row: NonNullable<ReturnType<typeof useQuery<typeof api.onboarding.queue>>>[number] }) {
-  const { companyId, role } = useCompany();
-  const now = useNow();
-  const record = useMutation(api.onboarding.record);
-  const complete = useMutation(api.onboarding.complete);
-  const { busy, error, run } = useRun();
-  const done = row.requirements.filter((item) => item.status === "done").length;
-  return (
-    <section className="rounded-2xl border border-border bg-background p-4">
-      <div className="flex items-start gap-3">
-        <ProgressRing done={done} total={row.requirements.length} />
-        <div className="min-w-0 flex-1">
-          <Link href={`/app/agents/recruiter/applicants?open=${row.applicationId}`} className="font-medium text-strong hover:underline">
-            {row.applicant ?? "New worker"}
-          </Link>
-          <p className="text-xs text-muted-foreground">
-            {row.role} · {"payWords" in row.approvedTerms ? row.approvedTerms.payWords : "pay shown to the Owner"} · {row.responsible ? `with ${row.responsible}` : "no one responsible yet"}
-          </p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Next: {row.nextAction} · {until(row.dueAt, now).text}
-          </p>
-        </div>
-        <Badge variant={row.dispatchReady ? "success" : "outline"} size="sm">
-          {row.dispatchReady ? "Ready for Dispatch" : "Not ready yet"}
-        </Badge>
-      </div>
-      <ul className="mt-3 grid gap-1.5">
-        {row.requirements.map((item) => (
-          <li key={item.key}>
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox checked={item.status === "done"} disabled={busy || role === "office"} onCheckedChange={(checked) => void run(() => record({ companyId, handoffId: row.handoffId as Id<"onboardingHandoffs">, requirement: item.key, done: checked }))} />
-              <span className={cn(item.status === "done" ? "text-muted-foreground line-through" : "text-strong")}>{item.label}</span>
-            </label>
-          </li>
-        ))}
-      </ul>
-      <p className="mt-2 text-xs text-muted-foreground">A person records each one; nothing here is checked automatically.</p>
-      {role === "owner" && done === row.requirements.length ? (
-        <Button className="mt-2" size="xs" variant="primary" loading={busy} onClick={() => void run(() => complete({ companyId, handoffId: row.handoffId as Id<"onboardingHandoffs"> }))}>
-          Mark ready to work
-        </Button>
-      ) : null}
-      <FormError message={error} />
-    </section>
   );
 }

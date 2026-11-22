@@ -19,12 +19,37 @@ export const PRODUCTION_DEPLOYMENTS: readonly string[] = ["stoic-gazelle-731"];
 
 export type Environment = "production" | "non_production" | "unknown";
 
-/** The deployment's name, from https://<name>.convex.cloud, or null outside a deployment. */
+/**
+ * Custom domains and the deployment each belongs to. Convex binds a custom domain to exactly one deployment,
+ * and when one is set as the deployment's client address, CONVEX_CLOUD_URL carries the domain instead of
+ * <name>.convex.cloud. Without this, the live backend would stop recognising itself as production.
+ */
+export const DEPLOYMENT_DOMAINS: Readonly<Record<string, string>> = { "api.selestial.io": "stoic-gazelle-731" };
+
+/** The deployment's name, from https://<name>.convex.cloud or a known custom domain, or null outside a deployment. */
 export function deploymentName(env: Record<string, string | undefined> = process.env): string | null {
   const url = env.CONVEX_CLOUD_URL?.trim();
   if (!url) return null;
   const match = /^https?:\/\/([a-z0-9-]+)\.convex\.cloud\/?$/i.exec(url);
-  return match ? match[1].toLowerCase() : url;
+  if (match) return match[1].toLowerCase();
+  const domain = /^https:\/\/([a-z0-9.-]+)\/?$/i.exec(url)?.[1].toLowerCase();
+  return (domain && DEPLOYMENT_DOMAINS[domain]) || url;
+}
+
+/**
+ * The address people see for this backend's HTTP routes: integration webhooks today, the public API and MCP
+ * later. On the live backend it is its custom domain (api.selestial.io, served by HTTP actions). OAuth returns
+ * and provider webhooks stay registered on the deployment's own CONVEX_SITE_URL, which keeps working.
+ * PUBLIC_API_ORIGIN overrides it; elsewhere it is the deployment's own site address.
+ */
+export function publicApiOrigin(env: Record<string, string | undefined> = process.env): string | null {
+  const set = env.PUBLIC_API_ORIGIN?.trim().replace(/\/+$/, "");
+  if (set && /^https:\/\/[a-z0-9.-]+$/i.test(set)) return set;
+  const name = deploymentName(env);
+  const domain = Object.entries(DEPLOYMENT_DOMAINS).find(([, owner]) => owner === name)?.[0];
+  if (domain && PRODUCTION_DEPLOYMENTS.includes(name!)) return `https://${domain}`;
+  const site = env.CONVEX_SITE_URL?.trim().replace(/\/+$/, "");
+  return site && /^https?:\/\//.test(site) ? site : null;
 }
 
 export function environment(env: Record<string, string | undefined> = process.env): Environment {

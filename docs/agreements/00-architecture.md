@@ -84,10 +84,10 @@ Unfiled uploads are removed after a day.
 
 Reads only, and only where they exist: `agreement_terms_for_customer` (scope, access, schedule, cancellation and
 corrective terms for Dispatch and Quality; documentation-photo and advertising permission as two separate answers
-for Marketing), `worker_document_status` (Team Coordinator), `create_agreement_amendment` and the renewal task
+for Marketing), `worker_document_status` (Recruiter's onboarding and the Cleaners workspace), `create_agreement_amendment` and the renewal task
 (Retention), `start_agreement` for customer documents (Sales) and permitted workforce documents (Recruiter),
 `read_agreement` and `list_agreements` (Customer Care). A clause is never an operating rule: changing a price,
-schedule or onboarding setting is its own validated action. Marketing, Quality, Customer Care and Team Coordinator
+schedule or onboarding setting is its own validated action. Marketing, Quality and Customer Care
 are not built, so Chat performs these reads for a person today.
 
 ## Operational vs external

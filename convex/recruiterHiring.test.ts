@@ -267,7 +267,7 @@ describe("Recruiter: screening, interviews, offers and the handoff to onboarding
     // The checklist is the company's onboarding template, the same list the cleaner's profile shows (weekly hours and areas stay on the record).
     expect(handoff.requirements.map((row) => [row.key, row.status])).toEqual([["contact", "outstanding"], ["agreement", "outstanding"], ["documents", "outstanding"], ["policies", "outstanding"], ["training", "outstanding"], ["equipment", "outstanding"], ["tax_form", "outstanding"], ["payment_setup", "outstanding"]]);
     expect(handoff.information.every((fact) => fact.from === "form")).toBe(true);
-    expect((await s.tasks()).some((task) => task.title === "Onboard Maria Lopez (House Cleaner)" && task.handoffTo === "team_coordinator")).toBe(true);
+    expect((await s.tasks()).some((task) => task.title === "Onboard Maria Lopez (House Cleaner)" && task.agent === "recruiter" && task.handoffTo === undefined)).toBe(true);
 
     // Dispatch reads the actual readiness: the new worker exists, is in the visit's area, and is still not offered the visit.
     const place = await dispatchPlace(s.as, s.companyId);
@@ -298,6 +298,48 @@ describe("Recruiter: screening, interviews, offers and the handoff to onboarding
     expect((await s.as.query(api.onboarding.queue, { companyId: s.companyId, status: "complete" }))[0].dispatchReady).toBe(false);
     await s.as.mutation(api.availability.setWeek, { companyId: s.companyId, cleanerId: handoff.cleanerId, windows: [{ weekday: 2, startMinute: 480, endMinute: 1020 }] });
     expect((await s.as.query(api.onboarding.queue, { companyId: s.companyId, status: "complete" }))[0].dispatchReady).toBe(true);
+  });
+
+  it("Recruiter presents the new worker for readiness approval, and approving once hands them to Dispatch", async () => {
+    const s = await setup();
+    const { offerToken } = await offered(s);
+    await s.t.mutation(api.applicantPages.acceptOffer, { token: offerToken });
+    const [handoff] = await s.as.query(api.onboarding.queue, { companyId: s.companyId });
+    // Received is not approved: every item starts missing, and nothing can be approved yet.
+    expect(handoff.readiness).toMatchObject({ canApprove: false, approved: false });
+    expect(handoff.readiness!.items.filter((item) => !item.fromRecord).every((item) => item.state === "missing" && item.confirmedBy === null)).toBe(true);
+    expect(await refusal(s.as.mutation(api.onboarding.approve, { companyId: s.companyId, handoffId: handoff.handoffId }))).toContain("Not ready yet. Still needed:");
+    // The Cleaners workspace cannot make them active around the checklist while Recruiter's onboarding is open.
+    expect(await refusal(s.as.mutation(api.cleaners.setStatus, { companyId: s.companyId, cleanerId: handoff.cleanerId, status: "ready" }))).toContain("Approve readiness there");
+
+    const manager = await s.manager();
+    for (const row of handoff.requirements) await (["agreement", "tax_form", "payment_setup"].includes(row.key) ? s.as : manager).mutation(api.onboarding.record, { companyId: s.companyId, handoffId: handoff.handoffId, requirement: row.key, done: true });
+    // Every reviewed item names who confirmed it. Weekly hours are read from the record, so they still hold readiness.
+    let [current] = await s.as.query(api.onboarding.queue, { companyId: s.companyId });
+    expect(current.readiness!.items.filter((item) => !item.fromRecord).every((item) => item.state === "approved" && item.confirmedBy !== null)).toBe(true);
+    expect(current.readiness).toMatchObject({ canApprove: false });
+    expect(current.readiness!.stillNeeded.join(" ")).toMatch(/availability/i);
+    // Recruiter's own task asks the question; nothing is handed to another queue.
+    const task = (await s.tasks()).find((row) => row.title.startsWith("Onboard Maria Lopez"))!;
+    expect(task).toMatchObject({ agent: "recruiter", status: "needs_decision", openQuestion: expect.stringContaining("Approve their readiness") });
+    expect(task.handoffTo).toBeUndefined();
+
+    await s.as.mutation(api.availability.setWeek, { companyId: s.companyId, cleanerId: handoff.cleanerId, windows: [{ weekday: 2, startMinute: 480, endMinute: 1020 }] });
+    [current] = await s.as.query(api.onboarding.queue, { companyId: s.companyId });
+    expect(current.readiness).toMatchObject({ canApprove: true, stillNeeded: [] });
+    // Only an Owner approves.
+    expect(await refusal(manager.mutation(api.onboarding.approve, { companyId: s.companyId, handoffId: handoff.handoffId }))).toBe("Not allowed.");
+    expect(await s.as.mutation(api.onboarding.approve, { companyId: s.companyId, handoffId: handoff.handoffId })).toMatchObject({ changed: true, detail: expect.stringContaining("Maria Lopez's onboarding is complete") });
+    // Approving again changes nothing, opens nothing and notifies nobody twice.
+    expect(await s.as.mutation(api.onboarding.approve, { companyId: s.companyId, handoffId: handoff.handoffId })).toMatchObject({ changed: false });
+    const [done] = await s.as.query(api.onboarding.queue, { companyId: s.companyId, status: "complete" });
+    expect(done).toMatchObject({ workerStatus: "ready", dispatchReady: true, readiness: { approved: true } });
+    const notices = await s.t.run(async (ctx) => (await ctx.db.query("messages").collect()).filter((row) => row.notice?.event === "worker_ready"));
+    // The approving Owner isn't told what they just did; the Manager is, once.
+    expect(notices.map((row) => row.memberId)).toEqual([expect.anything()]);
+    const cleaners = await s.as.query(api.cleaners.list, { companyId: s.companyId, status: "ready" });
+    expect(cleaners.filter((row) => row.name === "Maria Lopez")).toHaveLength(1);
+    expect(await s.as.query(api.cleaners.list, { companyId: s.companyId, status: "onboarding" })).toEqual([]);
   });
 
   it("a declined offer comes back to a person, and an agreement is complete only when a person or the signing service says so", async () => {

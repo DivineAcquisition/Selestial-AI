@@ -228,9 +228,10 @@ describe("Dispatch: from a staffing need to accepted coverage", () => {
     const record = await s.record(jobId);
     expect(record.messages.find((row) => row.assignmentId === lena._id)).toMatchObject({ status: "failed", problem: "The carrier says this number cannot receive texts.", deliveredAt: null });
     expect(record.links.find((link) => link.assignmentId === lena._id)).toMatchObject({ status: "revoked", opened: null });
-    // Someone is told to check how to reach her, and Dispatch has already asked Rosa.
+    // Dispatch's own task asks a person to check how to reach her (no other queue), and Dispatch has already asked Rosa.
     const handoffs = await s.tasks("needs_decision");
-    expect(handoffs).toMatchObject([{ handoffTo: "team_coordinator", title: "Check how to reach Lena: a text did not go through" }]);
+    expect(handoffs).toMatchObject([{ agent: "dispatch", key: `dispatch.contact:${s.cleaners.Lena}`, title: "Check how to reach Lena: a text did not go through" }]);
+    expect(handoffs[0].handoffTo).toBeUndefined();
     expect(after.assignments.find((row) => row.cleanerId === s.cleaners.Rosa)).toMatchObject({ status: "offered" });
     expect((await s.as.query(api.dispatch.candidates, { companyId: s.companyId, jobId })).excluded).toMatchObject([
       // Rosa holds the open offer now, so she is not someone to ask again for the same visit.
@@ -359,7 +360,7 @@ describe("Dispatch: from a staffing need to accepted coverage", () => {
     expect(record.links.find((link) => link.assignmentId === lena._id)).toMatchObject({ status: "revoked" });
     expect(mockOutbox.filter((row) => row.to === PHONES.Lena && row.body.includes("job offer"))).toEqual([]);
     // A person is told why, and Rosa has been asked.
-    expect((await s.tasks("needs_decision")).find((task) => task.handoffTo === "team_coordinator")?.openQuestion).toContain("An offer was not sent. This number replied STOP");
+    expect((await s.tasks("needs_decision")).find((task) => task.key?.startsWith("dispatch.contact:"))?.openQuestion).toContain("An offer was not sent. This number replied STOP");
     expect(after.assignments.find((row) => row.cleanerId === s.cleaners.Rosa)).toMatchObject({ status: "offered" });
     expect(mockOutbox.filter((row) => row.to === PHONES.Rosa && row.body.includes("job offer"))).toHaveLength(1);
     // Lena was already asked; Rosa holds the open offer, so neither is offered this visit again.

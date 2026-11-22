@@ -298,7 +298,7 @@ not yours", which confirmed it existed; it now answers "Not found." The score's 
 "Not enough history" was said twice.
 
 **Not done, and why:** Selestial has no Quality agent, so there is no quality measure (no inspections or
-customer ratings exist to measure). Team Coordinator does not exist; Dispatch and Recruiter run the routine
+customer ratings exist to measure). Team Coordinator was retired; Dispatch and Recruiter run the routine
 follow-ups that belong to their own work.
 
 ### Phase 4, second pass (November 18)

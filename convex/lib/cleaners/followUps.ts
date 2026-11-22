@@ -1,7 +1,8 @@
 /**
- * Routine follow-ups with cleaners (docs/cleaners/00-architecture.md, section 6). Until Team Coordinator
- * exists, each is run by the launch agent that owns the work underneath: Recruiter reminds new cleaners about
- * onboarding; Dispatch asks cleaners to confirm availability and checks in with idle ones.
+ * Routine follow-ups with cleaners (docs/cleaners/00-architecture.md, section 6). Each is run by the agent
+ * that owns the work underneath: Recruiter reminds new cleaners about onboarding; Dispatch asks cleaners to
+ * confirm availability and checks in with idle ones. When reminders run out, the same agent's task asks a
+ * person to reach out: nothing is handed to another queue, so no second workflow reminds them again.
  *
  * The rules, in code:
  *  - One open follow-up per cleaner and topic (`key`), whichever workspace started it, and no message within
@@ -240,7 +241,6 @@ async function handToPerson(ctx: MutationCtx, company: Doc<"companies">, cleaner
       key,
       actor: { kind: "agent", agent: followUp.agent },
     });
-    await ctx.db.patch(taskId, { handoffTo: "team_coordinator" });
     await setTaskState(ctx, (await ctx.db.get(taskId))!, "needs_decision", { openQuestion: `${followUp.attempt} reminders did not get a reply. ${followUp.summary ?? ""} Will you contact them yourself? Not answering is not a decision on their part.`.replace(/\s+/g, " "), dueAt: due, withPersonSince: Date.now() }, { kind: "agent", agent: followUp.agent });
     await ctx.db.patch(followUp._id, { taskId });
   }

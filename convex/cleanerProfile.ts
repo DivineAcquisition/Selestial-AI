@@ -13,6 +13,7 @@ import { cleanerReadiness, companyDefinitions, initialsOf } from "./lib/cleaners
 import { engagementValidator } from "./lib/cleaners/schema";
 import { cleanerTime, commitmentsBetween, jobLabel } from "./lib/cleaners/schedule";
 import { cleanersSettings, DAY } from "./lib/cleaners/settings";
+import { changeRoutineStatus } from "./lib/cleaners/status";
 import { onJobNow, STANDING_WORDS, standingOf } from "./lib/cleaners/teams";
 import { jobAssignments } from "./lib/dispatch/facts";
 import { actorWords, eventText, MESSAGE_STATE_WORDS, PURPOSE_WORDS, type TimelineEntry } from "./lib/cleaners/words";
@@ -295,8 +296,7 @@ export const setEngagementStatus = managerMutation({
     if (cleaner.status === "suspended") throw userError("A suspension is lifted by a reinstatement request that an authorized person approves.");
     if (cleaner.status === "ended") throw userError("This engagement has ended. Rehiring starts a new onboarding through a request.");
     if (!ROUTINE[cleaner.status].includes(args.status)) throw userError(`An engagement that is ${STATUS_WORDS[cleaner.status].toLowerCase()} cannot become ${STATUS_WORDS[args.status].toLowerCase()} directly.`);
-    await ctx.db.patch(cleaner._id, { status: args.status, statusChangedAt: Date.now(), updatedAt: Date.now() });
-    await recordEvent(ctx, { companyId: ctx.companyId, type: "cleaner.status_changed", actor: byMember(ctx), subject: { table: "cleaners", id: cleaner._id }, data: { from: cleaner.status, to: args.status } });
+    await changeRoutineStatus(ctx, ctx.company, cleaner, args.status, byMember(ctx));
     return null;
   },
 });

@@ -267,6 +267,30 @@ async function retentionCase(ctx: MutationCtx, company: Doc<"companies">, event:
   });
 }
 
+/** Written only while it is still true: the worker is active and their onboarding was approved. */
+async function workerReady(ctx: MutationCtx, company: Doc<"companies">, ref: string | undefined, c: Context): Promise<Built> {
+  const id = ref ? ctx.db.normalizeId("cleaners", ref) : null;
+  const cleaner = id ? await ctx.db.get(id) : null;
+  if (!cleaner || cleaner.companyId !== company._id) return { problem: "The worker is no longer in the record." };
+  if (cleaner.status !== "ready") return { problem: "The worker isn't active any more, so the notice wasn't sent." };
+  const handoffs = await ctx.db
+    .query("onboardingHandoffs")
+    .withIndex("by_company_status", (q) => q.eq("companyId", company._id).eq("status", "complete"))
+    .take(500);
+  if (!handoffs.some((row) => row.cleanerId === cleaner._id)) return { problem: "Their onboarding isn't recorded as complete." };
+  return alertEmail({
+    ...c,
+    eyebrow: "Team",
+    subject: `${cleaner.name}'s onboarding is complete`,
+    heading: `${cleaner.name}'s onboarding is complete`,
+    body: `Required onboarding items have been reviewed. Dispatch can now consider ${cleaner.name} for visits that match their availability, skills, and service area.`,
+    tone: "info",
+    note: "Being ready doesn't guarantee work: Dispatch still checks each visit.",
+    button: { label: "Open their record", path: `/app/cleaners/${encodeURIComponent(cleaner._id)}` },
+    because: "notices about what your agents and team did are on",
+  });
+}
+
 async function customerPaymentFailed(ctx: MutationCtx, ref: string | undefined, c: Context): Promise<Built> {
   const id = ref ? ctx.db.normalizeId("payments", ref) : null;
   const payment = id ? await ctx.db.get(id) : null;
@@ -398,6 +422,8 @@ async function build(ctx: MutationCtx, message: Doc<"messages">, company: Doc<"c
       });
     case "customer_payment_failed":
       return customerPaymentFailed(ctx, notice.ref, c);
+    case "worker_ready":
+      return workerReady(ctx, company, notice.ref, c);
     case "inbox_reconnect":
       return inboxReconnect(ctx, notice.ref, facts, c);
     case "dispatch_escalation":

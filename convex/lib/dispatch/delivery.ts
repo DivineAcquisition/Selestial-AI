@@ -9,7 +9,6 @@ import type { Actor } from "../events";
 import { messageByKey } from "../messaging/outbox";
 import { endAssignment } from "./assignmentState";
 import { liveTaskByKey, openTask, setTaskState } from "../taskState";
-import { handOff } from "./handoffs";
 import { coverJob } from "./workflow";
 
 const SYSTEM: Actor = { kind: "system" };
@@ -67,22 +66,31 @@ export async function afterOfferTextRefused(ctx: MutationCtx, message: Doc<"mess
   await setTaskState(ctx, (await ctx.db.get(taskId))!, "needs_decision", { openQuestion: question.slice(0, 1000), dueAt: Date.now() + DAY, withPersonSince: Date.now() }, SYSTEM);
 }
 
+/**
+ * A text to a cleaner did not go through. Reaching the cleaner is Dispatch's own operational work, so the
+ * task is Dispatch's, held for a person to confirm the number on the cleaner's record. One per cleaner while
+ * it is open, including one opened under the retired Team Coordinator queue's key.
+ */
 async function contactHandoff(ctx: MutationCtx, message: Doc<"messages">, what: string) {
   if (!message.cleanerId) return;
+  const key = `dispatch.contact:${message.cleanerId}`;
+  if ((await liveTaskByKey(ctx, message.companyId, key)) || (await liveTaskByKey(ctx, message.companyId, `team_coordinator.contact:${message.cleanerId}`))) return;
   const cleaner = await ctx.db.get(message.cleanerId);
-  await handOff(ctx, {
+  const question = `${what} ${message.problem ?? "The text could not be delivered."} Confirm the number on file for ${cleaner?.name ?? "this cleaner"}, or reach them another way.`;
+  const dueAt = Date.now() + DAY;
+  const taskId = await openTask(ctx, {
     companyId: message.companyId,
-    to: "team_coordinator",
-    key: `team_coordinator.contact:${message.cleanerId}`,
+    agent: "dispatch",
     title: `Check how to reach ${cleaner?.name ?? "a cleaner"}: a text did not go through`,
-    question: `${what} ${message.problem ?? "The text could not be delivered."} Confirm the number on file for ${cleaner?.name ?? "this cleaner"}, or reach them another way.`,
-    trigger: "A text message to this cleaner failed to deliver.",
+    nextAction: question.slice(0, 500),
+    dueAt,
     completionCondition: "The cleaner's contact details are confirmed or corrected",
-    escalation: "Until this is settled, Dispatch does not count this cleaner's silence as an answer.",
-    dueAt: Date.now() + DAY,
     about: { table: "cleaners", id: message.cleanerId },
+    key,
     actor: SYSTEM,
   });
+  await ctx.db.patch(taskId, { trigger: "A text message to this cleaner failed to deliver.", escalation: "Until this is settled, Dispatch does not count this cleaner's silence as an answer." });
+  await setTaskState(ctx, (await ctx.db.get(taskId))!, "needs_decision", { openQuestion: question.slice(0, 1000), dueAt, withPersonSince: Date.now() }, SYSTEM);
 }
 
 /** Ends an offer whose text did not reach the cleaner, and looks for the next cleaner. */

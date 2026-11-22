@@ -80,7 +80,7 @@ export type Outcome =
 export type ToolKind = "read" | "draft" | "write" | "unavailable";
 
 /** The specialist whose work a tool is. Shown to the person only when the tool really ran that specialist's function. */
-export type Specialist = "marketing" | "sales" | "retention" | "dispatch" | "quality" | "customer-care" | "recruiter" | "team-coordinator";
+export type Specialist = "marketing" | "sales" | "retention" | "dispatch" | "quality" | "customer-care" | "recruiter";
 
 export type ChatTool = {
   name: string;
@@ -278,7 +278,7 @@ const TOOLS: ChatTool[] = [
           name: ctx.company.name,
           timezone: ctx.company.timezone,
           specialists: AGENTS.map((agent) => ({ agent, built: AGENT_PROFILES[agent].built, paused: ctx.company.pausedAgents.includes(agent) })),
-          notBuilt: ["marketing", "quality", "customer-care", "team-coordinator"],
+          notBuilt: ["marketing", "quality", "customer-care"],
           people: members.filter((row) => row.status === "active").map((row) => ({ name: row.name, role: row.role })),
           activeCustomers: customers.length,
           readyCleaners: cleaners.length,
