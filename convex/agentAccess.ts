@@ -1,5 +1,5 @@
 /**
- * Early access to agents that are not released yet (Marketing, Quality, Customer Care).
+ * Early access to agents that are not released yet (Marketing, Quality, Care).
  *
  * Anyone in the company can ask, once per agent, and say what they would use it for. Asking records the
  * company's interest for Selestial's team; it does not turn anything on, change a plan or buy anything.

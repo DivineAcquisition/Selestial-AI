@@ -158,7 +158,7 @@ export const PREVIEWS: readonly Preview[] = [
         paidCents: 812_450,
         decisionsMade: 11,
         waiting: [
-          { label: "Approve a refund of $45 for Tom Becker", detail: "Asked by Customer Care · 1 day ago", path: "/app/approvals" },
+          { label: "Approve a refund of $45 for Tom Becker", detail: "Asked by Care · 1 day ago", path: "/app/approvals" },
           { label: "Review an offer for Luis Ortega", detail: "Recruiter · decide by Wednesday", path: "/app/approvals" },
         ],
         sections: [

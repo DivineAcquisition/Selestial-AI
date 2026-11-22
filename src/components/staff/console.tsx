@@ -1398,7 +1398,7 @@ function UnpaidItem({ row }: { row: UnpaidRow }) {
 
 // ── Early access to coming-soon agents ──────────────────────────────────────────────────────────────
 
-const AGENT_LABEL: Record<string, string> = { marketing: "Marketing", quality: "Quality", "customer-care": "Customer Care", "team-coordinator": "Team Coordinator" };
+const AGENT_LABEL: Record<string, string> = { marketing: "Marketing", quality: "Quality", "customer-care": "Care", "team-coordinator": "Team Coordinator" };
 const REQUEST_STATUS: Record<string, { label: string; variant: "info" | "success" | "outline" }> = {
   requested: { label: "Asked", variant: "info" },
   invited: { label: "Invited", variant: "success" },

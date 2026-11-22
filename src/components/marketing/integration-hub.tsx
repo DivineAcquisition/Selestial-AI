@@ -69,10 +69,14 @@ export function IntegrationHub({ className }: { className?: string }) {
       <div className="relative aspect-square w-full">
         {/* Atmosphere: a soft glow, and two slowly turning orbit rings. */}
         <div aria-hidden className="absolute inset-[18%] rounded-full bg-brand-500/25 blur-3xl" />
-        <div aria-hidden className="absolute inset-[9%] rounded-full border border-dashed border-brand-500/20 motion-safe:animate-hub-orbit" />
-        <div aria-hidden className="absolute inset-[27%] rounded-full border border-brand-500/25 motion-safe:animate-hub-orbit-reverse">
-          <span className="absolute top-0 left-1/2 size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-400 shadow-[0_0_10px_2px_rgba(139,108,246,0.8)]" />
-          <span className="absolute bottom-0 left-1/2 size-1 -translate-x-1/2 translate-y-1/2 rounded-full bg-brand-300 shadow-[0_0_8px_2px_rgba(179,158,255,0.7)]" />
+        <div aria-hidden className="absolute inset-[9%] rounded-full border border-dashed border-brand-500/25 motion-safe:animate-hub-orbit">
+          <span className="absolute top-0 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-400 shadow-[0_0_14px_4px_rgba(139,108,246,0.85)]" />
+          <span className="absolute bottom-[14.6%] left-[14.6%] size-1.5 -translate-x-1/2 translate-y-1/2 rounded-full bg-brand-300 shadow-[0_0_10px_3px_rgba(179,158,255,0.8)]" />
+          <span className="absolute right-[14.6%] bottom-[14.6%] size-1.5 translate-x-1/2 translate-y-1/2 rounded-full bg-brand-300 shadow-[0_0_10px_3px_rgba(179,158,255,0.8)]" />
+        </div>
+        <div aria-hidden className="absolute inset-[27%] rounded-full border border-brand-500/30 motion-safe:animate-hub-orbit-reverse">
+          <span className="absolute top-0 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-400 shadow-[0_0_14px_4px_rgba(139,108,246,0.9)]" />
+          <span className="absolute bottom-0 left-1/2 size-1.5 -translate-x-1/2 translate-y-1/2 rounded-full bg-brand-300 shadow-[0_0_10px_3px_rgba(179,158,255,0.8)]" />
         </div>
 
         <svg aria-hidden viewBox="0 0 100 100" className="absolute inset-0 size-full overflow-visible">
@@ -81,6 +85,13 @@ export function IntegrationHub({ className }: { className?: string }) {
               <stop offset="0" stopColor="#8b6cf6" />
               <stop offset="1" stopColor="#5126c7" />
             </linearGradient>
+            <filter id="hub-glow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="0.6" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
           </defs>
           {nodes.map((node, index) => {
             const from = toward(node.x, node.y, NODE_EDGE);
@@ -88,27 +99,29 @@ export function IntegrationHub({ className }: { className?: string }) {
             const d = `M ${from.x.toFixed(2)} ${from.y.toFixed(2)} L ${to.x.toFixed(2)} ${to.y.toFixed(2)}`;
             return node.live ? (
               <g key={node.id}>
-                <path d={d} stroke="url(#hub-line)" strokeOpacity={0.4} strokeWidth={0.45} strokeLinecap="round" fill="none" />
+                <path d={d} stroke="url(#hub-line)" strokeOpacity={0.5} strokeWidth={0.5} strokeLinecap="round" fill="none" />
                 <path
                   d={d}
                   stroke="#7c4dff"
-                  strokeWidth={0.9}
+                  strokeWidth={1.5}
                   strokeLinecap="round"
                   fill="none"
-                  strokeDasharray="5 59"
+                  strokeDasharray="7 57"
                   strokeDashoffset={64}
+                  filter="url(#hub-glow)"
                   className="opacity-0 motion-safe:animate-hub-flow motion-safe:opacity-100"
-                  style={{ animationDelay: `${(index * 0.53) % 3.6}s` }}
+                  style={{ animationDelay: `${(index * 0.41) % 2.6}s` }}
                 />
                 <path
                   d={d}
                   stroke="#c4b5fd"
-                  strokeWidth={0.7}
+                  strokeWidth={1.1}
                   strokeLinecap="round"
                   fill="none"
-                  strokeDasharray="3 61"
+                  strokeDasharray="4 60"
+                  filter="url(#hub-glow)"
                   className="opacity-0 motion-safe:animate-hub-flow-out motion-safe:opacity-100"
-                  style={{ animationDelay: `${(index * 0.53 + 1.8) % 3.6}s` }}
+                  style={{ animationDelay: `${(index * 0.41 + 1.3) % 2.6}s` }}
                 />
               </g>
             ) : (
@@ -122,17 +135,16 @@ export function IntegrationHub({ className }: { className?: string }) {
           <div key={node.id} className="absolute" style={{ left: `${node.x}%`, top: `${node.y}%`, transform: "translate(-50%, -50%)" }} title={node.live ? node.name : `${node.name} (coming soon)`}>
             <span className="relative block">
               <IntegrationMark id={node.id} size="lg" className={cn("sm:size-14 sm:rounded-2xl", node.live ? "shadow-[0_14px_30px_-14px_rgba(81,38,199,0.6)]" : "opacity-80 grayscale-[35%]")} />
-              {node.live ? <span aria-hidden className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-success ring-2 ring-background" /> : null}
             </span>
           </div>
         ))}
 
         {/* The agents, on the inner ring. */}
-        {agents.map((agent) => (
+        {agents.map((agent, index) => (
           <div key={agent.id} aria-hidden className="absolute" style={{ left: `${agent.x}%`, top: `${agent.y}%`, transform: "translate(-50%, -50%)" }}>
-            <span className="relative block rounded-full p-[3px] shadow-[0_10px_28px_-10px_rgba(104,56,239,0.9)] [background:conic-gradient(from_180deg,#6838ef,#b39eff,#6838ef)]">
-              <span className="block rounded-full bg-background p-[2px]">
-                <AgentMark id={agent.id} size="sm" live />
+            <span style={{ animationDelay: `${index * -1.1}s` }} className="relative flex rounded-full p-[3px] motion-safe:animate-hub-float shadow-[0_10px_28px_-10px_rgba(104,56,239,0.9)] [background:conic-gradient(from_180deg,#6838ef,#b39eff,#6838ef)]">
+              <span className="flex rounded-full bg-background p-[2px]">
+                <AgentMark id={agent.id} size="sm" />
               </span>
             </span>
           </div>
@@ -152,16 +164,6 @@ export function IntegrationHub({ className }: { className?: string }) {
         <span className="inline-flex items-center gap-2 rounded-full border border-brand-500/25 bg-brand-500/[0.06] px-3 py-1.5 text-[13px] text-strong">
           <span aria-hidden className="live-pulse size-2 rounded-full bg-success" />
           Sales, Dispatch, Retention and Recruiter work across every connected tool
-        </span>
-        <span className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
-          <span className="inline-flex items-center gap-2">
-            <span aria-hidden className="h-0.5 w-6 rounded-full bg-brand-500" />
-            Live today
-          </span>
-          <span className="inline-flex items-center gap-2">
-            <span aria-hidden className="w-6 border-t border-dashed border-muted-foreground/60" />
-            Coming soon
-          </span>
         </span>
         <span className="sr-only">
           Selestial connects to: {live.map((node) => node.name).join(", ")}. Coming soon: {soon.map((node) => node.name).join(", ")}.
