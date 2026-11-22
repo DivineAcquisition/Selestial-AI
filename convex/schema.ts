@@ -35,10 +35,10 @@ import { activationTables } from "./lib/activation/schema";
 import { operationsTables } from "./lib/operations/schema";
 import { supportTables } from "./lib/support/schema";
 import { connectorTables } from "./lib/connectors/schema";
+import { migrationMarkValidator, migrationTables } from "./lib/migration/schema";
 import { retentionSettingsValidator, retentionTables } from "./lib/retention/schema";
 import { servicesTables } from "./lib/services/schema";
 import { tutorialTables } from "./lib/tutorials/schema";
-import { migrationTables } from "./lib/migration/schema";
 import { noticeEventValidator, noticeFactsValidator } from "./lib/notify/catalog";
 import { notifyTables } from "./lib/notify/schema";
 import { quoTables } from "./lib/quo/schema";
@@ -462,6 +462,8 @@ export default defineSchema({
     /** Their last answer to a check-in: still available, fewer jobs, a break until a date, or wanting to stop. */
     checkIn: v.optional(v.object({ answer: v.union(v.literal("available"), v.literal("fewer"), v.literal("break"), v.literal("stop")), at: v.number(), until: v.optional(v.number()), note: v.optional(v.string()) })),
     updatedAt: v.optional(v.number()),
+    /** Added by a migration and not released yet: no onboarding follow-up or offer reaches them until the Owner releases the team (convex/migration.ts). */
+    migration: v.optional(migrationMarkValidator),
   })
     .index("by_company_status", ["companyId", "status"])
     .index("by_company_subcontractor", ["companyId", "subcontractorId"]),
@@ -536,6 +538,10 @@ export default defineSchema({
     recovery: v.optional(v.object({ caseId: v.id("retentionCases"), originalJobId: v.optional(v.id("jobs")) })),
     /** Cleaners a person agreed not to send to this visit, for example after a customer asked for someone else. Dispatch does not offer it to them. */
     avoidCleanerIds: v.optional(v.array(v.id("cleaners"))),
+    /** Cleaners to ask first when they qualify, such as the cleaner the customer had in the old system. */
+    preferredCleanerIds: v.optional(v.array(v.id("cleaners"))),
+    /** Written by a migration. While held, Dispatch doesn't offer it and no confirmation is sent (convex/migration.ts). */
+    migration: v.optional(migrationMarkValidator),
     createdAt: v.number(),
   })
     .index("by_company_start", ["companyId", "startsAt"])
@@ -1034,6 +1040,7 @@ export default defineSchema({
   ...googleTables,
   ...connectorTables,
   ...quoTables,
+  ...migrationTables,
   // ── Cleaners: subcontractors, requirements, crews, portal, follow-ups, coaching, personnel ──────
   ...cleanersTables,
   ...clientsTables,
@@ -1060,7 +1067,6 @@ export default defineSchema({
   ...retentionTables,
   // ── Migration: tutorials for moving in, and records brought from another system (convex/lib/tutorials, lib/migration) ─
   ...tutorialTables,
-  ...migrationTables,
   // ── Operations: incidents, their history, and when each monitoring check last ran (convex/lib/operations) ─
   ...operationsTables,
   // ── Admin Support Sessions: staff inside a company, for a reason and a time (convex/lib/support) ─────
