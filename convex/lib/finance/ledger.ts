@@ -32,6 +32,29 @@ export async function invoiceRows(ctx: QueryCtx | MutationCtx, invoice: Pick<Doc
   return { payments, refunds, credits };
 }
 
+/**
+ * The invoice that bills a visit, if one is live (not void): the visit's own invoice, or a monthly plan
+ * invoice that lists it among the visits it covers. A visit with one is never invoiced again.
+ */
+export async function liveInvoiceForJob(ctx: QueryCtx | MutationCtx, job: Pick<Doc<"jobs">, "_id" | "_creationTime" | "companyId" | "customerId">): Promise<Doc<"invoices"> | null> {
+  const own = await ctx.db
+    .query("invoices")
+    .withIndex("by_company_job", (q) => q.eq("companyId", job.companyId).eq("jobId", job._id))
+    .take(10);
+  const live = own.find((invoice) => invoice.status !== "void");
+  if (live) return live;
+  return (await invoicesCovering(ctx, job)).find((invoice) => invoice.status !== "void") ?? null;
+}
+
+/** Monthly invoices, void ones included, that list this visit. Only invoices made after the visit existed can. */
+export async function invoicesCovering(ctx: QueryCtx | MutationCtx, job: Pick<Doc<"jobs">, "_id" | "_creationTime" | "companyId" | "customerId">): Promise<Doc<"invoices">[]> {
+  const since = await ctx.db
+    .query("invoices")
+    .withIndex("by_company_customer", (q) => q.eq("companyId", job.companyId).eq("customerId", job.customerId).gte("createdAt", Math.floor(job._creationTime)))
+    .take(300);
+  return since.filter((invoice) => invoice.coveredJobIds?.includes(job._id));
+}
+
 export function sums(rows: { payments: Doc<"payments">[]; refunds: Doc<"refunds">[]; credits: Doc<"invoiceCredits">[] }) {
   const paidCents = rows.payments.filter((p) => p.status === "succeeded").reduce((sum, p) => sum + p.amountCents, 0);
   // A card payment in flight. A started payment the customer has not finished is not money on its way.

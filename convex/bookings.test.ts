@@ -38,6 +38,56 @@ describe("bookings", () => {
     return { t, ...owner, key };
   }
 
+  it("voids an unpaid booking's invoice on cancel, and leaves a paid one for the Owner to refund", async () => {
+    const { t, as, companyId, key } = await setup();
+    const { draftId, revision } = await readyDraft(as, companyId, key);
+    const { bookingId } = await as.mutation(api.bookings.request, { companyId, draftId, revision, sendLinks: false });
+    const invoiceId = (await as.query(api.bookings.get, { companyId, bookingId })).booking.invoiceId!;
+    expect((await t.run((ctx) => ctx.db.get(invoiceId)))?.status).toBe("open");
+    expect(await as.mutation(api.bookings.cancel, { companyId, bookingId, reason: "Customer changed their mind" })).toEqual({ invoiceStillOpen: false, invoiceVoided: true, paidCents: 0 });
+    const voided = await t.run((ctx) => ctx.db.get(invoiceId));
+    expect(voided).toMatchObject({ status: "void", voided: { reason: "The booking was cancelled: Customer changed their mind" } });
+
+    // With part of the deposit already paid, nothing is voided: the money is the Owner's to refund.
+    const again = await as.query(api.sales.draft, { companyId, draftId });
+    const saved = await as.mutation(api.sales.saveDraft, { companyId, draftId, revision: again.draft.revision, body: again.draft.body });
+    const second = await as.mutation(api.bookings.request, { companyId, draftId, revision: saved.revision, sendLinks: false });
+    expect(second.repeated).toBe(false);
+    const paidInvoice = (await as.query(api.bookings.get, { companyId, bookingId: second.bookingId })).booking.invoiceId!;
+    await as.mutation(api.finance.recordPayment, { companyId, invoiceId: paidInvoice, amountCents: 2000, method: "cash", receivedOn: "2027-03-01", reference: null, note: null, confirmedReceived: true, clientKey: "deposit-0002" });
+    await settle(t);
+    expect(await as.mutation(api.bookings.cancel, { companyId, bookingId: second.bookingId, reason: "No longer needed" })).toEqual({ invoiceStillOpen: true, invoiceVoided: false, paidCents: 2000 });
+    expect((await t.run((ctx) => ctx.db.get(paidInvoice)))?.status).toBe("open");
+  });
+
+  it("tells a person when a confirmed booking can't be put on the schedule, once", async () => {
+    const { t, as, companyId, key } = await setup();
+    const { draftId, revision } = await readyDraft(as, companyId, key);
+    const { bookingId } = await as.mutation(api.bookings.request, { companyId, draftId, revision, sendLinks: false });
+    // Confirmed and waiting for its handoff, with something that makes the handoff fail every time.
+    await t.run(async (ctx) => {
+      await ctx.db.patch(bookingId, { status: "confirmed", handoff: { state: "pending", attempts: 0 } });
+      const booking = (await ctx.db.get(bookingId))!;
+      await ctx.db.delete(booking.versionId);
+    });
+    const tasks = () => t.run((ctx) => ctx.db.query("tasks").withIndex("by_company_key", (q) => q.eq("companyId", companyId).eq("key", `booking-handoff:${bookingId}`)).collect());
+    for (let i = 0; i < 2; i += 1) await t.mutation(internal.bookings.handoff, { bookingId });
+    expect((await t.run((ctx) => ctx.db.get(bookingId)))?.handoff).toMatchObject({ state: "failed", attempts: 2 });
+    expect(await tasks()).toHaveLength(0);
+    for (let i = 0; i < 3; i += 1) await t.mutation(internal.bookings.handoff, { bookingId });
+    const raised = await tasks();
+    expect(raised).toHaveLength(1);
+    expect(raised[0]).toMatchObject({ status: "open", title: "A confirmed booking isn't on the schedule" });
+    // The sweep keeps trying, and stops at the limit without raising it again.
+    for (let i = 0; i < 12; i += 1) {
+      vi.setSystemTime(Date.now() + 5 * 60_000);
+      await t.mutation(internal.bookings.sweep, {});
+      await settle(t);
+    }
+    expect((await t.run((ctx) => ctx.db.get(bookingId)))?.handoff.attempts).toBe(10);
+    expect(await tasks()).toHaveLength(1);
+  });
+
   it("takes an existing customer from quote to deposit to a confirmed visit handed to Dispatch", async () => {
     const { t, as, companyId, key } = await setup();
     const { draftId, revision } = await readyDraft(as, companyId, key);

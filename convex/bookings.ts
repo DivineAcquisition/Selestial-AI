@@ -43,7 +43,9 @@ import { saveQuote } from "./lib/services/operations";
 import { publishedByKey } from "./lib/services/store";
 import { formatCents } from "./lib/services/words";
 import { businessSettingsOf, checkArea } from "./lib/settings/business";
-import { openTask } from "./lib/taskState";
+import { liveTaskByKey, openTask } from "./lib/taskState";
+import { invoiceRows } from "./lib/finance/ledger";
+import { cancelStartedPayments } from "./finance";
 import { optionalText } from "./lib/text";
 import { setMilestone } from "./sales";
 import { agentBookingConfirmed } from "./lib/sales/agentBooking";
@@ -348,6 +350,10 @@ async function confirm(ctx: MutationCtx, booking: Doc<"bookings">, actor: Actor)
 }
 
 /** Makes the visit (or the recurring plan and its first visits) and hands it to Dispatch. Safe to run again. */
+/** How many failed tries before a person is told. The sweep keeps retrying up to `HANDOFF_TRIES`. */
+const HANDOFF_ALERT_AFTER = 3;
+const HANDOFF_TRIES = 10;
+
 export const handoff = internalMutation({
   args: { bookingId: v.id("bookings") },
   handler: async (ctx, args) => {
@@ -404,6 +410,12 @@ export const handoff = internalMutation({
     } catch (caught) {
       const problem = caught instanceof Error ? caught.message.slice(0, 300) : "The handoff failed.";
       await ctx.db.patch(booking._id, { handoff: { state: "failed", attempts, problem }, updatedAt: Date.now() });
+      // A confirmed (often paid) booking that isn't on the schedule never waits in silence: after a few
+      // tries a person is told, once, and it is still retried until the limit.
+      const key = `booking-handoff:${booking._id}`;
+      if (attempts >= HANDOFF_ALERT_AFTER && !(await liveTaskByKey(ctx, booking.companyId, key))) {
+        await openTask(ctx, { companyId: booking.companyId, agent: "sales", title: "A confirmed booking isn't on the schedule", nextAction: `Selestial couldn't put this booking on the schedule (${problem}). Open the booking, fix what it names, or schedule the visit by hand. Any payment stays on its invoice.`.slice(0, 500), dueAt: Date.now() + 2 * 3_600_000, completionCondition: "The visit or plan for this booking is on the schedule, or the booking is cancelled and refunded.", about: { table: "customers", id: booking.customerId }, key, actor: { kind: "system" } });
+      }
     }
     return null;
   },
@@ -492,8 +504,24 @@ export const cancel = companyMutation({
     const draft = await ctx.db.get(booking.draftId);
     if (draft) await ctx.db.patch(draft._id, { status: "open", bookingId: undefined, updatedAt: Date.now() });
     await recordEvent(ctx, { companyId: ctx.companyId, type: "booking.cancelled", actor: byMember(ctx), subject: { table: "bookings", id: booking._id }, data: { reason } });
-    const invoice = booking.invoiceId ? await ctx.db.get(booking.invoiceId) : null;
-    return { invoiceStillOpen: Boolean(invoice && invoice.status === "open"), paidCents: invoice?.totals.paidCents ?? 0 };
+    // The booking's invoice must not stay payable. With nothing paid and nothing in flight it is voided, which
+    // closes its pay link and stops any payment the customer started. With money on it, it stays for the
+    // Owner to refund or void in Finance, and the answer says so.
+    let invoice = booking.invoiceId ? await ctx.db.get(booking.invoiceId) : null;
+    let invoiceVoided = false;
+    if (invoice && (invoice.status === "open" || invoice.status === "draft")) {
+      const payments = (await invoiceRows(ctx, invoice)).payments;
+      const inFlight = payments.some((p) => p.status === "processing" || p.status === "checking");
+      if (!inFlight && invoice.totals.paidCents - invoice.totals.refundedCents <= 0) {
+        const now = Date.now();
+        await ctx.db.patch(invoice._id, { status: "void", voided: { at: now, by: ctx.member._id, reason: `The booking was cancelled: ${reason}`.slice(0, 500) }, updatedAt: now });
+        await cancelStartedPayments(ctx, invoice._id);
+        await recordEvent(ctx, { companyId: ctx.companyId, type: invoice.status === "draft" ? "invoice.discarded" : "invoice.voided", actor: byMember(ctx), subject: { table: "invoices", id: invoice._id }, data: { amountCents: invoice.totals.totalCents, bookingId: booking._id } });
+        invoiceVoided = true;
+        invoice = await ctx.db.get(invoice._id);
+      }
+    }
+    return { invoiceStillOpen: Boolean(invoice && invoice.status === "open"), invoiceVoided, paidCents: invoice?.totals.paidCents ?? 0 };
   },
 });
 
@@ -577,7 +605,11 @@ export const sweep = internalMutation({
         .query("bookings")
         .withIndex("by_handoff", (q) => q.eq("handoff.state", state).lt("updatedAt", now - 60_000))
         .take(50);
-      for (const booking of rows) if (booking.handoff.attempts < 10) await ctx.scheduler.runAfter(0, internal.bookings.handoff, { bookingId: booking._id });
+      for (const booking of rows) {
+        if (booking.handoff.attempts < HANDOFF_TRIES) await ctx.scheduler.runAfter(0, internal.bookings.handoff, { bookingId: booking._id });
+        // Out of tries before anyone was ever told (bookings that stalled before the alert existed): one more try, which tells a person if it fails.
+        else if (booking.status === "confirmed" && !(await ctx.db.query("tasks").withIndex("by_company_key", (q) => q.eq("companyId", booking.companyId).eq("key", `booking-handoff:${booking._id}`)).first())) await ctx.scheduler.runAfter(0, internal.bookings.handoff, { bookingId: booking._id });
+      }
     }
     return null;
   },

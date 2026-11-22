@@ -39,6 +39,16 @@ export const migrationTables = {
     assignedTo: v.optional(v.string()),
     /** review: waiting for the owner. set_up: they made a visit or plan from it. dismissed: they set it aside. History is always "reference". */
     review: v.union(v.literal("review"), v.literal("set_up"), v.literal("dismissed"), v.literal("reference")),
+    /**
+     * What "set up" points at: the Selestial visit or recurring plan that matched when the owner marked it
+     * done. With none, `selfConfirmed` records that the owner said they set it up themselves.
+     */
+    jobId: v.optional(v.id("jobs")),
+    servicePlanId: v.optional(v.id("servicePlans")),
+    recurringPlanId: v.optional(v.id("recurringPlans")),
+    selfConfirmed: v.optional(v.boolean()),
+    decidedBy: v.optional(v.id("members")),
+    decidedAt: v.optional(v.number()),
     runId: v.id("migrationImportRuns"),
     createdAt: v.number(),
   })

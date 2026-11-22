@@ -116,7 +116,7 @@ export const summary = ownerQuery({
         paymentId: p._id,
         amountCents: p.amountCents,
         method: TEAM_PAY_METHOD_WORDS[p.method],
-        status: p.status === "paid" ? "Paid" : p.status === "started" ? "On its way" : "Canceled",
+        status: p.status === "paid" ? "Paid" : p.status === "started" ? "Started, not confirmed" : "Canceled",
         on: p.paidAt ?? p.startedAt,
         jobs: p.parts.length,
         reference: maskReference(p.reference),

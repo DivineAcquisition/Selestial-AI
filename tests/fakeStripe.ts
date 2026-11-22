@@ -24,6 +24,8 @@ export function fakeStripe() {
     accounts: new Map<string, { id: string; charges_enabled: boolean; payouts_enabled: boolean; details_submitted: boolean; currently_due: string[]; disabled_reason: string | null; name: string }>(),
     intents: new Map<string, Intent>(),
     refunds: new Map<string, Refund>(),
+    /** Invoices on the platform's own account (the Selestial plan), by id: what `GET /v1/invoices/:id` answers. */
+    invoices: new Map<string, { id: string; status: "draft" | "open" | "paid" | "void" | "uncollectible"; customer: string }>(),
     replies: new Map<string, { status: number; body: unknown }>(),
     calls: [] as { method: string; path: string; key: string | null; account: string | null }[],
     losses: [] as Loss[],
@@ -61,6 +63,10 @@ export function fakeStripe() {
     if (method === "POST" && path === "/v1/account_links") return { status: 200, body: { url: `https://connect.stripe.com/setup/s/${next("link")}`, expires_at: Math.floor(Date.now() / 1000) + 300 } };
     if (method === "GET" && (match = path.match(/^\/v1\/accounts\/(acct_\w+)$/))) {
       return state.accounts.has(match[1]) ? { status: 200, body: accountBody(match[1]) } : { status: 403, body: { error: { message: "No access" } } };
+    }
+    if (method === "GET" && (match = path.match(/^\/v1\/invoices\/(in_\w+)$/))) {
+      const invoice = state.invoices.get(match[1]);
+      return invoice ? { status: 200, body: { ...invoice, object: "invoice" } } : { status: 404, body: { error: { code: "resource_missing", message: "No such invoice" } } };
     }
     if (method === "POST" && path === "/v1/payment_intents") {
       const id = next("pi");
