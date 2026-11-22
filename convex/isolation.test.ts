@@ -76,7 +76,7 @@ describe("company isolation", () => {
     expect((await b.as.query(api.events.forSubject, { companyId: b.companyId, subject: { table: "jobs", id: inB.jobId } })).length).toBe(1);
     // Nothing of Alpha's changed, and nothing of Beta's either.
     expect((await b.as.query(api.customers.get, { companyId: b.companyId, customerId: inB.customerId })).customer.name).toBe("Dana Whitfield");
-    expect(await a.as.query(api.companies.mine, {})).toEqual([{ companyId: A, name: "Alpha Cleaning", role: "owner" }]);
+    expect(await a.as.query(api.companies.mine, {})).toEqual([{ companyId: A, name: "Alpha Cleaning", role: "owner", locked: false }]);
   });
 
   it("answers someone who is signed out with not found", async () => {

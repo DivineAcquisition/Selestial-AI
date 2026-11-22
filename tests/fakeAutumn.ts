@@ -214,6 +214,11 @@ export function fakeAutumn() {
       case "/v1/billing.update": {
         const customer = customerFor(customerId);
         if (body.cancel_action === "cancel_end_of_cycle") customer.canceledAt = Date.now();
+        if (body.cancel_action === "cancel_immediately") {
+          customer.plan = null;
+          customer.pastDue = false;
+          customer.scheduled = null;
+        }
         if (body.cancel_action === "uncancel") {
           customer.canceledAt = null;
           customer.scheduled = null;

@@ -242,7 +242,7 @@ export function attach(body: ReturnType<typeof attachBody>, idempotencyKey: stri
   return call<AttachData>("/v1/billing.attach", body, { idempotencyKey });
 }
 
-export function updateSubscription(input: { customerId: string; planId: string; cancelAction: "cancel_end_of_cycle" | "uncancel" }, idempotencyKey: string) {
+export function updateSubscription(input: { customerId: string; planId: string; cancelAction: "cancel_end_of_cycle" | "cancel_immediately" | "uncancel" }, idempotencyKey: string) {
   return call<AttachData>("/v1/billing.update", { customer_id: input.customerId, plan_id: input.planId, cancel_action: input.cancelAction }, { idempotencyKey });
 }
 

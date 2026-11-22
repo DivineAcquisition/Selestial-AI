@@ -169,6 +169,45 @@ export const billingTables = {
     .index("by_state_updated", ["state", "updatedAt"]),
 
   /** Each Autumn webhook once, by its delivery id. */
+  /**
+   * One unpaid Selestial plan invoice and what Selestial did about it (convex/billingLock.ts): each failed
+   * attempt Stripe reported, the lock after the second, the reminder, and how it ended.
+   */
+  billingDunning: defineTable({
+    companyId: v.id("companies"),
+    env: envValidator,
+    /** Stripe's invoice id (in_…), as Stripe's signed event names it. */
+    invoiceId: v.string(),
+    stripeCustomerId: v.optional(v.string()),
+    /** The highest attempt count Stripe has reported for this invoice. */
+    attempts: v.number(),
+    amountCents: v.number(),
+    currency: v.string(),
+    /** Stripe's hosted page where the invoice can be paid. */
+    hostedUrl: v.union(v.string(), v.null()),
+    firstFailedAt: v.number(),
+    lastFailedAt: v.number(),
+    /** When Stripe says it will try again, when it said so. */
+    nextAttemptAt: v.union(v.number(), v.null()),
+    /** Why the last attempt failed, in Stripe's words (a decline message), when given. */
+    lastFailure: v.optional(v.string()),
+    lockedAt: v.optional(v.number()),
+    /** The agents the Owner had paused before the lock paused all of them; restored when it ends. */
+    priorPausedAgents: v.optional(v.array(v.string())),
+    reminderSentAt: v.optional(v.number()),
+    /** The last time canceling the plan was asked of Autumn, so a failure is retried hours later, not every sweep. */
+    cancelTriedAt: v.optional(v.number()),
+    /** Set once: when the invoice stopped being unpaid, and why. */
+    resolvedAt: v.optional(v.number()),
+    resolution: v.optional(v.union(v.literal("paid"), v.literal("voided"), v.literal("canceled"), v.literal("lifted"))),
+    /** Stripe event ids already applied, so a delivery that arrives twice changes nothing. */
+    events: v.array(v.string()),
+    updatedAt: v.number(),
+  })
+    .index("by_invoice", ["invoiceId"])
+    .index("by_company_resolved", ["companyId", "resolvedAt"])
+    .index("by_resolved_locked", ["resolvedAt", "lockedAt"]),
+
   billingWebhooks: defineTable({
     env: envValidator,
     deliveryId: v.string(),

@@ -32,6 +32,7 @@ import { parseEvent, signingProvider, verifyBody } from "./lib/agreements/signin
 import { photoRequestValid } from "./lib/dispatch/photoLinks";
 import { telnyxEvent, verifyTelnyx } from "./lib/messaging/telnyx";
 import { parseEvent as parseStripeEvent, verifyStripeSignature } from "./lib/finance/stripe";
+import { parseInvoiceEvent } from "./lib/billing/lock";
 
 const http = httpRouter();
 
@@ -106,9 +107,12 @@ http.route({
 });
 
 /**
- * Stripe, Selestial's own account (the one Autumn charges through): refunds of messaging top-ups. A refunded
- * top-up takes its funds back from the messaging balance, once per event (convex/messagingFunds.ts). Needs
- * STRIPE_BILLING_WEBHOOK_SECRET. Disputes name the charge, not the invoice, so staff match those by hand.
+ * Stripe, Selestial's own account (the one Autumn charges through), needs STRIPE_BILLING_WEBHOOK_SECRET:
+ *  - refunds of messaging top-ups: a refunded top-up takes its funds back from the messaging balance, once
+ *    per event (convex/messagingFunds.ts). Disputes name the charge, not the invoice, so staff match those by hand.
+ *  - plan invoices that fail, are paid or are voided (invoice.payment_failed, invoice.paid, invoice.voided,
+ *    invoice.marked_uncollectible): the second failed attempt locks the account until it's paid
+ *    (convex/billingLock.ts).
  */
 http.route({
   path: "/webhooks/stripe-billing",
@@ -120,6 +124,11 @@ http.route({
       return verifyStripeSignature({ secret, header: request.headers.get("stripe-signature"), body, now: Date.now() });
     },
     handler: async (ctx, body) => {
+      const invoiceEvent = parseInvoiceEvent(body);
+      if (invoiceEvent) {
+        await ctx.runAction(internal.billingLock.received, { event: invoiceEvent });
+        return;
+      }
       let parsed: { id?: unknown; type?: unknown; data?: { object?: { invoice?: unknown; amount_refunded?: unknown } } } = {};
       try {
         parsed = JSON.parse(body) as typeof parsed;

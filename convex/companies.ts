@@ -80,11 +80,12 @@ export const mine = signedInQuery({
       .query("members")
       .withIndex("by_user", (q) => q.eq("userId", ctx.userId))
       .take(50);
-    const out: { companyId: string; name: string; role: string }[] = [];
+    const out: { companyId: string; name: string; role: string; locked: boolean }[] = [];
     for (const row of rows) {
       if (row.status !== "active") continue;
       const company = await ctx.db.get(row.companyId);
-      if (company) out.push({ companyId: company._id, name: company.name, role: roleOf(row.role) });
+      // `locked`: the plan is unpaid after two failed payments (convex/billingLock.ts); the app shows the payment screen instead.
+      if (company) out.push({ companyId: company._id, name: company.name, role: roleOf(row.role), locked: company.billingLockedAt !== undefined });
     }
     return out;
   },

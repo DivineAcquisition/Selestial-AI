@@ -15,6 +15,7 @@ import { readProfile } from "../compliance/profile";
 import { appOrigin } from "../invitations";
 import { quietUntil } from "../messaging/policy";
 import { roleOf } from "../roles";
+import { lockDeadlines } from "../billing/lock";
 import { CATEGORY_INFO, EVENT_INFO, NIGHT, type NoticeFacts } from "./catalog";
 import { emailOn, noticeSuppression, preferencesOf, SUPPRESSION_WORDS } from "./preferences";
 import { unsubscribable } from "./route";
@@ -397,6 +398,8 @@ async function build(ctx: MutationCtx, message: Doc<"messages">, company: Doc<"c
     case "texting_progress":
     case "texting_attention":
       return textingNotice(ctx, company, notice.ref, facts, c);
+    case "plan_access":
+      return planAccess(ctx, company, notice.ref, facts, c);
     case "activation_result":
       return activation(ctx, company, "first", notice.ref, c);
     case "activation_summary":
@@ -475,6 +478,91 @@ async function textingNotice(ctx: MutationCtx, company: Doc<"companies">, ref: s
       return alertEmail({ ...base, tone: "danger", subject: "Business texting is paused", heading: "The carriers paused your texting", body: "Texts from your number are on hold. Selestial is looking into it with the carriers and will tell you if anything is needed from you. Nothing is sent while it's paused.", button: open("progress", "See what's happening") });
   }
   return { problem: "This texting notice is out of date." };
+}
+
+/**
+ * The Selestial plan is unpaid (convex/billingLock.ts). Each notice is checked against the record as it
+ * is when it goes: a payment that arrived in between means the warning is not sent.
+ */
+async function planAccess(ctx: MutationCtx, company: Doc<"companies">, ref: string | undefined, facts: NoticeFacts | undefined, c: Context): Promise<Built> {
+  const id = ref ? ctx.db.normalizeId("billingDunning", ref) : null;
+  const row = id ? await ctx.db.get(id) : null;
+  if (!row || row.companyId !== company._id) return { problem: "The unpaid invoice is no longer on record." };
+  const kind = str(facts, "kind");
+  const amount = money(row.amountCents, row.currency);
+  const base = { ...c, eyebrow: "Billing", essential: true, because: "you're the Owner, and the plan payment is part of your account" };
+  const pay = { label: row.hostedUrl ? "Pay now to keep access" : "Update payment method", path: "/app" };
+  const { cancelAt } = row.lockedAt ? lockDeadlines(row.lockedAt) : { cancelAt: null };
+  const open = row.resolvedAt === undefined;
+  switch (kind) {
+    case "first_failure":
+      if (!open || row.lockedAt !== undefined) return { problem: "The payment was settled, or the account already locked, before this notice went." };
+      return alertEmail({
+        ...base,
+        tone: "warning",
+        subject: "Your Selestial payment didn't go through",
+        heading: "Your payment didn't go through",
+        body: `We couldn't collect ${amount} for your Selestial plan. Nothing has changed yet, and we'll try again${row.nextAttemptAt ? ` on ${when(row.nextAttemptAt, c.timezone)}` : " soon"}.`,
+        note: "If the next try also fails, the account locks: your team can't open the workspace and your agents pause until it's paid. Your customers' booking pages and links keep working.",
+        facts: [
+          { label: "Amount due", value: amount },
+          { label: "Tried", value: when(row.lastFailedAt, c.timezone) },
+          { label: "Reason", value: row.lastFailure ?? null },
+        ],
+        button: { label: "Update payment method", path: "/app/settings/billing" },
+      });
+    case "locked":
+      if (!open || row.lockedAt === undefined) return { problem: "The account was reopened before this notice went." };
+      return alertEmail({
+        ...base,
+        tone: "danger",
+        subject: "Your Selestial account is locked until the payment goes through",
+        heading: "Your account is locked",
+        body: `Two payments of ${amount} for your Selestial plan didn't go through, so the workspace is locked and your agents are paused. Pay the invoice and everything opens again at once, just as you left it.`,
+        note: `Your customers can still book, open quotes and pay you, and your records are safe. If it stays unpaid, the plan is canceled on ${cancelAt ? when(cancelAt, c.timezone) : "day 30"}.`,
+        facts: [
+          { label: "Amount due", value: amount },
+          { label: "Failed attempts", value: String(row.attempts) },
+          { label: "Last tried", value: when(row.lastFailedAt, c.timezone) },
+          { label: "Reason", value: row.lastFailure ?? null },
+        ],
+        button: pay,
+      });
+    case "cancel_soon":
+      if (!open || row.lockedAt === undefined) return { problem: "The account was reopened before this notice went." };
+      return alertEmail({
+        ...base,
+        tone: "danger",
+        subject: "Your Selestial plan will be canceled in 7 days",
+        heading: "7 days left to keep your plan",
+        body: `Your account has been locked since ${when(row.lockedAt, c.timezone)} because ${amount} is unpaid. On ${cancelAt ? when(cancelAt, c.timezone) : "day 30"} the plan is canceled.`,
+        note: "Pay before then and everything opens again at once. Your records are kept either way.",
+        facts: [{ label: "Amount due", value: amount }],
+        button: pay,
+      });
+    case "canceled":
+      return alertEmail({
+        ...base,
+        tone: "danger",
+        subject: "Your Selestial plan was canceled",
+        heading: "Your plan was canceled",
+        body: `The plan stayed unpaid for 30 days, so it was canceled. Your company's records are kept, and choosing a plan again brings your workspace and agents back.`,
+        facts: [{ label: "Unpaid", value: amount }],
+        button: { label: "Choose a plan", path: "/app/settings/billing" },
+      });
+    case "reinstated":
+      if (row.resolution === "canceled") return { problem: "The plan was canceled, not reinstated." };
+      return alertEmail({
+        ...base,
+        tone: "info",
+        subject: "Your Selestial account is open again",
+        heading: "Thanks, you're all set",
+        body: "The payment went through. Your workspace is open again and your agents are back to how you left them.",
+        facts: [{ label: "Paid", value: row.resolution === "paid" ? amount : null }],
+        button: { label: "Open Selestial", path: "/app" },
+      });
+  }
+  return { problem: "This billing notice is out of date." };
 }
 
 /** The notice as it should go now, or why it shouldn't. */

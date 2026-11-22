@@ -277,6 +277,12 @@ export default defineSchema({
     /** Set only by Selestial staff. While set, nothing is sent for this company. */
     suspendedAt: v.optional(v.number()),
     /**
+     * Set while the Selestial plan is unpaid after two failed payment attempts (convex/billingLock.ts).
+     * The team can't open the workspace and every agent is paused; customer-facing pages keep working.
+     * Cleared when the invoice is paid, Selestial lifts it, or the plan is canceled after 30 days.
+     */
+    billingLockedAt: v.optional(v.number()),
+    /**
      * The verified plan, copied from Autumn by billing sync (convex/lib/billing) and nothing else. "growth"
      * and "scale" are the retired, staff-set values: they grant nothing and are cleared by
      * billing.clearLegacyPlans.

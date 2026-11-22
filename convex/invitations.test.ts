@@ -184,7 +184,7 @@ describe("accepting an invitation", () => {
     vi.setSystemTime(NOW + 1000);
     expect(await mia.mutation(api.invitations.accept, { token: made.token })).toEqual({ status: "joined", companyId: s.companyId });
     expect((await mia.query(api.companies.get, { companyId: s.companyId })).role).toBe("office");
-    expect(await mia.query(api.companies.mine, {})).toEqual([{ companyId: s.companyId, name: "Alpha Cleaning", role: "office" }]);
+    expect(await mia.query(api.companies.mine, {})).toEqual([{ companyId: s.companyId, name: "Alpha Cleaning", role: "office", locked: false }]);
     expect(await s.listed()).toMatchObject([{ state: "accepted", acceptedAt: NOW + 1000 }]);
     expect(await s.t.query(api.invitations.preview, { token: made.token })).toMatchObject({ state: "accepted", companyName: "Alpha Cleaning" });
 
@@ -674,7 +674,7 @@ describe("creating a company", () => {
     expect(after.companies).toMatchObject([{ name: "Alpha Cleaning", createdBy: "owner-a", setupKey: "setup-key-0001" }]);
     expect(after.members).toMatchObject([{ role: "owner", status: "active", userId: "owner-a" }]);
     expect(after.created).toHaveLength(1);
-    expect(await owner.query(api.companies.mine, {})).toEqual([{ companyId: first, name: "Alpha Cleaning", role: "owner" }]);
+    expect(await owner.query(api.companies.mine, {})).toEqual([{ companyId: first, name: "Alpha Cleaning", role: "owner", locked: false }]);
   });
 
   it("makes a company per key, per person, and every time when there is no key", async () => {
