@@ -20,6 +20,7 @@ import { invitationForToken } from "./invitations";
 import { invoiceForToken } from "./finance/payLinks";
 import { sessionForToken } from "./booking/tokens";
 import { allow } from "./rateLimit";
+import { movedTo } from "./environment";
 import { linkForStatementToken } from "./finance/statementLinks";
 import { notePortalAction, portalLinkForToken, portalLinkState, type PortalAction, type PortalLinkState } from "./cleaners/portal";
 import { isManager, isOwner, roleOf, type Role } from "./roles";
@@ -558,6 +559,35 @@ export function applicantMutation<V extends AnyValidators, R>(def: {
  * has accepted it; anything else gets a bare 401 and nothing is read. A webhook can never reach a
  * company's records except through the internal function the handler calls.
  */
+/** Headers that belong to one connection, not to the request, and are not passed on. */
+const HOP_HEADERS = new Set(["host", "connection", "content-length", "transfer-encoding", "keep-alive", "upgrade", "accept-encoding"]);
+
+/**
+ * On a backend that used to be live (MOVED_TO, convex/lib/environment.ts), the request passed on unchanged
+ * to the live backend and its answer returned as it is. Null everywhere else: the route answers itself.
+ */
+export async function forwardIfMoved(request: Request, body?: string): Promise<Response | null> {
+  const target = movedTo();
+  if (!target) return null;
+  const url = new URL(request.url);
+  const headers = new Headers();
+  request.headers.forEach((value, name) => {
+    if (!HOP_HEADERS.has(name.toLowerCase())) headers.set(name, value);
+  });
+  const hasBody = request.method !== "GET" && request.method !== "HEAD";
+  try {
+    const answer = await fetch(`${target}${url.pathname}${url.search}`, { method: request.method, headers, body: hasBody ? (body ?? (await request.text())) : undefined, redirect: "manual" });
+    const out = new Headers();
+    answer.headers.forEach((value, name) => {
+      if (!HOP_HEADERS.has(name.toLowerCase()) && name.toLowerCase() !== "content-encoding") out.set(name, value);
+    });
+    return new Response(await answer.arrayBuffer(), { status: answer.status, headers: out });
+  } catch {
+    // The live backend could not be reached: the provider is told to try again.
+    return new Response(null, { status: 503 });
+  }
+}
+
 export function providerWebhook(def: {
   verify: (request: Request, body: string) => Promise<boolean>;
   /** May answer with its own status, for a check that needs the database (an unknown key is 403). */
@@ -565,6 +595,8 @@ export function providerWebhook(def: {
 }): PublicHttpAction {
   return httpAction(async (ctx, request) => {
     const body = await request.text();
+    const moved = await forwardIfMoved(request, body);
+    if (moved) return moved;
     if (body.length > 256 * 1024 || !(await def.verify(request, body))) return new Response(null, { status: 401 });
     let status: void | number;
     try {
@@ -587,6 +619,8 @@ export function providerWebhook(def: {
  */
 export function oauthCallback(def: { handler: (ctx: ActionCtx, params: URLSearchParams) => Promise<string> }): PublicHttpAction {
   return httpAction(async (ctx, request) => {
+    const moved = await forwardIfMoved(request);
+    if (moved) return moved;
     const params = new URL(request.url).searchParams;
     const location = await def.handler(ctx, params);
     return new Response(null, { status: 302, headers: { Location: location, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
@@ -601,6 +635,8 @@ export function oauthCallback(def: { handler: (ctx: ActionCtx, params: URLSearch
  */
 export function oneClickUnsubscribe(def: { post: (ctx: ActionCtx, token: string) => Promise<void>; page: (token: string) => string | null }): PublicHttpAction {
   return httpAction(async (ctx, request) => {
+    const moved = await forwardIfMoved(request);
+    if (moved) return moved;
     const token = new URL(request.url).searchParams.get("t") ?? "";
     if (!token || token.length > 200) return new Response(null, { status: 400 });
     if (request.method === "POST") {
@@ -619,6 +655,8 @@ export function oneClickUnsubscribe(def: { post: (ctx: ActionCtx, token: string)
  */
 export function signedFileRoute(def: { verify: (request: Request, now: number) => Promise<boolean>; handler: (ctx: ActionCtx, request: Request, now: number) => Promise<Response | null> }): PublicHttpAction {
   return httpAction(async (ctx, request) => {
+    const moved = await forwardIfMoved(request);
+    if (moved) return moved;
     const now = Date.now();
     if (!(await def.verify(request, now))) return new Response("Not found.", { status: 404 });
     return (await def.handler(ctx, request, now)) ?? new Response("Not found.", { status: 404 });
