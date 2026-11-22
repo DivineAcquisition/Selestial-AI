@@ -26,6 +26,7 @@ import type { Id } from "../../../convex/_generated/dataModel";
 import { Checkbox, Select } from "@/components/ui/selection";
 import { Disclosure, EmailInput, NumberField } from "@/components/ui/fields";
 import { TextingCasePanel, TextingReadiness } from "@/components/staff/texting-case";
+import { CompanyDeletionPanel } from "@/components/staff/company-deletion";
 
 /**
  * Selestial's own staff console: the public request queues, the trust records the public pages are
@@ -231,6 +232,7 @@ export function RequestDetail() {
             {request.questions ? <Body label="Questions" text={request.questions} /> : null}
             {request.details ? <Body label="Details" text={request.details} /> : null}
           </Panel>
+          {request.kind === "privacy" && request.subtype === "deletion" && request.companyId ? <CompanyDeletionPanel requestId={requestId} /> : null}
           <Panel title="History">
             <ol className="grid gap-2 text-sm">
               {[...request.actions.map((row) => ({ ...row, kind: "action" as const })), ...request.notes.map((row) => ({ ...row, action: "note", detail: row.text, kind: "note" as const }))]

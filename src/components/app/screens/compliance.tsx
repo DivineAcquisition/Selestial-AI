@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { AddressField } from "@/components/app/address-field";
+import { DeletionStatus } from "@/components/app/closing";
 import { useCompany } from "@/components/app/company";
 import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { TextingEntry } from "@/components/app/texting/entry";
@@ -621,6 +622,16 @@ function CompanyDeletion() {
   const { busy, error, run } = useRun();
   const [note, setNote] = useState("");
   const [reference, setReference] = useState<string | null>(null);
+  const status = useQuery(api.companyDeletion.status, { companyId: company.companyId });
+  // Once asked: where the request stands and exactly what is kept, instead of the form.
+  if (status && status.state !== "completed") {
+    return (
+      <div className="grid gap-3 border-t border-border pt-5">
+        <h3 className="text-sm font-semibold text-strong">Deleting the company</h3>
+        <DeletionStatus companyId={company.companyId} />
+      </div>
+    );
+  }
   return (
     <div className="grid gap-3 border-t border-border pt-5">
       <div>

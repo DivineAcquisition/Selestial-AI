@@ -296,6 +296,22 @@ describe("an unpaid plan", () => {
     expect(await notices(s.t, s.companyId)).toEqual(["locked", "canceled"]);
   });
 
+  it("cancels the plan Autumn actually holds, so a company on the introductory plan is cancelled too, and starts the deletion clock", async () => {
+    const s = await setup();
+    await deliver(s.t, invoiceEvent("invoice.payment_failed", s.companyId, { attempt_count: 2 }));
+    const account = await s.t.run(async (ctx) => (await ctx.db.query("billingAccounts").withIndex("by_company_env", (q) => q.eq("companyId", s.companyId)).first())!);
+    await s.t.run((ctx) => ctx.db.patch(account._id, { autumnPlanId: "operate_early" }));
+    vi.setSystemTime(NOW + CANCEL_AFTER_MS + HOUR_MS);
+    await s.t.mutation(internal.billingLock.sweep, {});
+    await settle(s.t);
+    const cancel = billing.state.calls.find((call) => call.path === "/v1/billing.update");
+    expect(cancel?.body).toMatchObject({ plan_id: "operate_early", cancel_action: "cancel_immediately" });
+    // The 90-day deletion clock: a request for staff, nothing deleted (convex/companyDeletion.test.ts covers it in full).
+    const requests = await s.t.run((ctx) => ctx.db.query("trustRequests").withIndex("by_company_received", (q) => q.eq("companyId", s.companyId)).collect());
+    expect(requests).toEqual([expect.objectContaining({ kind: "privacy", subtype: "deletion", status: "received" })]);
+    expect((await companyRow(s.t, s.companyId))?.closingAt).toBeUndefined();
+  });
+
   it("lets staff with billing adjustments lift a lock, with a reason, and nobody else", async () => {
     const s = await setup();
     await deliver(s.t, invoiceEvent("invoice.payment_failed", s.companyId, { attempt_count: 2 }));

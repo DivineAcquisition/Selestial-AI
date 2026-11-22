@@ -186,6 +186,28 @@ export async function disconnectInbox(ctx: MutationCtx & { companyId: Id<"compan
   return { grant: shared ? ("kept_shared" as const) : ("revoking" as const) };
 }
 
+/**
+ * Every inbox of a company being deleted (convex/companyDeletion.ts): stopped, its authorization deleted,
+ * and the grant revoked unless another live tool shares it, exactly as `disconnectInbox` does. Members are
+ * not notified: the company is closing. Returns how many were connected.
+ */
+export async function disconnectInboxesForDeletion(ctx: MutationCtx, companyId: Id<"companies">): Promise<number> {
+  const rows = await ctx.db.query("mailboxConnections").withIndex("by_company", (q) => q.eq("companyId", companyId)).take(50);
+  let stopped = 0;
+  for (const row of rows) {
+    if (row.status === "disconnected") continue;
+    const credentials = await ctx.db.query("mailboxCredentials").withIndex("by_connection", (q) => q.eq("connectionId", row._id)).take(10);
+    const shared = await sharesGoogleGrant(ctx, row.companyId, row.address, row._id);
+    await ctx.db.patch(row._id, { status: "disconnected", problem: undefined, disconnectedAt: Date.now(), canSend: false, watchExpiresAt: undefined, syncLeaseUntil: undefined, grant: shared ? "kept_shared" : undefined });
+    const sealed = credentials[0]?.sealedRefreshToken ?? null;
+    for (const credential of credentials) await ctx.db.delete(credential._id);
+    if (!shared && sealed) await ctx.scheduler.runAfter(0, internal.inboxes.revokeGrant, { connectionId: row._id, sealed });
+    await recordEvent(ctx, { companyId, type: "mailbox.disconnected", actor: { kind: "system" }, subject: { table: "mailboxConnections", id: row._id }, data: { provider: row.provider, grantShared: shared, reason: "company_deletion" } });
+    stopped += 1;
+  }
+  return stopped;
+}
+
 export const revokeGrant = internalAction({
   args: { connectionId: v.id("mailboxConnections"), sealed: v.string() },
   handler: async (ctx, args) => {

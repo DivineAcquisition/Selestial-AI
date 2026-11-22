@@ -83,6 +83,10 @@ const byValidator = v.string();
 export const EXPORT_STATUSES = ["preparing", "ready", "expired", "failed"] as const;
 export const exportStatusValidator = literals(EXPORT_STATUSES);
 
+export const COMPANY_DELETION_STATUSES = ["preparing", "running", "failed", "completed"] as const;
+export type CompanyDeletionStatus = (typeof COMPANY_DELETION_STATUSES)[number];
+export const COMPANY_DELETION_PHASES = ["disconnect", "tables", "verify", "finish", "done"] as const;
+
 export const ERASE_STEP_STATES = ["done", "kept", "failed"] as const;
 export const eraseStepStateValidator = literals(ERASE_STEP_STATES);
 
@@ -225,4 +229,51 @@ export const trustTables = {
     .index("by_company_at", ["companyId", "at"])
     .index("by_company_subject", ["companyId", "subject.id"])
     .index("by_at", ["at"]),
+
+  /**
+   * One staff-run deletion of a whole company (convex/companyDeletion.ts): its preconditions and waivers,
+   * where the run has got to, and what it did to each table. Holds ids and counts, never deleted details.
+   */
+  companyDeletions: defineTable({
+    companyId: v.id("companies"),
+    requestId: v.id("trustRequests"),
+    status: literals(COMPANY_DELETION_STATUSES),
+    /** Preconditions an admin waived, each with the reason. */
+    waivers: v.array(v.object({ key: v.string(), reason: v.string(), by: v.id("staff"), at: v.number() })),
+    startedBy: v.optional(v.id("staff")),
+    startedAt: v.optional(v.number()),
+    finishedAt: v.optional(v.number()),
+    /** When the Owner last downloaded an export before the run started; null when they never did. */
+    exportDownloadedAt: v.optional(v.union(v.number(), v.null())),
+    /** Rows per batch. Small in tests; the default stays well inside Convex's per-mutation limits. */
+    batchSize: v.number(),
+    phase: literals(COMPANY_DELETION_PHASES),
+    /** The table being worked through, as an index into DELETION_PLAN, and the page cursor inside it. */
+    tableIndex: v.number(),
+    cursor: v.union(v.string(), v.null()),
+    /** How many times the verification pass sent the run back over the tables. */
+    passes: v.number(),
+    tables: v.array(
+      v.object({
+        table: v.string(),
+        treatment: v.union(v.literal("delete"), v.literal("retain"), v.literal("anonymize")),
+        deleted: v.number(),
+        anonymized: v.number(),
+        retained: v.number(),
+        files: v.number(),
+        done: v.boolean(),
+      }),
+    ),
+    disconnected: v.optional(v.object({ google: v.number(), inboxes: v.number(), connectors: v.number() })),
+    errors: v.array(v.object({ at: v.number(), table: v.optional(v.string()), message: v.string() })),
+    attempts: v.number(),
+    leaseToken: v.optional(v.string()),
+    leaseUntil: v.optional(v.number()),
+    lastProgressAt: v.optional(v.number()),
+    summary: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_company", ["companyId"])
+    .index("by_request", ["requestId"])
+    .index("by_status", ["status"]),
 };

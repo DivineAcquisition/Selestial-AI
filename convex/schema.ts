@@ -279,6 +279,13 @@ export default defineSchema({
     /** Set only by Selestial staff. While set, nothing is sent for this company. */
     suspendedAt: v.optional(v.number()),
     /**
+     * Set when Selestial staff start deleting the company (convex/companyDeletion.ts). From then on no
+     * member, support session, agent or link page can act for it; the deletion run is the only writer.
+     */
+    closingAt: v.optional(v.number()),
+    /** Set when the deletion finished. The row stays as a tombstone so retained financial records point at something. */
+    deletedAt: v.optional(v.number()),
+    /**
      * Set while the Selestial plan is unpaid after two failed payment attempts (convex/billingLock.ts).
      * The team can't open the workspace and every agent is paused; customer-facing pages keep working.
      * Cleared when the invoice is paid, Selestial lifts it, or the plan is canceled after 30 days.

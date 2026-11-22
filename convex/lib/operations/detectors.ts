@@ -573,6 +573,45 @@ const BILLING_REVIEW_WINDOW = 3 * DAY;
 /** How convex/billingLock.ts keeps a failed plan payment it could not match to a company. */
 const UNMATCHED_PLAN_FAILURE = "stripe.invoice.payment_failed.unmatched";
 
+/** The month-12 move should be on Autumn's record this long before the price changes. */
+const EARLY_SWITCH_DUE = 7 * DAY;
+
+/**
+ * An early-user company whose move from $199 to $299 is failing, not yet on Autumn's record a week before
+ * month 12 ends, or past month 12 and still on $199. Never silent: the company would otherwise keep paying
+ * a price the offer does not give.
+ */
+async function earlyOfferSwitch(ctx: QueryCtx, source: Related, now: number): Promise<Finding | null> {
+  const row = await load(ctx, "earlyOffers", source);
+  if (!row || row.state !== "claimed" || row.offerEndsAt === undefined) return null;
+  const account = await ctx.db
+    .query("billingAccounts")
+    .withIndex("by_company_env", (q) => q.eq("companyId", row.companyId).eq("env", row.env))
+    .unique();
+  // Ending anyway (cancelled), or no longer on the $199 plan: nothing to move.
+  if (!account || account.autumnPlanId !== "operate_early" || account.subscription.endsAt !== null) return null;
+  const late = now > row.offerEndsAt + DAY;
+  const due = now > row.offerEndsAt - EARLY_SWITCH_DUE && !row.switchConfirmedAt;
+  if (!row.switchProblem && !due && !late) return null;
+  const endsOn = new Date(row.offerEndsAt).toISOString().slice(0, 10);
+  return {
+    key: `early_offer_switch:${row.companyId}`,
+    kind: "early_offer_switch",
+    area: "billing",
+    companyId: row.companyId,
+    provider: "autumn",
+    severity: late ? "critical" : "high",
+    state: row.switchProblem || late ? "needs_staff" : "recovering",
+    title: late ? "Early-user company is still on $199 after month 12" : "Early-user price is not yet set to move to $299",
+    impact: late ? `The 12 months at $199 ended on ${endsOn}, and Autumn still bills $199. The Owner was told the price would be $299 from that date.` : `The 12 months at $199 end on ${endsOn}. The move to $299 at the end of that billing period is not on Autumn's record yet.`,
+    nextAction: row.switchProblem ? "Read the problem, then check the customer in Autumn: the plan should show Operate scheduled for the end of the 12th period. The hourly sweep asks again." : "Check that the “early-user offer” job is running, and the customer in Autumn.",
+    diagnostics: [row.switchProblem, `attempts ${row.switchAttempts ?? 0}`, row.switchRequestedAt ? `asked ${new Date(row.switchRequestedAt).toISOString()}` : "not asked yet"].filter(Boolean).join(" · "),
+    source,
+    since: row.switchRequestedAt ?? row.offerEndsAt - EARLY_SWITCH_DUE,
+    attempts: row.switchAttempts ?? 0,
+  };
+}
+
 const aiBilling: Detector = {
   check: "ai_billing",
   everyMinutes: 10,
@@ -601,9 +640,18 @@ const aiBilling: Detector = {
       .withIndex("by_type_received", (q) => q.eq("type", UNMATCHED_PLAN_FAILURE).gt("receivedAt", now - BILLING_REVIEW_WINDOW))
       .take(50);
     out.push(...strangers.map((row) => ref("billingWebhooks", row._id)));
+    // Early-user companies whose move to $299 is failing or late (convex/earlyOffer.ts).
+    for (const env of ["sandbox", "production"] as const) {
+      const claimed = await ctx.db
+        .query("earlyOffers")
+        .withIndex("by_env_state", (q) => q.eq("env", env).eq("state", "claimed"))
+        .take(200);
+      out.push(...claimed.filter((row) => row.switchProblem || (row.offerEndsAt !== undefined && now > row.offerEndsAt - EARLY_SWITCH_DUE)).map((row) => ref("earlyOffers", row._id)));
+    }
     return out;
   },
   async evaluate(ctx, source, now) {
+    if (source.table === "earlyOffers") return earlyOfferSwitch(ctx, source, now);
     if (source.table === "billingWebhooks") {
       const event = await load(ctx, "billingWebhooks", source);
       if (!event || event.type !== UNMATCHED_PLAN_FAILURE || event.receivedAt <= now - BILLING_REVIEW_WINDOW) return null;
@@ -696,6 +744,77 @@ const messagingAttention: Detector = {
   },
 };
 
+// ── Company deletion (convex/companyDeletion.ts) ──────────────────────────────────────────────────
+
+/** A deletion request this close to its due date and not completed needs a person. */
+export const DELETION_DUE_WARNING = 14 * DAY;
+/** A running deletion that has made no progress for this long has stopped. */
+const DELETION_STALLED = HOUR;
+const OPEN_REQUEST: readonly Doc<"trustRequests">["status"][] = ["received", "verifying", "in_progress", "waiting_on_requester", "routed_to_business"];
+const dueAt = (dueOn: string) => Date.parse(`${dueOn}T00:00:00Z`);
+
+const companyDeletions: Detector = {
+  check: "company_deletion",
+  everyMinutes: 60,
+  async scan(ctx, now) {
+    const out: Related[] = [];
+    for (const status of OPEN_REQUEST) {
+      const rows = await ctx.db
+        .query("trustRequests")
+        .withIndex("by_kind_status_received", (q) => q.eq("kind", "privacy").eq("status", status))
+        .take(200);
+      for (const row of rows) if (row.subtype === "deletion" && row.companyId && row.dueOn && dueAt(row.dueOn) - now <= DELETION_DUE_WARNING) out.push(ref("trustRequests", row._id));
+    }
+    for (const status of ["failed", "running"] as const) {
+      for (const row of await ctx.db.query("companyDeletions").withIndex("by_status", (q) => q.eq("status", status)).take(50)) out.push(ref("companyDeletions", row._id));
+    }
+    return out;
+  },
+  async evaluate(ctx, source, now) {
+    const request = await load(ctx, "trustRequests", source);
+    if (request) {
+      if (request.subtype !== "deletion" || !request.companyId || !request.dueOn || !OPEN_REQUEST.includes(request.status)) return null;
+      const due = dueAt(request.dueOn);
+      if (due - now > DELETION_DUE_WARNING) return null;
+      const overdue = due <= now;
+      return {
+        key: `company_deletion_due:${request._id}`,
+        kind: "company_deletion_due",
+        area: "platform",
+        companyId: request.companyId,
+        severity: overdue ? "critical" : "high",
+        state: "needs_staff",
+        title: overdue ? "A company deletion is overdue" : "A company deletion is due within 14 days",
+        impact: `The Privacy Notice promises a leaving company's records are deleted within 90 days. Request ${request.reference} is due ${request.dueOn} and is not completed.`,
+        nextAction: "Open the request in Staff › Requests, clear the preconditions and start the deletion.",
+        source,
+        since: due - DELETION_DUE_WARNING,
+        attempts: 0,
+      };
+    }
+    const deletion = await load(ctx, "companyDeletions", source);
+    if (!deletion) return null;
+    const stalled = deletion.status === "running" && now - (deletion.lastProgressAt ?? deletion.startedAt ?? now) > DELETION_STALLED;
+    if (deletion.status !== "failed" && !stalled) return null;
+    const last = deletion.errors[deletion.errors.length - 1];
+    return {
+      key: `company_deletion_failed:${deletion._id}`,
+      kind: "company_deletion_failed",
+      area: "platform",
+      companyId: deletion.companyId,
+      severity: "high",
+      state: "needs_staff",
+      title: deletion.status === "failed" ? "A company deletion run failed" : "A company deletion run has stopped",
+      impact: "The company is closed to everyone but its records are only partly deleted.",
+      nextAction: "Read the error on the request, fix the cause, then resume the deletion from the request page. It continues where it stopped.",
+      diagnostics: last ? `${last.table ?? deletion.phase}: ${last.message.slice(0, 200)}` : `phase ${deletion.phase}`,
+      source,
+      since: deletion.lastProgressAt ?? deletion.startedAt ?? deletion.createdAt,
+      attempts: deletion.attempts,
+    };
+  },
+};
+
 export const DETECTORS: readonly Detector[] = [
   agentWork,
   chatRuns,
@@ -710,6 +829,7 @@ export const DETECTORS: readonly Detector[] = [
   aiBilling,
   messagingBilling,
   messagingAttention,
+  companyDeletions,
 ];
 
 export function detectorFor(check: Check): Detector {

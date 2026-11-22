@@ -412,5 +412,7 @@ export const complianceTables = {
     at: v.number(),
   })
     .index("by_message", ["messageId"])
-    .index("by_company_address_category_at", ["companyId", "channel", "address", "category", "at"]),
+    .index("by_company_address_category_at", ["companyId", "channel", "address", "category", "at"])
+    // For a company deletion: pages the rows while their addresses are replaced with hashes (convex/companyDeletion.ts).
+    .index("by_company_at", ["companyId", "at"]),
 };

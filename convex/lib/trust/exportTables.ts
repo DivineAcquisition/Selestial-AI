@@ -76,6 +76,7 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   { table: "billingDunning", index: "by_company_resolved" },
   { table: "aiExecutions", index: "by_company_created", omit: ["lockId"], why: "Autumn's internal reference for a credit hold." },
   { table: "messagingCharges", index: "by_company_created", omit: ["lockId"], why: "Autumn's internal reference for a messaging hold." },
+  { table: "earlyOffers", index: "by_company_env" },
   { table: "billingIntents", index: "by_company_created", omit: ["url"], why: "A short-lived payment or portal address." },
   { table: "agentAccessRequests", index: "by_company_last" },
   { table: "messagingAttention", index: "by_company_at", omit: ["resolvedBy"], why: "Which Selestial staff member resolved it." },
@@ -261,6 +262,7 @@ export const NOT_EXPORTED: Readonly<Record<string, string>> = {
   lockdownCompanies: "A restore's record of each company's sending and agent settings before Selestial paused them; the settings themselves are on the company, which is exported.",
   incidents: "Selestial's own operational records about the service (what broke, what recovery ran). What happened to the company's records is exported in those records and the event log.",
   trustRequests: "Requests to Selestial are Selestial's records about a person, answered through the privacy request process.",
+  companyDeletions: "Selestial's record of a staff-run deletion of the company; it exists only once the company is being deleted.",
 };
 
 /** Fields of the company row itself that never leave. */

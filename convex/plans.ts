@@ -397,6 +397,9 @@ export const generateOne = internalMutation({
   handler: async (ctx, args) => {
     const plan = await ctx.db.get(args.planId);
     if (!plan) return null;
+    // A company being deleted makes no new visits or invoices (convex/companyDeletion.ts).
+    const company = await ctx.db.get(plan.companyId);
+    if (!company || company.closingAt !== undefined || company.deletedAt !== undefined) return null;
     await generateVisits(ctx, plan, { kind: "system" });
     await draftMonthlyInvoice(ctx, (await ctx.db.get(plan._id))!);
     return null;

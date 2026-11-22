@@ -346,6 +346,22 @@ async function dropConnection(
   });
 }
 
+/**
+ * Every Jobber or Housecall Pro connection of a company being deleted (convex/companyDeletion.ts), the same
+ * way the Owner's disconnect does it. Returns how many were connected.
+ */
+export async function disconnectConnectorsForDeletion(ctx: MutationCtx, companyId: Id<"companies">): Promise<number> {
+  const rows = await ctx.db.query("connectorConnections").withIndex("by_company_system", (q) => q.eq("companyId", companyId)).take(20);
+  let stopped = 0;
+  for (const connection of rows) {
+    if (connection.status === "disconnected") continue;
+    await dropConnection(ctx, connection, false);
+    await recordEvent(ctx, { companyId, type: "connector.disconnected", actor: { kind: "system" }, subject: { table: "companies", id: companyId }, data: { system: connection.system, reason: "company_deletion" } });
+    stopped += 1;
+  }
+  return stopped;
+}
+
 /** Where Jobber sends the Owner back. Returns the address to send them on to. */
 export async function jobberCallback(
   ctx: ActionCtx,

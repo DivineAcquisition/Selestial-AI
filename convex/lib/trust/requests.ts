@@ -54,6 +54,57 @@ async function plannedNotify(ctx: { db: QueryCtx["db"] | MutationCtx["db"] }, ki
   return { state: "pending" };
 }
 
+/** A company that leaves has its records deleted within this many days (the same as COMPANY_DELETION_DAYS in convex/dataRights.ts). */
+const DELETION_DUE_DAYS = 90;
+const OPEN_STATUSES: readonly Doc<"trustRequests">["status"][] = ["received", "verifying", "in_progress", "waiting_on_requester", "routed_to_business"];
+
+/** The company's open request to delete it, if there is one. */
+export async function openCompanyDeletionRequest(ctx: { db: QueryCtx["db"] | MutationCtx["db"] }, companyId: Id<"companies">): Promise<Doc<"trustRequests"> | null> {
+  const rows = await ctx.db
+    .query("trustRequests")
+    .withIndex("by_company_received", (q) => q.eq("companyId", companyId))
+    .order("desc")
+    .take(50);
+  return rows.find((row) => row.kind === "privacy" && row.subtype === "deletion" && OPEN_STATUSES.includes(row.status)) ?? null;
+}
+
+/**
+ * A plan cancelled for non-payment starts the 90-day deletion clock (convex/billingLock.ts, `canceled`): the
+ * same privacy request an Owner's own request makes, due in 90 days. It deletes NOTHING: deletion is always a
+ * staff run (convex/companyDeletion.ts). An open deletion request already there is the clock.
+ */
+export async function openNonPaymentDeletionRequest(ctx: MutationCtx, companyId: Id<"companies">): Promise<Id<"trustRequests"> | null> {
+  const company = await ctx.db.get(companyId);
+  if (!company || company.deletedAt !== undefined) return null;
+  const open = await openCompanyDeletionRequest(ctx, companyId);
+  if (open) return open._id;
+  const owner = await ctx.db
+    .query("members")
+    .withIndex("by_company", (q) => q.eq("companyId", companyId))
+    .filter((q) => q.and(q.eq(q.field("role"), "owner"), q.eq(q.field("status"), "active")))
+    .first();
+  const now = Date.now();
+  const note = "plan cancelled for non-payment";
+  const { requestId } = await saveRequest(
+    ctx,
+    {
+      kind: "privacy",
+      subtype: "deletion",
+      requester: { name: owner?.name, email: owner?.email ?? "owner-unknown@selestial.invalid", relationship: "cleaning_company_customer" },
+      businessName: company.name,
+      details: "The Selestial plan was cancelled for non-payment. The Privacy Notice promises a leaving company's records are deleted within 90 days; this request starts that clock. Nothing is deleted until Selestial staff run the deletion.",
+      companyId,
+      routing: "selestial",
+      status: "received",
+      dueOn: new Date(now + DELETION_DUE_DAYS * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+    },
+    { by: "system", action: "received", detail: "Opened automatically: plan cancelled for non-payment." },
+  );
+  const saved = await ctx.db.get(requestId);
+  if (saved) await ctx.db.patch(requestId, { notes: [...saved.notes, { at: now, by: "system", text: note }] });
+  return requestId;
+}
+
 /** Saves a request and plans the email about it. Used by the public form and by a company's Owner. */
 export async function saveRequest(
   ctx: MutationCtx,

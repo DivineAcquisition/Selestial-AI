@@ -80,12 +80,13 @@ export const mine = signedInQuery({
       .query("members")
       .withIndex("by_user", (q) => q.eq("userId", ctx.userId))
       .take(50);
-    const out: { companyId: string; name: string; role: string; locked: boolean }[] = [];
+    const out: { companyId: string; name: string; role: string; locked: boolean; closing?: true }[] = [];
     for (const row of rows) {
       if (row.status !== "active") continue;
       const company = await ctx.db.get(row.companyId);
       // `locked`: the plan is unpaid after two failed payments (convex/billingLock.ts); the app shows the payment screen instead.
-      if (company) out.push({ companyId: company._id, name: company.name, role: roleOf(row.role), locked: company.billingLockedAt !== undefined });
+      // `closing`: Selestial is deleting the company (convex/companyDeletion.ts); the app shows its status instead.
+      if (company) out.push({ companyId: company._id, name: company.name, role: roleOf(row.role), locked: company.billingLockedAt !== undefined, ...(company.closingAt !== undefined || company.deletedAt !== undefined ? { closing: true as const } : {}) });
     }
     return out;
   },

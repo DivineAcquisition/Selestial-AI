@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { AgentDock } from "@/components/app/agent-dock";
 import { LockedGate, PaymentWarning } from "@/components/app/billing/locked";
+import { ClosingGate } from "@/components/app/closing";
 import { ChatBoundary } from "@/components/app/chat/boundary";
 import { ChatProvider, useChat } from "@/components/app/chat/chat-context";
 import { AskButton, ChatPanel } from "@/components/app/chat/panel";
@@ -282,6 +283,8 @@ function Companies({ userId, children }: { userId: string; children: React.React
     router.push(LANDING_PATH);
   };
   const businesses = mine.map((row) => ({ companyId: row.companyId, name: row.name, locked: row.locked }));
+  // Selestial is deleting the company at its Owner's request: its status instead of the workspace.
+  if (current.closing) return <ClosingGate key={current.companyId} companyId={current.companyId as Id<"companies">} name={current.name} owner={current.role === "owner"} />;
   // The Selestial plan is unpaid after two failed payments: the payment screen instead of the workspace.
   if (current.locked) return <LockedGate key={current.companyId} companyId={current.companyId as Id<"companies">} businesses={businesses} onSwitch={switchTo} fallback={<Loading />} />;
   return (

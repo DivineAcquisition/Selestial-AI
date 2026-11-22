@@ -10,6 +10,7 @@ import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/
 import { Modal } from "@/components/app/modal";
 import { PageHeader, Panel } from "@/components/app/shell";
 import { SecondFactor } from "@/components/app/support/verify";
+import { EarlyOfferPanel } from "@/components/staff/early-offer";
 import { useNow } from "@/components/app/use-now";
 import { Activity, AlertTriangle, Building2, CheckCircle2, Clock, ExternalLink, RefreshCw, ShieldCheck } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
@@ -77,6 +78,7 @@ const CHECK_LABEL: Record<string, string> = {
   ai_billing: "AI credit settlement",
   messaging_billing: "Messaging settlement",
   messaging_attention: "Messaging balances",
+  company_deletion: "Company deletions",
 };
 
 const time = (at: number) => new Date(at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
@@ -98,6 +100,7 @@ export function OperationsWorkspace({ view }: { view: OperationsView }) {
     <>
       <PageHeader title={view === "" ? "Operations" : title} lead={VIEW_LEAD[view]} />
       <OperationsTabs current={view} />
+      {view === "billing" ? <EarlyOfferPanel /> : null}
       {view === "" ? <OverviewView onOpen={setOpenId} /> : view === "activity" ? <ActivityView onOpen={setOpenId} /> : <IncidentsView area={VIEW_AREA[view]} onOpen={setOpenId} />}
       <IncidentPanel id={openId} onClose={() => setOpenId(null)} />
     </>

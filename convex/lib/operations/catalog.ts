@@ -51,6 +51,7 @@ export const CHECKS = [
   "ai_billing",
   "messaging_billing",
   "messaging_attention",
+  "company_deletion",
 ] as const;
 export type Check = (typeof CHECKS)[number];
 export const checkValidator = literals(CHECKS);
@@ -89,6 +90,10 @@ export const KINDS = [
   "messaging_overdraft_floor",
   "messaging_inbound_spike",
   "messaging_unmetered",
+  "early_offer_switch",
+  // Company deletion (convex/companyDeletion.ts)
+  "company_deletion_due",
+  "company_deletion_failed",
   // Grouped: one provider failing for several companies at once.
   "provider_outage",
 ] as const;
@@ -125,6 +130,9 @@ export const KIND_LABELS: Record<Kind, string> = {
   messaging_overdraft_floor: "Messaging balance at overdraft floor",
   messaging_inbound_spike: "Unusual burst of incoming texts",
   messaging_unmetered: "Messages are not being charged",
+  company_deletion_due: "Company deletion due soon",
+  company_deletion_failed: "Company deletion run failed",
+  early_offer_switch: "Early-user price not moved to $299",
   provider_outage: "Provider failing for several companies",
 };
 

@@ -182,6 +182,30 @@ export const disconnect = ownerMutation({
   },
 });
 
+/**
+ * Every Google connection of a company being deleted (convex/companyDeletion.ts), the same way the Owner's
+ * disconnect does it: work cancelled, token deleted, and Google's grant revoked unless another live tool
+ * (in any company) shares the account. Returns how many were connected.
+ */
+export async function disconnectGoogleForDeletion(ctx: MutationCtx, companyId: Id<"companies">): Promise<number> {
+  const rows = await ctx.db.query("googleConnections").withIndex("by_company", (q) => q.eq("companyId", companyId)).take(50);
+  let stopped = 0;
+  for (const connection of rows) {
+    if (connection.status === "disconnected") continue;
+    await stopConnection(ctx, connection, "Disconnected because the company is being deleted.");
+    const shared =
+      (await ctx.db.query("googleConnections").withIndex("by_sub", (q) => q.eq("googleSub", connection.googleSub)).take(100)).some((row) => row._id !== connection._id && row.status !== "disconnected") ||
+      (await gmailInboxOn(ctx, connection.email));
+    for (const credential of await ctx.db.query("googleCredentials").withIndex("by_connection", (q) => q.eq("connectionId", connection._id)).take(10)) {
+      if (!shared) await ctx.scheduler.runAfter(0, internal.google.revokeGrant, { connectionId: connection._id, sealedRefreshToken: credential.sealedRefreshToken });
+      await ctx.db.delete(credential._id);
+    }
+    await recordEvent(ctx, { companyId, type: "google.disconnected", actor: { kind: "system" }, subject: { table: "companies", id: companyId }, data: { feature: connection.feature ?? "legacy", revokedAtGoogle: !shared, reason: "company_deletion" } });
+    stopped += 1;
+  }
+  return stopped;
+}
+
 export const revokeGrant = internalAction({
   args: { connectionId: v.id("googleConnections"), sealedRefreshToken: v.string() },
   handler: async (_ctx, args) => {

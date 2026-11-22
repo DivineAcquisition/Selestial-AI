@@ -31,6 +31,7 @@ import { notifyMembers } from "./lib/notify/route";
 import { isOwner } from "./lib/roles";
 import { AGENTS } from "./lib/statuses";
 import { openPlanCancelledWork } from "./lib/texting/offboarding";
+import { openNonPaymentDeletionRequest } from "./lib/trust/requests";
 
 const HOUR = 3_600_000;
 
@@ -320,7 +321,9 @@ export const cancelTarget = internalQuery({
       .query("billingAccounts")
       .withIndex("by_company_env", (q) => q.eq("companyId", row.companyId).eq("env", row.env))
       .unique();
-    return { customerId: customerIdFor(row.companyId), planId: account?.plan ?? null };
+    // Autumn's own plan id ("operate_early" for the introductory price), else the plan family: cancelling by
+    // the family alone would miss a company on the introductory plan.
+    return { customerId: customerIdFor(row.companyId), planId: account?.autumnPlanId ?? account?.plan ?? null };
   },
 });
 
@@ -351,6 +354,8 @@ export const canceled = internalMutation({
     await notifyMembers(ctx, { companyId: row.companyId, event: "plan_access", ref: row._id, key: "canceled", facts: { kind: "canceled" } });
     // A texting number still set up becomes a work item for Selestial staff. It releases nothing by itself.
     await openPlanCancelledWork(ctx, row.companyId, "unpaid");
+    // The company has left: the Privacy Notice's 90-day deletion clock starts. It deletes nothing by itself.
+    await openNonPaymentDeletionRequest(ctx, row.companyId);
     await resolve(ctx, row._id, "canceled");
   },
 });
