@@ -95,7 +95,21 @@ export const caseFor = staffQuery({
           .filter((note) => note.status === "posted")
           .map(async (note) => ({ id: note._id, audience: note.audience, body: note.body, by: note.author.kind === "staff" ? `Staff: ${await nameOf(note.author.staffId)}` : note.author.staffId ? `Selestial Support: ${await nameOf(note.author.staffId)}` : "Owner", revisions: note.revisions.length, locked: note.lockedAt !== undefined, createdAt: note.createdAt })),
       ),
-      exceptions: exceptions.map((row) => ({ ...row, id: row._id })),
+      exceptions: await Promise.all(
+        exceptions.map(async (row) => {
+          // Giving a number up: how far the request's own offboarding has got, so staff act from the item itself.
+          const giving = row.assisted?.route === "release" || row.assisted?.route === "port_out";
+          const request = giving && row.requestId ? await ctx.db.get(row.requestId) : null;
+          const o = request?.offboarding;
+          return {
+            ...row,
+            id: row._id,
+            offboarding: request
+              ? { status: request.status, sameNumber: request.phoneNumber === row.assisted?.phoneNumber, started: o !== undefined, route: o?.route ?? null, running: o?.leaseUntil !== undefined && o.leaseUntil > Date.now(), unassignedAt: o?.unassignedAt ?? null, numberRemovedAt: o?.numberRemovedAt ?? null, campaignRemovedAt: o?.campaignRemovedAt ?? null, problem: o?.problem ?? null }
+              : null,
+          };
+        }),
+      ),
       recommendations: recs.filter((row) => row.status !== "resolved").map((row) => ({ id: row._id, issue: row.issue, stage: row.stage, status: row.status, responsible: row.responsible, approval: row.approval, clarification: row.clarification?.question ?? null })),
       submissions: submissions.map((row) => ({ version: row.version, submittedAt: row.submittedAt, configVersion: row.configVersion ?? 0, evidence: row.evidence ?? [] })),
       purposes: EVIDENCE_PURPOSES.map((key) => ({ key, label: EVIDENCE_PURPOSE_WORDS[key].label })),

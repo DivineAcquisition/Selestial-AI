@@ -502,6 +502,21 @@ async function textingNotice(ctx: MutationCtx, company: Doc<"companies">, ref: s
     case "interrupted":
       if (row.status !== "interrupted") return { problem: "Texting is running again." };
       return alertEmail({ ...base, tone: "danger", subject: "Business texting is paused", heading: "The carriers paused your texting", body: "Texts from your number are on hold. Selestial is looking into it with the carriers and will tell you if anything is needed from you. Nothing is sent while it's paused.", button: open("progress", "See what's happening") });
+    case "rejected":
+      if (row.status !== "rejected") return { problem: "The request is no longer turned down." };
+      return alertEmail({ ...base, tone: "warning", subject: "Your texting setup wasn't approved", heading: "Selestial review didn't approve your texting setup", body: `${row.note ? `Selestial review said: "${row.note}" ` : ""}Nothing was filed with the carriers and nothing was charged. Your answers are saved: you can change them and submit again.`, button: open("review", "Review your setup") });
+    case "failed":
+      if (row.status !== "failed") return { problem: "The request is moving again." };
+      return alertEmail({ ...base, tone: "warning", subject: "Your texting setup has stopped for now", heading: "We hit a problem setting up your texting", body: "We hit a problem on our side while setting up business texting and are looking into it. You don't need to do anything right now. Nothing more is charged while it's stopped, and we'll email you when it moves again or if we need something from you.", button: open("progress", "See where it stands") });
+    case "release_requested": {
+      const transfer = str(facts, "needs") === "port_out";
+      if (row.status === "released") return { problem: "The number has already been given up." };
+      return alertEmail({ ...base, tone: "info", subject: transfer ? `We have your request to move ${number}` : `We have your request to release ${number}`, heading: transfer ? "Your request to move your number" : "Your request to release your number", body: transfer ? `Selestial received your request to move ${number} to another provider. Your new provider starts the transfer, which typically takes several business days. Until it completes, the number keeps working here, Selestial won't release it, and its monthly number and registration fees continue.` : `Selestial received your request to release ${number}. A person at Selestial reviews it, typically within 2 business days. Until the release completes, the number keeps working and its monthly number and registration fees continue. You can cancel the request until then. Once released, the number can't be recovered.`, facts: [{ label: "Number", value: number }], button: open("progress", "See the request") });
+    }
+    case "released":
+    case "transfer_completed":
+      if (row.status !== "released") return { problem: "The number is still set up." };
+      return alertEmail({ ...base, tone: "info", subject: kind === "released" ? `${number} has been released` : `${number} has moved to your new provider`, heading: kind === "released" ? "Your texting number was released" : "Your number's transfer is complete", body: kind === "released" ? `${number} is no longer yours on Selestial and can't be recovered. Texts to it won't reach you, its carrier registration has ended, and Selestial sends no more texts for your business. Its monthly number and registration fees have stopped. Setup fees already paid aren't refunded.` : `${number} now belongs to your new provider. Selestial sends no more texts from it, and its monthly number and registration fees here have stopped. Setup fees already paid aren't refunded.`, facts: [{ label: "Number", value: number }], button: open("progress", "Open business texting") });
   }
   return { problem: "This texting notice is out of date." };
 }

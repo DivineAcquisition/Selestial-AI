@@ -47,6 +47,13 @@ export const NOTICE_EVENT_TYPES = new Set([
   "texting.campaign_approved",
   "texting.active",
   "texting.interrupted",
+  // The request ended without texting: turned down by Selestial review, or stopped by a problem on Selestial's side.
+  "texting.rejected",
+  "texting.failed",
+  // Giving a number up (docs/texting/03-offboarding.md).
+  "texting.release_requested",
+  "texting.released",
+  "texting.transfer_completed",
 ]);
 
 type Recorded = { id: Id<"events">; companyId: Id<"companies">; type: string; actor: Actor; subject: { table: string; id: string }; data?: Record<string, unknown> };
@@ -66,15 +73,20 @@ export async function noticesForEvent(ctx: MutationCtx, event: Recorded): Promis
     case "texting.needs_you":
     case "texting.campaign_approved":
     case "texting.active":
-    case "texting.interrupted": {
+    case "texting.interrupted":
+    case "texting.rejected":
+    case "texting.failed":
+    case "texting.release_requested":
+    case "texting.released":
+    case "texting.transfer_completed": {
       if (event.subject.table !== "textingRequests") return;
       const kind = event.type.slice("texting.".length);
-      const attention = kind === "needs_you" || kind === "interrupted";
+      const attention = kind === "needs_you" || kind === "interrupted" || kind === "rejected" || kind === "failed";
       // One notice per moment: a request's version and its state say which; a repeat of the same moment sends nothing.
       const row = await ctx.db.get(event.subject.id as Id<"textingRequests">);
       if (!row) return;
       const needs = typeof event.data?.kind === "string" ? event.data.kind : "";
-      await notifyMembers(ctx, { ...base, event: attention ? "texting_attention" : "texting_progress", ref: row._id, key: `${kind}:${needs}:v${row.submissionVersion ?? 1}:${kind === "needs_you" || kind === "active" || kind === "interrupted" ? at : ""}`, facts: { kind, needs, at } });
+      await notifyMembers(ctx, { ...base, event: attention ? "texting_attention" : "texting_progress", ref: row._id, key: `${kind}:${needs}:v${row.submissionVersion ?? 1}:${kind === "requested" || kind === "resubmitted" || kind === "campaign_approved" ? "" : at}`, facts: { kind, needs, at } });
       return;
     }
     case "company.created": {

@@ -67,7 +67,7 @@ export function milestones(row: Doc<"textingRequests">): Milestone[] {
         ? m("purchase", "working", row.updatedAt, "Buying your number.")
         : m("purchase", "waiting", null, legacy ? "Starts after Selestial review." : "Your number is bought once the carriers approve, so you never pay for a number you can't use.");
 
-  const connected = row.status === "active" || row.status === "interrupted";
+  const connected = row.status === "active" || row.status === "interrupted" || row.status === "released";
   const connection = connected
     ? m("connection", "done", row.activeAt, "Your number is connected to your approved registration.")
     : row.assignedAt !== undefined
@@ -79,6 +79,8 @@ export function milestones(row: Doc<"textingRequests">): Milestone[] {
       ? m("ready", "done", row.activeAt, "Texts can go out from your number.")
       : row.status === "interrupted"
         ? m("ready", "problem", row.updatedAt, row.step ?? "Texting is paused. Selestial is looking into it.")
+        : row.status === "released"
+          ? m("ready", "problem", row.releasedAt ?? row.updatedAt, row.step ?? "This number is no longer set up. Texts no longer go out from it.")
         : m("ready", "waiting", null, "Your agents start texting once every step above is done.");
 
   const out = [submitted, business, messaging, purchase, connection, ready];

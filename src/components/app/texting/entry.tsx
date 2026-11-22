@@ -28,6 +28,7 @@ const WORDS: Record<string, { label: string; variant: "success" | "warning" | "i
   failed: { label: "Selestial is looking into it", variant: "warning", action: "See progress" },
   rejected: { label: "Not approved", variant: "warning", action: "Review and submit again" },
   cancelled: { label: "Withdrawn", variant: "outline", action: "Continue setup" },
+  released: { label: "Number released", variant: "outline", action: "Open texting setup" },
 };
 
 export function TextingEntry() {

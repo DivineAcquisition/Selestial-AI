@@ -3,11 +3,16 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { addMember, company, refusal, start } from "../tests/harness";
+import { addMember, company, dispatchCleaner, refusal, start } from "../tests/harness";
 import { ADMIN } from "../tests/trustHarness";
 import { billing } from "../tests/setupBilling";
 import { api, internal } from "./_generated/api";
+import { classify } from "./inbound";
+import { linkOrigin, NO_LINK_ORIGIN, siteOrigin } from "./lib/dispatch/links";
+import { PRODUCTION_DEPLOYMENTS } from "./lib/environment";
+import { campaignFor } from "./lib/messaging/campaign";
 import { draftFor, draftGaps } from "./lib/texting/drafts";
+import { openPlanCancelledWork, PORT_OUT_WORDING, RELEASE_WORDING } from "./lib/texting/offboarding";
 import { planFor } from "./lib/texting/plan";
 import { fakeTelnyx, KEY, NUMBER, OTHER, prepare, revision, settle, submit } from "../tests/textingHarness";
 
@@ -483,5 +488,472 @@ describe("Set up business texting", () => {
     expect((await b.as.query(api.textingSetup.view, { companyId: b.companyId }))!.request).toBeNull();
     expect(await b.as.query(api.texting.status, { companyId: b.companyId })).toBeNull();
     expect(await refusal(b.as.query(api.textingSetup.view, { companyId: a.companyId }))).toBe("Not found.");
+  });
+});
+
+describe("Texting launch fixes", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    process.env.TELNYX_API_KEY = "KEY_test";
+    process.env.MAILBOX_TOKEN_KEY = KEY;
+    process.env.STAFF_BOOTSTRAP_EMAIL = ADMIN.email;
+    process.env.TELNYX_WEBHOOK_URL = "https://deployment.convex.site.test";
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    for (const name of ["TELNYX_API_KEY", "MAILBOX_TOKEN_KEY", "STAFF_BOOTSTRAP_EMAIL", "TELNYX_WEBHOOK_URL", "MESSAGING_BILLING", "CONVEX_CLOUD_URL"]) delete process.env[name];
+  });
+
+  const attention = (t: ReturnType<typeof start>) => t.run(async (ctx) => (await ctx.db.query("messages").collect()).filter((row) => row.notice?.event === "texting_attention").map((row) => row.notice?.facts?.kind));
+
+  it("turns down a fresh request and tells the owner, but never a corrected one that is already filed", async () => {
+    let fixed = false;
+    const telnyx = fakeTelnyx({ brand: (n) => (fixed ? (n === 1 ? { identityStatus: null } : { identityStatus: "VERIFIED", status: "OK" }) : n === 1 ? { identityStatus: null } : { identityStatus: "UNVERIFIED", status: "OK", failureReasons: [{ fields: ["ein"], description: "EIN mismatch." }] }) });
+    vi.stubGlobal("fetch", telnyx.fetcher);
+    const t = start();
+    const admin = t.withIdentity(ADMIN);
+    // A fresh request: nothing is filed, so it can be turned down, and the owner is told.
+    const b = await company(t, "owner-b", "Bravo Maids");
+    await prepare(t, b.as, b.companyId, { business: { displayName: "Bravo Maids", legalName: "Bravo Maids LLC" } });
+    const fresh = await submit(b.as, b.companyId);
+    await admin.mutation(api.texting.reject, { requestId: fresh.requestId, note: "The website doesn't show this business." });
+    expect((await t.run((ctx) => ctx.db.get(fresh.requestId)))?.status).toBe("rejected");
+    expect(await attention(t)).toEqual(["rejected"]);
+    expect(telnyx.posts()).toEqual([]);
+
+    // A corrected request: the brand is filed and the setup fee charged. Turning it down would file and charge again.
+    const a = await company(t, "owner-a", "Alpha Cleaning");
+    await prepare(t, a.as, a.companyId);
+    const { requestId } = await submit(a.as, a.companyId);
+    await admin.mutation(api.texting.approve, { requestId });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect((await t.run((ctx) => ctx.db.get(requestId)))).toMatchObject({ status: "needs_you", brandId: "brand-1" });
+    fixed = true;
+    await a.as.mutation(api.textingSetup.save, { companyId: a.companyId, revision: await revision(a.as, a.companyId), samples: { job_offers: "Alpha Cleaning: a job is open Saturday at 9. Reply YES to take it. Reply STOP to opt out." } });
+    await submit(a.as, a.companyId);
+    expect((await t.run((ctx) => ctx.db.get(requestId)))).toMatchObject({ status: "requested", submissionVersion: 2, brandId: "brand-1" });
+    expect(await refusal(admin.mutation(api.texting.reject, { requestId, note: "No." }))).toContain("Use Send back");
+    expect((await t.run((ctx) => ctx.db.get(requestId)))?.status).toBe("requested");
+    expect(await t.run(async (ctx) => (await ctx.db.query("textingRequests").collect()).filter((row) => row.companyId === a.companyId).length)).toBe(1);
+    expect(telnyx.posts().filter((post) => post === "POST /10dlc/brand")).toHaveLength(1);
+  });
+
+  it("lets only the number change once the carriers approved, and never activates a registration that changed after approval", async () => {
+    let available = false;
+    const telnyx = fakeTelnyx({ available: () => available });
+    vi.stubGlobal("fetch", telnyx.fetcher);
+    const t = start();
+    const { as, companyId } = await company(t, "owner-a", "Alpha Cleaning");
+    const admin = t.withIdentity(ADMIN);
+    const searchId = await prepare(t, as, companyId, { activities: ["job_offers", "arrival_reminders"] });
+    const { requestId } = await submit(as, companyId);
+    await admin.mutation(api.texting.approve, { requestId });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    const view = (await as.query(api.textingSetup.view, { companyId }))!;
+    expect(view).toMatchObject({ editable: false, numberOnly: true, request: { status: "needs_you", needs: { kind: "number" } } });
+    // Adding marketing now would never be filed: it is refused, and so is every other answer.
+    expect(await refusal(as.mutation(api.textingSetup.save, { companyId, revision: await revision(as, companyId), activities: ["job_offers", "arrival_reminders", "promotions"] }))).toContain("only the number can change");
+    expect(await refusal(as.mutation(api.textingSetup.save, { companyId, revision: await revision(as, companyId), samples: { job_offers: "Different." } }))).toContain("only the number can change");
+    expect(await refusal(as.mutation(api.textingSetup.clearTaxId, { companyId, revision: await revision(as, companyId) }))).toContain("can't be changed");
+    // Moving between steps is still saved.
+    await as.mutation(api.textingSetup.save, { companyId, revision: await revision(as, companyId), step: "number" });
+
+    // Belt and braces: a request whose coverage changed after approval (however it happened) goes to staff, not to "active".
+    await t.run((ctx) => ctx.db.patch(requestId, { status: "approved", needs: undefined, submissionVersion: 2, activities: ["job_offers", "arrival_reminders", "promotions"], subUsecases: ["ACCOUNT_NOTIFICATION", "MARKETING"] }));
+    available = true;
+    await t.action(internal.texting.provision, { requestId });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    const stopped = (await t.run((ctx) => ctx.db.get(requestId)))!;
+    expect(stopped.status).toBe("failed");
+    expect(stopped.problem).toContain("changed after the carriers approved");
+    expect(telnyx.posts()).not.toContain("POST /number_orders");
+    expect((await as.query(api.compliance.profile, { companyId })).messaging.registration.status).not.toBe("approved");
+    expect(await attention(t)).toEqual(["needs_you", "failed"]);
+    void searchId;
+  });
+
+  it("does not charge a correction fee for a campaign the carriers can't review again", async () => {
+    process.env.MESSAGING_BILLING = "on";
+    const telnyx = fakeTelnyx({ campaign: () => "TCR_FAILED" });
+    vi.stubGlobal("fetch", telnyx.fetcher);
+    const t = start();
+    const { as, companyId } = await company(t, "owner-a", "Alpha Cleaning");
+    await t.action(internal.billing.syncCompany, { companyId });
+    const admin = t.withIdentity(ADMIN);
+    await prepare(t, as, companyId);
+    const { requestId } = await submit(as, companyId);
+    await admin.mutation(api.texting.approve, { requestId });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect((await t.run((ctx) => ctx.db.get(requestId)))).toMatchObject({ status: "needs_you", needs: { kind: "correction" }, campaignId: "campaign-1" });
+    const fees = async () => (await t.run(async (ctx) => ctx.db.query("messagingCharges").collect())).filter((row) => row.kind === "registration_fee").map((row) => row.activity);
+    expect(await fees()).toEqual(["Texting registration setup"]);
+
+    // The owner sends the same registration again, twice: nothing is filed and nothing is charged either time.
+    for (const version of [2, 3]) {
+      if (version === 3) await t.run((ctx) => ctx.db.patch(requestId, { status: "needs_you", needs: { kind: "correction", words: "Again.", fields: [], at: Date.now() } }));
+      await as.mutation(api.textingSetup.save, { companyId, revision: await revision(as, companyId), samples: { job_offers: `Alpha Cleaning: job open Saturday at ${version}. Reply YES to take it. Reply STOP to opt out.` } });
+      await submit(as, companyId);
+      await admin.mutation(api.texting.approve, { requestId });
+      await t.finishAllScheduledFunctions(vi.runAllTimers);
+      const row = (await t.run((ctx) => ctx.db.get(requestId)))!;
+      expect(row.status).toBe("failed");
+      expect(row.problem).toContain("TCR_FAILED");
+    }
+    expect(telnyx.posts().filter((post) => post.startsWith("PUT /10dlc/campaign"))).toEqual([]);
+    expect(await fees()).toEqual(["Texting registration setup"]);
+  });
+
+  it("lets staff retry a failed number connection without buying another number", async () => {
+    const telnyx = fakeTelnyx({ assignment: (n) => (n === 1 ? "FAILED_ASSIGNMENT" : "ASSIGNED") });
+    vi.stubGlobal("fetch", telnyx.fetcher);
+    const t = start();
+    const { as, companyId } = await company(t, "owner-a", "Alpha Cleaning");
+    const admin = t.withIdentity(ADMIN);
+    await prepare(t, as, companyId);
+    const { requestId } = await submit(as, companyId);
+    await admin.mutation(api.texting.approve, { requestId });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    const failed = (await t.run((ctx) => ctx.db.get(requestId)))!;
+    expect(failed.status).toBe("failed");
+    expect(failed.assignedAt).toBeUndefined();
+    expect(failed.numberOrderedAt).toBeTypeOf("number");
+    // The owner is told, honestly, that it is on Selestial's side.
+    expect(await attention(t)).toEqual(["failed"]);
+    await admin.mutation(api.texting.retry, { requestId });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect((await t.run((ctx) => ctx.db.get(requestId)))?.status).toBe("active");
+    expect(telnyx.posts().filter((post) => post === "POST /10dlc/phone_number_campaigns")).toHaveLength(2);
+    expect(telnyx.posts().filter((post) => post === "POST /number_orders")).toHaveLength(1);
+  });
+
+  it("records an unauthorized monthly fee once a month, not at every sweep", async () => {
+    process.env.MESSAGING_BILLING = "on";
+    vi.setSystemTime(Date.UTC(2026, 10, 19, 15));
+    vi.stubGlobal("fetch", fakeTelnyx().fetcher);
+    const t = start();
+    const { as, companyId } = await company(t, "owner-a", "Alpha Cleaning");
+    await t.action(internal.billing.syncCompany, { companyId });
+    await prepare(t, as, companyId);
+    const { requestId } = await submit(as, companyId);
+    await t.withIdentity(ADMIN).mutation(api.texting.approve, { requestId });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    // An older request: active, with no fee authorization on it.
+    await t.run((ctx) => ctx.db.patch(requestId, { fees: undefined, feeMonth: undefined, registrationMonth: undefined }));
+    const recorded = async () => (await t.run(async (ctx) => ctx.db.query("events").collect())).filter((row) => row.type === "texting.fee_not_authorized").map((row) => row.data?.month);
+    for (let i = 0; i < 4; i += 1) await t.mutation(internal.texting.chargeNumbers, {});
+    expect(await recorded()).toEqual(["2026-11"]);
+    vi.setSystemTime(Date.UTC(2026, 11, 2, 15));
+    for (let i = 0; i < 3; i += 1) await t.mutation(internal.texting.chargeNumbers, {});
+    expect(await recorded()).toEqual(["2026-11", "2026-12"]);
+  });
+
+  it("treats REVOKE, OPTOUT and a plain 'please stop' as opt-outs, and lets START undo a stop said in the person's own words", async () => {
+    for (const word of ["REVOKE", "revoke.", "OPTOUT", "Opt out", "opt-out", "STOP", " end "]) expect(classify(word)).toBe("stop");
+    for (const words of ["please stop", "Please stop.", "Stop texting me", "stop texting me please!", "Stop these texts", "stop sending me messages", "pls stop", "Stop it", "please unsubscribe"]) expect(classify(words)).toBe("plain_stop");
+    for (const words of ["Can you stop by at 3?", "Don't stop the weekly cleaning", "I can't stop thinking about how clean it is", "The bus stop is on Main", "Yes please"]) expect(classify(words)).not.toBe("plain_stop");
+    expect(classify("Can you stop by at 3?")).toBe("ignored");
+
+    vi.stubGlobal("fetch", fakeTelnyx().fetcher);
+    const t = start();
+    const { as, companyId } = await company(t, "owner-a", "Alpha Cleaning");
+    await prepare(t, as, companyId);
+    const { requestId } = await submit(as, companyId);
+    await t.withIdentity(ADMIN).mutation(api.texting.approve, { requestId });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    // The keywords filed with the carriers name them too.
+    const filed = (await t.run((ctx) => ctx.db.get(requestId)))!;
+    expect(campaignFor(filed, { brandId: "b", reference: "r", webhookURL: null }).optoutKeywords.split(",")).toEqual(expect.arrayContaining(["STOP", "REVOKE", "OPTOUT"]));
+
+    const customerId = await t.run(async (ctx) => ctx.db.insert("customers", { companyId, name: "Pat", kind: "home", phone: "+15125550170", status: "active", createdAt: Date.now() }));
+    await as.mutation(api.consent.record, { companyId, recipient: { kind: "customer", id: customerId }, channel: "sms", category: "operational", status: "granted", source: "paper_form", evidence: "Signed form." });
+    const check = () => as.query(api.consent.check, { companyId, channel: "sms", to: "+15125550170", recipient: { kind: "customer", id: customerId }, category: "operational", origin: "manual" });
+    const text = (body: string) => t.mutation(internal.inbound.sms, { to: NUMBER, from: "+15125550170", body, receivedAt: Date.now() });
+    expect(await check()).toMatchObject({ ok: true });
+    expect(await text("Please stop.")).toMatchObject({ kind: "plain_stop" });
+    expect(await check()).toMatchObject({ ok: false, code: "suppressed" });
+    // Their own START undoes their own stop, and gives back only what it withdrew.
+    expect(await text("START")).toMatchObject({ kind: "start" });
+    expect(await check()).toMatchObject({ ok: true });
+    expect(await text("REVOKE")).toMatchObject({ kind: "stop" });
+    expect(await check()).toMatchObject({ ok: false, code: "suppressed" });
+  });
+
+  it("never points a non-production backend's links at the live site", () => {
+    const set = (values: Record<string, string | undefined>) => {
+      for (const [name, value] of Object.entries(values)) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    };
+    const before = { LINK_ORIGIN: process.env.LINK_ORIGIN, SITE_ORIGIN: process.env.SITE_ORIGIN, CONVEX_CLOUD_URL: process.env.CONVEX_CLOUD_URL };
+    try {
+      // The test harness (no deployment) and production keep the fallback they always had.
+      set({ LINK_ORIGIN: undefined, SITE_ORIGIN: undefined, CONVEX_CLOUD_URL: undefined });
+      expect(siteOrigin()).toBe("https://selestial.io");
+      set({ CONVEX_CLOUD_URL: `https://${PRODUCTION_DEPLOYMENTS[0]}.convex.cloud` });
+      expect(linkOrigin()).toBe("https://selestial.io");
+      // A test or restored backend with nothing set has no link address at all.
+      set({ CONVEX_CLOUD_URL: "https://quiet-otter-123.convex.cloud" });
+      expect(linkOrigin()).toBeNull();
+      expect(siteOrigin()).toBe(NO_LINK_ORIGIN);
+      expect(siteOrigin()).not.toContain("selestial.io");
+      set({ SITE_ORIGIN: "https://preview.selestial.test/" });
+      expect(linkOrigin()).toBe("https://preview.selestial.test");
+      set({ LINK_ORIGIN: "http://localhost:3000" });
+      expect(siteOrigin()).toBe("http://localhost:3000");
+    } finally {
+      set(before);
+    }
+  });
+});
+
+describe("Giving a texting number up", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 10, 19, 15));
+    process.env.TELNYX_API_KEY = "KEY_test";
+    process.env.MAILBOX_TOKEN_KEY = KEY;
+    process.env.STAFF_BOOTSTRAP_EMAIL = ADMIN.email;
+    process.env.TELNYX_WEBHOOK_URL = "https://deployment.convex.site.test";
+    process.env.MESSAGING_BILLING = "on";
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    for (const name of ["TELNYX_API_KEY", "MAILBOX_TOKEN_KEY", "STAFF_BOOTSTRAP_EMAIL", "TELNYX_WEBHOOK_URL", "MESSAGING_BILLING", "CONVEX_CLOUD_URL"]) delete process.env[name];
+  });
+
+  /** A company texting from its own number, and a staff admin who may or may not hold the destructive-actions capability. */
+  async function active(options: Parameters<typeof fakeTelnyx>[0] = {}, destroy = true) {
+    const telnyx = fakeTelnyx(options);
+    vi.stubGlobal("fetch", telnyx.fetcher);
+    const t = start();
+    const { as, companyId } = await company(t, "owner-a", "Alpha Cleaning");
+    await t.action(internal.billing.syncCompany, { companyId });
+    const admin = t.withIdentity(ADMIN);
+    await prepare(t, as, companyId, { activities: ["job_offers", "arrival_reminders"] });
+    const { requestId } = await submit(as, companyId);
+    await admin.mutation(api.texting.approve, { requestId });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect((await t.run((ctx) => ctx.db.get(requestId)))?.status).toBe("active");
+    if (destroy) await t.run(async (ctx) => ctx.db.patch((await ctx.db.query("staff").collect()).find((row) => row.email === ADMIN.email)!._id, { capabilities: ["records.destroy"] }));
+    const item = async () => (await t.run(async (ctx) => ctx.db.query("textingExceptions").collect())).filter((row) => row.assisted?.route === "release" || row.assisted?.route === "port_out");
+    const row = async () => (await t.run((ctx) => ctx.db.get(requestId)))!;
+    const deletes = () => telnyx.posts().filter((post) => post.startsWith("DELETE"));
+    const fees = async () => (await t.run(async (ctx) => ctx.db.query("messagingCharges").collect())).filter((charge) => charge.kind === "number_monthly" || (charge.kind === "registration_fee" && /^Texting registration, /.test(charge.activity ?? ""))).map((charge) => charge.activity);
+    return { t, as, companyId, admin, requestId, telnyx, item, row, deletes, fees };
+  }
+
+  it("takes the owner's request with an explicit acceptance, once, and lets them cancel it until Selestial acts", async () => {
+    const s = await active();
+    const catalog = (await s.as.query(api.textingCase.workspace, { companyId: s.companyId }))!.catalog;
+    expect(catalog.releaseWording).toBe(RELEASE_WORDING);
+    expect(catalog.releaseWording).toMatch(/can't be recovered/);
+    expect(catalog.releaseWording).toMatch(/fees continue/);
+    expect(catalog.releaseWording).toMatch(/aren't refunded/);
+    expect(catalog.portOutWording).toMatch(/new provider starts the transfer/);
+
+    // Only the Owner, and only with the exact words accepted.
+    const manager = await addMember(s.t, s.as, s.companyId, "manager-1", "manager");
+    expect(await refusal(manager.mutation(api.textingCase.requestOffboarding, { companyId: s.companyId, route: "release", acknowledgement: RELEASE_WORDING }))).toBe("Not allowed.");
+    expect(await refusal(s.as.mutation(api.textingCase.requestOffboarding, { companyId: s.companyId, route: "release", acknowledgement: "ok" }))).toContain("Read and accept");
+    expect(await refusal(s.as.mutation(api.textingCase.requestOffboarding, { companyId: s.companyId, route: "release", acknowledgement: PORT_OUT_WORDING }))).toContain("Read and accept");
+    expect(await s.item()).toEqual([]);
+
+    const id = await s.as.mutation(api.textingCase.requestOffboarding, { companyId: s.companyId, route: "release", acknowledgement: RELEASE_WORDING });
+    // Asking again is the same request, not a second one.
+    expect(await s.as.mutation(api.textingCase.requestOffboarding, { companyId: s.companyId, route: "release", acknowledgement: RELEASE_WORDING })).toBe(id);
+    const [open] = await s.item();
+    expect(await s.item()).toHaveLength(1);
+    expect(open).toMatchObject({ state: "waiting_selestial", assisted: { route: "release", phoneNumber: NUMBER, source: "owner", authorization: { wording: RELEASE_WORDING } } });
+    // Nothing happened to the number: it works, texts go, fees continue, Telnyx was not called.
+    expect((await s.row()).status).toBe("active");
+    expect((await s.as.query(api.compliance.profile, { companyId: s.companyId })).messaging).toMatchObject({ smsNumber: NUMBER, registration: { status: "approved" } });
+    expect(s.deletes()).toEqual([]);
+    // Staff see it in their queue although the request is active.
+    expect((await s.admin.query(api.texting.queue, {})).map((row) => row.requestId)).toContain(s.requestId);
+
+    // A transfer can't start while a release is pending, and the manager can't cancel for the owner.
+    expect(await refusal(s.as.mutation(api.textingCase.requestOffboarding, { companyId: s.companyId, route: "port_out", acknowledgement: PORT_OUT_WORDING }))).toContain("release of this number is pending");
+    expect(await refusal(manager.mutation(api.textingCase.cancelOffboarding, { companyId: s.companyId, exceptionId: id }))).toBe("Not allowed.");
+    await s.as.mutation(api.textingCase.cancelOffboarding, { companyId: s.companyId, exceptionId: id });
+    const [cancelled] = await s.item();
+    expect(cancelled).toMatchObject({ state: "resolved" });
+    expect(cancelled.assisted?.authorization).toBeUndefined();
+    // A cancelled request authorizes nothing, even if staff reopen the item.
+    await s.t.run((ctx) => ctx.db.patch(id, { state: "waiting_selestial" }));
+    expect(await refusal(s.admin.mutation(api.texting.releaseNumber, { requestId: s.requestId }))).toContain("hasn't authorized");
+    expect((await s.row()).status).toBe("active");
+    expect(s.deletes()).toEqual([]);
+  });
+
+  it("refuses a release without the owner's authorization for this number, without the capability, or during a transfer", async () => {
+    const s = await active({}, false);
+    // No request from the owner at all.
+    await s.t.run(async (ctx) => ctx.db.patch((await ctx.db.query("staff").collect())[0]._id, { capabilities: [] }));
+    expect(await refusal(s.admin.mutation(api.texting.releaseNumber, { requestId: s.requestId }))).toBe("Not allowed.");
+    await s.t.run(async (ctx) => ctx.db.patch((await ctx.db.query("staff").collect())[0]._id, { capabilities: ["records.destroy"] }));
+    expect(await refusal(s.admin.mutation(api.texting.releaseNumber, { requestId: s.requestId }))).toContain("hasn't authorized");
+    expect(await refusal(s.as.mutation(api.texting.releaseNumber, { requestId: s.requestId }))).toBe("Not found.");
+
+    // The owner says the number is moving: it can't be released while that is pending, by anyone.
+    const transfer = await s.as.mutation(api.textingCase.requestOffboarding, { companyId: s.companyId, route: "port_out", acknowledgement: PORT_OUT_WORDING });
+    expect(await refusal(s.as.mutation(api.textingCase.requestOffboarding, { companyId: s.companyId, route: "release", acknowledgement: RELEASE_WORDING }))).toContain("transfer of this number to another provider is pending");
+    expect(await refusal(s.admin.mutation(api.texting.releaseNumber, { requestId: s.requestId }))).toContain("transfer of this number to another provider is pending");
+
+    // An authorization for a different number is not one for this number.
+    await s.as.mutation(api.textingCase.cancelOffboarding, { companyId: s.companyId, exceptionId: transfer });
+    const release = await s.as.mutation(api.textingCase.requestOffboarding, { companyId: s.companyId, route: "release", acknowledgement: RELEASE_WORDING });
+    await s.t.run(async (ctx) => ctx.db.patch(release, { assisted: { ...(await ctx.db.get(release))!.assisted!, phoneNumber: OTHER } }));
+    expect(await refusal(s.admin.mutation(api.texting.releaseNumber, { requestId: s.requestId }))).toContain("hasn't authorized");
+    expect((await s.row()).status).toBe("active");
+    expect(s.deletes()).toEqual([]);
+  });
+
+  it("releases the number once, stops texts and fees, and tells the owner", async () => {
+    const s = await active();
+    const cleanerId = await dispatchCleaner(s.as, s.companyId, "Lena");
+    await s.as.mutation(api.cleaners.update, { companyId: s.companyId, cleanerId, phone: "+15125550171" });
+    await s.as.mutation(api.consent.record, { companyId: s.companyId, recipient: { kind: "cleaner", id: cleanerId }, channel: "sms", category: "operational", status: "granted", source: "paper_form", evidence: "Signed form." });
+    const check = () => s.as.query(api.consent.check, { companyId: s.companyId, channel: "sms", to: "+15125550171", recipient: { kind: "cleaner", id: cleanerId }, category: "operational", origin: "manual" });
+    expect(await check()).toMatchObject({ ok: true });
+    expect(await s.fees()).toEqual([`Texting number ${NUMBER}, 2026-11`, "Texting registration, 2026-11"]);
+
+    const id = await s.as.mutation(api.textingCase.requestOffboarding, { companyId: s.companyId, route: "release", acknowledgement: RELEASE_WORDING });
+    expect(await s.admin.mutation(api.texting.releaseNumber, { requestId: s.requestId })).toBe("started");
+    // Once Selestial has started, the owner can no longer cancel here.
+    expect(await refusal(s.as.mutation(api.textingCase.cancelOffboarding, { companyId: s.companyId, exceptionId: id }))).toContain("already started");
+    await s.t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const released = await s.row();
+    expect(released).toMatchObject({ status: "released", offboarding: { route: "release" } });
+    expect(released.releasedAt).toBeTypeOf("number");
+    // In order: off the campaign, the number deleted, the campaign deleted. The brand is kept.
+    expect(s.deletes()).toEqual([`DELETE /10dlc/phone_number_campaigns/${NUMBER}`, "DELETE /phone_numbers/num-0142", "DELETE /10dlc/campaign/campaign-1"]);
+    const profile = (await s.as.query(api.compliance.profile, { companyId: s.companyId })).messaging;
+    expect(profile.smsNumber).toBeUndefined();
+    expect(profile.registration.status).toBe("not_started");
+    expect(await check()).toMatchObject({ ok: false });
+    expect((await s.item())[0]).toMatchObject({ state: "resolved" });
+    expect((await s.as.query(api.textingSetup.view, { companyId: s.companyId }))!.request!.milestones.find((row) => row.key === "ready")).toMatchObject({ state: "problem", next: expect.stringContaining("released") });
+    const events = (await s.t.run(async (ctx) => ctx.db.query("events").collect())).map((row) => row.type);
+    expect(events).toEqual(expect.arrayContaining(["texting.release_requested", "texting.release_started", "texting.released"]));
+    const notices = await s.t.run(async (ctx) => (await ctx.db.query("messages").collect()).filter((row) => row.notice?.event === "texting_progress").map((row) => row.notice?.facts?.kind));
+    expect(notices).toEqual(expect.arrayContaining(["release_requested", "released"]));
+
+    // Pressing it again, or a late run, does nothing more.
+    expect(await s.admin.mutation(api.texting.releaseNumber, { requestId: s.requestId })).toBe("released");
+    await s.t.action(internal.texting.offboard, { requestId: s.requestId });
+    await s.t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(s.deletes()).toHaveLength(3);
+    // A text to the old number finds no company.
+    expect(await s.t.mutation(internal.inbound.sms, { to: NUMBER, from: "+15125550171", body: "Hello", receivedAt: Date.now() })).toMatchObject({ kind: "unknown_number" });
+
+    // The next month, and the daily carrier check: no fee is posted, and nothing switches texts back on.
+    vi.setSystemTime(Date.UTC(2026, 11, 2, 15));
+    await s.t.mutation(internal.texting.chargeNumbers, {});
+    await s.t.mutation(internal.texting.activeChecked, { requestId: s.requestId, stopped: false, status: "MNO_PROVISIONED ACTIVE" });
+    expect(await s.fees()).toEqual([`Texting number ${NUMBER}, 2026-11`, "Texting registration, 2026-11"]);
+    expect((await s.row()).status).toBe("released");
+    expect((await s.as.query(api.compliance.profile, { companyId: s.companyId })).messaging.registration.status).toBe("not_started");
+  });
+
+  it("stops at a step that fails, says why, and continues from there without repeating anything", async () => {
+    let broken = true;
+    const s = await active({ refuse: (call) => broken && call.startsWith("DELETE /phone_numbers/") });
+    await s.as.mutation(api.textingCase.requestOffboarding, { companyId: s.companyId, route: "release", acknowledgement: RELEASE_WORDING });
+    await s.admin.mutation(api.texting.releaseNumber, { requestId: s.requestId });
+    await s.t.finishAllScheduledFunctions(vi.runAllTimers);
+    const stopped = await s.row();
+    // Not released: the request says exactly where it stopped, and texts are already off because the number left its campaign.
+    expect(stopped.status).toBe("active");
+    expect(stopped.offboarding?.problem).toContain("Deleting the number at Telnyx");
+    expect(stopped.offboarding?.unassignedAt).toBeTypeOf("number");
+    expect(stopped.offboarding?.numberRemovedAt).toBeUndefined();
+    expect((await s.as.query(api.compliance.profile, { companyId: s.companyId })).messaging.registration.status).toBe("not_started");
+    expect((await s.admin.query(api.texting.queue, {})).find((row) => row.requestId === s.requestId)?.offboarding).toMatchObject({ route: "release", problem: expect.stringContaining("Deleting the number") });
+
+    broken = false;
+    expect(await s.admin.mutation(api.texting.releaseNumber, { requestId: s.requestId })).toBe("started");
+    await s.t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect((await s.row()).status).toBe("released");
+    expect(s.deletes()).toEqual([`DELETE /10dlc/phone_number_campaigns/${NUMBER}`, "DELETE /phone_numbers/num-0142", "DELETE /phone_numbers/num-0142", "DELETE /10dlc/campaign/campaign-1"]);
+  });
+
+  it("changes nothing at Telnyx from a backend that is not production", async () => {
+    const s = await active();
+    await s.as.mutation(api.textingCase.requestOffboarding, { companyId: s.companyId, route: "release", acknowledgement: RELEASE_WORDING });
+    process.env.CONVEX_CLOUD_URL = "https://quiet-otter-123.convex.cloud";
+    await s.admin.mutation(api.texting.releaseNumber, { requestId: s.requestId });
+    await s.t.finishAllScheduledFunctions(vi.runAllTimers);
+    delete process.env.CONVEX_CLOUD_URL;
+    const row = await s.row();
+    expect(row.status).toBe("active");
+    expect(row.offboarding?.problem).toContain("not the production backend");
+    expect(s.deletes()).toEqual([]);
+    expect((await s.as.query(api.compliance.profile, { companyId: s.companyId })).messaging).toMatchObject({ smsNumber: NUMBER, registration: { status: "approved" } });
+  });
+
+  it("closes a transfer only once the number has really left, and never releases it meanwhile", async () => {
+    let ported = false;
+    const s = await active({ portedOut: () => ported });
+    expect(await refusal(s.admin.mutation(api.texting.completeTransfer, { requestId: s.requestId }))).toContain("hasn't said");
+    await s.as.mutation(api.textingCase.requestOffboarding, { companyId: s.companyId, route: "port_out", acknowledgement: PORT_OUT_WORDING });
+    expect((await s.item())[0]).toMatchObject({ state: "waiting_provider", assisted: { route: "port_out", phoneNumber: NUMBER } });
+
+    // Marked complete too early: Telnyx still has the number, so nothing changes.
+    await s.admin.mutation(api.texting.completeTransfer, { requestId: s.requestId });
+    await s.t.finishAllScheduledFunctions(vi.runAllTimers);
+    const early = await s.row();
+    expect(early.status).toBe("active");
+    expect(early.offboarding?.problem).toContain("still on Selestial's Telnyx account");
+    expect(s.deletes()).toEqual([]);
+    expect((await s.as.query(api.compliance.profile, { companyId: s.companyId })).messaging).toMatchObject({ smsNumber: NUMBER, registration: { status: "approved" } });
+
+    ported = true;
+    await s.admin.mutation(api.texting.completeTransfer, { requestId: s.requestId });
+    await s.t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect((await s.row()).status).toBe("released");
+    // The number was never deleted by Selestial: only the campaign it no longer needs.
+    expect(s.deletes()).toEqual(["DELETE /10dlc/campaign/campaign-1"]);
+    expect((await s.t.run(async (ctx) => ctx.db.query("events").collect())).map((row) => row.type)).toContain("texting.transfer_completed");
+    expect((await s.as.query(api.compliance.profile, { companyId: s.companyId })).messaging.smsNumber).toBeUndefined();
+  });
+
+  it("opens a staff work item when the plan is cancelled, which releases nothing without the owner", async () => {
+    const s = await active();
+    expect((await s.t.run((ctx) => ctx.db.get(s.companyId)))?.plan).toBeTruthy();
+    // The plan ends (the owner's cancellation taking effect, or 30 days unpaid): Autumn reports no plan.
+    billing.seed(s.companyId, { plan: null });
+    await s.t.action(internal.billing.syncCompany, { companyId: s.companyId });
+    expect((await s.t.run((ctx) => ctx.db.get(s.companyId)))?.plan).toBeUndefined();
+    expect(await s.item()).toHaveLength(1);
+    // A second sync, or the unpaid-plan path arriving as well, opens nothing more for the same number.
+    await s.t.action(internal.billing.syncCompany, { companyId: s.companyId });
+    await s.t.run((ctx) => openPlanCancelledWork(ctx, s.companyId, "unpaid"));
+    const items = await s.item();
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ state: "waiting_selestial", assignee: { kind: "staff" }, assisted: { route: "release", phoneNumber: NUMBER, source: "plan_cancelled" } });
+    expect(items[0].assisted?.authorization).toBeUndefined();
+    expect((await s.admin.query(api.texting.queue, {})).map((row) => row.requestId)).toContain(s.requestId);
+    // It is only a work item: the number works, and staff cannot release on the strength of it.
+    expect((await s.row()).status).toBe("active");
+    expect(await refusal(s.admin.mutation(api.texting.releaseNumber, { requestId: s.requestId }))).toContain("hasn't authorized");
+    expect(s.deletes()).toEqual([]);
+    // The owner was not told they asked for anything.
+    expect(await s.t.run(async (ctx) => (await ctx.db.query("messages").collect()).filter((row) => row.notice?.facts?.kind === "release_requested").length)).toBe(0);
+
+    // The owner's own request turns that same item into an authorized one; cancelling takes only the authorization back.
+    const id = await s.as.mutation(api.textingCase.requestOffboarding, { companyId: s.companyId, route: "release", acknowledgement: RELEASE_WORDING });
+    expect(id).toBe(items[0]._id);
+    await s.as.mutation(api.textingCase.cancelOffboarding, { companyId: s.companyId, exceptionId: id });
+    const [after] = await s.item();
+    expect(after.state).toBe("waiting_selestial");
+    expect(after.assisted?.authorization).toBeUndefined();
+    await s.as.mutation(api.textingCase.requestOffboarding, { companyId: s.companyId, route: "release", acknowledgement: RELEASE_WORDING });
+    await s.admin.mutation(api.texting.releaseNumber, { requestId: s.requestId });
+    await s.t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect((await s.row()).status).toBe("released");
   });
 });

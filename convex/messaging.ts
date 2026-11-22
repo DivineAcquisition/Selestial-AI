@@ -18,7 +18,7 @@ import { afterCareMessage } from "./lib/retention/actions";
 import { careClaim } from "./lib/retention/outbox";
 import { bookingClaim } from "./lib/booking/messages";
 import { statementClaim } from "./lib/finance/cleanerOutbox";
-import { linkPath, linkState, siteOrigin, tokenFor } from "./lib/dispatch/links";
+import { linkOrigin, linkPath, linkState, NO_LINK_ADDRESS, tokenFor } from "./lib/dispatch/links";
 import { recordEvent } from "./lib/events";
 import type { SendIntent } from "./lib/messaging/outbox";
 import { checkSend } from "./lib/messaging/policy";
@@ -121,7 +121,15 @@ export const claim = internalMutation({
         await logStep(ctx, message, { type: "message.not_sent", data: { purpose: message.purpose } });
         return null;
       }
-      body = body.replace("{link}", `${siteOrigin()}${linkPath(link.purpose, token, message.linkPath ?? "")}`);
+      // A backend that is not production and has no link address never sends a link to the live site.
+      const origin = linkOrigin();
+      if (!origin) {
+        if (message.reconcile) return backToUnconfirmed(ctx, message, `Not checked with the provider: ${NO_LINK_ADDRESS}`);
+        await ctx.db.patch(message._id, { status: "not_sent", problem: NO_LINK_ADDRESS });
+        await logStep(ctx, message, { type: "message.not_sent", data: { purpose: message.purpose } });
+        return null;
+      }
+      body = body.replace("{link}", `${origin}${linkPath(link.purpose, token, message.linkPath ?? "")}`);
     }
     let fromName = "";
     let via: { connectionId: Id<"mailboxConnections">; address: string } | null = null;
@@ -163,12 +171,16 @@ export const claim = internalMutation({
       if (!application || !applicant || !company) problem = "The application no longer exists.";
       else problem = await sendProblem(ctx, application, applicant, message.purpose as ApplicantPurpose, recruiterSettings(company));
       if (!problem && message.applicantLinkId && (!link || !token || applicantLinkState(link, Date.now()) !== "active")) problem = "The link was closed before the message went out.";
+      const origin = linkOrigin();
+      if (!problem && link && token && !origin) problem = NO_LINK_ADDRESS;
       if (problem) {
+        // Refused while checking with the provider: still not known whether the first attempt went, so it stays unconfirmed.
+        if (message.reconcile) return backToUnconfirmed(ctx, message, `Not checked with the provider: ${problem}`);
         await ctx.db.patch(message._id, { status: "not_sent", problem });
         await logStep(ctx, message, { type: "message.not_sent", data: { purpose: message.purpose } });
         return null;
       }
-      if (link && token) body = body.replace("{link}", `${siteOrigin()}${applicantLinkPath(link.purpose, token)}`);
+      if (link && token) body = body.replace("{link}", `${origin}${applicantLinkPath(link.purpose, token)}`);
       fromName = recruiterSettings(company!).fromName;
       // Whether it goes from the company's own inbox is decided below, with every other message's.
     }
@@ -401,6 +413,15 @@ export const settle = internalMutation({
       // The hold stays for the next try of the same message: a retry is never a second charge.
       await ctx.db.patch(message._id, { status: "queued", problem: result.problem });
       await ctx.scheduler.runAfter(message.attempts * 30_000, internal.messaging.deliver, { messageId: message._id });
+      return null;
+    }
+    // A check with the provider that ran out of tries (it kept answering "busy", "try later" or an error) says
+    // nothing about the first attempt, which may have gone. It is unconfirmed again, never failed: the hold on its
+    // charge stays, nothing downstream is told it failed, and it is not sent again by itself.
+    if (message.reconcile && result.retryable) {
+      await ctx.db.patch(message._id, { status: "unconfirmed", problem: `Not confirmed with the provider: ${result.problem}`, reconcile: undefined });
+      if (charge) await markPending(ctx, charge._id);
+      await logStep(ctx, message, { type: "message.reconcile_stopped", data: { purpose: message.purpose } });
       return null;
     }
     await ctx.db.patch(message._id, { status: "failed", failedAt: now, problem: result.problem, ...(result.bounced ? { bouncedAt: now } : {}) });

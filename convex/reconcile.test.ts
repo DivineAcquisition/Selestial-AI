@@ -57,6 +57,31 @@ describe("Unconfirmed texts are settled with the provider, never sent twice", ()
     expect((await incidentOf(s.t, s.companyId))?.resolvedAt).toBeGreaterThan(0);
   });
 
+  test("a check that runs out of tries on a busy provider leaves the text unconfirmed, never failed", async () => {
+    const s = await setup(["Lena"], { Lena: "+15550100006" });
+    const messageId = await lostAnswer(s);
+    await unconfirm(s.t, 6 * MINUTE);
+    // The check is under way and on its last try when the provider answers 429 / 5xx / 409 again.
+    await s.t.run(async (ctx) => {
+      const message = (await ctx.db.get(messageId))!;
+      await ctx.db.patch(messageId, { status: "sending", attempts: 3, reconcile: { requestedAt: Date.now(), deadline: (message.attemptedAt ?? Date.now()) + 23 * 60 * MINUTE, by: "system" } });
+    });
+    await s.t.mutation(internal.messaging.settle, { messageId, result: { ok: false, retryable: true, problem: "The texting provider is busy (429)." } });
+    const after = (await s.t.run((ctx) => ctx.db.get(messageId)))!;
+    // The first attempt may have gone: it is not failed, nothing is released as "not sent", and it is not queued to go again.
+    expect(after.status).toBe("unconfirmed");
+    expect(after.failedAt).toBeUndefined();
+    expect(after.reconcile).toBeUndefined();
+    expect(after.problem).toContain("Not confirmed with the provider");
+    const types = await s.t.run(async (ctx) => (await ctx.db.query("events").collect()).filter((row) => row.subject.id === messageId).map((row) => row.type));
+    expect(types).not.toContain("message.failed");
+    expect(mockOutbox.filter((row) => row.result !== "threw").map((row) => row.result)).toEqual(["accepted"]);
+    // An ordinary send that runs out of tries still fails as before.
+    const plain = await s.t.run((ctx) => ctx.db.insert("messages", { companyId: s.companyId, purpose: "assignment_confirmed", channel: "sms", cleanerId: s.cleaners.Lena, to: s.phone.Lena, body: "Second.", dedupeKey: "confirm-2", status: "sending", attempts: 3, attemptedAt: Date.now(), queuedAt: Date.now() }));
+    await s.t.mutation(internal.messaging.settle, { messageId: plain, result: { ok: false, retryable: true, problem: "The texting provider is busy (429)." } });
+    expect((await s.t.run((ctx) => ctx.db.get(plain)))?.status).toBe("failed");
+  });
+
   test("work that moved on is not sent: Dispatch already offered the visit to someone else", async () => {
     const s = await setup(["Lena"], { Lena: "+15550100006" });
     await s.autonomous();

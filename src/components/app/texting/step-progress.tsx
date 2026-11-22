@@ -18,6 +18,7 @@ import { api } from "../../../../convex/_generated/api";
 import { formatPhone, useSetup } from "./context";
 import { EvidenceNotes } from "./evidence";
 import { Note, StepHeading, type Milestone } from "./parts";
+import { StopNumber } from "./stop-number";
 
 const STATE: Record<Milestone["state"], { icon: typeof CheckCircle2; label: string; className: string }> = {
   done: { icon: CheckCircle2, label: "Done", className: "text-success-foreground" },
@@ -45,13 +46,21 @@ export function ProgressStep() {
     );
   }
   const ready = request.status === "active";
+  const released = request.status === "released";
   return (
     <>
       <StepHeading
         eyebrow="Step 6 of 6"
-        title={ready ? "Your business can text" : "Getting you ready"}
-        lead={ready ? `Texts go out from ${formatPhone(request.phoneNumber)}. Your agents can send the kinds of texts you registered, to people who agreed.` : "Here's where things stand. Selestial tells you whenever something needs you."}
+        title={released ? "This number is no longer set up" : ready ? "Your business can text" : "Getting you ready"}
+        lead={
+          released
+            ? `${formatPhone(request.phoneNumber)} is no longer your texting number on Selestial, so your agents can't send texts.`
+            : ready
+              ? `Texts go out from ${formatPhone(request.phoneNumber)}. Your agents can send the kinds of texts you registered, to people who agreed.`
+              : "Here's where things stand. Selestial tells you whenever something needs you."
+        }
       />
+      {released ? <Note>Its monthly number and registration fees have stopped. Setting up texting again means a new number and a new registration with the carriers: write to Selestial in Evidence &amp; notes and we&apos;ll help you start.</Note> : null}
       {request.needs ? <Needs /> : null}
       {request.status === "rejected" ? (
         <Note tone="warning">
@@ -88,6 +97,7 @@ export function ProgressStep() {
       {ready || request.status === "interrupted" ? <AgentTexts /> : null}
       <EvidenceNotes companyId={companyId} context={request.needs?.kind === "correction" ? "correction" : "review"} />
       <Withdraw />
+      <StopNumber />
     </>
   );
 }
@@ -180,16 +190,15 @@ function Needs() {
     <div className="grid gap-3 rounded-xl border border-warning/50 bg-warning/5 p-4">
       <p className="text-sm font-semibold text-strong">{needs.kind === "number" ? "Choose another number" : "A correction is needed"}</p>
       <p className="text-sm text-strong">{needs.words}</p>
+      {needs.kind === "number" ? <p className="text-xs text-muted-foreground">The carriers approved everything else as you filed it, so only the number can change now. Choose another, then send it from Review. Nothing is filed with the carriers again and there&apos;s no correction fee.</p> : null}
       {needs.kind === "correction" ? <p className="text-xs text-muted-foreground">Everything you filled in is kept. Change what&apos;s needed, then send it back from Review. Filing a corrected registration with the carriers is charged once each time ({view.charges.rows.find((row) => row.key === "resubmission")?.amount}).</p> : null}
       <div className="flex flex-wrap gap-2">
         <Button variant="primary" onClick={() => void go(target)}>
           {needs.kind === "number" ? "Choose a number" : "Make the change"}
         </Button>
-        {needs.kind === "correction" ? (
-          <Button variant="outline" onClick={() => void go("review")}>
-            Go to Review
-          </Button>
-        ) : null}
+        <Button variant="outline" onClick={() => void go("review")}>
+          Go to Review
+        </Button>
       </div>
     </div>
   );

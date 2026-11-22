@@ -3,7 +3,7 @@
  * text, at most its first 200 characters with any link taken out, and no IP or device data.
  *
  * Keywords are the whole message, trimmed, in any letter case:
- * STOP, STOPALL, UNSUBSCRIBE, CANCEL, END, QUIT: stop every text from this business.
+ * STOP, STOPALL, UNSUBSCRIBE, CANCEL, END, QUIT, REVOKE, OPTOUT, OPT OUT: stop every text from this business.
  * HELP, INFO: one answer with who is texting and how to reach them.
  * START, UNSTOP, YES: undo a STOP, and only what the STOP withdrew.
  * A plain-words request to stop ("stop texting me") stops texts too, and a person checks it.
@@ -34,19 +34,27 @@ const SYSTEM: Actor = { kind: "system" };
 /** At most this many automatic answers to one number in an hour, whatever it sends. */
 const REPLIES_PER_HOUR = 5;
 
-const STOP_WORDS = new Set(["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"]);
+const STOP_WORDS = new Set(["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT", "REVOKE", "OPTOUT", "OPT OUT", "OPT-OUT"]);
 const HELP_WORDS = new Set(["HELP", "INFO"]);
 const START_WORDS = new Set(["START", "UNSTOP", "YES"]);
 const PLAIN_STOP = /\b(stop (texting|messaging|contacting|sending)|(don'?t|do not) (text|message|contact)|remove me|unsubscribe me|no more (texts|messages))\b/i;
+/**
+ * A message that is nothing but a request to stop, said politely or at a little more length ("please stop",
+ * "stop texting me", "stop these texts please"). It is an opt-out in its own right, never only a task.
+ * Anything with more in it ("stop by at 3", "don't stop") is left to the rules above and to a person.
+ */
+const JUST_STOP = /^(please |pls |plz )?(stop|unsubscribe|opt out|optout)( (it|this|that|now|all|everything|please|pls|plz|thanks|thank you|(texting|messaging|contacting|sending)( me)?|(sending |with )?((the|these|those|your|all|any) )?(texts?|messages?|msgs?)( to me)?))*$/i;
 
 export type InboundKind = "stop" | "help" | "start" | "plain_stop" | "ignored";
 
 export function classify(body: string): InboundKind {
-  const word = body.trim().replace(/[.!]+$/, "").toUpperCase();
+  const word = body.trim().replace(/[.!]+$/, "").replace(/\s+/g, " ").toUpperCase();
   if (STOP_WORDS.has(word)) return "stop";
   if (HELP_WORDS.has(word)) return "help";
   if (START_WORDS.has(word)) return "start";
   if (PLAIN_STOP.test(body)) return "plain_stop";
+  // Punctuation aside, the whole message asks to stop.
+  if (JUST_STOP.test(body.trim().replace(/[.,!?;:'"]+/g, " ").replace(/\s+/g, " ").trim())) return "plain_stop";
   return "ignored";
 }
 
@@ -172,7 +180,8 @@ async function handleSms(ctx: MutationCtx, args: { to: string; from: string; bod
     }
 
     if (kind === "start") {
-      const stops = (await activeSuppressions(ctx, companyId, "sms", from)).filter((row) => row.reason === "stop_keyword");
+      // A stop asked for in the person's own words is theirs to undo with START, exactly like a keyword STOP.
+      const stops = (await activeSuppressions(ctx, companyId, "sms", from)).filter((row) => row.reason === "stop_keyword" || row.reason === "natural_language");
       // START means something only after a STOP. Otherwise it is an ordinary reply, such as "Yes" to an offer.
       if (stops.length === 0) return ordinary();
       for (const row of stops) await liftSuppression(ctx, row, { liftedBy: byRecipient, note: "Replied START.", actor: SYSTEM });
@@ -190,9 +199,10 @@ async function handleSms(ctx: MutationCtx, args: { to: string; from: string; bod
     }
 
     // A plain-words request to stop. Texts stop now; a person reads it and confirms what the person wants.
+    // Marked as withdrawn by the person's own stop, so their own START gives back exactly this and nothing more.
     const { suppression } = await addSuppression(ctx, { companyId, channel: "sms", address: from, scope: "all", reason: "natural_language", sourceMessage: excerpt(args.body), at, actor: SYSTEM });
     for (const person of people) {
-      await withdrawChannel(ctx, { companyId, recipient: asRecipient(person), channel: "sms", source: "text_reply", recordedBy: byRecipient, evidence: "Asked in their own words to stop texts.", actor: SYSTEM, at });
+      await withdrawChannel(ctx, { companyId, recipient: asRecipient(person), channel: "sms", source: "text_reply", recordedBy: byRecipient, stopKeyword: true, evidence: "Asked in their own words to stop texts.", actor: SYSTEM, at });
     }
     await reviewTask(ctx, companyId, from, people, suppression);
     await salesOptedOut(ctx, companyId, people);

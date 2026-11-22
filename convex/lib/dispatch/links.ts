@@ -13,6 +13,7 @@
  */
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
+import { isNonProduction } from "../environment";
 import { recordEvent, type Actor } from "../events";
 
 export const OFFER_ACTIONS = ["accept", "decline"] as const;
@@ -149,13 +150,30 @@ export async function noteLinkAction(ctx: MutationCtx, link: Doc<"actionLinks">,
  * The host the link pages are served on, from one setting: LINK_ORIGIN on the deployment (for example
  * https://link.selestial.io in production, http://localhost:3000 locally, a preview address on a preview).
  * SITE_ORIGIN is used when LINK_ORIGIN is not set. Nothing else builds a link address.
+ *
+ * With neither set, the live backend uses https://selestial.io. A backend known not to be production
+ * (convex/lib/environment.ts) has no address then: null, so a link carrying one of its test tokens is never
+ * pointed at the live site.
  */
-export function siteOrigin(): string {
+export function linkOrigin(): string | null {
   for (const value of [process.env.LINK_ORIGIN, process.env.SITE_ORIGIN]) {
     const origin = value?.trim().replace(/\/+$/, "");
     if (origin && /^https?:\/\//.test(origin)) return origin;
   }
-  return "https://selestial.io";
+  return isNonProduction() ? null : "https://selestial.io";
+}
+
+/** Where a link points when a non-production backend has no link address set: a reserved name that opens nothing (RFC 2606). */
+export const NO_LINK_ORIGIN = "https://link-origin-not-set.invalid";
+export const NO_LINK_ADDRESS = "Not sent: this backend has no link address set (LINK_ORIGIN), and it is not the production backend, so its links are never pointed at the live site.";
+
+/**
+ * The link host as a string, for the places that show or store an address. On a non-production backend with
+ * no address set it is NO_LINK_ORIGIN, never the live site. A message that carries a link checks linkOrigin()
+ * first and is not sent at all (convex/messaging.ts).
+ */
+export function siteOrigin(): string {
+  return linkOrigin() ?? NO_LINK_ORIGIN;
 }
 
 export function linkPath(purpose: "offer" | "job", token: string, path = ""): string {
