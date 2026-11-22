@@ -4,8 +4,8 @@
  * clause as an operating rule. A clause that says "weekdays 9 to 1" informs a person or an agent's
  * proposal; changing a live schedule, price or onboarding setting is its own validated action.
  *
- * Only what exists is exposed: Marketing and Team Coordinator are not built, so their reads are used by
- * people and by Chat today, and by the agents when they ship.
+ * Only what exists is exposed: Marketing is not built, so its reads are used by people and by Chat today.
+ * Workforce documents are read by Recruiter's onboarding and the Cleaners workspace.
  */
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { QueryCtx } from "../../_generated/server";
@@ -68,7 +68,7 @@ export async function serviceTerms(ctx: Ctx, input: { customerId: Id<"customers"
   return { agreements: out, supporting, note: "These are what the signed documents say. They do not change any live setting." };
 }
 
-/** Which workforce documents a worker has, in what state: what Team Coordinator will track. Restricted documents appear only to the Owner. */
+/** Which workforce documents a worker has, in what state: what Recruiter's onboarding and the Cleaners workspace track. Restricted documents appear only to the Owner. */
 export async function workerDocuments(ctx: Ctx, cleanerId: Id<"cleaners">) {
   const rows = await linkedTo(ctx, "cleaners", cleanerId);
   return rows

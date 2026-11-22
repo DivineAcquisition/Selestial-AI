@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSyncExternalStore } from "react";
 
+import { useCompany } from "@/components/app/company";
 import { ArrowLeft } from "@/components/icons";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -44,11 +45,47 @@ export function CleanerProfileScreen({ cleanerId, section }: { cleanerId: string
               <ProfileActions profile={profile} />
             </div>
           </div>
+          <WhoHandles status={profile.status} hired={profile.hiredFrom !== null} />
           <PendingRequests cleanerId={profile.cleanerId} />
           <SectionTabs cleanerId={cleanerId} active={section} />
           <SectionBody section={section} profile={profile} onSection={(next) => router.push(profilePath(cleanerId, next))} />
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * This workspace holds the record; each next step has one owner. Recruiter prepares a new cleaner, Dispatch
+ * coordinates the visits they can take, and Finance keeps their pay. The links say who, without copies.
+ */
+function WhoHandles({ status, hired }: { status: string; hired: boolean }) {
+  const { role } = useCompany();
+  const next =
+    status === "onboarding"
+      ? hired
+        ? "Recruiter is handling their onboarding. They're offered no work until an Owner approves their readiness."
+        : "They're onboarding. They're offered no work until a person makes the engagement active."
+      : status === "ready"
+        ? "Dispatch considers them for visits that match their availability, skills and service area, and checks each visit."
+        : "They're not offered new work while their engagement is not active.";
+  const link = "text-xs font-medium text-muted-foreground underline-offset-2 hover:text-strong hover:underline";
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl bg-muted/60 px-3 py-2.5">
+      <p className="min-w-0 flex-1 text-xs text-strong">{next}</p>
+      {hired ? (
+        <Link href="/app/agents/recruiter/onboarding-readiness" className={link}>
+          View onboarding in Recruiter
+        </Link>
+      ) : null}
+      <Link href="/app/agents/dispatch" className={link}>
+        View assignments in Dispatch
+      </Link>
+      {role === "owner" || role === "manager" ? (
+        <Link href="/app/finance?tab=team-pay" className={link}>
+          View earnings in Finance
+        </Link>
+      ) : null}
     </div>
   );
 }

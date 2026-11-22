@@ -8,7 +8,7 @@ import { defineTable } from "convex/server";
 import { v } from "convex/values";
 
 import { literals } from "../statuses";
-import { AGENT_IDS, PLAN_IDS } from "./catalog";
+import { PLAN_IDS, STORED_AGENT_IDS } from "./catalog";
 import { TASK_IDS } from "./rateCards";
 
 export const envValidator = v.union(v.literal("sandbox"), v.literal("production"));
@@ -125,7 +125,7 @@ export const billingTables = {
     /** One per piece of work, so asking twice opens one execution. */
     key: v.string(),
     /** The agent whose work it is; "chat" for Company Chat's answers, "studio" for Creative Studio, "services" for Services & Pricing research. */
-    agent: v.union(literals(AGENT_IDS), v.literal("chat"), v.literal("studio"), v.literal("services")),
+    agent: v.union(literals(STORED_AGENT_IDS), v.literal("chat"), v.literal("studio"), v.literal("services")),
     /** A plan feature the work also needs, such as Creative Studio. */
     feature: v.optional(v.string()),
     task: literals(TASK_IDS),

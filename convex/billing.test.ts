@@ -251,10 +251,12 @@ describe("billing", () => {
       billing.seed(s.companyId, { plan: "expand", grant: 2000, purchased: 5000 });
       await sync(s.t, s.companyId);
       const company = await s.t.run(async (ctx) => (await ctx.db.get(s.companyId))!);
-      for (const agent of ["quality", "marketing", "customer-care", "team-coordinator"] as const) expect(agentVerdict(company, agent)).toMatchObject({ ok: false, block: "not_released" });
+      for (const agent of ["quality", "marketing", "customer-care"] as const) expect(agentVerdict(company, agent)).toMatchObject({ ok: false, block: "not_released" });
+      // Team Coordinator was retired: it is not an agent any plan names, and its work is in Recruiter and Dispatch, in both plans.
       for (const agent of ["dispatch", "recruiter", "sales", "retention"] as const) expect(agentVerdict(company, agent)).toEqual({ ok: true });
       const view = await s.as.query(api.billing.planAndUsage, { companyId: s.companyId });
       expect(view.catalog.agents.filter((row) => row.here).map((row) => row.agent)).toEqual(["sales", "retention", "recruiter", "dispatch"]);
+      expect(view.catalog.agents.map((row) => row.agent)).not.toContain("team-coordinator");
     });
 
     it("keeps Creative Studio to Expand, decided on Autumn's record", async () => {
@@ -290,7 +292,8 @@ describe("billing", () => {
       const intentId = await s.as.mutation(api.billing.startPlanChange, { companyId: s.companyId, plan: "operate" });
       await settle(s.t);
       const preview = (await s.as.query(api.billing.intent, { companyId: s.companyId, intentId }))!.preview!;
-      expect(preview.lostAgents).toEqual(["Marketing", "Quality", "Customer Care", "Team Coordinator"]);
+      // Nothing Recruiter or Dispatch does is lost on Operate: onboarding and visit coordination are theirs.
+      expect(preview.lostAgents).toEqual(["Marketing", "Quality", "Customer Care"]);
       expect(preview.lostFeatures).toContain("Creative Studio");
       expect(preview.effectiveAt).toBe(billing.customerFor(`company_${s.companyId}`).periodEnd);
       await s.as.mutation(api.billing.confirmIntent, { companyId: s.companyId, intentId });

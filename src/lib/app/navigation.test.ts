@@ -62,8 +62,7 @@ const SPEC: Record<string, Record<string, string[]>> = {
     "Customer Care": ["Conversations", "Customer Setup", "Service Requests", "Rescheduling & Cancellations", "Playbook"],
   },
   Team: {
-    Recruiter: ["Hiring Needs", "Applicants", "Screening", "Interviews", "Offers & Agreements", "Playbook"],
-    "Team Coordinator": ["Onboarding", "Documents & Training", "Readiness", "Availability", "Team Check-ins", "Playbook"],
+    Recruiter: ["Hiring Needs", "Applicants", "Screening", "Interviews", "Offers & Agreements", "Onboarding & Readiness", "Playbook"],
   },
 };
 
@@ -80,7 +79,7 @@ describe("the navigation definition", () => {
     // Object equality ignores key order, so the order is checked on its own.
     expect(DEPARTMENTS.map((row) => row.label)).toEqual(Object.keys(SPEC));
     for (const department of DEPARTMENTS) expect(agentsIn(department.id).map((agent) => agent.label)).toEqual(Object.keys(SPEC[department.label]));
-    expect(AGENTS).toHaveLength(8);
+    expect(AGENTS).toHaveLength(7);
     expect(SIDEBAR_SECTIONS).toEqual(["business", "departments", "persistent", "agents", "shared", "footer"]);
     expect(PERSISTENT_ITEMS.map((item) => item.label)).toEqual(["Home", "Approvals", "Inbox", "Search"]);
     // Chat leads Company (November 16, 2026). Integrations moved into Settings the same day, on the owner's request.
@@ -112,7 +111,8 @@ describe("the navigation definition", () => {
     expect(DEPARTMENT_IDS.map((id) => agentsIn(id).map((agent) => agent.id))).toEqual([
       ["marketing", "sales", "retention"],
       ["dispatch", "quality", "customer-care"],
-      ["recruiter", "team-coordinator"],
+      // Team Coordinator was retired: departments need not have equal numbers of agents.
+      ["recruiter"],
     ]);
     expect(DEPARTMENT_IDS.flatMap((id) => agentsIn(id))).toHaveLength(AGENTS.length);
     expect(DEFAULT_DEPARTMENT).toBe("operations");
@@ -129,11 +129,12 @@ describe("the navigation definition", () => {
     // The two pairs of similar names stay with their owners.
     const owner = (label: string) => AGENTS.filter((agent) => agent.tabs.some((tab) => tab.label === label)).map((agent) => agent.id);
     expect(owner("Customer Setup")).toEqual(["customer-care"]);
-    expect(owner("Onboarding")).toEqual(["team-coordinator"]);
+    expect(owner("Onboarding & Readiness")).toEqual(["recruiter"]);
     expect(owner("Offers & Agreements")).toEqual(["recruiter"]);
     expect(owner("Offers & Coverage")).toEqual(["dispatch"]);
-    // Availability appears under Team Coordinator as a tab, and the cleaner records it reads are the shared ones.
-    expect(owner("Availability")).toEqual(["team-coordinator"]);
+    // Availability is the shared Cleaners record, not any agent's tab.
+    expect(owner("Availability")).toEqual([]);
+    expect(AGENTS.map((agent) => agent.id)).not.toContain("team-coordinator");
   });
 
   it("gives every destination one path of its own, with no conflicts", () => {
@@ -266,8 +267,8 @@ describe("navigation behavior", () => {
 
   it("opens the right department, agent and tab for a deep link", () => {
     const start = { department: "growth" as const, expanded: ["sales" as const] };
-    expect(activeFor("/app/agents/team-coordinator/availability")).toEqual({ item: null, agent: "team-coordinator", tab: "availability", department: "team" });
-    expect(syncToPath(start, "/app/agents/team-coordinator/availability")).toEqual({ department: "team", expanded: ["sales", "team-coordinator"] });
+    expect(activeFor("/app/agents/recruiter/onboarding-readiness")).toEqual({ item: null, agent: "recruiter", tab: "onboarding-readiness", department: "team" });
+    expect(syncToPath(start, "/app/agents/recruiter/onboarding-readiness")).toEqual({ department: "team", expanded: ["sales", "recruiter"] });
     // A record beneath a tab still highlights that tab; the overview highlights the agent alone.
     expect(activeFor("/app/agents/dispatch/live-jobs/j123?panel=1")).toMatchObject({ agent: "dispatch", tab: "live-jobs" });
     expect(activeFor("/app/agents/dispatch/")).toMatchObject({ agent: "dispatch", tab: null, department: "operations" });

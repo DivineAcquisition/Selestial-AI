@@ -124,7 +124,7 @@ prepared.
 | Quality | `review_visit_photos` and `review_video`: description against the checklist, with evidence marked insufficient where it is | Sanitation, safety or hidden-damage conclusions; any consequence for a worker |
 | Customer Care | Drafts | Sending to customers: no customer-message purpose exists |
 | Recruiter | Haiku extraction; its tools under its authority | Hiring decisions, pay, offers, readiness |
-| Team Coordinator | Drafts and guidance | Verifying documents or readiness |
+| Recruiter (onboarding) | Drafts and guidance on onboarding | Verifying documents, or approving readiness |
 
 ## 5. Creative Studio (§6, §7)
 

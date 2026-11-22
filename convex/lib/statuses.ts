@@ -133,9 +133,16 @@ export type CoverageCause = (typeof COVERAGE_CAUSES)[number];
 export const coverageCauseValidator = literals(COVERAGE_CAUSES);
 
 /** Where Dispatch hands work it does not own. Until those agents exist, each is a queue a person works. */
-export const HANDOFF_QUEUES = ["recruiter", "team_coordinator", "customer_care", "quality", "finance"] as const;
+export const HANDOFF_QUEUES = ["recruiter", "customer_care", "quality", "finance"] as const;
 export type HandoffQueue = (typeof HANDOFF_QUEUES)[number];
-export const handoffValidator = literals(HANDOFF_QUEUES);
+/**
+ * Team Coordinator was retired on November 22, 2026: Recruiter owns onboarding through readiness, Dispatch
+ * owns visit coordination, and the Cleaners workspace holds the record. Nothing writes "team_coordinator"
+ * any more; it stays readable so older tasks keep their history.
+ */
+export const LEGACY_HANDOFF_QUEUES = [...HANDOFF_QUEUES, "team_coordinator"] as const;
+export type StoredHandoffQueue = (typeof LEGACY_HANDOFF_QUEUES)[number];
+export const handoffValidator = literals(LEGACY_HANDOFF_QUEUES);
 
 export const APPROVAL_STATUSES = ["pending", "approved", "changed", "skipped", "expired"] as const;
 export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];

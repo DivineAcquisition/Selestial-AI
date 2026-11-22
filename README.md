@@ -37,7 +37,7 @@ working name.
   when it cannot be covered. It is code only; no model is called.
 
 Only Dispatch has a workflow. The other seven agents are not built, and four
-of them (Marketing, Quality, Customer Care, Team Coordinator) do not exist in
+of them (Marketing, Quality, Customer Care) do not exist in
 the backend yet. There is no texting, so an offer is a record: someone
 tells the cleaner, and the office records their answer.
 

@@ -24,8 +24,18 @@ export const AUTUMN = {
   plans: { operate: "operate", expand: "expand" } as Record<PlanId, string>,
 } as const;
 
-export const AGENT_IDS = ["sales", "retention", "recruiter", "dispatch", "marketing", "quality", "customer-care", "team-coordinator"] as const;
+export const AGENT_IDS = ["sales", "retention", "recruiter", "dispatch", "marketing", "quality", "customer-care"] as const;
 export type AgentId = (typeof AGENT_IDS)[number];
+/**
+ * Team Coordinator was planned for Expand and never released. It was retired on November 22, 2026: Recruiter
+ * owns onboarding through readiness and Dispatch owns visit coordination, both in every plan, so nothing it
+ * would have done sits behind an upgrade. Its id stays readable on older usage rows; nothing new is filed
+ * under it.
+ */
+export const RETIRED_AGENT_IDS = ["team-coordinator"] as const;
+export const STORED_AGENT_IDS = [...AGENT_IDS, ...RETIRED_AGENT_IDS] as const;
+export type StoredAgentId = (typeof STORED_AGENT_IDS)[number];
+export const RETIRED_AGENT_NAMES: Record<(typeof RETIRED_AGENT_IDS)[number], string> = { "team-coordinator": "Team Coordinator (retired)" };
 
 export const AGENT_CATALOG: Record<AgentId, { name: string; department: "growth" | "operations" | "team"; plans: readonly PlanId[] }> = {
   sales: { name: "Sales", department: "growth", plans: ["operate", "expand"] },
@@ -35,7 +45,6 @@ export const AGENT_CATALOG: Record<AgentId, { name: string; department: "growth"
   marketing: { name: "Marketing", department: "growth", plans: ["expand"] },
   quality: { name: "Quality", department: "operations", plans: ["expand"] },
   "customer-care": { name: "Customer Care", department: "operations", plans: ["expand"] },
-  "team-coordinator": { name: "Team Coordinator", department: "team", plans: ["expand"] },
 };
 
 /**
@@ -43,8 +52,8 @@ export const AGENT_CATALOG: Record<AgentId, { name: string; department: "growth"
  *
  *   dispatch    released: offers, coverage, live jobs and cleaner action links run end to end.
  *   recruiter   released: the hiring inbox, invitations, applicant pages, screening, interviews, offers
- *               and onboarding handoff run end to end, with its own screens under Team › Recruiter.
- *   sales, retention, marketing, quality, customer-care, team-coordinator   not released: no workflow.
+ *               and onboarding through readiness approval run end to end, with its own screens under Team › Recruiter.
+ *   sales, retention, marketing, quality, customer-care   not released: no workflow.
  *
  * Quality's photo and video review and Marketing's creative requests run in Chat today, but those agents
  * are not released, so (the owner's decision of November 16, 2026) nobody gets them until they are.
@@ -57,7 +66,6 @@ const RELEASED: Record<AgentId, boolean> = {
   marketing: false,
   quality: false,
   "customer-care": false,
-  "team-coordinator": false,
 };
 
 export function agentReleased(agent: AgentId): boolean {

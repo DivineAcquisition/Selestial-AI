@@ -1,15 +1,15 @@
 /**
- * The onboarding queue a person works until Team Coordinator exists. Each handoff lists what the new
- * worker still needs; a named person records each item. Closing the handoff ends the hiring record.
- * It does not make the worker ready for jobs: that is set on the worker's own record, by a person.
+ * Recruiter › Onboarding & Readiness (docs/recruiter/06-readiness.md). Each onboarding lists what the new
+ * worker still needs, read from the shared cleaner record; a named person records each item. When every item
+ * is met, an Owner approves readiness: the hiring record closes as hired, the engagement becomes active, and
+ * Dispatch may consider the worker, still checking each visit itself.
  */
 import { v } from "convex/values";
 
 import { owned } from "./lib/access";
 import { companyQuery, managerMutation, ownerMutation } from "./lib/builders";
 import { payWords } from "./lib/recruiter/offers";
-import { completeHandoff, recordRequirement } from "./lib/recruiter/handoff";
-import { cleanerReadiness } from "./lib/cleaners/records";
+import { approveReadiness, completeHandoff, readinessSummary, recordRequirement } from "./lib/recruiter/handoff";
 
 export const queue = companyQuery({
   args: { status: v.optional(v.union(v.literal("open"), v.literal("complete"), v.literal("cancelled"))) },
@@ -23,6 +23,7 @@ export const queue = companyQuery({
       const applicant = await ctx.db.get(handoff.applicantId);
       const cleaner = await ctx.db.get(handoff.cleanerId);
       const responsible = await ctx.db.get(handoff.responsibleId);
+      const readiness = cleaner ? await readinessSummary(ctx, ctx.company, handoff, cleaner, Date.now()) : null;
       out.push({
         handoffId: handoff._id,
         applicationId: handoff.applicationId,
@@ -39,8 +40,10 @@ export const queue = companyQuery({
         status: handoff.status,
         cleanerId: handoff.cleanerId,
         workerStatus: cleaner?.status ?? null,
+        /** The readiness summary: each item's state and who confirmed it, open decisions, and whether it can be approved. */
+        readiness,
         /** Ready for assignments: an active engagement with every requirement for work met (lib/cleaners/readiness.ts). */
-        dispatchReady: cleaner ? (await cleanerReadiness(ctx, ctx.company, cleaner, Date.now())).readiness.eligible : false,
+        dispatchReady: readiness?.dispatchEligible ?? false,
       });
     }
     return out;
@@ -61,4 +64,10 @@ export const complete = ownerMutation({
     await completeHandoff(ctx, await owned(ctx, args.handoffId), ctx.member);
     return null;
   },
+});
+
+/** An Owner approves readiness. Approving again changes nothing and sends nothing. */
+export const approve = ownerMutation({
+  args: { handoffId: v.id("onboardingHandoffs"), acknowledgeRestriction: v.optional(v.boolean()) },
+  handler: async (ctx, args) => approveReadiness(ctx, await owned(ctx, args.handoffId), ctx.member, { acknowledgeRestriction: args.acknowledgeRestriction }),
 });

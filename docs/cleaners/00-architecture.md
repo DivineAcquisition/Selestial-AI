@@ -20,7 +20,7 @@ Inspected on `main` at `7a375f6` (November 16).
 | Agreements | Workforce agreements with an access class per document and links to cleaners (`agreementLinks`). Signing has no production provider: drafts, approval, export and externally signed uploads work. | Nothing reads an agreement's state as a requirement. |
 | Pay | `cleaners.pay` (Owner only) and the pay stated on each assignment when offered, which is the record for that job. | **Finance is not built.** There is no ledger of approved earnings, adjustments or payouts. |
 | Performance | The record holds offers and answers, check-ins with time, no-shows declared by a person, drops, completion reports and returns. | No measure, score or coaching. Customer feedback (Retention) and quality review (Quality) are not built. |
-| Agents | Dispatch and Recruiter workflows run; Sales and Retention are listed and not built. Team Coordinator and Quality exist only in the navigation plan. | |
+| Agents | Dispatch and Recruiter workflows run; Sales and Retention are listed and not built. Quality exists only in the navigation plan; Team Coordinator was retired (its work is Recruiter's and Dispatch's). | |
 | Chat | A tool registry where each tool re-checks role and authority; consequential tools wait for approval in the chat. | No cleaner tools beyond reading one record. |
 
 A pay leak was found and is fixed in Phase 1: `onboarding.queue` returned the approved pay terms to every
@@ -47,8 +47,10 @@ starts their workflows; it never keeps a second copy.
 | Documents to sign | Agreements | A requirement can point at a workforce agreement; it is accepted only when the agreement is signed. |
 | Services, durations, skills | Services & Pricing | Reads the skills a job requires from the job. Equipment needs can name a service. |
 
-Team Coordinator and Quality are not built. Their work is either done by a launch agent that already owns the
-underlying workflow (section 6) or kept as a queue a person works. Nothing says either agent exists.
+Quality is not built. Team Coordinator was retired on November 22, 2026: Recruiter owns onboarding through the
+readiness approval, Dispatch owns visit coordination, and this workspace holds the record
+(docs/foundation/01-navigation.md, section 9). The profile says who handles each next step, with links to
+Recruiter, Dispatch and Finance, and keeps no copy of their screens.
 
 ## 3. Records
 
@@ -105,8 +107,7 @@ The same checks run in Chat tools, search, exports and messages, not only on scr
 
 ## 6. Agents
 
-Until Team Coordinator exists, routine follow-ups are run by the launch agent that already owns the
-underlying work, under new catalog actions that start on Propose like every action a cleaner sees:
+Routine follow-ups are run by the agent that owns the underlying work, under new catalog actions that start on Propose like every action a cleaner sees:
 
 | Follow-up | Agent | Action |
 |---|---|---|

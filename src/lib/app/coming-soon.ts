@@ -21,7 +21,7 @@ export type Capability = {
 };
 
 export type ComingSoonAgent = {
-  id: Extract<AgentId, "marketing" | "quality" | "customer-care" | "team-coordinator">;
+  id: Extract<AgentId, "marketing" | "quality" | "customer-care">;
   name: string;
   department: string;
   pitch: string;
@@ -98,29 +98,6 @@ export const COMING_SOON: Record<ComingSoonAgent["id"], ComingSoonAgent> = {
       { tab: "Customer Setup", title: "New homes set up right", detail: "Collects access, pets, alarm codes, parking and priorities before the first visit.", mock: "checklist" },
       { tab: "Service Requests", title: "Requests tracked to done", detail: "Add-ons, special instructions and one-time asks, logged against the property so the crew sees them.", mock: "list" },
       { tab: "Rescheduling & Cancellations", title: "Changes handled by your rules", detail: "Moves and skips visits within your notice periods and fees, and tells Dispatch and the crew.", mock: "week" },
-    ],
-    plan: "Included in the Expand plan when it's released.",
-  },
-  "team-coordinator": {
-    id: "team-coordinator",
-    name: "Team Coordinator",
-    department: "Team",
-    pitch: "Gets new cleaners from “hired” to “ready for jobs” and keeps your team current: paperwork, training, availability and regular check-ins, without you chasing anyone.",
-    scene: {
-      trigger: { title: "Maria accepted your offer", detail: "Handed over from Recruiter" },
-      work: ["Builds her onboarding from your requirements", "Sends each step to her phone", "Follows up on what's missing"],
-      outcomes: [
-        { title: "Agreement and W-9 signed", detail: "Filed on her record" },
-        { title: "Training finished", detail: "3 of 3 modules" },
-        { title: "Ready for jobs Monday", detail: "Dispatch can offer her work" },
-      ],
-    },
-    capabilities: [
-      { tab: "Onboarding", title: "Onboarding that finishes itself", detail: "Turns your requirements into steps each new cleaner completes from their phone.", mock: "progress" },
-      { tab: "Documents & Training", title: "Documents that stay current", detail: "Tracks agreements, IDs, insurance and training, and asks for renewals before they lapse.", mock: "list" },
-      { tab: "Readiness", title: "Who can work, at a glance", detail: "Shows who is cleared for which jobs, and what is blocking the rest.", mock: "checklist" },
-      { tab: "Availability", title: "Availability kept up to date", detail: "Asks each cleaner for their week and keeps Dispatch working from real answers.", mock: "week" },
-      { tab: "Team Check-ins", title: "Regular check-ins", detail: "Short check-ins with each cleaner, so you hear about problems before someone quits.", mock: "chat" },
     ],
     plan: "Included in the Expand plan when it's released.",
   },

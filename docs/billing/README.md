@@ -37,7 +37,6 @@ Messaging (texts and business email, paid from a prepaid messaging balance) is d
 | Growth | Marketing | — | Included when released | No |
 | Operations | Quality | — | Included when released | No |
 | Operations | Customer Care | — | Included when released | No |
-| Team | Team Coordinator | — | Included when released | No |
 
 "Released" is recorded in `agentReleased()` after checking what is implemented. Dispatch and Recruiter run
 end to end; Recruiter's own owner screens are still to come. Quality's photo and video review and Marketing's

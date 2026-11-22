@@ -28,23 +28,26 @@ work inside them.
 |---|---|
 | **Growth** | Marketing, Sales, Retention |
 | **Operations** | Dispatch, Quality, Customer Care |
-| **Team** | Recruiter, Team Coordinator |
+| **Team** | Recruiter (with the shared Cleaners workspace) |
 
 | Agent | Owns |
 |---|---|
 | Marketing | Generates customer interest. |
 | Sales | Turns inquiries into confirmed bookings. |
 | Retention | Notices when a customer relationship needs attention, coordinates the response, and verifies what happened afterward. |
-| Dispatch | Staffs jobs, manages scheduling and coverage, monitors service progress. |
+| Dispatch | Visit eligibility, assignments, coverage, and service coordination. |
 | Quality | Reviews service evidence, investigates issues, coordinates corrective work. |
 | Customer Care | Handles customer communications, setup, requests and scheduling changes. |
-| Recruiter | Manages candidate acquisition, screening, interviews and hiring offers. |
-| Team Coordinator | Manages cleaner onboarding, documentation, training, readiness and ongoing availability. |
+| Recruiter | Applications, hiring, onboarding, and readiness. |
+
+**Team Coordinator was retired on November 22, 2026**, before it was ever released. It never ran: it was a
+coming-soon page, a catalog entry and a queue label on tasks a person worked. Its responsibilities have owners
+that already run, so nothing is duplicated or lost (section 9).
 
 Two pairs of names are close and stay with their owners:
 
-- **Customer Setup** is Customer Care's and is about customers. **Onboarding**
-  is Team Coordinator's and is about cleaners.
+- **Customer Setup** is Customer Care's and is about customers. **Onboarding &
+  Readiness** is Recruiter's and is about cleaners.
 - **Offers & Agreements** is Recruiter's and is about hiring. **Offers &
   Coverage** is Dispatch's and is about job assignments.
 
@@ -87,8 +90,7 @@ Names and order are the owner's. Playbook is always last. Chat is never a tab: i
 | Dispatch | Dispatch Board · Schedule · Offers & Coverage · Live Jobs · Action Links · Playbook |
 | Quality | Completion Review · Checklists & Photos · Service Issues · Re-cleans · Playbook |
 | Customer Care | Conversations · Customer Setup · Service Requests · Rescheduling & Cancellations · Playbook |
-| Recruiter | Hiring Needs · Applicants · Screening · Interviews · Offers & Agreements · Playbook |
-| Team Coordinator | Onboarding · Documents & Training · Readiness · Availability · Team Check-ins · Playbook |
+| Recruiter | Hiring Needs · Applicants · Screening · Interviews · Offers & Agreements · Onboarding & Readiness · Playbook |
 
 ### What Dispatch's tabs must hold
 
@@ -323,8 +325,8 @@ grouping in agreement with the sidebar's.
 
 Two gaps remain, and both wait for each new agent to be designed:
 
-1. **Marketing, Quality, Customer Care and Team Coordinator have no id in the
-   schema**, so they cannot own a task, an approval or a permission.
+1. **Marketing, Quality and Customer Care have no id in the schema**, so they
+   cannot own a task, an approval or a permission.
 2. **The permission catalog has no actions for them.**
 
 ## 8. Decisions and open questions
@@ -343,3 +345,38 @@ Still open:
 
 1. **Books.** Settled November 17, 2026: no ninth agent. Finance is a shared
    area; Company Chat and the existing agents work in it within their roles.
+
+## 9. Team Coordinator's retirement (November 22, 2026)
+
+The boundary: **Recruiter gets a person ready for work. Dispatch decides whether that person can take a
+specific visit and coordinates it. The Cleaners workspace holds the shared workforce record.**
+
+| Responsibility | Owner |
+|---|---|
+| Applicant intake, follow-up, screening, interviews, offers | Recruiter |
+| Onboarding checklist, documents, agreement, missing requirements | Recruiter (Onboarding & Readiness), recorded on the shared cleaner record |
+| Initial skills, service areas and stated availability | Recruiter gathers them; saved to the Cleaners record |
+| Presenting a person for readiness approval | Recruiter; an Owner approves (`onboarding.approve`) |
+| Profiles, availability, time off, skills, areas, documents, notes | Cleaners workspace (shared, read by Dispatch) |
+| Eligibility for a specific visit, offers, acceptances, declines | Dispatch |
+| Coverage gaps, call-outs, replacements, reminders, check-ins | Dispatch |
+| A cleaner who cannot be reached by text | Dispatch's own task, held for a person (was the Team Coordinator queue) |
+| Pay records and payments | Finance › Team Pay |
+
+What changed in code:
+
+- The `team_coordinator` hand-off queue is no longer written. Older tasks keep it as history
+  (`LEGACY_HANDOFF_QUEUES`), and `teamCoordinatorRetirement:run` moves any open one to its owner, reporting
+  any it cannot place. On November 22, 2026 there were none on the live backend.
+- Unanswered follow-ups stay with the agent that ran them (Recruiter for onboarding, Dispatch for
+  availability), so no second workflow reminds the same person.
+- Billing: Team Coordinator is gone from the plan catalog and comparisons. It was never released, Recruiter and
+  Dispatch are in both plans, and no subscription or entitlement named it, so nobody gains or loses anything.
+  Older usage rows keep the id (`RETIRED_AGENT_IDS`).
+- Old links: `/app/agents/team-coordinator` explains the move; its tabs redirect (Onboarding, Documents &
+  Training and Readiness to Recruiter › Onboarding & Readiness, Availability to Cleaners, Team Check-ins to
+  Dispatch). The public `/agents/team-coordinator` redirects to `/agents/recruiter`.
+- Early access requests can no longer name it. Chat no longer lists it as a specialist; older conversations
+  still say "Team Coordinator" where it was named.
+
+Business Development has been discussed as a replacement agent. It is not built or listed.

@@ -38,10 +38,12 @@ When its work reaches one of those, it opens a task in that agent's queue (`hand
 | Queue | When | Example |
 |---|---|---|
 | Recruiter | Nobody has the capacity; cover cannot be found | "Staffing gap…", "Urgent hire…" |
-| Team Coordinator | A cleaner cannot be reached | "Check how to reach Lena: a text did not go through" |
 | Customer Care | The customer needs to hear something; a scope request | Delay notice draft; add-on request |
 | Quality | The crew reported completion | "Review the completed visit…" |
 | Finance | Not used yet: Dispatch produces no financial facts today | |
+
+A cleaner who cannot be reached ("Check how to reach Lena: a text did not go through") is Dispatch's own task,
+held for a person, not a handoff: Team Coordinator was retired on November 22, 2026.
 
 Recruiter is an agent the record knows, so its tasks are filed under it. The other four are not built.
 Their tasks are filed under Dispatch with `handoffTo` set and are **held for a person from the moment
