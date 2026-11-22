@@ -19,6 +19,7 @@ import { afterRecruiterDecision, afterRecruiterExpiry, isRecruiterProposal } fro
 import { afterFollowUpDecision, afterFollowUpExpiry } from "./lib/cleaners/followUps";
 import { afterRetentionDecision, afterRetentionExpiry, isRetentionProposal, ownerOnly } from "./lib/retention/approvals";
 import { userError } from "./lib/errors";
+import { mayDecide } from "./lib/controls/readiness";
 import { byMember, recordEvent } from "./lib/events";
 import { approvalStatusValidator } from "./lib/statuses";
 import { optionalText } from "./lib/text";
@@ -71,6 +72,9 @@ export const decide = managerMutation({
   handler: async (ctx, args): Promise<{ carriedOut: CarriedOut | null }> => {
     const approval = await owned(ctx, args.approvalId);
     if (approval.status !== "pending") throw userError(`This was already ${approval.status}.`);
+    // Who decides is the Owner's routing for this action (Agent Controls). It never lets anyone past an owner-only rule below.
+    const routed = await mayDecide(ctx, ctx.company, approval.action, ctx.member);
+    if (!routed.ok) throw userError(routed.words, "not_allowed");
     // Prices are the Owner's: a changed price, a recurring price change and custom proposal rates wait for them.
     const kind = approval.proposal?.kind;
     if ((kind === "sales_price_override" || kind === "plan_change" || kind === "proposal_rates") && !isOwner(ctx.role)) throw userError("Only the Owner decides price changes.");

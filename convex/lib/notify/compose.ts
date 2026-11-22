@@ -170,6 +170,17 @@ async function agentActed(ctx: MutationCtx, company: Doc<"companies">, facts: No
     about.push({ label: "Customer", value: customer?.name ?? null }, { label: "Case", value: careCase.title });
     path ??= casePath(careCase);
   }
+  const applicationId = str(facts, "applicationId") ? ctx.db.normalizeId("applications", str(facts, "applicationId")!) : null;
+  const application = applicationId ? await ctx.db.get(applicationId) : null;
+  if (application && application.companyId === company._id) {
+    const applicant = await ctx.db.get(application.applicantId);
+    about.push({ label: "Applicant", value: applicant?.name ?? null });
+    path ??= `/app/agents/recruiter/applicants?open=${application._id}`;
+  }
+  // How far it got, so the email never claims more than happened (convex/lib/controls/report.ts).
+  const STAGE: Record<string, string> = { prepared: "Prepared, not sent", queued: "Queued to send; it is checked again before it goes", submitted: "Accepted by the provider", delivered: "Delivered", completed: "Done" };
+  const stage = str(facts, "stage");
+  if (stage && STAGE[stage]) about.push({ label: "Where it stands", value: STAGE[stage] });
   return agentActedEmail({ ...c, agent, did, at: num(facts, "at") ?? at, about, path });
 }
 

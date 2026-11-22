@@ -37,8 +37,8 @@ export function RecruiterOverviewScreen() {
   const applications = useQuery(api.applications.list, { companyId });
   const requests = useQuery(api.recruiter.staffingRequests, { companyId });
   const activity = useQuery(api.details.activity, now ? { companyId, asOf: now, limit: 60 } : "skip");
-  const permissions = useQuery(api.permissions.list, { companyId });
-  const setPaused = useMutation(api.companies.setPausedAgents);
+  const pauseAgent = useMutation(api.companies.pauseAgent);
+  const resumeAgent = useMutation(api.companies.resumeAgent);
   const { busy, error, run } = useRun();
   const [step, setStep] = useState<number | null>(null);
 
@@ -60,7 +60,6 @@ export function RecruiterOverviewScreen() {
   const recruiters = live.filter((row) => !needsYou(row) && !theirs.includes(row));
   const shown = step === null ? null : live.filter((row) => stepOf(row.stage) === step);
   const inbox = overview.inbox.find((row) => row.status === "connected") ?? overview.inbox[0] ?? null;
-  const pausedAgents = permissions?.pausedAgents ?? [];
   const did = activity?.filter((event) => event.actor.agent === "recruiter").slice(0, 12);
 
   const briefing = [
@@ -91,8 +90,8 @@ export function RecruiterOverviewScreen() {
         title="Recruiter"
         lead="Manages candidate acquisition, screening, interviews, and hiring offers."
         actions={
-          role === "owner" && permissions ? (
-            <Button variant="outline" size="sm" loading={busy} onClick={() => void run(() => setPaused({ companyId, agents: overview.paused ? pausedAgents.filter((agent) => agent !== "recruiter") : [...pausedAgents, "recruiter"] }))}>
+          role === "owner" ? (
+            <Button variant="outline" size="sm" loading={busy} onClick={() => void run(() => (overview.paused ? resumeAgent : pauseAgent)({ companyId, agent: "recruiter" }))}>
               {overview.paused ? <Play aria-hidden /> : <PauseCircleIcon aria-hidden />}
               {overview.paused ? "Resume Recruiter" : "Pause Recruiter"}
             </Button>

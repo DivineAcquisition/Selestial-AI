@@ -350,7 +350,7 @@ export async function routeAction(ctx: MutationCtx, company: Doc<"companies">, o
   }
   const sent = await sendAction(ctx, company, opportunity, action, SALES);
   if (sent.ok && authority.level === "execute_and_report") {
-    await recordEvent(ctx, { companyId: company._id, type: "sales.reported", actor: SALES, subject: { table: "salesActions", id: action._id }, data: { action: action.permission, kind: action.kind, opportunityId: opportunity._id } });
+    await recordEvent(ctx, { companyId: company._id, type: "sales.reported", actor: SALES, subject: { table: "salesActions", id: action._id }, data: { action: action.permission, kind: action.kind, opportunityId: opportunity._id, ref: action._id, stage: "queued" } });
   }
   return sent.ok ? "sent" : "failed";
 }

@@ -9,6 +9,7 @@
  * credit is a change in Finance; a message is a question. Each names who has it, the record to watch
  * and what is expected back, and the case stays open until that comes back and is verified.
  */
+import { settle } from "../controls/allowance";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import { requestApproval } from "../approvalQueue";
@@ -140,6 +141,9 @@ export async function prepareAction(ctx: MutationCtx, row: Case, input: NewActio
 async function setAction(ctx: MutationCtx, action: Action, patch: Partial<Action>): Promise<Action> {
   const done = patch.status === "done" || patch.status === "failed" || patch.status === "declined" || patch.status === "cancelled";
   await ctx.db.patch(action._id, { ...patch, updatedAt: Date.now(), ...(done && action.doneAt === undefined ? { doneAt: Date.now() } : {}) });
+  // Its allowance reservation, if it has one, settles once: spent when done, returned when it didn't happen.
+  if (patch.status === "done") await settle(ctx, action.companyId, `retentionActions:${action._id}`, "committed");
+  else if (patch.status === "failed" || patch.status === "declined" || patch.status === "cancelled" || patch.status === "blocked") await settle(ctx, action.companyId, `retentionActions:${action._id}`, "released");
   return (await ctx.db.get(action._id))!;
 }
 
@@ -241,7 +245,8 @@ export async function submitAction(ctx: MutationCtx, company: Doc<"companies">, 
     return { status: "proposed", detail };
   }
   const cost = action.estimatedCostCents ?? action.money?.amountCents ?? null;
-  const permit = await permitFor(ctx, company._id, action.permission, { cents: cost });
+  // A money action acting without asking reserves its share of today's allowance under this action's own key.
+  const permit = await permitFor(ctx, company._id, action.permission, { cents: cost }, { key: `retentionActions:${action._id}`, source: { table: "retentionActions", id: action._id } });
   if (permit.mode === "refuse") {
     action = await setAction(ctx, action, { status: "blocked", result: permit.why, authorization: permit.label });
     await addEntry(ctx, row, { kind: "action", text: `Not carried out: ${action.summary}. ${permit.why}`, actor: SYSTEM });
@@ -269,7 +274,7 @@ export async function submitAction(ctx: MutationCtx, company: Doc<"companies">, 
   action = await setAction(ctx, action, { authorization: permit.label });
   const result = await carryOut(ctx, company, action, actor);
   if (permit.level === "execute_and_report") {
-    await recordEvent(ctx, { companyId: company._id, type: "retention.reported", actor: RETENTION, subject: { table: "retentionActions", id: action._id }, data: { kind: action.kind, action: action.permission, caseId: action.caseId, ok: result.ok } });
+    await recordEvent(ctx, { companyId: company._id, type: "retention.reported", actor: RETENTION, subject: { table: "retentionActions", id: action._id }, data: { kind: action.kind, action: action.permission, caseId: action.caseId, ok: result.ok, ref: action._id, stage: (await ctx.db.get(action._id))?.status === "done" ? "completed" : "queued" } });
   }
   return { status: (await ctx.db.get(action._id))!.status, detail: result.detail };
 }
