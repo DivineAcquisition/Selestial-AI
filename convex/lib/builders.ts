@@ -663,6 +663,22 @@ export function signedFileRoute(def: { verify: (request: Request, now: number) =
   });
 }
 
+/**
+ * A public GET that says whether THIS backend is alive (GET /health). It is never passed on to another
+ * backend, takes nothing from the request, and its handler must answer with reason codes only.
+ */
+export function selfCheckRoute(def: { handler: (ctx: ActionCtx) => Promise<{ ok: boolean; reasons: string[] }> }): PublicHttpAction {
+  return httpAction(async (ctx) => {
+    const headers = { "Content-Type": "application/json", "Cache-Control": "no-store" };
+    try {
+      const answer = await def.handler(ctx);
+      return new Response(JSON.stringify(answer.ok ? { ok: true } : { ok: false, reasons: answer.reasons }), { status: answer.ok ? 200 : 503, headers });
+    } catch {
+      return new Response(JSON.stringify({ ok: false, reasons: ["check_failed"] }), { status: 503, headers });
+    }
+  });
+}
+
 // ── Portal links: a cleaner, or a subcontractor company's contact, acting on their own records ────
 
 export type PortalAccess = {

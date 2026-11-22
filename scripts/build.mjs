@@ -1,9 +1,17 @@
 #!/usr/bin/env node
 /**
  * The build. On Vercel's production build (a merge to main), when the project holds the live backend's
- * deploy key, the Convex backend is deployed in the same step as the site: `npx convex deploy` pushes the
- * functions and schema, then runs `next build` against that backend. A backend change that fails its
- * type check or schema check fails the build, so nothing half-ships.
+ * deploy key, the Convex backend is deployed in the same step as the site. The order is Convex's, not ours
+ * (`npx convex deploy --cmd`): it runs the site build FIRST, with the live backend's address, and only if
+ * that succeeds type-checks and pushes the functions and schema. Vercel publishes the site after this
+ * script exits. So:
+ *
+ *  - a site that does not build pushes nothing; a backend that fails its type or schema check fails the
+ *    build, and the site that was just built is not published;
+ *  - the new backend is live BEFORE the new site: for a minute or two, and for every tab already open, the
+ *    previous site calls the new backend. Every release must keep its functions compatible with the previous
+ *    site: never remove or rename a function or a required argument in the same release as the site change
+ *    that stops using it, and keep schema changes additive. See docs/foundation/06-deployments.md.
  *
  * Everywhere else (preview builds, local builds, CI, or production without the key) it is the plain
  * `next build` it always was. A preview never deploys a backend, even if the key is visible to it,
@@ -36,7 +44,7 @@ if (process.env.VERCEL_ENV === "preview" && backend && PRODUCTION_DEPLOYMENTS.in
 }
 
 if (production && key) {
-  console.log("Production build: deploying the Convex backend, then building the site against it.");
+  console.log("Production build: building the site, then deploying the Convex backend it was built for.");
   // The app's own connection always uses the deployment's own address, never a custom domain (scripts/convex-address.mjs).
   process.env.SELESTIAL_PRODUCTION_DEPLOYMENT = PRODUCTION_DEPLOYMENTS[0];
   run("npx", ["convex", "deploy", "--cmd", "node scripts/next-build.mjs", "--cmd-url-env-var-name", "NEXT_PUBLIC_CONVEX_URL"]);

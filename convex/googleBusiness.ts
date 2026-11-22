@@ -15,6 +15,7 @@ import { internalAction, internalMutation, internalQuery, type MutationCtx } fro
 import { accessTokenFor } from "./google";
 import { companyQuery, managerMutation } from "./lib/builders";
 import { notFound, userError } from "./lib/errors";
+import { isNonProduction } from "./lib/environment";
 import { byMember, recordEvent } from "./lib/events";
 import { setNotifications } from "./lib/google/business";
 import { activeConnection, requireFeature } from "./lib/google/connection";
@@ -203,7 +204,8 @@ export const ensureNotifications = internalAction({
   handler: async (ctx, args): Promise<null> => {
     const topic = pubsubTopic();
     const targets = await ctx.runQuery(internal.googleBusiness.notificationTargets, args);
-    if (!topic || !targets || targets.accounts.length === 0) return null;
+    // A backend that is not production changes no notification setting on a company's Business Profile (convex/lib/google/http.ts).
+    if (!topic || !targets || targets.accounts.length === 0 || isNonProduction()) return null;
     const access = await accessTokenFor(ctx, targets.connectionId);
     if (!access.ok) return null;
     for (const account of targets.accounts) {

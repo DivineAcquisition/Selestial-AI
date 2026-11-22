@@ -3,9 +3,11 @@
  * means the request may have happened: a consequential write that ends uncertain is reconciled (looked
  * up by its idempotency key) before anything is tried again, never simply repeated.
  */
+import { isNonProduction } from "../environment";
+
 export type Fetch = typeof fetch;
 
-export type GoogleErrorKind = "auth" | "forbidden" | "not_found" | "conflict" | "rate_limited" | "invalid" | "server" | "uncertain" | "not_configured";
+export type GoogleErrorKind = "auth" | "forbidden" | "not_found" | "conflict" | "rate_limited" | "invalid" | "server" | "uncertain" | "not_configured" | "not_production";
 
 export class GoogleError extends Error {
   constructor(
@@ -49,6 +51,24 @@ function describe(body: unknown, status: number): string {
   return text.replace(/ya29\.[\w.-]+|Bearer\s+\S+/g, "[redacted]").slice(0, 300);
 }
 
+export const NOT_RUN_ON_TEST = "Not run: this is not the production backend, so nothing is written to a Google account.";
+
+/** Hosts whose POSTs are Selestial's own sign-in or its own computation: no customer's Google account changes. */
+const READ_ONLY_HOSTS = new Set(["oauth2.googleapis.com", "routes.googleapis.com", "routeoptimization.googleapis.com", "generativelanguage.googleapis.com", "places.googleapis.com"]);
+/** POSTs that only read: a Google Ads query, and busy times from Calendar. */
+const READ_ONLY_PATHS = [/\/googleAds:search$/, /\/calendar\/v3\/freeBusy$/];
+
+/**
+ * Whether a call writes to a Google account: a calendar event, a public review reply, an ad, a reported
+ * conversion, a Drive or Sheets file, a notification channel. Everything that is not a GET is a write
+ * unless it is listed above as a read, so a new call is refused on a test backend until someone decides.
+ */
+export function writesToGoogle(url: string, method: string): boolean {
+  if (method.toUpperCase() === "GET") return false;
+  const { host, pathname } = new URL(url);
+  return !READ_ONLY_HOSTS.has(host) && !READ_ONLY_PATHS.some((path) => path.test(pathname));
+}
+
 export type CallInit = { method?: string; body?: unknown; rawBody?: BodyInit; headers?: Record<string, string>; timeoutMs?: number; fetcher?: Fetch };
 
 /** One call with a bearer token or headers. JSON in, JSON out. A network failure on a write is "uncertain". */
@@ -56,6 +76,9 @@ export async function googleCall<T>(url: string, token: string | null, init: Cal
   const host = new URL(url).host;
   if (!ALLOWED_HOSTS.has(host)) throw new GoogleError("invalid", `Selestial does not call ${host}.`);
   const method = init.method ?? "GET";
+  // A backend that is not production (the test backend, a restored copy) holds copies of real companies'
+  // Google access. It may sign in and read; it never writes to their accounts (convex/lib/environment.ts).
+  if (isNonProduction() && writesToGoogle(url, method)) throw new GoogleError("not_production", NOT_RUN_ON_TEST);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), init.timeoutMs ?? 30_000);
   let response: Response;
@@ -102,6 +125,7 @@ export function plainProblem(error: unknown): string {
   if (kind === "not_found") return "Selestial can’t find this in your Google account. It may have been moved or deleted.";
   if (kind === "forbidden") return "Your Google account doesn’t let Selestial use this.";
   if (kind === "auth") return "Google access ended. Reconnect to continue.";
+  if (kind === "not_production") return "Not done: this is a test copy of Selestial, which never changes a Google account.";
   if (kind === "not_configured") return "This isn’t available yet.";
   if (kind === "rate_limited" || kind === "server" || kind === "uncertain") return "Google didn’t answer just now. Selestial will try again.";
   return "Something went wrong with Google. Please try again.";

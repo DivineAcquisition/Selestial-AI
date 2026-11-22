@@ -298,4 +298,166 @@ describe("Operations incidents", () => {
     await run(t, "owner_notices");
     expect(await openIncidents(t)).toHaveLength(0);
   });
+
+  // ── Monitoring the monitoring: GET /health ──────────────────────────────────────────────────────
+
+  test("/health is 200 only while every check is finishing and alerts are reaching someone, and says why in codes when not", async () => {
+    const t = start();
+    const { companyId } = await company(t, "owner_a", "Alpha");
+    const health = async () => {
+      const response = await t.fetch("/health", { method: "GET" });
+      return { status: response.status, body: (await response.json()) as { ok: boolean; reasons?: string[] }, cache: response.headers.get("cache-control"), text: JSON.stringify(await t.query(internal.operations.health, {})) };
+    };
+    // Nothing has run yet.
+    expect(await health()).toMatchObject({ status: 503, body: { ok: false, reasons: ["checks_not_run"] }, cache: "no-store" });
+    await t.mutation(internal.operations.tick, {});
+    await t.finishAllScheduledFunctions(() => undefined);
+    expect(await health()).toMatchObject({ status: 200, body: { ok: true }, cache: "no-store" });
+
+    // The tick stops: one check has not finished for far longer than its interval.
+    await t.run(async (ctx) => {
+      const row = (await ctx.db.query("monitorChecks").withIndex("by_check", (q) => q.eq("check", "mailboxes")).first())!;
+      await ctx.db.patch(row._id, { lastStartedAt: Date.now() - 2 * HOUR, lastFinishedAt: Date.now() - 2 * HOUR });
+    });
+    expect(await health()).toMatchObject({ status: 503, body: { ok: false, reasons: ["checks_stale"] } });
+    await run(t, "mailboxes");
+    expect((await health()).status).toBe(200);
+
+    // An alert nobody received: fine for a few minutes, a failure after twenty.
+    const incidentId = await t.run((ctx) => ctx.db.insert("incidents", { key: "k", check: "mailboxes", kind: "mailbox_read_failing", area: "connections", companyId, severity: "high", state: "needs_staff", title: "t", impact: "i", nextAction: "n", related: [], occurrences: 1, recoveryAttempts: 0, firstSeenAt: Date.now(), lastSeenAt: Date.now(), lastCheckedAt: Date.now(), resolvedAt: 0, updatedAt: Date.now() }));
+    const alertId = await t.run((ctx) => ctx.db.insert("staffAlerts", { incidentId, reason: "needs_staff", at: Date.now() - 5 * MINUTE, sentAt: 0 }));
+    expect((await health()).status).toBe(200);
+    await t.run((ctx) => ctx.db.patch(alertId, { at: Date.now() - 25 * MINUTE }));
+    const failing = await health();
+    expect(failing).toMatchObject({ status: 503, body: { ok: false, reasons: ["alerts_undelivered"] } });
+    // Reason codes only: no company, no id.
+    expect(failing.text).not.toContain(companyId);
+    expect(failing.text).not.toContain("Alpha");
+    expect(Object.keys(failing.body).sort()).toEqual(["ok", "reasons"]);
+    await t.run((ctx) => ctx.db.patch(alertId, { sentAt: Date.now() }));
+    expect((await health()).status).toBe(200);
+  });
+
+  test("/health answers for this backend itself, even on a backend that forwards its old addresses", async () => {
+    const t = start();
+    const saved = { url: process.env.CONVEX_CLOUD_URL, moved: process.env.MOVED_TO };
+    const realFetch = globalThis.fetch;
+    let forwarded = 0;
+    globalThis.fetch = (async () => {
+      forwarded += 1;
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }) as typeof fetch;
+    try {
+      process.env.CONVEX_CLOUD_URL = "https://terrific-avocet-835.convex.cloud";
+      process.env.MOVED_TO = "https://stoic-gazelle-731.convex.site";
+      const response = await t.fetch("/health", { method: "GET" });
+      // Its own checks have never run: it says so, rather than passing on production's answer.
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({ ok: false, reasons: ["checks_not_run"] });
+      expect(forwarded).toBe(0);
+    } finally {
+      globalThis.fetch = realFetch;
+      if (saved.url === undefined) delete process.env.CONVEX_CLOUD_URL;
+      else process.env.CONVEX_CLOUD_URL = saved.url;
+      if (saved.moved === undefined) delete process.env.MOVED_TO;
+      else process.env.MOVED_TO = saved.moved;
+    }
+  });
+
+  // ── Messages that lost their timers ─────────────────────────────────────────────────────────────
+
+  test("messages queued for hours are one platform incident for staff, never re-sent, and it closes when they are dealt with", async () => {
+    const t = start();
+    const { companyId } = await company(t, "owner_a", "Alpha");
+    const now = Date.now();
+    const queued = (key: string, queuedAt: number) => t.run((ctx) => ctx.db.insert("messages", { companyId, purpose: "reminder", body: "See you tomorrow", dedupeKey: key, status: "queued", attempts: 0, provider: "telnyx", queuedAt }));
+    await queued("fresh", now - 10 * MINUTE);
+    await run(t, "stuck_sends");
+    expect(await openIncidents(t)).toHaveLength(0);
+    const old = await queued("old", now - 5 * HOUR);
+    await run(t, "stuck_sends");
+    await run(t, "stuck_sends");
+    const open = await openIncidents(t);
+    expect(open).toHaveLength(1);
+    expect(open[0]).toMatchObject({ kind: "message_stuck_queued", area: "platform", state: "needs_staff", severity: "high" });
+    expect(open[0].companyId).toBeUndefined();
+    expect(open[0].impact).not.toContain("See you tomorrow");
+    // Nothing was scheduled to send it, and it is still exactly as it was.
+    expect(await t.run((ctx) => ctx.db.get(old))).toMatchObject({ status: "queued", attempts: 0 });
+    expect(await t.run((ctx) => ctx.db.system.query("_scheduled_functions").collect())).toHaveLength(0);
+    await t.run((ctx) => ctx.db.patch(old, { status: "not_sent" }));
+    await run(t, "stuck_sends");
+    expect(await openIncidents(t)).toHaveLength(0);
+  });
+
+  // ── Messaging charges: visible, and alerted once when off in production with no reason ──────────
+
+  test("production sending for free with no recorded reason is one incident and one alert; a subsidy note or turning charging on closes it", async () => {
+    const t = start();
+    const saved = { url: process.env.CONVEX_CLOUD_URL, billing: process.env.MESSAGING_BILLING, note: process.env.MESSAGING_BILLING_SUBSIDY_NOTE, card: process.env.BILLING_RATE_CARD };
+    const restore = (name: string, value: string | undefined) => (value === undefined ? delete process.env[name] : (process.env[name] = value));
+    const staff = t.withIdentity(admin);
+    try {
+      delete process.env.MESSAGING_BILLING;
+      delete process.env.MESSAGING_BILLING_SUBSIDY_NOTE;
+      // Not production (the harness, the test backend): shown as off, no warning, no incident.
+      process.env.CONVEX_CLOUD_URL = "https://terrific-avocet-835.convex.cloud";
+      await run(t, "messaging_billing");
+      expect(await openIncidents(t)).toHaveLength(0);
+      expect((await staff.query(api.operations.overview, {})).readiness.messagingCharges).toMatchObject({ state: "off", words: "Off", warning: null });
+
+      process.env.CONVEX_CLOUD_URL = "https://stoic-gazelle-731.convex.cloud";
+      expect((await staff.query(api.operations.overview, {})).readiness.messagingCharges).toMatchObject({ state: "off", warning: "Messages are not being charged. If this is a deliberate pilot subsidy, record it." });
+      await run(t, "messaging_billing");
+      await run(t, "messaging_billing");
+      await run(t, "messaging_billing");
+      const open = await openIncidents(t);
+      expect(open).toHaveLength(1);
+      expect(open[0]).toMatchObject({ kind: "messaging_unmetered", area: "platform", state: "needs_staff" });
+      // Raised once: three runs, one alert.
+      expect(await t.run((ctx) => ctx.db.query("staffAlerts").collect())).toHaveLength(1);
+      // Staff cannot close it by hand while it is still true.
+      expect(await refusal(staff.mutation(api.operations.resolve, { id: open[0]._id, reason: "Looked at it, seems fine" }))).toMatch(/still happening/);
+
+      // A deliberate subsidy, written down: no warning, and the incident resolves by itself.
+      process.env.MESSAGING_BILLING_SUBSIDY_NOTE = "Pilot: free messaging through 2027-01-31, approved by the owner";
+      expect((await staff.query(api.operations.overview, {})).readiness.messagingCharges).toMatchObject({ state: "subsidy", words: "Off — pilot subsidy: Pilot: free messaging through 2027-01-31, approved by the owner", warning: null });
+      await run(t, "messaging_billing");
+      expect(await openIncidents(t)).toHaveLength(0);
+
+      // The note removed: it comes back as the same incident, reopened, not a second one.
+      delete process.env.MESSAGING_BILLING_SUBSIDY_NOTE;
+      await run(t, "messaging_billing");
+      expect(await openIncidents(t)).toHaveLength(1);
+      expect(await t.run((ctx) => ctx.db.query("incidents").collect())).toHaveLength(1);
+      process.env.MESSAGING_BILLING = "on";
+      await run(t, "messaging_billing");
+      expect(await openIncidents(t)).toHaveLength(0);
+      expect((await staff.query(api.operations.overview, {})).readiness.messagingCharges).toMatchObject({ state: "on", words: "On", warning: null });
+    } finally {
+      restore("CONVEX_CLOUD_URL", saved.url);
+      restore("MESSAGING_BILLING", saved.billing);
+      restore("MESSAGING_BILLING_SUBSIDY_NOTE", saved.note);
+      restore("BILLING_RATE_CARD", saved.card);
+    }
+  });
+
+  test("readiness names the AI rate card in force and the tasks with no approved rate, and never a key", async () => {
+    const t = start();
+    const saved = process.env.BILLING_RATE_CARD;
+    const staff = t.withIdentity(admin);
+    try {
+      process.env.BILLING_RATE_CARD = "2026-11b";
+      const { readiness } = await staff.query(api.operations.overview, {});
+      expect(readiness.rateCard.version).toBe("2026-11b");
+      expect(readiness.rateCard.unapproved.map((row) => row.task)).toContain("sales_message_reading");
+      expect(readiness.rateCard.unapproved.map((row) => row.task)).not.toContain("chat_response_standard");
+      expect(JSON.stringify(readiness)).not.toMatch(/sk_|am_sk|KEY|secret/i);
+      process.env.BILLING_RATE_CARD = "no-such-card";
+      expect((await staff.query(api.operations.overview, {})).readiness.rateCard).toEqual({ version: null, unapproved: [] });
+    } finally {
+      if (saved === undefined) delete process.env.BILLING_RATE_CARD;
+      else process.env.BILLING_RATE_CARD = saved;
+    }
+  });
 });

@@ -15,7 +15,9 @@ import { notFound, userError } from "./lib/errors";
 import { AREAS, CLOSE_BY_HAND, KIND_LABELS, SEVERITIES, areaValidator, checkValidator, nextActor, severityRank, stateValidator, type Area, type Severity, type State } from "./lib/operations/catalog";
 import { DETECTORS, detectorFor } from "./lib/operations/detectors";
 import { reevaluate, resolveIncident, runDetector, stateWords, verifyIncident } from "./lib/operations/incidents";
-import { ALERT_CHANNELS, type AlertLine } from "./lib/operations/alerts";
+import { ALERT_CHANNELS, ALERT_PROBLEM_WORDS, combineOutcomes, type AlertLine, type AlertProblem } from "./lib/operations/alerts";
+import { environment, isNonProduction } from "./lib/environment";
+import { messagingCharges, rateCardReadiness } from "./lib/operations/readiness";
 import { queueStaffAlert } from "./lib/operations/notify";
 import { incidentReference, ownerCard, ownerUpdate } from "./lib/operations/owner";
 import { AUTO_RECONCILE_MS, reconcilable, startReconcile } from "./lib/operations/reconcile";
@@ -193,8 +195,24 @@ export const overview = staffQuery({
       }),
     );
     const sorted = [...open].sort(bySeverityThenRecent);
+    const oldestWaiting = await ctx.db
+      .query("staffAlerts")
+      .withIndex("by_sent_at", (q) => q.eq("sentAt", 0))
+      .first();
+    const delivery = await ctx.db.query("alertDelivery").first();
+    const undelivered = oldestWaiting !== null && (delivery?.failingSince !== undefined || now - oldestWaiting.at > ALERT_UNDELIVERED_MS);
     return {
       now,
+      // Whether alerts are reaching staff. An alert nobody received is never shown as sent.
+      alerts: {
+        delivering: !undelivered,
+        waitingSince: oldestWaiting?.at ?? null,
+        failingSince: delivery?.failingSince ?? null,
+        lastDeliveredAt: delivery?.lastDeliveredAt ?? null,
+        problem: undelivered ? (ALERT_PROBLEM_WORDS[delivery?.problem as AlertProblem] ?? "The alert sender has not run, or has not finished, since these alerts were raised.") : null,
+      },
+      // Deployment settings staff should see here rather than find out from an invoice (docs/billing/03-messaging-billing.md).
+      readiness: { environment: environment(), messagingCharges: messagingCharges(), rateCard: rateCardReadiness() },
       // Truncated at 500 open incidents: the counts say so rather than pretend.
       complete: open.length < 500,
       openCount: open.length,
@@ -400,17 +418,79 @@ export const markAlertsSent = internalMutation({
   },
 });
 
-/** Every five minutes (convex/crons.ts): one grouped message per staff member, through every channel. */
+/** Whether alerts reached anyone on the last run, kept so the Operations overview and /health can say so. */
+export const recordAlertDelivery = internalMutation({
+  args: { reached: v.number(), problem: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const row = await ctx.db.query("alertDelivery").first();
+    const next = args.reached > 0 ? { lastAttemptAt: now, lastDeliveredAt: now, failingSince: undefined, problem: undefined } : { lastAttemptAt: now, failingSince: row?.failingSince ?? now, problem: args.problem?.slice(0, 60) };
+    if (row) await ctx.db.patch(row._id, next);
+    else await ctx.db.insert("alertDelivery", next);
+    return null;
+  },
+});
+
+/**
+ * Every five minutes (convex/crons.ts): one grouped message per staff member, through every channel.
+ *
+ * An alert is marked sent only when at least one person was reached. A refused send (a revoked key), no
+ * email service, or no active admin or support staff leaves every alert waiting, and the Operations
+ * overview and GET /health say alerts are not being delivered. The same batch goes again on the next run
+ * under the same key, so nobody who did receive it receives it twice.
+ */
 export const sendStaffAlerts = internalAction({
   args: {},
   handler: async (ctx): Promise<{ sent: number }> => {
     const pending = await ctx.runQuery(internal.operations.pendingAlerts, {});
     if (!pending) return { sent: 0 };
-    let ok = true;
-    for (const channel of ALERT_CHANNELS) if (!(await channel.send(pending.batch, pending.recipients))) ok = false;
-    // Kept waiting when a channel could not send, so the next run tries the same batch with the same key.
-    if (ok) await ctx.runMutation(internal.operations.markAlertsSent, { ids: pending.ids });
-    return { sent: ok ? pending.batch.lines.length : 0 };
+    const outcomes = [];
+    for (const channel of ALERT_CHANNELS) outcomes.push(await channel.send(pending.batch, pending.recipients));
+    const outcome = combineOutcomes(outcomes);
+    // A backend that is not production sends only to its test addresses; with none, its alerts are dropped
+    // (said so in the record) rather than left to grow. Production never takes this path.
+    const droppedOnTest = outcome.reached === 0 && !outcome.retry && isNonProduction();
+    const delivered = outcome.reached > 0 && !outcome.retry;
+    if (delivered || droppedOnTest) await ctx.runMutation(internal.operations.markAlertsSent, { ids: pending.ids });
+    await ctx.runMutation(internal.operations.recordAlertDelivery, droppedOnTest ? { reached: 0, problem: "not_production" } : { reached: outcome.reached, problem: outcome.problem ?? undefined });
+    return { sent: delivered ? pending.batch.lines.length : 0 };
+  },
+});
+
+// ── Whether monitoring itself is alive ───────────────────────────────────────────────────────────
+
+/** An alert that has waited this long has not reached anyone: the sender runs every five minutes. */
+const ALERT_UNDELIVERED_MS = 20 * MINUTE;
+/** A check is late when it has not finished for three of its intervals plus this. */
+const CHECK_SLACK_MS = 10 * MINUTE;
+
+/**
+ * What GET /health answers from (convex/http.ts, docs/operations/06-heartbeat.md). Reason codes only: no
+ * company, no id, no count. One indexed read per check and one for the oldest waiting alert, so an outside
+ * monitor can ask every minute.
+ *
+ *  - checks_not_run / checks_stale: the operations tick has stopped starting or finishing its checks;
+ *  - alerts_undelivered: an alert has waited over twenty minutes, so staff are not being told.
+ */
+export const health = internalQuery({
+  args: {},
+  handler: async (ctx): Promise<{ ok: boolean; reasons: string[] }> => {
+    const now = Date.now();
+    const reasons = new Set<string>();
+    for (const detector of DETECTORS) {
+      const row = await ctx.db
+        .query("monitorChecks")
+        .withIndex("by_check", (q) => q.eq("check", detector.check))
+        .first();
+      if (!row?.lastFinishedAt) reasons.add("checks_not_run");
+      else if (now - row.lastFinishedAt > 3 * detector.everyMinutes * MINUTE + CHECK_SLACK_MS) reasons.add("checks_stale");
+    }
+    const waiting = await ctx.db
+      .query("staffAlerts")
+      .withIndex("by_sent_at", (q) => q.eq("sentAt", 0))
+      .first();
+    if (waiting && now - waiting.at > ALERT_UNDELIVERED_MS) reasons.add("alerts_undelivered");
+    return { ok: reasons.size === 0, reasons: [...reasons].sort() };
   },
 });
 

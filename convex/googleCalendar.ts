@@ -13,6 +13,7 @@ import { internalAction, internalMutation, internalQuery } from "./_generated/se
 import { accessTokenFor } from "./google";
 import { companyQuery, managerMutation } from "./lib/builders";
 import { recordEvent } from "./lib/events";
+import { isNonProduction } from "./lib/environment";
 import { changes, eventIdFor, freeBusy, stopChannel, watch, type EventDraft } from "./lib/google/calendar";
 import { activeConnection, requireFeature } from "./lib/google/connection";
 import { enquire } from "./lib/google/enquire";
@@ -158,7 +159,8 @@ export const ensureWatch = internalAction({
   handler: async (ctx, args): Promise<null> => {
     const target = await ctx.runQuery(internal.googleCalendar.watchTarget, args);
     const address = endpoints().calendarWebhook;
-    if (!target || !address) return null;
+    // A backend that is not production opens no channel on a company's calendar (convex/lib/google/http.ts).
+    if (!target || !address || isNonProduction()) return null;
     if (target.current && target.current.expiresAt > Date.now() + 2 * DAY) return null;
     const access = await accessTokenFor(ctx, target.connectionId);
     if (!access.ok) return null;

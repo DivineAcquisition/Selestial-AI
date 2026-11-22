@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { redactingDb } from "./lib/support/access";
+import { redactDoc, redactingDb } from "./lib/support/access";
 import { HIDDEN_WORDS, SUPPORT_NAME } from "./lib/support/catalog";
 import { company, person, refusal, start, type T } from "../tests/harness";
 
@@ -149,6 +149,36 @@ describe("Admin Support Sessions", () => {
     await staff.mutation(api.support.switchToManage, { sessionId, reason: "Fix the booking hours" });
     await owner.mutation(api.support.revokeManage, { companyId });
     expect(await refusal(staff.mutation(api.companies.setPausedAgents, { companyId, supportSessionId: sessionId, agents: ["sales"] }))).toContain("view only");
+  });
+
+  test("revoking reaches every open Manage session, however long ago it started", async () => {
+    const t = start();
+    const { companyId, as: owner } = await company(t, "owner_a", "Alpha");
+    const other = await company(t, "owner_b", "Bravo");
+    const staff = t.withIdentity(admin);
+    await owner.mutation(api.support.grantManage, { companyId, hours: 24 });
+    await other.as.mutation(api.support.grantManage, { companyId: other.companyId, hours: 24 });
+    const sessionId = await staff.mutation(api.support.start, { companyId, reason: "Help with booking settings" });
+    await staff.mutation(api.support.switchToManage, { sessionId, reason: "Fix the booking hours" });
+    const otherSession = await staff.mutation(api.support.start, { companyId: other.companyId, reason: "Help with booking settings" });
+    await staff.mutation(api.support.switchToManage, { sessionId: otherSession, reason: "Fix the booking hours" });
+    // Kept open by extending it: it started many hours ago and is still live.
+    await t.run((ctx) => ctx.db.patch(sessionId, { startedAt: Date.now() - 9 * HOUR, expiresAt: Date.now() + HOUR }));
+    await owner.mutation(api.support.revokeManage, { companyId });
+    expect(await t.run((ctx) => ctx.db.get(sessionId))).toMatchObject({ mode: "view" });
+    expect(await refusal(staff.mutation(api.companies.setPausedAgents, { companyId, supportSessionId: sessionId, agents: ["sales"] }))).toContain("view only");
+    // Another company's session and grant are untouched.
+    expect(await t.run((ctx) => ctx.db.get(otherSession))).toMatchObject({ mode: "manage" });
+  });
+
+  test("a drafted retention message is hidden from support reads like any other customer message", () => {
+    const row = { _id: "a1", kind: "send_message", summary: "Apology with a credit", message: { channel: "email", subject: "About Tuesday", body: "Hi Pat, sorry about the missed baseboards. {link}", linkPurpose: "care" } };
+    const seen = redactDoc("retentionActions", row) as typeof row;
+    expect(seen.message).toEqual({ channel: "email", subject: HIDDEN_WORDS, body: HIDDEN_WORDS, linkPurpose: "care" });
+    expect(seen.summary).toBe("Apology with a credit");
+    // The stored row is not changed, and a row without a message reads as it is.
+    expect(row.message.body).toContain("Pat");
+    expect(redactDoc("retentionActions", { _id: "a2", kind: "refund" })).toEqual({ _id: "a2", kind: "refund" });
   });
 
   test("expired, exited and revoked sessions stop working, and removing staff ends theirs", async () => {

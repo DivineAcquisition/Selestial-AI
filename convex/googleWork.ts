@@ -14,6 +14,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalAction, internalMutation, internalQuery, type ActionCtx } from "./_generated/server";
 import { accessTokenFor } from "./google";
+import { noticeInApp } from "./lib/activation/notices";
 import { recordEvent } from "./lib/events";
 import { listCalendars } from "./lib/google/calendar";
 import { accounts as businessAccounts, locations as businessLocations } from "./lib/google/business";
@@ -29,6 +30,14 @@ const STUCK_MS = 15 * 60 * 1000;
 const READS: Doc<"googleJobs">["kind"][] = ["calendar_sync", "lsa_poll", "knowledge_import"];
 /** Writes other people see: a public review reply, an ad going live, a conversion reported. Held while Selestial has suspended the company's outbound activity. */
 const PUBLIC_WRITES: Doc<"googleJobs">["kind"][] = ["review_reply", "ads_campaign", "ads_activate", "conversion"];
+const HELD = "Held: Selestial suspended this company's outbound activity.";
+/**
+ * A public write held through a suspension is only run if it is still this fresh when the suspension ends.
+ * Older than this, the reply, ad or conversion was approved for a moment that has passed: it is cancelled
+ * and the Owner is told, so they decide again with what is true now.
+ */
+export const HELD_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const PUBLIC_WRITE_WORDS: Partial<Record<Doc<"googleJobs">["kind"], string>> = { review_reply: "A review reply", ads_campaign: "An ad campaign", ads_activate: "An ad going live", conversion: "A conversion report to Google Ads" };
 
 export const tick = internalMutation({
   args: {},
@@ -42,7 +51,14 @@ export const tick = internalMutation({
         if (PUBLIC_WRITES.includes(job.kind)) {
           const company = await ctx.db.get(job.companyId);
           if (!company || company.suspendedAt !== undefined) {
-            await ctx.db.patch(job._id, { nextAt: now + 15 * 60_000, lastError: "Held: Selestial suspended this company's outbound activity.", updatedAt: now });
+            await ctx.db.patch(job._id, { nextAt: now + 15 * 60_000, lastError: HELD, updatedAt: now });
+            continue;
+          }
+          // Released: a write that waited too long is not run on the Owner's behalf after the fact.
+          if (job.lastError === HELD && now - job.createdAt > HELD_MAX_AGE_MS) {
+            await ctx.db.patch(job._id, { status: "cancelled", lastError: "Not run: it was held while Selestial had paused this company's outbound activity, and is now out of date.", updatedAt: now });
+            await recordEvent(ctx, { companyId: job.companyId, type: "google.job_stale", actor: { kind: "system" }, subject: { table: "companies", id: job.companyId }, data: { kind: job.kind } });
+            await noticeInApp(ctx, { companyId: job.companyId, kind: "service_issue", headline: `${PUBLIC_WRITE_WORDS[job.kind] ?? "A Google update"} was not sent to Google`, summary: "It was waiting while Selestial had paused your outbound activity, and is now more than a day old. Nothing was posted. Start it again if you still want it.", key: `google-stale:${job._id}` });
             continue;
           }
         }
@@ -121,7 +137,8 @@ export const run = internalAction({
       await ctx.runMutation(internal.googleWork.finish, { jobId: job._id, outcome: out.outcome ?? "done", result: out.result ? JSON.stringify(out.result) : undefined, providerRef: out.providerRef, error: out.error });
     } catch (error) {
       if (error instanceof GoogleError) {
-        const outcome = error.kind === "uncertain" ? "uncertain" : error.retryable ? "retry" : "failed";
+        // Refused before anything was sent: settled once as not run, never retried and never counted as a failure.
+        const outcome = error.kind === "not_production" ? "cancelled" : error.kind === "uncertain" ? "uncertain" : error.retryable ? "retry" : "failed";
         await ctx.runMutation(internal.googleWork.finish, { jobId: job._id, outcome, error: error.message, retryAfterMs: error.retryAfterMs });
       } else {
         await ctx.runMutation(internal.googleWork.finish, { jobId: job._id, outcome: "retry", error: error instanceof Error ? error.message.slice(0, 300) : "Unexpected failure." });
