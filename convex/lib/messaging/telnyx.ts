@@ -76,8 +76,9 @@ export function telnyxProvider(fetcher: typeof fetch = fetch): MessagingProvider
         const replayed = response.headers.get("idempotent-replayed")?.trim().toLowerCase() === "true";
         return { ok: true, providerMessageId: data.id, delivered: data.to?.[0]?.status === "delivered", ...(parts ? { parts } : {}), ...(replayed ? { replayed: true } : {}) };
       }
-      // An earlier request with this key is still being worked on at Telnyx (10036): ask again later with the same key.
-      if (response.status === 409) return { ok: false, retryable: true, problem: "Telnyx is still working on an earlier attempt of this text. It will be checked again." };
+      // An earlier request with this key is still being worked on at Telnyx (10036), so that attempt reached it and may
+      // send. Unknown, never failed: it is left unconfirmed and checked again under the same key, which Telnyx replays.
+      if (response.status === 409) return { ok: false, retryable: false, uncertain: true, problem: "Telnyx is still working on an earlier attempt of this text, so it may have gone. It will be checked again; it is not sent twice." };
       // Telnyx holds a different request under this key, so the first attempt reached it. Not failed, and not sent again.
       if (response.status === 422) return { ok: false, retryable: false, uncertain: true, problem: "Telnyx already has an earlier attempt of this text under its key, with different wording, so it was not sent again. It most likely went the first time." };
       const code = (json as { errors?: { code?: unknown }[] } | null)?.errors?.[0]?.code;

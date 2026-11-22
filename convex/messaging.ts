@@ -306,7 +306,8 @@ export const claim = internalMutation({
     const attempt = message.attempts + 1;
     // The provider is the one this send really uses, so its delivery reports find the message.
     const provider = channel === "email" ? (via ? "gmail" : (emailProvider()?.name ?? message.provider)) : (messagingProvider()?.name ?? message.provider);
-    await ctx.db.patch(message._id, { status: "sending", attempts: attempt, attemptedAt: Date.now(), provider, sentVia: provider, holdReason: undefined });
+    const attemptedAt = Date.now();
+    await ctx.db.patch(message._id, { status: "sending", attempts: attempt, attemptedAt, ...(message.firstAttemptedAt === undefined ? { firstAttemptedAt: message.attemptedAt ?? attemptedAt } : {}), provider, sentVia: provider, holdReason: undefined });
     // A text goes from the company's own number. The send policy has already checked it is set and approved.
     const from = channel === "sms" ? ((await readProfile(ctx, message.companyId)).messaging.smsNumber ?? "") : "";
     return { to: message.to, from, body, attempt, channel, subject: message.subject ?? "", replyTo: message.replyTo ?? "", fromName, via, email, threadId, notice: false, billing: billed.kind === "reserve" ? { chargeId: billed.chargeId, needsLock: billed.needsLock } : null };
@@ -370,7 +371,7 @@ export const settle = internalMutation({
       .withIndex("by_message", (q) => q.eq("messageId", message._id))
       .first();
     if (result.ok) {
-      await ctx.db.patch(message._id, { status: result.delivered ? "delivered" : "sent", providerMessageId: result.providerMessageId, sentAt: message.reconcile && result.replayed ? (message.attemptedAt ?? now) : now, ...(result.delivered ? { deliveredAt: now } : {}), ...(result.parts ? { segments: result.parts } : {}), problem: undefined, reconcile: undefined, ...(result.replayed ? { replayedAt: now } : {}) });
+      await ctx.db.patch(message._id, { status: result.delivered ? "delivered" : "sent", providerMessageId: result.providerMessageId, sentAt: message.reconcile && result.replayed ? (message.firstAttemptedAt ?? message.attemptedAt ?? now) : now, ...(result.delivered ? { deliveredAt: now } : {}), ...(result.parts ? { segments: result.parts } : {}), problem: undefined, reconcile: undefined, ...(result.replayed ? { replayedAt: now } : {}) });
       if (message.reconcile) await logStep(ctx, message, { type: result.replayed ? "message.reconciled_sent" : "message.reconciled_now", data: { purpose: message.purpose } });
       // Charged on what the provider took: the segments it counted for a text, the recipients for an email.
       if (charge) await captureCharge(ctx, charge._id, { count: (message.channel ?? "sms") === "sms" ? result.parts : message.recipients, provider: message.provider ?? "unknown", providerMessageId: result.providerMessageId });
@@ -656,7 +657,8 @@ export const sweepStuck = internalMutation({
       .take(100);
     for (const message of stuck) {
       const problem = "The send was started and never finished, so it is not known whether the message went. It was not sent again.";
-      await ctx.db.patch(message._id, { status: "unconfirmed", problem });
+      // A check with the provider that itself never answered is over: clearing it lets Selestial or a person check again.
+      await ctx.db.patch(message._id, { status: "unconfirmed", problem, reconcile: undefined });
       // Not known whether the provider took it: the hold stays until it is reconciled, and is released uncharged if it never is.
       const charge = await ctx.db
         .query("messagingCharges")

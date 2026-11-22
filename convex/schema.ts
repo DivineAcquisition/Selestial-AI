@@ -797,6 +797,8 @@ export default defineSchema({
     refusal: v.optional(v.string()),
     queuedAt: v.number(),
     attemptedAt: v.optional(v.number()),
+    /** The first attempt's time. Telnyx's 24-hour replay window runs from here, whatever later attempts did. */
+    firstAttemptedAt: v.optional(v.number()),
     sentAt: v.optional(v.number()),
     deliveredAt: v.optional(v.number()),
     failedAt: v.optional(v.number()),

@@ -12,7 +12,7 @@ export const INTEGRATION_IDS = [
   "google-drive", "google-calendar", "gmail", "google-business-profile",
   "outlook", "onedrive",
   "yelp", "facebook-reviews",
-  "texting-number",
+  "texting-number", "quo",
   "quickbooks-online", "xero",
   "indeed", "checkr",
   "jobber", "housecall-pro", "zenmaid", "launch27",
