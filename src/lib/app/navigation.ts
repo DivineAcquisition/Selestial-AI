@@ -121,7 +121,7 @@ export const PERSISTENT_ITEMS: readonly NavItem[] = [
     section: "persistent",
     purpose: "Customer and cleaner communications. Conversations with AI agents are not here.",
     path: `${APP_ROOT}/inbox`,
-    availability: { status: "planned", notice: true },
+    availability: LIVE,
     minimumRole: "office",
   },
   { id: "search", label: "Search", section: "persistent", purpose: "Find business records, jobs, conversations and tasks.", path: `${APP_ROOT}/search`, availability: PLANNED, minimumRole: "office" },
@@ -223,6 +223,11 @@ export const NAV_ITEMS: readonly NavItem[] = [...PERSISTENT_ITEMS, ...SHARED_ITE
 
 /** Pages inside Settings. They have no sidebar entry: Settings links to them. They are derived from the settings catalog (settings.ts), the one place they are defined. */
 export const SETTINGS_PAGES: readonly { path: string; label: string; purpose: string }[] = SETTINGS_SECTIONS.map(({ path, label, purpose }) => ({ path, label, purpose }));
+
+/** Pages inside Settings › Integrations, reached from their card there. They have no navigation entry of their own. */
+export const INTEGRATION_PAGES: readonly { path: string; label: string; purpose: string }[] = [
+  { path: `${APP_ROOT}/settings/integrations/quo`, label: "Quo", purpose: "Connect the company's own Quo (formerly OpenPhone) account: numbers, agents, the test text and recovery." },
+];
 
 /** Pages inside Agreements. The first six are its navigation; the rest are reached from them. They have no sidebar entry of their own. */
 export const AGREEMENT_PAGES: readonly { path: string; label: string; purpose: string }[] = [

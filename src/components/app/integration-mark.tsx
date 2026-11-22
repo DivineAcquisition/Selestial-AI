@@ -39,6 +39,7 @@ const MARKS: Record<string, Mark> = {
   yelp: mark("yelp.svg"),
   "facebook-reviews": mark("facebook.svg"),
   "texting-number": { kind: "glyph" },
+  quo: { kind: "glyph" },
   "quickbooks-online": mark("quickbooks.svg"),
   xero: mark("xero.svg"),
   indeed: mark("indeed.svg"),

@@ -120,7 +120,8 @@ export const MESSAGE_CHANGES: Record<MessageStatus, readonly MessageStatus[]> = 
   delivered: [],
   failed: [],
   // "queued" only when a text is checked with the provider under its own idempotency key (convex/lib/operations/reconcile.ts).
-  unconfirmed: ["delivered", "failed", "queued"],
+  // "sent" and "not_sent": a Quo text whose answer never came, settled from Quo's own message list (lib/quo/send.ts).
+  unconfirmed: ["delivered", "failed", "queued", "sent", "not_sent"],
   not_sent: [],
 };
 

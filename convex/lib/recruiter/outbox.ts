@@ -10,6 +10,7 @@
  *    setup, suppressions, recorded permission, quiet hours and the weekly limit. Its "not yet" holds the
  *    message until quiet hours end; its "no" is final.
  */
+import { textingProvider } from "../quo/route";
 import { internal } from "../../_generated/api";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
@@ -18,7 +19,6 @@ import { recordEvent, type Actor } from "../events";
 import { emailProvider } from "../messaging/email";
 import { checkSend, type PolicyCode } from "../messaging/policy";
 import { messageByKey, type SendIntent } from "../messaging/outbox";
-import { messagingProvider } from "../messaging/provider";
 import { isEmail } from "../text";
 import { AWAITING_FORM, USABLE_CONTACT } from "./schema";
 import { recruiterSettings, type RecruiterSettings } from "./settings";
@@ -117,8 +117,8 @@ export async function queueApplicantMessage(ctx: MutationCtx, planned: PlannedAp
           .take(20)
       ).some((row) => row.provider === "gmail" && row.canSend && row.status === "connected")
     : false;
-  const provider = email ? (ownMailbox ? { name: "gmail" } : emailProvider()) : messagingProvider();
   const to = email ? application.contact.address : applicant.smsConsent ? `+${applicant.smsConsent.phone}` : undefined;
+  const provider = email ? (ownMailbox ? { name: "gmail" } : emailProvider()) : await textingProvider(ctx, company._id, to);
 
   let problem = await sendProblem(ctx, application, applicant, planned.purpose, settings);
   if (!problem && email) problem = emailProblem(application, settings);

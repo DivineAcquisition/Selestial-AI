@@ -4,6 +4,7 @@
  *
  * POST /webhooks/resend         delivery reports, bounces and complaints for email, and email that arrived for the Sales agent. Needs RESEND_WEBHOOK_SECRET.
  * POST /webhooks/telnyx         delivery reports for texts, texts coming in, and 10DLC registration updates. Needs TELNYX_PUBLIC_KEY.
+ * POST /webhooks/quo/<id>       a company's own Quo account: replies, delivery updates, registration changes, signed with that connection's secret.
  * POST /webhooks/autumn         plan, purchase and balance changes from Autumn. Needs AUTUMN_WEBHOOK_SECRET.
  * GET  /oauth/google/callback   where Google sends an Owner back after they allowed access: the company's
  *                               Google connection (convex/google.ts) or a Gmail hiring inbox, told apart by the state.
@@ -34,6 +35,8 @@ import { photoRequestValid } from "./lib/dispatch/photoLinks";
 import { telnyxEvent, verifyTelnyx } from "./lib/messaging/telnyx";
 import { parseEvent as parseStripeEvent, verifyStripeSignature } from "./lib/finance/stripe";
 import { parseInvoiceEvent } from "./lib/billing/lock";
+import { verifySignature } from "./lib/quo/api";
+import { unseal } from "./lib/recruiter/secrets";
 
 const http = httpRouter();
 
@@ -391,6 +394,31 @@ http.route({
       const event = parseEvent(body);
       if (!provider || !event) return;
       await ctx.runMutation(internal.agreementSigning.receipt, { provider: provider.name, event });
+    },
+  }),
+});
+
+/**
+ * A company's own Quo account (convex/quo.ts). The address names the connection; the event must carry a signature
+ * made with that connection's own webhook secret (lib/quo/api.ts `verifySignature`), so no company's events can be
+ * delivered as another's. A verified event is handled once, in one transaction: if handling fails, Quo is answered
+ * with an error and sends it again (it retries for about a day), so a temporary failure loses no reply.
+ */
+http.route({
+  pathPrefix: "/webhooks/quo/",
+  method: "POST",
+  handler: providerWebhook({
+    verify: async (request, body) => body.length > 0 && body.length < 256 * 1024 && request.headers.get("webhook-id") !== null,
+    handler: async (ctx, body, request) => {
+      const raw = new URL(request.url).pathname.slice("/webhooks/quo/".length);
+      const connectionId = await ctx.runQuery(internal.quoWebhook.connectionFor, { raw });
+      if (!connectionId) return 404;
+      const row = await ctx.runQuery(internal.quo.sealedFor, { connectionId });
+      const secret = row?.sealedWebhookSecret ? await unseal(row.sealedWebhookSecret, connectionId) : null;
+      if (!secret) return 401;
+      const ok = await verifySignature({ secret, id: request.headers.get("webhook-id"), timestamp: request.headers.get("webhook-timestamp"), signature: request.headers.get("webhook-signature"), body, nowMs: Date.now() });
+      if (!ok) return 401;
+      await ctx.runMutation(internal.quo.ingest, { connectionId, eventId: request.headers.get("webhook-id")!, event: body });
     },
   }),
 });

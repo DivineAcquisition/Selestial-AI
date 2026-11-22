@@ -561,6 +561,12 @@ export const checkMessage = managerMutation({
   handler: async (ctx, args) => {
     const message = await unconfirmedOf(ctx, args.messageId);
     if (message.status !== "unconfirmed" && !message.reconcile) throw userError("This message isn't waiting on a check any more.");
+    // A Quo text is settled from Quo's own message list (convex/quoSend.ts); it is never queued to send again.
+    if (message.provider === "quo") {
+      await ctx.scheduler.runAfter(0, internal.quoSend.reconcile, { messageId: message._id });
+      await recordEvent(ctx, { companyId: ctx.companyId, type: "message.reconcile_requested", actor: { kind: "member", memberId: ctx.member._id }, subject: { table: "messages", id: message._id } });
+      return true;
+    }
     if (!message.reconcile && !reconcilable(message, Date.now())) throw userError("It's too late to check this one with the provider: its 24-hour window has passed.");
     const started = await startReconcile(ctx, message, ctx.support ? { kind: "support", staffId: ctx.support.staff._id, sessionId: ctx.support.session._id } : { kind: "member", memberId: ctx.member._id });
     await recordEvent(ctx, { companyId: ctx.companyId, type: "message.reconcile_requested", actor: { kind: "member", memberId: ctx.member._id }, subject: { table: "messages", id: message._id } });

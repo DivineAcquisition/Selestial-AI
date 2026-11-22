@@ -13,6 +13,7 @@
  * it, is checked once more as it goes: a reply that arrived, a person who took over, or a closed deal
  * since it was planned stops it. Nothing written before a reply goes out after it.
  */
+import { textingProvider } from "../quo/route";
 import { internal } from "../../_generated/api";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
@@ -23,7 +24,6 @@ import { payToken, payUrl } from "../finance/payLinks";
 import { emailProvider } from "../messaging/email";
 import { messageByKey, type SendIntent } from "../messaging/outbox";
 import { checkSend, type PolicyAnswer, type PolicyCode } from "../messaging/policy";
-import { messagingProvider } from "../messaging/provider";
 import { agentStage, type Opp } from "./agentOpportunity";
 import { linkToken, linkUrl } from "./links";
 import { replyAddressFor } from "./replyAddress";
@@ -73,7 +73,7 @@ export async function queueSalesMessage(ctx: MutationCtx, planned: PlannedSalesM
   const { company, customer, channel } = planned;
   const email = channel === "email";
   const to = planned.to?.trim() ? planned.to.trim().toLowerCase() : addressFor(customer, channel);
-  const provider = email ? ((await ownMailbox(ctx, company._id)) ? { name: "gmail" } : emailProvider()) : messagingProvider();
+  const provider = email ? ((await ownMailbox(ctx, company._id)) ? { name: "gmail" } : emailProvider()) : await textingProvider(ctx, company._id, to);
   let problem: string | null = null;
   if (!to) problem = email ? "There is no valid email address to send to." : "There is no valid phone number to send to.";
   else if (!provider) problem = email ? "Email isn't connected for Selestial yet." : "Texting isn't connected for Selestial yet.";
@@ -208,7 +208,7 @@ export function channelFor(customer: Doc<"customers">, override?: string): Chann
 /** Whether a Sales message could reach this person on this channel now, and if not, why, in the policy's words. */
 export async function canReach(ctx: Ctx, companyId: Id<"companies">, customer: Doc<"customers">, channel: Channel, actor: Actor = { kind: "agent", agent: "sales" }): Promise<PolicyAnswer & { address: string | null; connected: boolean }> {
   const address = addressFor(customer, channel);
-  const connected = channel === "sms" ? messagingProvider() !== null : (await ownMailbox(ctx, companyId)) !== undefined || emailProvider() !== null;
+  const connected = channel === "sms" ? (await textingProvider(ctx, companyId, address)) !== null : (await ownMailbox(ctx, companyId)) !== undefined || emailProvider() !== null;
   if (!connected) return { ok: false, code: "sender_not_ready", words: channel === "email" ? "Email isn't connected for Selestial yet." : "Texting isn't connected for Selestial yet.", address, connected: false };
   const answer = await checkSend(ctx, { companyId, channel, to: address ?? "", now: Date.now(), ...salesIntent(customer, actor, "sales_reply") });
   if (!answer.ok) return { ...answer, words: answer.words.replace(/\bwork (emails|texts)\b/, "$1 about their request"), address, connected: true };

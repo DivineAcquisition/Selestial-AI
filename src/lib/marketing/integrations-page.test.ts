@@ -9,7 +9,9 @@ import { INTEGRATIONS as CATALOG } from "@/lib/app/integrations";
 import { INTEGRATIONS as HOME } from "./content";
 import { integrationsByCategory } from "./integrations-page";
 
-const SELESTIAL_OWN = new Set(["texting-number"]);
+// Selestial's own number has no logo of its own. Quo's official mark isn't in the repository yet (its developer terms
+// require "Powered by OpenPhone" attribution, and the asset should come from Quo): its card shows a plain glyph until then.
+const SELESTIAL_OWN = new Set(["texting-number", "quo"]);
 const logoExists = (id: string) => {
   const file = logoFile(id);
   return file !== null && existsSync(join(process.cwd(), "public", "integrations", file));

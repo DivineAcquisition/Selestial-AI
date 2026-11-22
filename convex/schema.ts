@@ -40,6 +40,7 @@ import { tutorialTables } from "./lib/tutorials/schema";
 import { migrationTables } from "./lib/migration/schema";
 import { noticeEventValidator, noticeFactsValidator } from "./lib/notify/catalog";
 import { notifyTables } from "./lib/notify/schema";
+import { quoTables } from "./lib/quo/schema";
 import {
   agentValidator,
   approvalStatusValidator,
@@ -814,6 +815,7 @@ export default defineSchema({
     .index("by_company_opportunity", ["companyId", "opportunityId", "queuedAt"])
     .index("by_company_member", ["companyId", "memberId", "queuedAt"])
     .index("by_provider_message", ["provider", "providerMessageId"])
+    .index("by_company_to", ["companyId", "to", "queuedAt"])
     .index("by_status_attempted", ["status", "attemptedAt"])
     .index("by_company_hold", ["companyId", "holdReason", "heldAt"]),
 
@@ -1007,6 +1009,7 @@ export default defineSchema({
   ...agreementTables,
   ...googleTables,
   ...connectorTables,
+  ...quoTables,
   // ── Cleaners: subcontractors, requirements, crews, portal, follow-ups, coaching, personnel ──────
   ...cleanersTables,
   ...clientsTables,

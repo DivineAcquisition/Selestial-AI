@@ -8,6 +8,7 @@
  * any contact. A contact whose address is not the client's own has no permission record of its own yet,
  * so the policy refuses it and the screen says so. Nothing here records permission on anyone's behalf.
  */
+import { textingProvider } from "../quo/route";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import { normalAddress } from "../compliance/recipients";
@@ -15,7 +16,6 @@ import type { Channel } from "../compliance/schema";
 import { recordEvent, type Actor } from "../events";
 import { checkSend, type PolicyAnswer } from "../messaging/policy";
 import { emailProvider } from "../messaging/email";
-import { messagingProvider } from "../messaging/provider";
 import type { SendIntent } from "../messaging/outbox";
 
 type Ctx = QueryCtx | MutationCtx;
@@ -50,7 +50,7 @@ export function intentFor(customer: Doc<"customers">, target: Target, channel: C
 }
 
 export async function sendCheck(ctx: Ctx, customer: Doc<"customers">, target: Target, channel: Channel, draftedBy: "person" | "agent" = "person", now = Date.now()): Promise<PolicyAnswer> {
-  const connected = channel === "email" ? Boolean(emailProvider()) : Boolean(messagingProvider());
+  const connected = channel === "email" ? Boolean(emailProvider()) : Boolean(await textingProvider(ctx, customer.companyId, null));
   if (!connected) return { ok: false, code: "sender_not_ready", words: channel === "email" ? "Email isn't connected for Selestial yet." : "Texting isn't connected for Selestial yet." };
   const to = target.address[channel];
   if (!to) return { ok: false, code: "no_address", words: channel === "sms" ? `${target.name} has no valid phone number on file.` : `${target.name} has no valid email address on file.` };

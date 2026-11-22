@@ -155,6 +155,10 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   { table: "servicePlans", index: "by_company_customer" },
   { table: "clientNotes", index: "by_company_customer" },
   { table: "inboundMessages", index: "by_company_customer" },
+  // Texting conversations and the company's Quo connection (convex/lib/quo/schema.ts). The connection's key and webhook secret are not on it.
+  { table: "smsConversations", index: "by_company_address" },
+  { table: "smsInbound", index: "by_company_received" },
+  { table: "quoConnections", index: "by_company" },
   // Retention (convex/lib/retention/schema.ts): signals, cases and their history, actions, feedback, and background runs.
   { table: "retentionSignals", index: "by_company_status" },
   { table: "retentionCases", index: "by_company_status" },
@@ -253,6 +257,7 @@ export const NOT_EXPORTED: Readonly<Record<string, string>> = {
   googleChoices: "A short-lived copy of what Google listed for the Owner to choose from.",
   googleBusy: "A short-lived copy of busy times read from Google Calendar; the calendar itself is the record.",
   connectorCredentials: "A sealed authorization to the company's Jobber or Housecall Pro account; it opens that account, so a copy must never leave. The connection itself is exported.",
+  quoSecrets: "The company's sealed Quo API key and webhook secret; they open the Quo account, so a copy must never leave. The connection itself is exported.",
   connectorStates: "Ten-minute, single-use records of a Jobber sign-in in progress; nothing in them is about the business.",
   connectorReads: "A copy of another system's client list kept for a day while the owner checks it; what was imported is exported as clients and properties.",
   googleTravel: "Cached drive times between rounded map points, recomputed as needed.",
