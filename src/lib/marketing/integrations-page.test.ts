@@ -56,8 +56,8 @@ describe("the public Integrations page", () => {
     // Field-service platforms are import sources, not tools the agents work in: they stay off the hub.
     expect(nodes.map((node) => node.id)).not.toContain("jobber");
     expect(nodes.map((node) => node.id)).not.toContain("housecall-pro");
-    // Quo is on the hub, with Quo's own logo, and says it is coming soon until it is built.
-    expect(nodes.find((node) => node.id === "quo")).toMatchObject({ name: "Quo (formerly OpenPhone)", live: false });
+    // Quo is on the hub, with Quo's own logo, and live now that it is built.
+    expect(nodes.find((node) => node.id === "quo")).toMatchObject({ name: "Quo (formerly OpenPhone)", live: true });
     expect(logoFile("quo")).toBe("quo.png");
   });
 });

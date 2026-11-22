@@ -10,9 +10,10 @@ import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { useState } from "react";
 
-import { SelectInput, TextInput } from "@/components/app/form";
+import { TextInput } from "@/components/app/form";
 import { Building2, ChevronDown, ChevronRight, RotateCcw, Search, Sparkles } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
+import { Select } from "@/components/ui/selection";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -346,13 +347,7 @@ function Detail({ row }: { row: Row }) {
                 <label className="grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)] items-center gap-3 text-xs">
                   <span className="text-muted-foreground">Customer type</span>
                   <span className="grid gap-0.5">
-                    <SelectInput value={row.category?.value ?? ""} disabled={locked || written} onChange={(e) => void act(() => setCategory({ companyId, rowIds: [row.id], category: e.target.value as Category }))}>
-                      {CATEGORIES.map((c) => (
-                        <option key={c} value={c}>
-                          {CATEGORY_LABELS[c]}
-                        </option>
-                      ))}
-                    </SelectInput>
+                    <Select aria-label="Customer type" value={row.category?.value ?? ""} disabled={locked || written} placeholder="Choose a type…" onValueChange={(next) => next && void act(() => setCategory({ companyId, rowIds: [row.id], category: next as Category }))} options={CATEGORIES.map((c) => ({ value: c, label: CATEGORY_LABELS[c] }))} />
                     {row.category ? <span className="text-[11px] text-muted-foreground">{row.category.confirmed ? "You chose it." : `Suggested: ${row.category.because}`}</span> : null}
                   </span>
                 </label>
@@ -516,25 +511,11 @@ function BulkBar({ rows, kind, clear }: { rows: Row[]; kind: FileKind; clear: ()
         </Button>
       ) : null}
       {kind === "customers" ? (
-        <SelectInput aria-label="Set customer type" className="min-h-7 w-auto py-0.5 text-xs" value="" disabled={locked} onChange={(e) => e.target.value && void done(() => setCategory({ companyId, rowIds: ids, category: e.target.value as Category }))}>
-          <option value="">Set customer type…</option>
-          {CATEGORIES.map((c) => (
-            <option key={c} value={c}>
-              {CATEGORY_LABELS[c]}
-            </option>
-          ))}
-        </SelectInput>
+        <Select aria-label="Set customer type" density="compact" className="w-auto" value="" disabled={locked} placeholder="Set customer type…" onValueChange={(next) => next && void done(() => setCategory({ companyId, rowIds: ids, category: next as Category }))} options={CATEGORIES.map((c) => ({ value: c, label: CATEGORY_LABELS[c] }))} />
       ) : null}
       {fields.length ? (
         <span className="flex flex-wrap items-center gap-1">
-          <SelectInput aria-label="Field to set" className="min-h-7 w-auto py-0.5 text-xs" value={field} onChange={(e) => setField(e.target.value)}>
-            <option value="">Set a value for…</option>
-            {fields.map((f) => (
-              <option key={f.key} value={f.key}>
-                {f.label}
-              </option>
-            ))}
-          </SelectInput>
+          <Select aria-label="Field to set" density="compact" className="w-auto" value={field} placeholder="Set a value for…" emptyLabel="Set a value for…" onValueChange={(next) => setField(next ?? "")} options={fields.map((f) => ({ value: f.key, label: f.label }))} />
           {field ? (
             <>
               <TextInput aria-label="Value" className="min-h-7 w-36 py-0.5 text-xs" value={value} onChange={(e) => setValue(e.target.value)} placeholder={field === "time" ? "9:00 AM" : ""} />

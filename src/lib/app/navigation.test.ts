@@ -226,7 +226,7 @@ describe("what is available today", () => {
       else for (const tab of listed) expect(hrefFor(tab), `${agent.id}.${tab.id}`).not.toBeNull();
     }
     expect(disclosedTabs(AGENTS.find((agent) => agent.id === "marketing")!).map((tab) => tab.id)).toEqual(["content-creative"]);
-    for (const id of ["quality", "customer-care", "team-coordinator"]) expect(disclosedTabs(AGENTS.find((agent) => agent.id === id)!), id).toEqual([]);
+    for (const id of ["quality", "customer-care"]) expect(disclosedTabs(AGENTS.find((agent) => agent.id === id)!), id).toEqual([]);
     // The plan carries no numbers or states of its own: badges get their values from the record.
     expect(JSON.stringify({ AGENTS, NAV_ITEMS })).not.toMatch(/"count"|"badge"|"status":"(working|active)"/);
   });

@@ -8,9 +8,9 @@
 import { useMutation, useQuery } from "convex/react";
 import { useMemo, useState } from "react";
 
-import { SelectInput } from "@/components/app/form";
 import { Check, Sparkles } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
+import { Select } from "@/components/ui/selection";
 import { Button } from "@/components/ui/button";
 
 import { api } from "../../../../convex/_generated/api";
@@ -102,14 +102,7 @@ function MappingEditor({ file }: { file: FileView }) {
                   </th>
                   <td className="px-3 py-2">
                     <div className="grid gap-1">
-                      <SelectInput aria-label={`Column for ${field.label}`} value={index === undefined ? "" : String(index)} disabled={locked} onChange={(e) => choose(field.key, e.target.value)}>
-                        <option value="">Not in my file</option>
-                        {file.header.map((h, i) => (
-                          <option key={i} value={i}>
-                            {h || `Column ${i + 1}`}
-                          </option>
-                        ))}
-                      </SelectInput>
+                      <Select aria-label={`Column for ${field.label}`} value={index === undefined ? "" : String(index)} disabled={locked} onValueChange={(next) => choose(field.key, next ?? "")} emptyLabel="Not in my file" placeholder="Not in my file" options={file.header.map((h, i) => ({ value: String(i), label: h || `Column ${i + 1}` }))} />
                       {fromSuggestion && !file.mappingConfirmed ? (
                         <span className="inline-flex items-center gap-1 text-[11px] text-brand-300">
                           <Sparkles className="size-3" aria-hidden />
@@ -160,13 +153,7 @@ function DatesAndTime() {
         </fieldset>
         <fieldset className="grid gap-2 rounded-xl border border-border p-3" disabled={locked}>
           <legend className="px-1 text-xs font-semibold text-strong">Your business timezone</legend>
-          <SelectInput aria-label="Business timezone" value={view.migration.timezone} onChange={(e) => void save({ timezone: e.target.value, timezoneConfirmed: true })}>
-            {zones.map((zone) => (
-              <option key={zone} value={zone}>
-                {zone.replace("_", " ")}
-              </option>
-            ))}
-          </SelectInput>
+          <Select aria-label="Business timezone" value={view.migration.timezone} onValueChange={(next) => next && void save({ timezone: next, timezoneConfirmed: true })} options={zones.map((zone) => ({ value: zone, label: zone.replace("_", " ") }))} searchable="auto" />
           {view.migration.timezoneConfirmed ? (
             <p className="flex items-center gap-1 text-[11px] text-success-foreground">
               <Check className="size-3" aria-hidden />
@@ -202,17 +189,7 @@ function ServiceMatching() {
                   {!mapped && entry.suggested ? " · same name as your Selestial service, so it's matched; change it if that's wrong" : !mapped ? " · not matched yet" : ""}
                 </p>
               </div>
-              <SelectInput aria-label={`Selestial service for ${entry.name}`} value={value} disabled={locked || !view.services.length} onChange={(e) => void act(() => mapService({ companyId, name: entry.name, serviceId: e.target.value === "none" ? null : (e.target.value as (typeof view.services)[number]["id"]) }))}>
-                <option value="" disabled>
-                  Choose a service…
-                </option>
-                {view.services.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-                <option value="none">Don&apos;t bring these visits</option>
-              </SelectInput>
+              <Select aria-label={`Selestial service for ${entry.name}`} value={value} disabled={locked || !view.services.length} placeholder="Choose a service…" onValueChange={(next) => next && void act(() => mapService({ companyId, name: entry.name, serviceId: next === "none" ? null : (next as (typeof view.services)[number]["id"]) }))} options={[...view.services.map((s) => ({ value: s.id as string, label: s.name })), { value: "none", label: "Don't bring these visits" }]} />
             </li>
           );
         })}

@@ -9,9 +9,10 @@ import { useConvex, useMutation } from "convex/react";
 import Link from "next/link";
 import { useRef, useState } from "react";
 
-import { SelectInput, TextInput } from "@/components/app/form";
+import { TextInput } from "@/components/app/form";
 import { Download, ExternalLink, FileSpreadsheet, Loader2, Trash2, TriangleAlert, Upload } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
+import { Select } from "@/components/ui/selection";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -172,14 +173,7 @@ function FileCard({ file }: { file: FileView }) {
         <div className="grid gap-2 sm:grid-cols-[14rem_minmax(0,1fr)] sm:items-start">
           <label className="grid gap-1 text-xs font-medium text-strong">
             This file contains
-            <SelectInput value={file.kind} disabled={locked} onChange={(e) => void act(() => setKind({ companyId, fileId: file.id, kind: e.target.value as FileKind }))}>
-              {FILE_KINDS.map((kind) => (
-                <option key={kind} value={kind}>
-                  {KIND_LABELS[kind].label}
-                  {(IMPORTABLE as readonly string[]).includes(kind) ? "" : " (kept, not imported yet)"}
-                </option>
-              ))}
-            </SelectInput>
+            <Select value={file.kind} disabled={locked} aria-label="What this file holds" onValueChange={(next) => next && void act(() => setKind({ companyId, fileId: file.id, kind: next as FileKind }))} options={FILE_KINDS.map((kind) => ({ value: kind, label: `${KIND_LABELS[kind].label}${(IMPORTABLE as readonly string[]).includes(kind) ? "" : " (kept, not imported yet)"}` }))} />
           </label>
           <div className="grid gap-1 text-xs text-muted-foreground">
             <p>{KIND_LABELS[file.kind].contains}</p>

@@ -40,13 +40,14 @@ describe("Agent Controls: who may change what", () => {
     const b = await company(t, "owner-b", "Beta Cleaning");
     const manager = await addMember(t, a.as, a.companyId, "manager-a", "manager");
 
+    // Each call starts only when it is checked, so no refusal goes unobserved while an earlier one is awaited.
     const refused = [
-      manager.mutation(api.permissions.set, { companyId: a.companyId, action: "dispatch.send_reminder", level: "execute" }),
-      manager.mutation(api.permissions.applyPreset, { companyId: a.companyId, preset: "routine", expectedRevision: 0 }),
-      manager.mutation(api.permissions.setRouting, { companyId: a.companyId, action: "dispatch.send_reminder", approver: { kind: "owner" } }),
-      manager.mutation(api.companies.pauseAgent, { companyId: a.companyId, agent: "sales" }),
+      () => manager.mutation(api.permissions.set, { companyId: a.companyId, action: "dispatch.send_reminder", level: "execute" }),
+      () => manager.mutation(api.permissions.applyPreset, { companyId: a.companyId, preset: "routine", expectedRevision: 0 }),
+      () => manager.mutation(api.permissions.setRouting, { companyId: a.companyId, action: "dispatch.send_reminder", approver: { kind: "owner" } }),
+      () => manager.mutation(api.companies.pauseAgent, { companyId: a.companyId, agent: "sales" }),
     ];
-    for (const run of refused) expect(await refusal(run)).toBe("Not allowed.");
+    for (const run of refused) expect(await refusal(run())).toBe("Not allowed.");
     // A manager sees the workspace and can test rules, but cannot edit.
     expect((await manager.query(api.controls.workspace, { companyId: a.companyId })).canEdit).toBe(false);
 
