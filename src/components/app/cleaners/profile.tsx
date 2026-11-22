@@ -653,7 +653,7 @@ function WeekBars({ windows }: { windows: Profile["availability"]["windows"] }) 
 }
 
 const ASSIGNMENT_WORDS: Record<string, string> = { accepted: "Accepted", offered: "Offered", declined: "Declined", expired: "No answer", cancelled: "Ended" };
-const END_WORDS: Record<string, string> = { released: "released by a person", job_covered: "job was covered", job_cancelled: "job was cancelled", job_moved: "job moved", dropped: "they said they could not attend", no_show: "no-show declared by a person", undelivered: "offer was not delivered" };
+const END_WORDS: Record<string, string> = { sending_blocked: "Not texted: the company's texts were not going out", released: "released by a person", job_covered: "job was covered", job_cancelled: "job was cancelled", job_moved: "job moved", dropped: "they said they could not attend", no_show: "no-show declared by a person", undelivered: "offer was not delivered" };
 
 type AvailabilityDialog = "week" | "away" | "date" | "confirm" | null;
 const SOURCE_WORDS: Record<string, string> = { cleaner: "From them", subcontractor: "From their company", member: "Recorded" };

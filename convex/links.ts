@@ -6,6 +6,7 @@
  * Reads change nothing. An offer shows the area, never the street: the address and the way in are
  * shown only on the job page, and only while the cleaner is the accepted cleaner on it.
  */
+import { discardUpload } from "./lib/uploads";
 import { v } from "convex/values";
 
 import type { Doc, Id } from "./_generated/dataModel";
@@ -200,6 +201,8 @@ export const job = linkQuery({
         checkedInAt: assignment.checkIn?.at ?? null,
         late: assignment.late ?? null,
         completion: assignment.completion ?? null,
+        // The office's note when it sent the report back, until this cleaner reports again.
+        returned: !assignment.completion && jobDoc.completionReturn ? jobDoc.completionReturn : null,
         checklist: items.map((item) => ({ id: item._id, section: item.section ?? null, label: item.label, requiresPhoto: item.requiresPhoto, state: item.state, skipReason: item.skipReason ?? null, by: item.byCleanerId ? (names.get(item.byCleanerId) ?? "A cleaner") : null })),
         photos,
         required: { before: policy.beforePhotosRequired, after: policy.afterPhotosRequired },
@@ -308,18 +311,22 @@ export const attachPhoto = linkMutation({
       .withIndex("by_company_assignment_key", (q) => q.eq("companyId", ctx.companyId).eq("assignmentId", assignment._id).eq("clientKey", clientKey))
       .first();
     if (existing) {
-      if (existing.storageId !== args.storageId) await ctx.storage.delete(args.storageId);
+      if (existing.storageId !== args.storageId) await discardUpload(ctx, args.storageId);
       return { evidenceId: existing._id, duplicate: true };
     }
     const file = await ctx.db.system.get(args.storageId);
     if (!file) throw userError("That upload was not found. Try again.");
     if (!file.contentType?.startsWith("image/") || file.size > MAX_PHOTO_BYTES) {
-      await ctx.storage.delete(args.storageId);
+      await discardUpload(ctx, args.storageId);
       throw userError("Photos must be images, 15 MB or smaller.");
     }
     const all = await jobEvidence(ctx, jobDoc);
     // One upload is one photo: a stored file is never attached twice, here or on another job.
-    if (all.some((row) => row.storageId === args.storageId)) throw userError("This photo is already recorded.");
+    const kept = await ctx.db
+      .query("evidence")
+      .withIndex("by_storage", (q) => q.eq("storageId", args.storageId))
+      .first();
+    if (kept || all.some((row) => row.storageId === args.storageId)) throw userError("This photo is already recorded.");
     if (all.filter((row) => row.kind === args.kind).length >= MAX_PHOTOS_PER_KIND) throw userError(`This job already has ${MAX_PHOTOS_PER_KIND} photos of this kind.`);
     let itemId: Id<"checklistItems"> | undefined;
     if (args.kind === "item") {

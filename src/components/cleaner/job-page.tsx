@@ -422,6 +422,12 @@ export function JobPage({ token, view }: { token: string; view: "job" | "delay" 
   const mapQuery = address ? encodeURIComponent(`${address.line1}, ${address.city}, ${address.region} ${address.postalCode}`) : "";
   return (
     <Page company={data.company} title={`Your job${detail.customerFirstName ? ` for ${detail.customerFirstName}` : ""}`}>
+      {detail.returned && !submitted ? (
+        <Notice tone="warn" title="The office sent your report back" testId="report-returned">
+          <p className="whitespace-pre-line text-strong">“{detail.returned.note}”</p>
+          <p className="mt-1">Fix what it describes, then report the job done again below.</p>
+        </Notice>
+      ) : null}
       {submitted ? (
         <Notice tone="good" title="Submitted for review" testId="state-submitted">
           Thanks, {data.cleanerFirstName}. The office will review the visit. This is not an approval and does not mean payment has been made.
