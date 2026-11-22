@@ -20,7 +20,7 @@ import { environment, isNonProduction } from "./lib/environment";
 import { messagingCharges, rateCardReadiness } from "./lib/operations/readiness";
 import { queueStaffAlert } from "./lib/operations/notify";
 import { incidentReference, ownerCard, ownerUpdate } from "./lib/operations/owner";
-import { AUTO_RECONCILE_MS, reconcilable, startReconcile } from "./lib/operations/reconcile";
+import { AUTO_RECONCILE_MS, firstAttempt, reconcilable, startReconcile } from "./lib/operations/reconcile";
 import { recordEvent } from "./lib/events";
 import { text } from "./lib/text";
 
@@ -85,7 +85,8 @@ async function autoReconcile(ctx: MutationCtx, now: number) {
     .query("messages")
     .withIndex("by_status_attempted", (q) => q.eq("status", "unconfirmed").gte("attemptedAt", now - AUTO_RECONCILE_MS))
     .take(50);
-  for (const message of rows) if (reconcilable(message, now) && !message.reconcile) await startReconcile(ctx, message, { kind: "system" });
+  // Bounded by the first attempt, so a check that keeps losing its own answer is retried for 30 minutes, then left to a person.
+  for (const message of rows) if (reconcilable(message, now) && !message.reconcile && now - (firstAttempt(message) ?? now) < AUTO_RECONCILE_MS) await startReconcile(ctx, message, { kind: "system" });
 }
 
 /** A provider callback that verified but could not be processed (convex/lib/builders.ts providerWebhook). */

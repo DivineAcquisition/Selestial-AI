@@ -31,7 +31,13 @@ export const AUTO_RECONCILE_MS = 30 * MINUTE;
 /** Providers whose send endpoint is verified to replay a stored success for the same key (the mock models Telnyx). */
 const REPLAYING = new Set(["telnyx", "mock"]);
 
-export function reconcilable(message: Pick<Doc<"messages">, "status" | "channel" | "provider" | "attemptedAt" | "purpose" | "reviewedAt">, now: number): boolean {
+/** When the first attempt went: Telnyx's replay window runs from it, not from a later check's attempt. */
+export function firstAttempt(message: Pick<Doc<"messages">, "attemptedAt" | "firstAttemptedAt">): number | undefined {
+  return message.firstAttemptedAt ?? message.attemptedAt;
+}
+
+export function reconcilable(message: Pick<Doc<"messages">, "status" | "channel" | "provider" | "attemptedAt" | "firstAttemptedAt" | "purpose" | "reviewedAt">, now: number): boolean {
+  const first = firstAttempt(message);
   return (
     message.status === "unconfirmed" &&
     (message.channel ?? "sms") === "sms" &&
@@ -39,8 +45,8 @@ export function reconcilable(message: Pick<Doc<"messages">, "status" | "channel"
     message.purpose !== "verification_code" &&
     message.purpose !== "member_notice" &&
     message.reviewedAt === undefined &&
-    message.attemptedAt !== undefined &&
-    now - message.attemptedAt < RECONCILE_WINDOW_MS
+    first !== undefined &&
+    now - first < RECONCILE_WINDOW_MS
   );
 }
 
@@ -55,7 +61,7 @@ export async function startReconcile(ctx: MutationCtx, message: Doc<"messages">,
   if (message.reconcile) return false;
   if (!reconcilable(message, now)) throw new Error("This message can't be checked with the provider any more.");
   const by = actor.kind === "member" ? `member:${actor.memberId}` : actor.kind === "support" ? `staff:${actor.staffId}:session:${actor.sessionId}` : "system";
-  await ctx.db.patch(message._id, { status: "queued", reconcile: { requestedAt: now, deadline: (message.attemptedAt ?? now) + RECONCILE_WINDOW_MS, by }, problem: "Checking with the texting provider whether this went." });
+  await ctx.db.patch(message._id, { status: "queued", reconcile: { requestedAt: now, deadline: (firstAttempt(message) ?? now) + RECONCILE_WINDOW_MS, by }, problem: "Checking with the texting provider whether this went." });
   await ctx.scheduler.runAfter(0, internal.messaging.deliver, { messageId: message._id });
   const incident = await openByKey(ctx, `message_unconfirmed:${message.companyId}`);
   if (incident) {
