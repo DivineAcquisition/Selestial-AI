@@ -70,13 +70,13 @@ export function AgentsGrid() {
   );
 }
 
-/** The four agents that come with Expand once released, each linking to its page. */
+/** The agents that are not released yet, each linking to its page. */
 function ComingNext() {
   const soon = AGENT_PAGE_IDS.filter((id) => AGENT_PAGES[id].status === "coming_soon");
   return (
     <div className="mt-6 rounded-2xl border border-dashed border-border bg-card/60 p-5 sm:p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="text-sm font-semibold text-strong">Coming next, in Expand</p>
+        <p className="text-sm font-semibold text-strong">Coming later</p>
         <Link href="/agents" className="text-sm font-medium text-brand-600 underline-offset-4 hover:underline">
           Meet the whole team
         </Link>
@@ -167,11 +167,11 @@ export function IntegrationsGrid() {
   );
 }
 
-/** Operate and Expand: what each does today, what comes when released, and the questions people ask. */
+/** The plan on sale: what it does today, what is not released yet, and the questions people ask. */
 export function PricingPlans() {
   return (
     <div className="grid gap-8">
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className={PRICING.plans.length > 1 ? "grid gap-4 lg:grid-cols-2" : "mx-auto grid w-full max-w-2xl gap-4"}>
         {PRICING.plans.map((plan) => (
           <SpotlightCard key={plan.id} className="p-6 sm:p-7">
             <h3 className="font-heading text-2xl tracking-tight text-strong">{plan.name}</h3>
@@ -189,15 +189,19 @@ export function PricingPlans() {
                 </li>
               ))}
             </ul>
-            <p className="mt-4 text-xs font-semibold tracking-[0.14em] text-muted-foreground uppercase">Not released yet</p>
-            <ul className="mt-2 grid gap-1.5 text-sm text-muted-foreground">
-              {plan.later.map((line) => (
-                <li key={line} className="flex gap-2">
-                  <span aria-hidden>·</span>
-                  {line}
-                </li>
-              ))}
-            </ul>
+            {plan.later.length > 0 ? (
+              <>
+                <p className="mt-4 text-xs font-semibold tracking-[0.14em] text-muted-foreground uppercase">Not released yet</p>
+                <ul className="mt-2 grid gap-1.5 text-sm text-muted-foreground">
+                  {plan.later.map((line) => (
+                    <li key={line} className="flex gap-2">
+                      <span aria-hidden>·</span>
+                      {line}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
           </SpotlightCard>
         ))}
       </div>

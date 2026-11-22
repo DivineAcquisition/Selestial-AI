@@ -34,7 +34,7 @@ describe("coming-soon agent pages", () => {
       // Each capability lives under a tab the sidebar already shows for that agent.
       for (const capability of agent.capabilities) expect(nav.tabs.map((tab) => tab.label), `${agent.id}: ${capability.tab}`).toContain(capability.tab);
       expect(AGENT_CATALOG[agent.id].plans).toEqual(["expand"]);
-      expect(agent.plan).toMatch(/Expand plan/);
+      expect(agent.plan).toMatch(/Not released yet/);
     }
   });
 

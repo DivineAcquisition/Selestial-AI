@@ -195,14 +195,14 @@ export const PHILOSOPHY = {
 } as const;
 
 /**
- * Public pricing. The plans and prices are approved; credit allowances are not, so none is shown. Every
+ * Public pricing: the one plan on sale (PLANS_ON_SALE in convex/lib/billing/catalog.ts). The price is approved; credit allowances are not, so none is shown. Every
  * agent and feature that is not working today says so.
  */
 export const PRICING = {
   id: "pricing",
   eyebrow: "Pricing",
   headline: "The right AI workforce for your cleaning company.",
-  lead: "Start with four essential agents. Expand into a complete team as your operation grows.",
+  lead: "One plan for early companies: four agents that work today, in one workspace.",
   plans: [
     {
       id: "operate",
@@ -220,28 +220,19 @@ export const PRICING = {
         "Company Chat, approvals, and agreements with AI-guided drafting",
         "A monthly allowance of Selestial Credits for AI work",
       ],
-      later: [],
-    },
-    {
-      id: "expand",
-      name: "Expand",
-      price: "$499",
-      period: "/month",
-      summary: "Add marketing, quality, customer care, and team coordination, with customer portals and advanced controls.",
-      today: ["Everything in Operate", "Creative Studio for images and video", "Advanced approval routing and template governance for agreements", "A larger monthly credit allowance"],
-      later: ["Marketing, Quality and Customer Care, included when released", "Customer portal, your own domain for booking pages, advanced workflow customization, and team and location governance, when available"],
+      later: ["Marketing, Quality and Customer Care. They are not part of this plan today, and no plan or purchase makes one available sooner.", "Customer portal, your own domain for booking pages, and Creative Studio for images and video."],
     },
   ],
-  allowanceNote: "Each plan includes a monthly allowance of Selestial Credits, and Expand includes twice Operate's. Your Usage page shows your allowance, what each piece of AI work costs, and what used it.",
+  allowanceNote: "The plan includes a monthly allowance of Selestial Credits. Your Usage page shows your allowance, what each piece of AI work costs, and what used it.",
   services: "Bespoke implementation, migration and custom development are scoped separately.",
   faqs: [
-    { q: "Which agents does each plan include?", a: "Operate includes Sales, Retention, Recruiter and Dispatch. Expand adds Marketing, Quality and Customer Care. Onboarding new cleaners through to readiness is part of Recruiter, and coordinating their visits is part of Dispatch, in both plans. Today Sales, Retention, Dispatch and Recruiter are working; the others are included in their plan when each is released, and no plan or purchase makes one available sooner." },
+    { q: "Which agents are included?", a: "Sales, Retention, Recruiter and Dispatch, all working today. Onboarding new cleaners through to readiness is part of Recruiter, and coordinating their visits is part of Dispatch. Marketing, Quality and Customer Care are not released, and no plan or purchase makes one available sooner." },
     { q: "What uses credits?", a: "Selestial Credits pay for defined AI work, such as one Company Chat answer, one hiring email read by AI, or one generated image. Each is charged once when it is completed. Viewing records, opening or answering a cleaner’s link, accepting a job, status changes and scheduled reminders use no credits." },
     { q: "What happens when credits run out?", a: "New AI work pauses and the Owner is told. Schedules, records, cleaner links, active jobs and everything that does not use AI keep working. Nothing is bought automatically; you can buy a top-up or wait for the monthly reset." },
     { q: "Do top-ups unlock agents?", a: "No. A top-up adds credits only. Agents and features come with the plan, and only once they are released." },
     { q: "How do monthly credits reset?", a: "Included credits reset at the start of each billing period and do not roll over. Purchased credits are used after the included ones, do not reset, and can be used while you have an active plan." },
     { q: "How is texting and calling charged?", a: "Text messages, calls and other outside services are measured separately from credits and priced openly. When AI writes a message that is then sent, the AI work and the message are shown as separate items." },
-    { q: "How do upgrades, downgrades and cancellation work?", a: "Upgrading shows the exact charge and takes effect once payment is confirmed; credits already used this month still count. Downgrading takes effect at renewal and lists what you would lose first; your records, completed work and signed agreements are kept. Cancelling stops the renewal, and the plan stays active until the end of the period you paid for." },
+    { q: "How do starting and cancelling work?", a: "Choosing the plan shows the exact charge before you pay and takes effect once payment is confirmed. Cancelling stops the renewal, and the plan stays active until the end of the period you paid for." },
   ],
 } as const;
 

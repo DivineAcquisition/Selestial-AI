@@ -90,7 +90,7 @@ export function BookingFormsHome() {
               .
             </Notice>
           ) : null}
-          {!overview.plan ? <Notice tone="warning" title="Publishing needs an active plan">Booking pages are part of the Operate and Expand plans.</Notice> : null}
+          {!overview.plan ? <Notice tone="warning" title="Publishing needs an active plan">Booking pages come with your Selestial plan. Choose a plan in Settings to publish.</Notice> : null}
           {overview.experiences.length === 0 ? (
             <Empty title="No booking experiences yet" action={canDraft ? <button type="button" onClick={() => setCreating(true)} className={buttonVariants({ variant: "primary", size: "sm" })}><Plus aria-hidden /> Create your first</button> : undefined}>
               Start from a residential booking, a commercial walkthrough request, a short-term rental turnover, recurring enrollment or a campaign page. Each starts from the services you have published.

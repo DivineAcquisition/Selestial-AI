@@ -34,8 +34,8 @@ describe("public site claims", () => {
       expect(page.scene.work.length, id).toBeGreaterThan(0);
       expect(page.capabilities.length, id).toBeGreaterThanOrEqual(3);
       for (const handoff of page.handoffs) expect(AGENT_PAGE_IDS, `${id} → ${handoff.agent}`).toContain(handoff.agent);
-      // A coming-soon agent is never offered on a plan other than the one that will include it.
-      if (page.status === "coming_soon") expect(page.plan, id).toMatch(/when it's released/);
+      // A coming-soon agent is never offered on any plan.
+      if (page.status === "coming_soon") expect(page.plan, id).toMatch(/Not released yet/);
     }
   });
 });

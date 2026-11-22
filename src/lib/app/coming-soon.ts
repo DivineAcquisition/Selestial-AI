@@ -55,7 +55,7 @@ export const COMING_SOON: Record<ComingSoonAgent["id"], ComingSoonAgent> = {
       { tab: "Performance", title: "What each campaign booked", detail: "Ties sends to inquiries and bookings Sales handled, instead of opens and clicks.", mock: "progress" },
     ],
     availableNow: [{ label: "Content & Creative", detail: "Create images and short videos for your business with Creative Studio today.", path: "/app/agents/marketing/content-creative" }],
-    plan: "Included in the Expand plan when it's released.",
+    plan: "Not released yet. We'll say what it comes with when it is.",
   },
   quality: {
     id: "quality",
@@ -77,7 +77,7 @@ export const COMING_SOON: Record<ComingSoonAgent["id"], ComingSoonAgent> = {
       { tab: "Service Issues", title: "Issues traced to the cause", detail: "Groups repeat problems by home, task and cleaner, so coaching is specific and fair.", mock: "list" },
       { tab: "Re-cleans", title: "Re-cleans arranged", detail: "Proposes the visit, the crew and what the crew is paid, and hands it to Dispatch once you approve.", mock: "calendar" },
     ],
-    plan: "Included in the Expand plan when it's released.",
+    plan: "Not released yet. We'll say what it comes with when it is.",
   },
   "customer-care": {
     id: "customer-care",
@@ -99,7 +99,7 @@ export const COMING_SOON: Record<ComingSoonAgent["id"], ComingSoonAgent> = {
       { tab: "Service Requests", title: "Requests tracked to done", detail: "Add-ons, special instructions and one-time asks, logged against the property so the crew sees them.", mock: "list" },
       { tab: "Rescheduling & Cancellations", title: "Changes handled by your rules", detail: "Moves and skips visits within your notice periods and fees, and tells Dispatch and the crew.", mock: "week" },
     ],
-    plan: "Included in the Expand plan when it's released.",
+    plan: "Not released yet. We'll say what it comes with when it is.",
   },
 };
 

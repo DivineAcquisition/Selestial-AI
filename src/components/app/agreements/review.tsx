@@ -126,8 +126,7 @@ export function ReviewAndSignatures({ detail }: { detail: Detail }) {
                 disabled={!["draft", "needs_review"].includes(detail.workflow)}
                 onCheckedChange={(checked) => void run(() => routing({ companyId, agreementId: id, required: checked }))} />
               Require a second person to approve
-              <ToneBadge tone="info">Expand</ToneBadge>
-              {!detail.entitlements.expand.advanced_approval ? <span className="text-xs text-muted-foreground">Available on the Expand plan.</span> : null}
+              {!detail.entitlements.expand.advanced_approval ? <span className="text-xs text-muted-foreground">Not part of your plan.</span> : null}
             </label>
           ) : null}
         </div>
