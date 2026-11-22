@@ -14,9 +14,10 @@ import { grantApplicationEmail, withdrawApplicantContact } from "./consent";
 import { resolveContact } from "./contact";
 import type { Interpretation } from "./interpret";
 import { routeApplication } from "./invitations";
-import { addressOf, isNotificationAddress, boardFor, type MessageHeader } from "./mail";
+import { addressOf, boardFor, isAutomatedSender, isRelayAddress, oneLine, unsupportedBoardFor, type MessageHeader } from "./mail";
 import type { Classification, ContactEvidence, Fact, Source } from "./schema";
 import { DAY, recruiterSettings } from "./settings";
+import { liveTaskByKey, openTask, setTaskState } from "../taskState";
 
 export type Verdict = { classification: Classification; classifiedBy: "rule" | "model"; reason: string; source?: Source };
 export type IngestInput = {
@@ -70,6 +71,47 @@ async function applicantByEmail(ctx: QueryCtx | MutationCtx, companyId: Id<"comp
     .query("applicants")
     .withIndex("by_company_email", (q) => q.eq("companyId", companyId).eq("email", email))
     .first();
+}
+
+/**
+ * The applicant who writes from this address, or null. Their own address on file, or a supported board's
+ * forwarding address that one of their applications was received with (a reply through Indeed or
+ * ZipRecruiter comes from that address, not from the one on file). Never a notice-only address or a
+ * board's own mailbox: several people's notices come from those, so they identify nobody.
+ */
+export async function applicantForSender(ctx: QueryCtx | MutationCtx, companyId: Id<"companies">, address: string | null): Promise<Doc<"applicants"> | null> {
+  if (!address || isAutomatedSender(address)) return null;
+  const byEmail = await applicantByEmail(ctx, companyId, address);
+  if (byEmail) return byEmail.redactedAt ? null : byEmail;
+  const board = isRelayAddress(address) ? boardFor(address) : null;
+  if (!board) return null;
+  const recent = await ctx.db
+    .query("applications")
+    .withIndex("by_company_source", (q) => q.eq("companyId", companyId).eq("source", board.source))
+    .order("desc")
+    .take(300);
+  const theirs = recent.filter((row) => row.contact.evidence.some((entry) => entry.kind === "relay" && entry.address === address));
+  // One forwarding address belongs to one applicant. If it somehow points at two people, it identifies neither.
+  const applicantIds = [...new Set(theirs.map((row) => row.applicantId))];
+  if (applicantIds.length !== 1) return null;
+  const applicant = await ctx.db.get(applicantIds[0]);
+  return applicant && !applicant.redactedAt ? applicant : null;
+}
+
+/**
+ * Asks a person to read one message Recruiter could not read with confidence. Once per message: the same
+ * message arriving again is never filed twice, and the task is keyed by the filed message.
+ */
+async function askToRead(ctx: MutationCtx, connection: Doc<"mailboxConnections">, sourceMessageId: Id<"sourceMessages">, input: IngestInput): Promise<void> {
+  const key = `recruiter.review:${sourceMessageId}`;
+  if (await liveTaskByKey(ctx, connection.companyId, key)) return;
+  const from = addressOf(input.header.from) ?? "an unknown sender";
+  const subject = oneLine(input.header.subject, 120) || "(no subject)";
+  const dueAt = Date.now() + DAY;
+  const question = `Recruiter couldn't tell what this hiring email is, so it did nothing with it. From ${from}, subject "${subject}". Open it in ${connection.address}: if someone applied or replied, add or update their application yourself.`;
+  const taskId = await openTask(ctx, { companyId: connection.companyId, agent: "recruiter", title: `Read a hiring email Recruiter couldn't read: "${subject}"`.slice(0, 200), nextAction: question.slice(0, 500), dueAt, completionCondition: "A person read the email and handled it", about: { table: "mailboxConnections", id: connection._id }, key, actor: RECRUITER });
+  await setTaskState(ctx, (await ctx.db.get(taskId))!, "needs_decision", { openQuestion: question.slice(0, 1000), dueAt, withPersonSince: Date.now() }, RECRUITER);
+  await recordEvent(ctx, { companyId: connection.companyId, type: "mailbox.message_needs_review", actor: RECRUITER, subject: { table: "mailboxConnections", id: connection._id }, data: { source: input.verdict.source ?? "other" } });
 }
 
 /** The applicant this evidence reliably points at, and one it only might be. */
@@ -139,7 +181,7 @@ function mergeEvidence(existing: ContactEvidence[], incoming: ContactEvidence[])
 async function handleReply(ctx: MutationCtx, connection: Doc<"mailboxConnections">, sourceMessageId: Id<"sourceMessages">, input: IngestInput): Promise<string> {
   const senders = [addressOf(input.header.from), addressOf(input.header.replyTo)].filter((value): value is string => Boolean(value));
   let applicant: Doc<"applicants"> | null = null;
-  for (const address of senders) applicant ??= await applicantByEmail(ctx, connection.companyId, address);
+  for (const address of senders) applicant ??= await applicantForSender(ctx, connection.companyId, address);
   const applications = applicant
     ? (
         await ctx.db
@@ -179,6 +221,25 @@ async function handleReply(ctx: MutationCtx, connection: Doc<"mailboxConnections
   return "question";
 }
 
+/**
+ * Which of a message's addresses could be the applicant's, and what the message's source really is. Pure,
+ * so a real sample can be run through it in a test (convex/recruiterIntake.test.ts).
+ */
+export function sortEvidence(header: Pick<MessageHeader, "from" | "replyTo">, read: Pick<Interpretation, "source" | "forwarded" | "addresses">, headerEvidence: Omit<ContactEvidence, "sourceMessageId">[]) {
+  const fromAddress = addressOf(header.from);
+  // A board or hiring tool Recruiter does not read yet (LinkedIn, Glassdoor, an applicant-tracking tool).
+  // What it says about a person is kept, but nothing in it is taken as that person's own address: a
+  // person finds the address on the board. The application is then held for them, never invited by itself.
+  const unsupported = unsupportedBoardFor(fromAddress) ?? unsupportedBoardFor(addressOf(header.replyTo));
+  const source: Source = unsupported && read.source === "direct" ? "other" : read.source;
+  const evidence = [...headerEvidence, ...read.addresses].map((entry) => ({ ...entry, ...(unsupported && entry.kind === "direct" ? { kind: "unknown" as const } : {}) }));
+  // Someone who wrote in themselves is writing from their own address. A job board, a hiring tool, a forward or a no-reply sender is not.
+  if (source === "direct" && !read.forwarded && fromAddress && !boardFor(fromAddress) && !isAutomatedSender(fromAddress)) {
+    for (const entry of evidence) if (entry.address === fromAddress && entry.where === "header: From") entry.kind = "direct";
+  }
+  return { source, evidence, unsupported };
+}
+
 /** Files one message. Returns what became of it, for the sync's own report. */
 export async function ingestMessage(ctx: MutationCtx, connection: Doc<"mailboxConnections">, input: IngestInput): Promise<string> {
   const companyId = connection.companyId;
@@ -207,22 +268,25 @@ export async function ingestMessage(ctx: MutationCtx, connection: Doc<"mailboxCo
     attachments: input.attachments,
     flag: read?.forwarded ? "Forwarded mail: the addresses inside it are not proof of who the applicant is." : undefined,
   });
+  if (verdict.classification === "needs_review") {
+    await ctx.db.patch(sourceMessageId, { flag: "Recruiter couldn't tell what this email is. A person should read it." });
+    await askToRead(ctx, connection, sourceMessageId, input);
+    return "needs_review";
+  }
   if (verdict.classification === "promotion" || verdict.classification === "suggested_candidate" || !read) return verdict.classification;
   if (verdict.classification === "applicant_reply") return handleReply(ctx, connection, sourceMessageId, input);
 
   const company = (await ctx.db.get(companyId))!;
   const settings = recruiterSettings(company);
-  const source = read.source;
   const fromAddress = addressOf(input.header.from);
-  const evidence: ContactEvidence[] = [...(input.headerEvidence ?? []), ...read.addresses].map((entry) => ({ ...entry, sourceMessageId }));
-  // Someone who wrote in themselves is writing from their own address. A job board, a forward or a no-reply sender is not.
-  if (source === "direct" && !read.forwarded && fromAddress && !boardFor(fromAddress) && !isNotificationAddress(fromAddress)) {
-    for (const entry of evidence) if (entry.address === fromAddress && entry.where === "header: From") entry.kind = "direct";
-  }
+  const sorted = sortEvidence(input.header, read, input.headerEvidence ?? []);
+  const { source, unsupported } = sorted;
+  const evidence: ContactEvidence[] = sorted.evidence.map((entry) => ({ ...entry, sourceMessageId }));
+  if (unsupported) await ctx.db.patch(sourceMessageId, { source, flag: `From ${unsupported.name}, which Recruiter does not read yet. Find the applicant's own address there before anything is sent.` });
 
   // A person who wrote in themselves is named by their own sender line, when the message itself did not say.
   const senderName = input.header.from.match(/^\s*"?([^"<@]{2,80}?)"?\s*</)?.[1]?.trim();
-  if (!read.name && source === "direct" && !read.forwarded && senderName && !/\d/.test(senderName)) read.name = senderName;
+  if (!read.name && source === "direct" && !read.forwarded && senderName && !/\d/.test(senderName) && !(fromAddress && isAutomatedSender(fromAddress))) read.name = senderName;
 
   // The same application, named by the job board's own id.
   let application: Doc<"applications"> | null = null;

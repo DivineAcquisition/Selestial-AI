@@ -1,4 +1,12 @@
-/** Shared by the Recruiter scenario tests: a company with an open role, a test hiring inbox, and the mock email service. */
+/**
+ * Shared by the Recruiter scenario tests: a company with an open role, a test hiring inbox, and the mock email service.
+ *
+ * INVENTED FIXTURES: `indeedApplication` and `zipApplication` below (and every Indeed or ZipRecruiter
+ * message written in a test) were made up from general knowledge of those notices. They have NOT been
+ * checked against real notifications, so passing tests say nothing about how real Indeed or ZipRecruiter
+ * mail is read. Real, redacted samples go in tests/fixtures/recruiter-real/ (docs/recruiter/07-real-samples.md),
+ * where convex/recruiterSamples.test.ts reads every one.
+ */
 import { vi } from "vitest";
 
 import { api, internal } from "../convex/_generated/api";
@@ -145,6 +153,19 @@ export async function setup() {
   return { t, as, companyId, needId, connectionId, inbox, sync, receive, allow, applications, detail, approvals, decide, approveAll, tasks, manager, office };
 }
 export type Setup = Awaited<ReturnType<typeof setup>>;
+
+/**
+ * Finishes a Gmail sign-in the way the app's page does. Google's answer only leaves the mailbox waiting;
+ * the browser is sent on with a one-time value, and the signed-in member who started confirms with it.
+ * Returns null when the redirect carried nothing to confirm (the sign-in failed or expired).
+ */
+export async function confirmGmail(s: Pick<Setup, "t" | "as" | "companyId">, response: Response) {
+  const token = new URL(response.headers.get("Location") ?? "https://none.test/").searchParams.get("pending");
+  if (!token) return null;
+  const done = await s.as.mutation(api.recruiterMailbox.confirmConnect, { companyId: s.companyId, token });
+  await flush(s.t);
+  return { token, ...done };
+}
 
 /** Emails the mock service accepted for this address, oldest first. */
 export function emailsTo(address: string) {

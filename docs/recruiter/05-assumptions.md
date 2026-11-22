@@ -19,7 +19,7 @@ in one place, `BOARDS` and the patterns in `convex/lib/recruiter/mail.ts` and `i
 | Assumption | Basis | If wrong |
 |---|---|---|
 | Indeed mail comes from `indeed.com` or `indeedemail.com` | Novara's working query for `indeedemail.com`; general knowledge for `indeed.com` | Mail is treated as from an unknown sender and judged by subject |
-| Indeed application subjects contain "New application" or "applied to/for" | Novara parses "New application for …" | Filed as a promotion and not opened |
+| Indeed application subjects contain "New application" or "applied to/for" | Novara parses "New application for …" | Filed as "needs review": the message is kept and a person is asked to read it, once per message. Only mail that is plainly the board writing about itself (marketing, digests, billing) is filed as a promotion. Real samples: `07-real-samples.md` |
 | A non-system `@indeedemail.com` address is a per-applicant relay | Novara sends to it in production | Classified notification-only or unknown |
 | **Mail to an Indeed relay reaches the applicant, with what limits** (expiry, attachment and link rules, rate limits) | Not verified. Novara's use suggests it works; its limits are unknown | This is why relays start unverified and need the Owner's confirmation per board |
 | ZipRecruiter mail comes from `ziprecruiter.com`; applications say "New candidate" | General knowledge only. Novara has no ZipRecruiter code | Not recognised as applications |

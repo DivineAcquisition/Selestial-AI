@@ -3,9 +3,11 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { emailsTo, indeedApplication, INBOX, mail, recruiterTestEnv, setup, zipApplication } from "../tests/recruiterHarness";
+import { emailsTo, indeedApplication, INBOX, mail, MONDAY_10AM, recruiterTestEnv, setup, zipApplication } from "../tests/recruiterHarness";
+import { parseEml, readSample } from "../tests/recruiterSamples";
 import { api } from "./_generated/api";
 import { mockEmails } from "./lib/messaging/email";
+import { classifyHeader, isAutomatedSender, isNotificationAddress, isRelayAddress } from "./lib/recruiter/mail";
 import { mockModel } from "./lib/recruiter/model";
 
 describe("Recruiter: reading the hiring inbox", () => {
@@ -254,10 +256,169 @@ describe("Recruiter: reading the hiring inbox", () => {
     expect((await s.tasks("done")).some((task) => task.outcome === "The hiring inbox is being read again.")).toBe(true);
   });
 
+  it("reads a known applicant's reply through a job board's forwarding address, whatever its subject", async () => {
+    const s = await setup();
+    await s.as.mutation(api.recruiter.updatePlaybook, { companyId: s.companyId, settings: { verifiedRelays: ["ziprecruiter"] } });
+    // Jordan is known only by ZipRecruiter's forwarding address; Maria by her own, with Indeed's forwarding address as the notice's Reply-To.
+    await s.receive(zipApplication(), indeedApplication({ replyTo: "maria.l.77aa@indeedemail.com" }));
+    await s.approveAll();
+    expect((await s.applications("invited")).map((row) => row.name).sort()).toEqual(["Jordan Kim", "Maria Lopez"]);
+    // Their answers come back through the boards, with a subject no board pattern knows.
+    await s.receive(
+      mail({ id: "zip-stop", from: "Jordan Kim <jordan.k.8f3a@reply.ziprecruiter.com>", subject: "Re: Next step for your House Cleaner application", text: "Please stop emailing me." }),
+      mail({ id: "indeed-out", from: "Maria Lopez <maria.l.77aa@indeedemail.com>", subject: "Re: Next step for your House Cleaner application", text: "Thanks, but I found another job. Please withdraw my application." }),
+    );
+    expect(s.inbox.fetched).toEqual(expect.arrayContaining(["zip-stop", "indeed-out"]));
+    const seen = await s.as.query(api.recruiter.inboxMessages, { companyId: s.companyId });
+    expect(seen.messages.filter((row) => row.classification === "applicant_reply").map((row) => row.subject)).toEqual(["Re: Next step for your House Cleaner application", "Re: Next step for your House Cleaner application"]);
+    expect(seen.messages.some((row) => row.classification === "promotion")).toBe(false);
+    const rows = await s.applications();
+    // Maria withdrew. Jordan asked for no contact: nothing more is sent, and a person is told.
+    expect(rows.find((row) => row.name === "Maria Lopez")).toMatchObject({ stage: "withdrawn" });
+    const jordan = await s.detail(rows.find((row) => row.name === "Jordan Kim")!.applicationId);
+    expect(jordan.applicant?.doNotContact).toMatchObject({ reason: expect.stringContaining("not to be contacted") });
+    expect((await s.tasks()).some((task) => task.title.includes("asked not to be contacted"))).toBe(true);
+
+    // A new notice about the same person for another role still reads as an application, not as a reply.
+    await s.receive(zipApplication({ id: "zip-second", subject: "New candidate: Jordan Kim for Office Cleaner", text: "Jordan Kim applied for your Office Cleaner job.\nCandidate ID: ZR-99200" }));
+    expect((await s.as.query(api.recruiter.inboxMessages, { companyId: s.companyId })).messages.find((row) => row.subject?.includes("Office Cleaner"))).toMatchObject({ classification: "new_application" });
+  });
+
+  it("asks a person to read a job board's mail it does not recognise, once, and leaves plain marketing alone", async () => {
+    const s = await setup();
+    await s.receive(
+      // Real notices may not be worded like the patterns: these match none of them.
+      mail({ id: "odd-1", from: "Indeed <indeedapply@indeed.com>", subject: "Maria Lopez is interested in House Cleaner", text: "Maria Lopez\nEmail: maria.lopez@example.test" }),
+      mail({ id: "odd-2", from: "Someone <someone.9z@reply.ziprecruiter.com>", subject: "Re: Next step for your House Cleaner application", text: "Is this still open?" }),
+      mail({ id: "promo-1", from: "Indeed <no-reply@indeed.com>", subject: "Sponsor your job to get 3x more applicants", text: "Boost your post today." }),
+      mail({ id: "promo-2", from: "ZipRecruiter <news@marketing.ziprecruiter.com>", subject: "5 hiring tips for the holidays", text: "Read our guide." }),
+      mail({ id: "promo-3", from: "Indeed <no-reply@indeed.com>", subject: "Your weekly summary", text: "12 views." }),
+    );
+    // Only the two unrecognised ones were opened, so a person can see what they say.
+    expect(s.inbox.fetched.sort()).toEqual(["odd-1", "odd-2"]);
+    const seen = await s.as.query(api.recruiter.inboxMessages, { companyId: s.companyId });
+    expect(seen.messages.map((row) => row.classification).sort()).toEqual(["needs_review", "needs_review", "promotion", "promotion", "promotion"]);
+    expect(seen.messages.filter((row) => row.classification === "needs_review").every((row) => row.flag?.includes("A person should read it"))).toBe(true);
+    // No applicant, no application and no email came of them: a person reads them.
+    expect(await s.applications()).toEqual([]);
+    expect(mockEmails).toEqual([]);
+    const tasks = (await s.tasks()).filter((task) => task.title.startsWith("Read a hiring email"));
+    expect(tasks.map((task) => task.title).sort()).toEqual(['Read a hiring email Recruiter couldn\'t read: "Maria Lopez is interested in House Cleaner"', 'Read a hiring email Recruiter couldn\'t read: "Re: Next step for your House Cleaner application"']);
+    // Reading the inbox again asks nothing twice.
+    await s.sync();
+    expect((await s.tasks()).filter((task) => task.title.startsWith("Read a hiring email"))).toHaveLength(2);
+  });
+
+  it("never takes the mailbox's own outgoing mail for an application", async () => {
+    process.env.RECRUITER_MODEL = "mock";
+    const s = await setup();
+    await s.receive(mail({ id: "own-1", from: `Alpha Cleaning Hiring Team <${INBOX}>`, subject: "Next step for your House Cleaner application", text: "Hi Maria, please complete your application here." }));
+    expect(s.inbox.fetched).toEqual([]);
+    expect(mockModel.seen).toEqual([]);
+    expect(await s.applications()).toEqual([]);
+    const stored = await s.t.run(async (ctx) => (await ctx.db.query("sourceMessages").collect()).find((row) => row.providerMessageId === "own-1"));
+    expect(stored).toMatchObject({ classification: "unrelated" });
+    expect(stored?.subject).toBeUndefined();
+  });
+
+  it("knows a notice-only address wherever the word sits, and a board it does not read", () => {
+    for (const address of ["jobs-noreply@linkedin.com", "no-reply@indeed.com", "donotreply@monster.com", "do_not_reply@x.test", "notifications@x.test", "notifications-noreply@x.test", "job-alerts@x.test", "mailer-daemon@x.test", "bounce-883@x.test", "inmail-hit-reply@linkedin.com", "abc123@job.craigslist.org", "notification@facebookmail.com"]) {
+      expect([address, isAutomatedSender(address)]).toEqual([address, true]);
+    }
+    for (const address of ["maria.lopez@example.test", "bounce.bo@example.test", "noel.reply@example.test", "alerta.gomez@example.test", "jordan.k.8f3a@reply.ziprecruiter.com"]) {
+      expect([address, isAutomatedSender(address)]).toEqual([address, false]);
+    }
+    expect(isNotificationAddress("jobs-noreply@linkedin.com")).toBe(true);
+    expect(isRelayAddress("noreply@indeedemail.com")).toBe(false);
+    // Unsupported boards are not intake sources: the header alone says nothing about them.
+    expect(classifyHeader({ id: "x", from: "LinkedIn <jobs-noreply@linkedin.com>", subject: "New application: House Cleaner from Maria Lopez", receivedAt: 0 })).toEqual({ kind: "unknown" });
+  });
+
+  it("holds an application from a board it does not read for a person, and never files its later notices under that applicant", async () => {
+    process.env.RECRUITER_MODEL = "mock";
+    const s = await setup();
+    await s.allow("recruiter.send_invitation");
+    await s.receive(mail({ id: "li-1", from: "LinkedIn <jobs-noreply@linkedin.com>", subject: "New application: House Cleaner from Maria Lopez", text: "Maria Lopez applied for House Cleaner.\nPosition: House Cleaner\nEmail: maria.lopez@example.test\nPhone: (512) 555-0142" }));
+    let rows = await s.applications();
+    expect(rows).toHaveLength(1);
+    // Kept, with what it said, but nothing in it is trusted as her address: a person finds it on the board.
+    expect(rows[0]).toMatchObject({ name: "Maria Lopez", source: "other", stage: "contact_needed", contact: { address: null } });
+    expect(["missing", "notification_only"]).toContain(rows[0].contact.status);
+    const detail = await s.detail(rows[0].applicationId);
+    expect(detail.contactEvidence.filter((entry) => entry.kind === "direct" || entry.kind === "relay")).toEqual([]);
+    expect(detail.applicant?.email).toBeNull();
+    expect(detail.conversation[0]).toMatchObject({ flag: expect.stringContaining("LinkedIn") });
+    expect(mockEmails).toEqual([]);
+    expect(await s.approvals()).toEqual([]);
+
+    // A second person's notice from the same sender is a second person, not "a reply from Maria".
+    await s.receive(mail({ id: "li-2", from: "LinkedIn <jobs-noreply@linkedin.com>", subject: "New application: House Cleaner from Lee Wong", text: "Lee Wong applied for House Cleaner." }));
+    rows = await s.applications();
+    expect(rows.map((row) => row.name).sort()).toEqual(["Lee Wong", "Maria Lopez"]);
+    const seen = await s.as.query(api.recruiter.inboxMessages, { companyId: s.companyId });
+    expect(seen.messages.some((row) => row.classification === "applicant_reply")).toBe(false);
+    expect(mockEmails).toEqual([]);
+  });
+
   it("reads nothing received before the start date", async () => {
     const s = await setup();
     await s.receive(indeedApplication({ id: "old", receivedAt: Date.now() - 86_400_000 }), zipApplication({ id: "new", receivedAt: Date.now() + 1000 }));
     expect(s.inbox.fetched).toEqual(["new"]);
     expect(await s.applications()).toHaveLength(1);
   });
+});
+
+/**
+ * REAL notifications, once someone has captured them (docs/recruiter/07-real-samples.md). Every .eml file
+ * in tests/fixtures/recruiter-real/ is read the way the inbox run would read it, and what Recruiter makes
+ * of it is pinned in a snapshot a person has looked at. Until a file is there, this checks nothing about
+ * real Indeed or ZipRecruiter mail: every other Indeed and ZipRecruiter message in these tests is invented.
+ */
+const realSamples = Object.entries(import.meta.glob<string>("../tests/fixtures/recruiter-real/*.eml", { query: "?raw", import: "default", eager: true })).sort(([a], [b]) => a.localeCompare(b));
+
+describe("Recruiter: real job-board notifications", () => {
+  it("reads a raw message the way a mailbox hands it over (an invented one: this checks the sample reader, not a job board)", async () => {
+    const raw = [
+      "Delivered-To: hiring@company.test",
+      "From: =?UTF-8?B?SW5kZWVk?= <no-reply@indeed.com>",
+      "Reply-To: Applicant One <applicant.1a2b@indeedemail.com>",
+      "Subject: New application for House Cleaner -",
+      " Austin, TX",
+      "Date: Mon, 01 Mar 2027 16:00:00 +0000",
+      'Content-Type: multipart/alternative; boundary="b1"',
+      "",
+      "--b1",
+      "Content-Type: text/plain; charset=UTF-8",
+      "Content-Transfer-Encoding: quoted-printable",
+      "",
+      "Applicant One applied to House Cleaner.=0AEmail: applicant.one@example.test=",
+      "",
+      "--b1",
+      "Content-Type: text/html; charset=UTF-8",
+      "",
+      "<p>ignored when there is plain text</p>",
+      "--b1--",
+    ].join("\r\n");
+    const message = parseEml(raw);
+    expect(message).toMatchObject({ from: "Indeed <no-reply@indeed.com>", replyTo: "Applicant One <applicant.1a2b@indeedemail.com>", subject: "New application for House Cleaner - Austin, TX", receivedAt: MONDAY_10AM, text: "Applicant One applied to House Cleaner.\nEmail: applicant.one@example.test" });
+    expect(await readSample(message)).toEqual({ kind: "new_application", source: "indeed", applicantName: "Applicant One", contactKind: "direct", wouldAutoInvite: "yes" });
+    // Without the labelled address only Indeed's forwarding address is left: never written to until the Owner confirms it works.
+    expect(await readSample({ ...message, text: "Applicant One applied to House Cleaner." })).toMatchObject({ contactKind: "relay", wouldAutoInvite: "no" });
+    // The mailbox's own mail, and a board Recruiter does not read, invite nobody.
+    expect(await readSample({ ...message, from: "Us <hiring@company.test>" })).toMatchObject({ kind: "unrelated", wouldAutoInvite: "no" });
+    expect(await readSample({ ...message, from: "LinkedIn <jobs-noreply@linkedin.com>", replyTo: undefined })).toMatchObject({ source: "unsupported board", contactKind: "none", wouldAutoInvite: "no" });
+  });
+
+  if (realSamples.length === 0) {
+    it.skip("no real samples yet: put redacted .eml files in tests/fixtures/recruiter-real/ (docs/recruiter/07-real-samples.md)", () => {});
+  }
+  for (const [path, raw] of realSamples) {
+    const name = path.split("/").pop()!;
+    it(`reads ${name} as its snapshot says`, async () => {
+      const message = parseEml(raw, name);
+      // Something that is not a message (no sender, no subject) is a broken sample, not a passing one.
+      expect(message.from, `${name} has no From header`).not.toBe("");
+      expect(await readSample(message)).toMatchSnapshot();
+    });
+  }
 });

@@ -7,10 +7,12 @@
  */
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
+import { useSearchParams } from "next/navigation";
 import { createContext, useContext, useState } from "react";
 
 import { AgentAvatar } from "@/components/app/agent";
 import { useCompany } from "@/components/app/company";
+import { ConfirmInbox } from "@/components/app/integrations/confirm-inbox";
 import { messageOf } from "@/components/app/form";
 import { AlertTriangle, CheckCircle2, Lock, Mail, Plug } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -52,7 +54,6 @@ const HISTORY = [
 ];
 
 const RESULT_WORDS: Record<string, { tone: "ok" | "bad"; words: string }> = {
-  connected: { tone: "ok", words: "Connected. Selestial is reading the inbox now; what it finds appears below." },
   failed: { tone: "bad", words: "The inbox wasn't connected. Google didn't finish, or the permission to read mail wasn't given. Nothing was stored." },
   expired: { tone: "bad", words: "That took too long, so nothing was connected. Start again." },
 };
@@ -338,6 +339,8 @@ export function InboxesPanel({ result }: { result: string | null }) {
   const start = useMutation(api.inboxes.startConnect);
   const update = useMutation(api.inboxes.update);
   const disconnect = useMutation(api.inboxes.disconnect);
+  // Back from Google with ?result=confirm&pending=<one-time value>: the mailbox is waiting to be confirmed.
+  const pending = useSearchParams().get("pending");
   if (listing === undefined) return <Skeleton className="h-64" />;
   const actions: InboxActions = {
     start: (input) => start({ companyId, ...input }),
@@ -346,6 +349,11 @@ export function InboxesPanel({ result }: { result: string | null }) {
   };
   return (
     <Actions.Provider value={actions}>
+      {result === "confirm" && pending ? (
+        <div className="mb-4">
+          <ConfirmInbox token={pending} />
+        </div>
+      ) : null}
       <InboxesView listing={listing} owner={role === "owner"} result={result} />
     </Actions.Provider>
   );

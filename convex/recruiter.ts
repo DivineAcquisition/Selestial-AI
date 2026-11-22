@@ -6,6 +6,7 @@ import { v } from "convex/values";
 
 import { internal } from "./_generated/api";
 import { internalMutation } from "./_generated/server";
+import { disconnectInbox } from "./inboxes";
 import { owned } from "./lib/access";
 import { isTimezone } from "./lib/availability";
 import { companyQuery, managerMutation, managerQuery, ownerMutation } from "./lib/builders";
@@ -197,18 +198,11 @@ export const reconnectMailbox = ownerMutation({
   },
 });
 
+/** The same disconnect as Connected apps (convex/inboxes.ts): one path, so neither page leaves Google's grant or a push watch behind. */
 export const disconnectMailbox = ownerMutation({
   args: { connectionId: v.id("mailboxConnections") },
   handler: async (ctx, args) => {
-    const connection = await owned(ctx, args.connectionId);
-    await ctx.db.patch(connection._id, { status: "disconnected", problem: undefined, canSend: false });
-    // The sealed authorization goes with it. Removing the access at Google is the Owner's own step there.
-    for (const credential of await ctx.db
-      .query("mailboxCredentials")
-      .withIndex("by_connection", (q) => q.eq("connectionId", connection._id))
-      .take(5))
-      await ctx.db.delete(credential._id);
-    await recordEvent(ctx, { companyId: ctx.companyId, type: "mailbox.disconnected", actor: byMember(ctx), subject: { table: "mailboxConnections", id: connection._id } });
+    await disconnectInbox(ctx, await owned(ctx, args.connectionId));
     return null;
   },
 });
