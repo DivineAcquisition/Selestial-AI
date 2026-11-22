@@ -19,6 +19,7 @@ import { checkPortability, countBrands, getMessagingProfile } from "./lib/messag
 import { telnyxWebhookUrl } from "./lib/messaging/telnyx";
 import { secretsConfigured } from "./lib/recruiter/secrets";
 import { secondFactorAge, supportEnabled } from "./lib/support/access";
+import { deploymentName, environment, PRODUCTION_DEPLOYMENTS, publicApiOrigin } from "./lib/environment";
 import { capabilitiesOf } from "./lib/support/catalog";
 import { literals } from "./lib/statuses";
 import { activeConfig, currentEvidence, evidenceRows, syncRecommendations } from "./lib/texting/case";
@@ -75,7 +76,7 @@ export const caseFor = staffQuery({
       reviewedAt: row.reviewedAt ?? null,
       submitted: row.lockedIn,
       replacedAt: row.replacedAt ?? null,
-      reviewCopy: row.reviewCopy ? { of: row.reviewCopy.of, exposure: row.reviewCopy.exposure, approvedAt: row.reviewCopy.approval?.at ?? null, path: row.reviewCopy.exposure === "approved" && row.reviewCopy.token ? `/texting-review/${row.reviewCopy.token}` : null } : null,
+      reviewCopy: row.reviewCopy ? { of: row.reviewCopy.of, exposure: row.reviewCopy.exposure, approvedAt: row.reviewCopy.approval?.at ?? null, path: row.reviewCopy.exposure === "approved" && row.reviewCopy.token ? `${publicApiOrigin() ?? ""}/texting-review/${row.reviewCopy.token}` : null } : null,
     });
     const notes = await ctx.db.query("textingNotes").withIndex("by_setup_created", (q) => q.eq("setupId", setup._id)).take(300);
     const exceptions = await ctx.db.query("textingExceptions").withIndex("by_setup_updated", (q) => q.eq("setupId", setup._id)).order("desc").take(100);
@@ -238,6 +239,11 @@ export const readiness = staffQuery({
   handler: async (ctx) => {
     const rows: { key: string; label: string; status: Status; detail: string }[] = [];
     const add = (key: string, label: string, status: Status, detail: string) => rows.push({ key, label, status, detail });
+    // Which backend this is, by the address Convex reports. A custom domain set as the client address must still read as production.
+    const host = (value: string | undefined) => value?.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "") || "not set";
+    const name = deploymentName();
+    const env = environment();
+    add("environment", "Production detection", env === "production" ? "configured" : "failed", env === "production" ? `This backend is ${name}, recognised as production. Client address reported: ${host(process.env.CONVEX_CLOUD_URL)}; HTTP address: ${host(process.env.CONVEX_SITE_URL)}.` : `This backend reports ${host(process.env.CONVEX_CLOUD_URL)} as its address and is treated as NOT production (${PRODUCTION_DEPLOYMENTS.join(", ")} is): email and texts go only to test recipients, Telnyx changes are refused and live payment keys are ignored.`);
     const checks = await ctx.db.query("telnyxChecks").withIndex("by_started").order("desc").take(10);
     const stepOf = (key: string) => {
       for (const check of checks) {
@@ -246,6 +252,11 @@ export const readiness = staffQuery({
       }
       return null;
     };
+    const publicStep = stepOf("public_api");
+    const origin = publicApiOrigin();
+    if (!origin) add("public_api", "Public API address", "not_configured", "No public address for HTTP routes.");
+    else if (!publicStep) add("public_api", "Public API address", "not_verified", `${origin} is shown for integration webhooks and future API and MCP access, but hasn't been checked yet. Run the read-only check.`);
+    else add("public_api", "Public API address", publicStep.state === "passed" ? "configured" : "failed", publicStep.detail);
     const keyStep = stepOf("key");
     if (!set("TELNYX_API_KEY")) add("telnyx_api", "Telnyx API access", "not_configured", "TELNYX_API_KEY isn't set.");
     else if (!keyStep) add("telnyx_api", "Telnyx API access", "not_verified", "A key is set but no check has been recorded. Run the read-only check.");
@@ -295,6 +306,17 @@ export const readOnlyCheck = internalAction({
       const profile = await getMessagingProfile(fetch, profileId);
       steps.push(!profile.ok ? { key: "profile", label: "Messaging profile", state: "failed", detail: profile.problem, at } : { key: "profile", label: "Messaging profile", state: profile.value.enabled ? "passed" : "failed", detail: profile.value.enabled ? `"${profile.value.name ?? profileId}" is on; incoming texts go to ${profile.value.webhookUrl ?? "nowhere"}.` : "The messaging profile is turned off.", at });
     } else steps.push({ key: "profile", label: "Messaging profile", state: "skipped", detail: profileId ? "Skipped: the API key didn't work." : "TELNYX_MESSAGING_PROFILE_ID isn't set.", at });
+    // The address people see must serve this backend's HTTP routes: an unknown review copy answers with this backend's own "Not found.".
+    const origin = publicApiOrigin();
+    if (origin) {
+      try {
+        const response = await fetch(`${origin}/texting-review/${"A".repeat(32)}`, { signal: AbortSignal.timeout(10_000) });
+        const body = (await response.text()).trim();
+        steps.push(body === "Not found." ? { key: "public_api", label: "Public API address", state: "passed", detail: `${origin} serves this backend's HTTP routes (webhooks, links, future API and MCP).`, at } : { key: "public_api", label: "Public API address", state: "failed", detail: `${origin} doesn't serve this backend's HTTP routes (it answered ${response.status}${body ? `: ${body.slice(0, 80)}` : ""}). In Convex › Custom Domains, point it at HTTP actions.`, at });
+      } catch {
+        steps.push({ key: "public_api", label: "Public API address", state: "failed", detail: `${origin} didn't answer.`, at });
+      }
+    }
     await ctx.runMutation(internal.textingReview.readOnlyDone, { checkId: args.checkId, steps, passed: steps.every((row) => row.state === "passed") });
     return null;
   },

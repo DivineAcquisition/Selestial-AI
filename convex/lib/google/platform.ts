@@ -6,6 +6,8 @@
  * Each answer here is only "configured" or not. A key being present is not proof it works; the live
  * checks in googleChecks.ts are what prove that.
  */
+import { publicApiOrigin } from "../environment";
+
 export type PlatformItem = { key: string; label: string; where: "convex" | "vercel"; configured: boolean; unlocks: string };
 
 const has = (name: string) => Boolean(process.env[name]?.trim());
@@ -34,6 +36,7 @@ export function endpoints(): { oauthCallback: string | null; calendarWebhook: st
     oauthCallback: site && `${site}/oauth/google/callback`,
     calendarWebhook: site && `${site}/webhooks/google/calendar`,
     pubsubPush: site && `${site}/webhooks/google/pubsub`,
-    leadFormWebhook: site && `${site}/webhooks/google/leads`,
+    // Shown to the owner to paste into Google Ads: the public address people see (api.selestial.io on the live backend).
+    leadFormWebhook: (publicApiOrigin() ?? site) && `${publicApiOrigin() ?? site}/webhooks/google/leads`,
   };
 }

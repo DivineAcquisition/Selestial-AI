@@ -37,7 +37,9 @@ if (process.env.VERCEL_ENV === "preview" && backend && PRODUCTION_DEPLOYMENTS.in
 
 if (production && key) {
   console.log("Production build: deploying the Convex backend, then building the site against it.");
-  run("npx", ["convex", "deploy", "--cmd", "next build", "--cmd-url-env-var-name", "NEXT_PUBLIC_CONVEX_URL"]);
+  // The app's own connection always uses the deployment's own address, never a custom domain (scripts/convex-address.mjs).
+  process.env.SELESTIAL_PRODUCTION_DEPLOYMENT = PRODUCTION_DEPLOYMENTS[0];
+  run("npx", ["convex", "deploy", "--cmd", "node scripts/next-build.mjs", "--cmd-url-env-var-name", "NEXT_PUBLIC_CONVEX_URL"]);
 } else {
   if (production) console.log("Production build without CONVEX_DEPLOY_KEY: building the site only. The backend is not deployed.");
   else if (key) console.log(`Not a production build (${process.env.VERCEL_ENV ?? "local"}): the backend is not deployed.`);

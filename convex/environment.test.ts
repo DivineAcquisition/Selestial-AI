@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import { autumnConfig } from "./lib/billing/autumn";
 import { emailProvider } from "./lib/email/provider";
-import { environment, movedTo, NOT_SENT_ON_TEST, PRODUCTION_DEPLOYMENTS, testRecipientAllowed } from "./lib/environment";
+import { deploymentName, environment, movedTo, NOT_SENT_ON_TEST, PRODUCTION_DEPLOYMENTS, publicApiOrigin, testRecipientAllowed } from "./lib/environment";
 import { stripeConfig } from "./lib/finance/stripe";
 import { orderNumber, searchNumbers } from "./lib/messaging/telnyxAccount";
 import { telnyxProvider } from "./lib/messaging/telnyx";
@@ -220,5 +220,22 @@ describe("Restoring without replaying anything", () => {
     expect(alpha.suspendedAt).toBeUndefined();
     expect(alpha.pausedAgents).toEqual(["recruiter"]);
     expect((await t.run((ctx) => ctx.db.get(b.companyId)))!.pausedAgents).toEqual([]);
+  });
+});
+
+describe("custom domains", () => {
+  test("a custom domain set as the live backend's client address still reads as production; an unknown one never does", () => {
+    expect(deploymentName({ CONVEX_CLOUD_URL: "https://api.selestial.io" })).toBe("stoic-gazelle-731");
+    expect(environment({ CONVEX_CLOUD_URL: "https://api.selestial.io/" })).toBe("production");
+    expect(environment({ CONVEX_CLOUD_URL: "https://stoic-gazelle-731.convex.cloud" })).toBe("production");
+    expect(environment({ CONVEX_CLOUD_URL: "https://api.someone-else.example" })).toBe("non_production");
+    expect(environment({ CONVEX_CLOUD_URL: "https://terrific-avocet-835.convex.cloud" })).toBe("non_production");
+  });
+
+  test("people see api.selestial.io for the live backend's HTTP routes, and each other backend's own site address", () => {
+    expect(publicApiOrigin({ CONVEX_CLOUD_URL: "https://stoic-gazelle-731.convex.cloud", CONVEX_SITE_URL: "https://stoic-gazelle-731.convex.site" })).toBe("https://api.selestial.io");
+    expect(publicApiOrigin({ CONVEX_CLOUD_URL: "https://terrific-avocet-835.convex.cloud", CONVEX_SITE_URL: "https://terrific-avocet-835.convex.site" })).toBe("https://terrific-avocet-835.convex.site");
+    expect(publicApiOrigin({ CONVEX_CLOUD_URL: "https://terrific-avocet-835.convex.cloud", PUBLIC_API_ORIGIN: "https://hooks.example.com/" })).toBe("https://hooks.example.com");
+    expect(publicApiOrigin({})).toBeNull();
   });
 });
