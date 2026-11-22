@@ -49,6 +49,11 @@ describe("the public Integrations page", () => {
       expect(logoExists(node.id), node.id).toBe(true);
       expect(node.live, node.id).toBe((BUILT as readonly string[]).includes(node.id));
     }
+    // Each agent on the inner ring sits halfway between two tools' lines, so no line runs through a face.
+    expect(HUB_IDS).toHaveLength(10);
+    // Field-service platforms are import sources, not tools the agents work in: they stay off the hub.
+    expect(nodes.map((node) => node.id)).not.toContain("jobber");
+    expect(nodes.map((node) => node.id)).not.toContain("housecall-pro");
     // Quo is on the hub, with Quo's own logo, and says it is coming soon until it is built.
     expect(nodes.find((node) => node.id === "quo")).toMatchObject({ name: "Quo (formerly OpenPhone)", live: false });
     expect(logoFile("quo")).toBe("quo.png");
