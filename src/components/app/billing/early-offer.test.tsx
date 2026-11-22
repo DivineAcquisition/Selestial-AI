@@ -13,10 +13,10 @@ const TRIAL = /trial/i;
 /** The Owner sees $199 only when the server says it will be honored. */
 describe("the early-user price on Plan & Usage", () => {
   it("is shown before buying only while a place is open for this company, with the count and the price after", () => {
-    const available: OwnerOffer = { kind: "available", placesLeft: 4, places: 15, months: 12, ...base };
+    const available: OwnerOffer = { kind: "available", placesLeft: 4, places: 25, months: 12, ...base };
     const note = html(<EarlyOfferNote offer={available} />);
     expect(note).toContain("Early-user price: $199 a month for your first 12 months, then $299.");
-    expect(note).toContain("4 of 15 places left.");
+    expect(note).toContain("4 of 25 places left.");
     expect(note).not.toMatch(TRIAL);
     expect(html(<EarlyOfferNote offer={{ kind: "reserved", until: 1, months: 12, ...base }} />)).toContain("$199");
   });
@@ -39,7 +39,7 @@ describe("the early-user price on Plan & Usage", () => {
   });
 
   it("tells the Owner in the purchase dialog what happens if the last place goes first", () => {
-    expect(html(<EarlyOfferConfirmNote early offer={{ kind: "available", placesLeft: 1, places: 15, months: 12, ...base }} />)).toMatch(/\$199 a month for your first 12 months, then \$299 a month\. If the last place is taken before you confirm, you&#x27;ll see the full price/);
+    expect(html(<EarlyOfferConfirmNote early offer={{ kind: "available", placesLeft: 1, places: 25, months: 12, ...base }} />)).toMatch(/\$199 a month for your first 12 months, then \$299 a month\. If the last place is taken before you confirm, you&#x27;ll see the full price/);
   });
 });
 
@@ -48,7 +48,7 @@ describe("public pricing", () => {
     const [operate] = PRICING.plans;
     expect(operate.price).toBe("$299");
     // Who, how much, for how long and the price after, all on the card (shown only while the offer is switched on).
-    expect(operate.offer).toEqual({ price: "$199", period: "/month", terms: "for your first 12 months, then $299", note: "For the first 15 companies. While places last." });
+    expect(operate.offer).toEqual({ price: "$199", period: "/month", terms: "for your first 12 months, then $299", note: "For the first 25 companies. While places last." });
     expect(JSON.stringify(PRICING)).not.toMatch(TRIAL);
   });
 });

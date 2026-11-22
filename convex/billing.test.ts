@@ -4,6 +4,7 @@
  * Plans, credits and billing, against a stand-in for Autumn (tests/fakeAutumn.ts). Every test starts on
  * the sandbox with the test rate card (tests/setupBilling.ts): a Chat answer is 1 credit.
  */
+import { EARLY_OFFER } from "./lib/billing/catalog";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { addMember, company, NOW, person, refusal, start, type T } from "../tests/harness";
@@ -813,7 +814,7 @@ describe("billing", () => {
     it("gives the first paid purchase $199 and claims its place only once the payment is confirmed, with Operate's entitlements", async () => {
       const t = start();
       const a = await fresh(t, "owner-a", "Alpha Cleaning");
-      expect(await a.as.query(api.earlyOffer.mine, { companyId: a.companyId })).toMatchObject({ kind: "available", placesLeft: 15, places: 15, monthlyCents: 199_00, fullCents: 299_00 });
+      expect(await a.as.query(api.earlyOffer.mine, { companyId: a.companyId })).toMatchObject({ kind: "available", placesLeft: 25, places: 25, monthlyCents: 199_00, fullCents: 299_00 });
       const { intentId, intent } = await preview(t, a);
       expect(intent).toMatchObject({ offer: "early", stage: "awaiting_confirmation", preview: { dueNowCents: 199_00 } });
       // Previewing reserves nothing.
@@ -837,9 +838,9 @@ describe("billing", () => {
       expect(await a.as.query(api.earlyOffer.mine, { companyId: a.companyId })).toMatchObject({ kind: "active", endsAt: row.offerEndsAt, monthlyCents: 199_00, fullCents: 299_00 });
     });
 
-    it("offers $299 to the 16th company, and never offers $199 again once the 15 places are used", async () => {
+    it("offers $299 to the 26th company, and never offers $199 again once the 25 places are used", async () => {
       const t = start();
-      await fillPlaces(t, 10, "claimed");
+      await fillPlaces(t, EARLY_OFFER.places - 5, "claimed");
       await fillPlaces(t, 5, "ended");
       const p = await fresh(t, "owner-p", "Late Cleaning");
       expect(await p.as.query(api.earlyOffer.mine, { companyId: p.companyId })).toEqual({ kind: "none" });
@@ -861,7 +862,7 @@ describe("billing", () => {
       expect(await d.as.query(api.billing.intent, { companyId: d.companyId, intentId: declined })).toMatchObject({ stage: "failed" });
       expect(await offerOf(t, d.companyId)).toMatchObject({ state: "released" });
       // Sent to the payment page and never paid: held while the page can be paid, then given back.
-      await fillPlaces(t, 14);
+      await fillPlaces(t, EARLY_OFFER.places - 1);
       const a = await fresh(t, "owner-a", "Abandon Cleaning", { cardOnFile: false });
       const abandoned = await buy(t, a);
       expect(await a.as.query(api.billing.intent, { companyId: a.companyId, intentId: abandoned })).toMatchObject({ stage: "payment_needed" });
@@ -881,7 +882,7 @@ describe("billing", () => {
 
     it("gives the last place to exactly one of two companies paying at the same moment; the other is shown $299 before anything is charged", async () => {
       const t = start();
-      await fillPlaces(t, 14);
+      await fillPlaces(t, EARLY_OFFER.places - 1);
       const a = await fresh(t, "owner-a", "Alpha Cleaning");
       const b = await fresh(t, "owner-b", "Beta Cleaning");
       const first = await preview(t, a);
@@ -924,7 +925,7 @@ describe("billing", () => {
       expect(intent.preview).toMatchObject({ dueNowCents: 299_00 });
       // Its place is not handed to anyone else.
       const b = await fresh(t, "owner-b", "Beta Cleaning");
-      expect(await b.as.query(api.earlyOffer.mine, { companyId: b.companyId })).toMatchObject({ kind: "available", placesLeft: 14 });
+      expect(await b.as.query(api.earlyOffer.mine, { companyId: b.companyId })).toMatchObject({ kind: "available", placesLeft: EARLY_OFFER.places - 1 });
     });
 
     it("moves the company to $299 at the end of month 12: scheduled once, in the 12th period, and confirmed from Autumn's record", async () => {
@@ -1029,7 +1030,7 @@ describe("billing", () => {
         await ctx.db.insert("staff", { email: "staff-ops@example.com", name: "Ops", role: "admin", status: "active", addedAt: NOW, addedBy: "console" });
       });
       const view = await staff.query(api.earlyOffer.overview, {});
-      expect(view).toMatchObject({ places: 15, used: 2, claimed: 1 });
+      expect(view).toMatchObject({ places: 25, used: 2, claimed: 1 });
       expect(view.rows.map((row) => [row.company, row.state])).toEqual(expect.arrayContaining([["Alpha Cleaning", "claimed"], ["Waiting Cleaning", "reserved"]]));
       const paid = view.rows.find((row) => row.state === "claimed")!;
       const waiting = view.rows.find((row) => row.state === "reserved")!;

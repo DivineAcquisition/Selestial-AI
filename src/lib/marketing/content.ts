@@ -12,6 +12,8 @@ export const SITE_DESCRIPTION =
 
 /** Where the operations assessment lives. Every "Get early access" button goes here. */
 export const ASSESSMENT_PATH = "/assessment";
+/** Where "Sign up" goes: the account page on the app host (the public host redirects it there, src/lib/hosts.ts). */
+export const SIGNUP_PATH = "/signup";
 
 export const NAV = {
   links: [
@@ -202,7 +204,7 @@ export const PRICING = {
   id: "pricing",
   eyebrow: "Pricing",
   headline: "The right AI workforce for your cleaning company.",
-  lead: "One plan for early companies: four agents that work today, in one workspace.",
+  lead: "One plan for early companies: four agents that work today, plus Quality free for early users.",
   plans: [
     {
       id: "operate",
@@ -214,8 +216,10 @@ export const PRICING = {
        * cannot cheaply know the places left, so it says "while places last"; the app shows the live count
        * and never shows $199 unless it will be honored.
        */
-      offer: { price: "$199", period: "/month", terms: "for your first 12 months, then $299", note: "For the first 15 companies. While places last." },
+      offer: { price: "$199", period: "/month", terms: "for your first 12 months, then $299", note: "For the first 25 companies. While places last." },
       tagline: "Early-user plan",
+      /** The early-user bonus agent: included at no extra cost for companies on the early-user price. */
+      bonus: { id: "quality", name: "Quality", title: "Quality Control AI agent", does: "Reviews every finished visit's photos and checklist, flags what was missed, and asks the cleaner first." },
       /** The four agents that work today, each with what it does in one line. */
       agents: [
         { id: "sales", does: "Inquiries by text and email, quotes customers accept online, follow-ups and bookings" },
@@ -231,13 +235,13 @@ export const PRICING = {
         "A monthly allowance of Selestial Credits for AI work",
       ],
       summary: "Keep sales, hiring, dispatch, and retention moving from one workspace.",
-      later: ["Marketing, Quality and Customer Care. They are not part of this plan today, and no plan or purchase makes one available sooner.", "Customer portal, your own domain for booking pages, and Creative Studio for images and video."],
+      later: ["Marketing and Customer Care. They are not part of this plan today, and no plan or purchase makes one available sooner.", "Customer portal, your own domain for booking pages, and Creative Studio for images and video."],
     },
   ],
   allowanceNote: "The plan includes a monthly allowance of Selestial Credits. Your Usage page shows your allowance, what each piece of AI work costs, and what used it.",
   services: "Bespoke implementation, migration and custom development are scoped separately.",
   faqs: [
-    { q: "Which agents are included?", a: "Sales, Retention, Recruiter and Dispatch, all working today. Onboarding new cleaners through to readiness is part of Recruiter, and coordinating their visits is part of Dispatch. Marketing, Quality and Customer Care are not released, and no plan or purchase makes one available sooner." },
+    { q: "Which agents are included?", a: "Sales, Retention, Recruiter and Dispatch, all working today. Early users on the $199 price also get Quality, the Quality Control AI agent, at no extra cost. Onboarding new cleaners through to readiness is part of Recruiter, and coordinating their visits is part of Dispatch. Marketing and Customer Care are not released, and no plan or purchase makes one available sooner." },
     { q: "What uses credits?", a: "Selestial Credits pay for defined AI work, such as one Company Chat answer, one hiring email read by AI, or one generated image. Each is charged once when it is completed. Viewing records, opening or answering a cleaner’s link, accepting a job, status changes and scheduled reminders use no credits." },
     { q: "What happens when credits run out?", a: "New AI work pauses and the Owner is told. Schedules, records, cleaner links, active jobs and everything that does not use AI keep working. Nothing is bought automatically; you can buy a top-up or wait for the monthly reset." },
     { q: "Do top-ups unlock agents?", a: "No. A top-up adds credits only. Agents and features come with the plan, and only once they are released." },

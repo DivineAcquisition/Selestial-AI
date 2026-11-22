@@ -1,5 +1,5 @@
 /**
- * The early-user offer: $199 a month for the first 12 months, for the first 15 companies whose first plan
+ * The early-user offer: $199 a month for the first 12 months, for the first 25 companies whose first plan
  * payment succeeds, then $299 (convex/lib/billing/earlyOffer.ts has the exact rule; docs/billing/README.md,
  * "Early-user offer").
  *
@@ -165,7 +165,7 @@ export const mine = ownerQuery({
 
 // ── Selestial staff ──────────────────────────────────────────────────────────────────────────────
 
-/** Staff › Operations › Billing: places used out of 15, which companies hold them, and when each moves to $299. */
+/** Staff › Operations › Billing: places used out of 25, which companies hold them, and when each moves to $299. */
 export const overview = staffQuery({
   args: {},
   handler: async (ctx) => {

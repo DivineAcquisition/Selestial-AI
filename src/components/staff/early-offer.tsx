@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Staff › Operations › Billing: the early-user offer (convex/earlyOffer.ts). How many of the 15 places are
+ * Staff › Operations › Billing: the early-user offer (convex/earlyOffer.ts). How many of the 25 places are
  * used, which companies hold them, when each moves to $299 and whether that move is on Autumn's record, and a
  * way to give back a place that was reserved and never paid. Releasing needs the billing.adjust capability; a
  * paid place can never be released.
@@ -59,7 +59,7 @@ export function EarlyOfferPanel() {
             {data.claimed} paid · {data.used - data.claimed} reserved awaiting payment · {data.env === "sandbox" ? "Sandbox" : "Production"}
           </p>
         </div>
-        <p className="text-xs text-muted-foreground">$199 a month for 12 months, then $299, for the first 15 companies whose first payment succeeds. A paid place stays used after cancellation.</p>
+        <p className="text-xs text-muted-foreground">$199 a month for 12 months, then $299, for the first 25 companies whose first payment succeeds. A paid place stays used after cancellation.</p>
         {shown.length === 0 ? (
           <p className="text-sm text-muted-foreground">No company holds or has reserved a place yet.</p>
         ) : (

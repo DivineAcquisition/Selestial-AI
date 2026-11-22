@@ -41,8 +41,8 @@ export const AUTUMN = {
   earlyPlan: "operate_early",
 } as const;
 
-/** The early-user offer: the first 15 companies whose first plan payment succeeds pay $199 a month for 12 months. */
-export const EARLY_OFFER = { places: 15, monthlyCents: 199_00, months: 12, plan: "operate" as PlanId } as const;
+/** The early-user offer: the first 25 companies whose first plan payment succeeds pay $199 a month for 12 months (raised from 15 by the Owner on November 22, 2026). */
+export const EARLY_OFFER = { places: 25, monthlyCents: 199_00, months: 12, plan: "operate" as PlanId } as const;
 
 export const AGENT_IDS = ["sales", "retention", "recruiter", "dispatch", "marketing", "quality", "customer-care"] as const;
 export type AgentId = (typeof AGENT_IDS)[number];

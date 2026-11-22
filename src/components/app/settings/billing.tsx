@@ -357,10 +357,24 @@ function Comparison({ catalog, current, canBuy }: { catalog: Data["catalog"]; cu
                   </div>
                   {mine ? <span className="rounded-full bg-brand-500/10 px-2.5 py-1 text-xs font-medium text-brand-600 ring-1 ring-brand-500/25">Your plan</span> : null}
                 </div>
-                <p className="relative mt-3 flex items-baseline gap-1 text-strong">
-                  <span className="font-heading text-5xl tracking-tight">{money(plan.monthlyCents)}</span>
-                  <span className="text-sm text-muted-foreground">a month</span>
-                </p>
+                {buying && (offer?.kind === "available" || offer?.kind === "reserved") ? (
+                  <div className="relative mt-3">
+                    <p className="flex flex-wrap items-baseline gap-x-3 text-strong">
+                      <span className="text-xl text-muted-foreground line-through decoration-2 decoration-brand-500/70">
+                        <span className="sr-only">Regular price </span>
+                        {money(plan.monthlyCents)}
+                      </span>
+                      <span className="font-heading text-5xl tracking-tight">{money(offer.monthlyCents)}</span>
+                      <span className="text-sm text-muted-foreground">a month</span>
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-strong">For your first {offer.months} months, then {money(offer.fullCents)}.</p>
+                  </div>
+                ) : (
+                  <p className="relative mt-3 flex items-baseline gap-1 text-strong">
+                    <span className="font-heading text-5xl tracking-tight">{money(plan.monthlyCents)}</span>
+                    <span className="text-sm text-muted-foreground">a month</span>
+                  </p>
+                )}
                 <p className="relative mt-2 text-sm text-muted-foreground">{plan.summary}</p>
               </div>
               {/* Body: the agents that work today, and what comes later. */}
