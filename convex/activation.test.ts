@@ -421,7 +421,7 @@ describe("Activation plan", () => {
     // Paused and off-plan agents are shown as such, never queued.
     const paused = planFor("retention", [], { ...base, paused: ["retention"] });
     expect(paused.every((row) => row.state === "paused")).toBe(true);
-    const offPlan = planFor("sales", [], { ...base, plan: { ...base.plan, sales: { ok: false, words: "Sales needs an active Operate or Expand plan." } } });
+    const offPlan = planFor("sales", [], { ...base, plan: { ...base.plan, sales: { ok: false, words: "Sales needs an active plan." } } });
     expect(offPlan.filter((row) => row.agent === "sales").every((row) => row.state === "unavailable")).toBe(true);
     // Every planned task carries what the brief asks for.
     for (const row of planFor("sales", ["recruiter", "dispatch", "retention"], base)) {

@@ -62,6 +62,8 @@ export const messagingControlsValidator = v.object({
     authorizedAt: v.optional(v.number()),
     authorizedBy: v.optional(v.id("members")),
     wording: v.optional(v.string()),
+    /** The Owner turned it off and Autumn has not confirmed that yet. It stays shown as on until Autumn does. */
+    turningOffAt: v.optional(v.number()),
   }),
 });
 
@@ -215,7 +217,9 @@ export const billingTables = {
     customerId: v.optional(v.string()),
     companyId: v.optional(v.id("companies")),
     receivedAt: v.number(),
-  }).index("by_env_delivery", ["env", "deliveryId"]),
+  })
+    .index("by_env_delivery", ["env", "deliveryId"])
+    .index("by_type_received", ["type", "receivedAt"]),
 
   /**
    * A plan change, cancellation, top-up or billing-portal visit the Owner started. Its id is the
@@ -246,6 +250,14 @@ export const billingTables = {
     /** Where to send the Owner: Stripe Checkout, a payment page, or the billing portal. */
     url: v.optional(v.string()),
     problem: v.optional(v.string()),
+    /** Times the purchase was sent again, with the same Idempotency-Key, because its outcome was not known. */
+    attempts: v.optional(v.number()),
+    /** The purchase was sent and billing never said whether it went through. It is closed if Autumn later shows it. */
+    unconfirmed: v.optional(v.boolean()),
+    /** Autumn's paid invoice that closed a purchase paid on the payment page, so one invoice closes one purchase. */
+    invoiceId: v.optional(v.string()),
+    /** The Owner closed the dialog for it. It is no longer reopened; the purchase itself is unchanged. */
+    dismissedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_company_created", ["companyId", "createdAt"]),

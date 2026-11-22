@@ -175,6 +175,29 @@ describe("Sales agent: behaviours restored after the rebuild", () => {
       expect(execution).toMatchObject({ agent: "sales", state: "completed", charged: 1, autonomous: true });
     });
 
+    it("says the rules read messages until the AI reader has an approved credit rate, and says AI the day it has one", async () => {
+      vi.stubEnv("SALES_MODEL", "mock");
+      const s = await agentSetup({ autonomous: true });
+      const reading = async () => ({
+        overview: (await s.as.query(api.salesInquiries.overview, { companyId: s.companyId, asOf: Date.now() })).reader,
+        row: (await s.as.query(api.salesInquiries.readiness, { companyId: s.companyId })).find((row) => row.key === "reader")!.detail,
+      });
+      // The published rate card has no rate for reading sales messages: the AI reader is connected and never used.
+      vi.stubEnv("BILLING_RATE_CARD", "2026-11");
+      expect(await reading()).toEqual({ overview: "rules", row: expect.stringContaining("your company's rules read messages and nothing is charged") });
+      await s.text(PROSPECT.phone, `How much for a house cleaning in ${AREA}? 3 bed 2 bath`, "evt-1");
+      await flush(s.t);
+      expect(mockSalesModel.calls).toBe(0);
+      expect((await executions(s)).filter((row) => row.state === "completed")).toEqual([]);
+      expect(s.textsTo(PROSPECT.phone).length).toBeGreaterThan(0);
+      // A card with an approved rate: nothing else changes, and both places say an AI reader reads.
+      vi.stubEnv("BILLING_RATE_CARD", "fixture-2026-11");
+      expect(await reading()).toEqual({ overview: "ai", row: expect.stringContaining("An AI reader reads each customer message (1 credit each)") });
+      // With no AI reader connected, the rules read whatever the rate card says.
+      vi.stubEnv("SALES_MODEL", "");
+      expect((await reading()).overview).toBe("rules");
+    });
+
     it("falls back to the rules, charging nothing, when there are no credits", async () => {
       vi.stubEnv("SALES_MODEL", "mock");
       const s = await agentSetup({ autonomous: true });

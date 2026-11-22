@@ -108,8 +108,7 @@ describe("business settings forms", () => {
 describe("plan and usage", () => {
   const catalog = {
       plans: [
-        { id: "operate", name: "Operate", monthlyCents: 29900, positioning: "", summary: "Keep sales, hiring, dispatch, and retention moving from one workspace." },
-        { id: "expand", name: "Expand", monthlyCents: 49900, positioning: "", summary: "Add marketing, quality, customer care, and team coordination." },
+        { id: "operate", name: "Operate", monthlyCents: 29900, positioning: "", summary: "Keep sales, hiring, dispatch, and retention moving from one workspace.", onSale: true },
       ],
       bothInclude: ["Company Chat"],
       agents: [
@@ -134,7 +133,7 @@ describe("plan and usage", () => {
     expect(asked.every((call) => call.args === "skip")).toBe(true);
   });
 
-  it("without billing connected, shows the two plans and labels what is unreleased, with nothing to buy", () => {
+  it("without billing connected, shows the plan on sale and labels what is unreleased, with nothing to buy", () => {
     data["billing:planAndUsage"] = { connected: false, message: "Billing is not connected on this deployment, so AI work is paused.", plan: null, catalog };
     const html = renderToStaticMarkup(
       <CompanyProvider company={{ companyId, name: "Elm", timezone: "UTC", role: "owner" }}>
@@ -142,11 +141,12 @@ describe("plan and usage", () => {
       </CompanyProvider>,
     );
     expect(html).toContain("$299<");
-    expect(html).toContain("$499<");
+    expect(html).not.toContain("$499");
+    expect(html).not.toContain("Expand");
     expect(html).toContain("available for your account yet");
     expect(html).not.toContain("deployment");
     expect(html).toContain("not released yet");
-    expect(html).toContain("Included when released");
+    expect(html).not.toContain("Included when released");
     expect(html).toContain("not available yet");
     expect(html).not.toMatch(/Choose Operate|Choose Expand|Add \d|Confirm and pay/);
   });

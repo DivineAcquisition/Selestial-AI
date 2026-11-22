@@ -39,6 +39,12 @@ export function fakeAutumn() {
     outage: "none" as Outage,
     /** Only these operations fail while `outage` is set. Empty: all of them. */
     outageOps: [] as string[],
+    /** Operations whose next answer is lost after Autumn acted (a timeout on the way back). One loss per entry. */
+    loseAnswer: [] as string[],
+    /** Operations that answer 503 once, before Autumn does anything. One failure per entry. */
+    failOnce: [] as string[],
+    /** Purchases sent to the payment page and not paid yet, by customer. */
+    checkouts: new Map<string, Record<string, unknown>>(),
     calls: [] as { path: string; body: Record<string, unknown>; key: string | null }[],
     /** Balance history entries; null answers 404, as for a customer without history yet. */
     ledger: null as unknown[] | null,
@@ -114,7 +120,55 @@ export function fakeAutumn() {
     customer.purchasedUsed += credits - fromIncluded;
   };
 
+  /** A purchase takes effect: the plan or funds, and its paid invoice. */
+  const purchase = (customer: Customer, body: Record<string, unknown>) => {
+    const plan = body.plan_id as string;
+    if (plan === "credit_top_up") {
+      const quantity = Number((body.feature_quantities as { quantity: number }[])[0].quantity);
+      customer.purchased += quantity;
+      customer.invoices.push({ id: `in_credits_${customer.invoices.length + 1}`, plan_ids: [plan], status: "paid", total: quantity * state.topUpPrice, currency: "usd", created_at: Date.now(), hosted_invoice_url: "https://invoice.stripe.test/credits" });
+      return { customer_id: customer.id, payment_url: null };
+    }
+    if (plan === "messaging_top_up") {
+      const quantity = Number((body.feature_quantities as { quantity: number }[])[0].quantity);
+      customer.messaging.purchased += quantity;
+      customer.invoices.push({ id: `in_msg_${customer.invoices.length + 1}`, plan_ids: [plan], status: "paid", total: quantity / 10_000, currency: "usd", created_at: Date.now(), hosted_invoice_url: "https://invoice.stripe.test/msg" });
+      return { customer_id: customer.id, payment_url: null, invoice: { status: "paid", total: quantity / 10_000, currency: "usd", hosted_invoice_url: "https://invoice.stripe.test/msg" } };
+    }
+    const target = plan as PlanId;
+    if (body.plan_schedule === "end_of_cycle") customer.scheduled = target;
+    else {
+      // carry_over_usages keeps what was used this cycle; without it the new plan would start from zero.
+      const carry = (body.carry_over_usages as { enabled: boolean } | undefined)?.enabled === true;
+      customer.plan = target;
+      customer.grant = GRANTS[target];
+      if (!carry) customer.usage = 0;
+      customer.invoices.push({ id: `inv_${customer.invoices.length + 1}`, plan_ids: [target], status: "paid", total: PRICES[target], currency: "usd", created_at: Date.now(), hosted_invoice_url: "https://invoice.stripe.test/1" });
+    }
+    return { customer_id: customer.id, payment_url: null };
+  };
+  /** The Owner paid on the payment page: the purchase that was waiting takes effect, as Autumn applies it. */
+  const payCheckout = (companyId: string) => {
+    const customer = customerFor(`company_${companyId}`);
+    const body = state.checkouts.get(customer.id);
+    if (!body) throw new Error("No purchase is waiting on the payment page");
+    state.checkouts.delete(customer.id);
+    customer.cardOnFile = true;
+    purchase(customer, body);
+  };
+
   const fetch = (async (input: string | URL | Request, init: RequestInit = {}) => {
+    const path = new URL(String(input instanceof Request ? input.url : input)).pathname;
+    const response = await respond(input, init);
+    const lost = state.loseAnswer.indexOf(path);
+    if (lost >= 0 && response.status === 200) {
+      state.loseAnswer.splice(lost, 1);
+      throw new TypeError("the answer was lost on the way back");
+    }
+    return response;
+  }) as typeof globalThis.fetch;
+
+  const respond = async (input: string | URL | Request, init: RequestInit = {}) => {
     const url = new URL(String(input instanceof Request ? input.url : input));
     const path = url.pathname;
     const body = JSON.parse(String(init.body ?? "{}")) as Record<string, unknown>;
@@ -125,6 +179,10 @@ export function fakeAutumn() {
     const failing = state.outage !== "none" && (state.outageOps.length === 0 || state.outageOps.includes(path));
     if (failing && state.outage === "network") throw new TypeError("fetch failed");
     if (failing && state.outage === "server") return json(503, { code: "service_unavailable", message: "Down" });
+    if (state.failOnce.includes(path)) {
+      state.failOnce.splice(state.failOnce.indexOf(path), 1);
+      return json(503, { code: "service_unavailable", message: "Down" });
+    }
     if (key) {
       if (state.keys.has(key)) return json(409, { code: "duplicate_request", message: "Duplicate" });
       state.keys.add(key);
@@ -187,29 +245,11 @@ export function fakeAutumn() {
       }
       case "/v1/billing.attach": {
         const customer = customerFor(customerId);
-        const plan = body.plan_id as string;
-        if (!customer.cardOnFile) return json(200, { customer_id: customerId, payment_url: "https://checkout.stripe.test/session", required_action: { code: "payment_method_required", reason: "Add a card." } });
-        if (plan === "credit_top_up") {
-          customer.purchased += Number((body.feature_quantities as { quantity: number }[])[0].quantity);
-          return json(200, { customer_id: customerId, payment_url: null });
+        if (!customer.cardOnFile) {
+          state.checkouts.set(customerId, body);
+          return json(200, { customer_id: customerId, payment_url: "https://checkout.stripe.test/session", required_action: { code: "payment_method_required", reason: "Add a card." } });
         }
-        if (plan === "messaging_top_up") {
-          const quantity = Number((body.feature_quantities as { quantity: number }[])[0].quantity);
-          customer.messaging.purchased += quantity;
-          customer.invoices.push({ id: `in_msg_${customer.invoices.length + 1}`, plan_ids: [plan], status: "paid", total: quantity / 10_000, currency: "usd", created_at: Date.now(), hosted_invoice_url: "https://invoice.stripe.test/msg" });
-          return json(200, { customer_id: customerId, payment_url: null, invoice: { status: "paid", total: quantity / 10_000, currency: "usd", hosted_invoice_url: "https://invoice.stripe.test/msg" } });
-        }
-        const target = plan as PlanId;
-        if (body.plan_schedule === "end_of_cycle") customer.scheduled = target;
-        else {
-          // carry_over_usages keeps what was used this cycle; without it the new plan would start from zero.
-          const carry = (body.carry_over_usages as { enabled: boolean } | undefined)?.enabled === true;
-          customer.plan = target;
-          customer.grant = GRANTS[target];
-          if (!carry) customer.usage = 0;
-          customer.invoices.push({ id: `inv_${customer.invoices.length + 1}`, plan_ids: [target], status: "paid", total: PRICES[target], currency: "usd", created_at: Date.now(), hosted_invoice_url: "https://invoice.stripe.test/1" });
-        }
-        return json(200, { customer_id: customerId, payment_url: null });
+        return json(200, purchase(customer, body));
       }
       case "/v1/billing.update": {
         const customer = customerFor(customerId);
@@ -237,7 +277,7 @@ export function fakeAutumn() {
       default:
         return json(404, { code: "not_found", message: path });
     }
-  }) as typeof globalThis.fetch;
+  };
 
-  return { state, fetch, seed, customerFor, remaining, held, messagingLeft };
+  return { state, fetch, seed, customerFor, remaining, held, messagingLeft, payCheckout };
 }

@@ -201,6 +201,22 @@ describe("billing", () => {
       expect((await executions(s.t))[0]).toMatchObject({ state: "completed", settlement: "unverified" });
     });
 
+    it("tells staff when finished work was not charged because Autumn refused the charge", async () => {
+      const s = await setup();
+      const conversationId = await ask(s.t, s.as, s.companyId);
+      expect((await lastReply(s.as, s.companyId, conversationId)).status).toBe("complete");
+      const [done] = await executions(s.t);
+      expect(done.settlement).toBe("confirmed");
+      // The same work, had Autumn answered its confirmation with a 4xx: delivered, and not billed.
+      await s.t.run((ctx) => ctx.db.patch(done._id, { settlement: "pending_confirm" }));
+      await s.t.mutation(internal.billing.settleAnswered, { executionId: done._id, answer: "refused", success: null, problem: "No such lock" });
+      expect((await executions(s.t))[0].settlement).toBe("unbilled");
+      await s.t.mutation(internal.operations.runCheck, { check: "ai_billing" });
+      const incidents = await s.t.run((ctx) => ctx.db.query("incidents").collect());
+      expect(incidents).toEqual([expect.objectContaining({ kind: "ai_work_unbilled", area: "billing", companyId: s.companyId, state: "needs_staff", resolvedAt: 0 })]);
+      expect(incidents[0].impact).toContain("will not run again");
+    });
+
     it("recovers work that stopped part-way: an unconfirmed hold is released, an abandoned one expires uncharged", async () => {
       const s = await setup();
       const ids = await s.t.run(async (ctx) => {
@@ -247,7 +263,7 @@ describe("billing", () => {
       const s = await setup();
       billing.seed(s.companyId, { plan: null });
       await sync(s.t, s.companyId);
-      expect(await refusal(s.as.mutation(api.chat.send, { companyId: s.companyId, text: "Hello", clientKey: key() }))).toMatch(/needs an active Operate or Expand plan/);
+      expect(await refusal(s.as.mutation(api.chat.send, { companyId: s.companyId, text: "Hello", clientKey: key() }))).toMatch(/needs an active plan/);
       billing.seed(s.companyId, { plan: "expand", grant: 2000, purchased: 5000 });
       await sync(s.t, s.companyId);
       const company = await s.t.run(async (ctx) => (await ctx.db.get(s.companyId))!);
@@ -263,26 +279,41 @@ describe("billing", () => {
       const s = await setup();
       billing.seed(s.companyId, { plan: "operate", grant: 1000 });
       await sync(s.t, s.companyId);
-      expect(await refusal(s.as.mutation(api.creative.generate, { companyId: s.companyId, kind: "image_generate", prompt: "A tidy kitchen", params: {} }))).toMatch(/part of the Expand plan/);
+      expect(await refusal(s.as.mutation(api.creative.generate, { companyId: s.companyId, kind: "image_generate", prompt: "A tidy kitchen", params: {} }))).toMatch(/isn't part of the Operate plan/);
     });
 
-    it("previews an upgrade, charges only after confirmation, and carries this month's usage over", async () => {
+    it("sells only the plan on sale: Expand cannot be newly bought, and a company already on it keeps it", async () => {
       const s = await setup();
-      billing.seed(s.companyId, { plan: "operate", grant: 1000, usage: 300 });
+      billing.seed(s.companyId, { plan: "operate", grant: 1000 });
       await sync(s.t, s.companyId);
-      const intentId = await s.as.mutation(api.billing.startPlanChange, { companyId: s.companyId, plan: "expand" });
+      expect(await refusal(s.as.mutation(api.billing.startPlanChange, { companyId: s.companyId, plan: "expand" }))).toMatch(/isn't open to new companies yet/);
+      expect(billing.state.calls.some((call) => call.path === "/v1/billing.preview_attach" || call.path === "/v1/billing.attach")).toBe(false);
+      const operate = await s.as.query(api.billing.planAndUsage, { companyId: s.companyId });
+      expect(operate.catalog.plans.map((plan) => plan.id)).toEqual(["operate"]);
+      // An existing Expand subscription is still read, shown and entitled as Expand.
+      billing.seed(s.companyId, { plan: "expand", grant: 2000 });
+      await sync(s.t, s.companyId);
+      const expand = await s.as.query(api.billing.planAndUsage, { companyId: s.companyId });
+      expect(expand.connected && expand.account).toMatchObject({ plan: "expand" });
+      expect(expand.catalog.plans.map((plan) => ({ id: plan.id, onSale: plan.onSale }))).toEqual([{ id: "operate", onSale: true }, { id: "expand", onSale: false }]);
+    });
+
+    it("previews the first purchase, and charges once, only after confirmation", async () => {
+      const s = await setup();
+      billing.seed(s.companyId, { plan: null });
+      await sync(s.t, s.companyId);
+      const intentId = await s.as.mutation(api.billing.startPlanChange, { companyId: s.companyId, plan: "operate" });
       await settle(s.t);
-      const preview = await s.as.query(api.billing.intent, { companyId: s.companyId, intentId });
-      expect(preview).toMatchObject({ stage: "awaiting_confirmation", preview: { dueNowCents: 20000, effectiveAt: null } });
+      expect(await s.as.query(api.billing.intent, { companyId: s.companyId, intentId })).toMatchObject({ stage: "awaiting_confirmation" });
       expect(billing.state.calls.some((call) => call.path === "/v1/billing.attach")).toBe(false);
       await s.as.mutation(api.billing.confirmIntent, { companyId: s.companyId, intentId });
       await settle(s.t);
       expect(await refusal(s.as.mutation(api.billing.confirmIntent, { companyId: s.companyId, intentId }))).toMatch(/already confirmed/);
       const attach = billing.state.calls.filter((call) => call.path === "/v1/billing.attach");
       expect(attach).toHaveLength(1);
-      expect(attach[0]).toMatchObject({ key: `intent:${intentId}`, body: { plan_id: "expand", plan_schedule: "immediate", carry_over_usages: { enabled: true, feature_ids: ["selestial_credits"] } } });
+      expect(attach[0]).toMatchObject({ key: `intent:${intentId}`, body: { plan_id: "operate" } });
       const view = await s.as.query(api.billing.planAndUsage, { companyId: s.companyId });
-      expect(view.connected && view.account).toMatchObject({ plan: "expand", credits: { included: { granted: 2000, remaining: 1700 } } });
+      expect(view.connected && view.account).toMatchObject({ plan: "operate" });
     });
 
     it("schedules a downgrade for renewal, says what will be lost, and keeps access until then", async () => {
@@ -421,6 +452,162 @@ describe("billing", () => {
     });
   });
 
+  describe("a purchase whose outcome is not known", () => {
+    const attaches = () => billing.state.calls.filter((call) => call.path === "/v1/billing.attach");
+    async function topUp(s: Awaited<ReturnType<typeof setup>>) {
+      process.env.BILLING_TOP_UP_PACKS = "500";
+      const intentId = await s.as.mutation(api.billing.startTopUp, { companyId: s.companyId, credits: 500 });
+      await settle(s.t);
+      await s.as.mutation(api.billing.confirmIntent, { companyId: s.companyId, intentId });
+      await settle(s.t);
+      return intentId;
+    }
+
+    it("is sent again under the same key when the answer was lost, and is charged once", async () => {
+      const s = await setup();
+      billing.seed(s.companyId, { plan: "operate", grant: 1000 });
+      await sync(s.t, s.companyId);
+      // Autumn took the purchase and the answer never came back.
+      billing.state.loseAnswer.push("/v1/billing.attach");
+      const intentId = await topUp(s);
+      expect(attaches()).toHaveLength(2);
+      expect(new Set(attaches().map((call) => call.key))).toEqual(new Set([`intent:${intentId}`]));
+      expect(billing.customerFor(`company_${s.companyId}`).purchased).toBe(500);
+      // Autumn's record shows the paid invoice, so the purchase is closed as done, never as failed.
+      expect(await s.as.query(api.billing.intent, { companyId: s.companyId, intentId })).toMatchObject({ stage: "done", problem: null });
+      const types = await s.t.run(async (ctx) => (await ctx.db.query("events").collect()).map((event) => event.type));
+      expect(types).toContain("billing.top_up_done");
+      expect(types).not.toContain("billing.top_up_failed");
+    });
+
+    it("never says “nothing was charged”: it keeps the same purchase, retries a few times, then says it could not be confirmed", async () => {
+      const s = await setup();
+      billing.seed(s.companyId, { plan: "operate", grant: 1000 });
+      await sync(s.t, s.companyId);
+      billing.state.outage = "server";
+      billing.state.outageOps = ["/v1/billing.attach"];
+      const intentId = await topUp(s);
+      // One purchase, four tries, one key.
+      expect(attaches()).toHaveLength(4);
+      expect(new Set(attaches().map((call) => call.key)).size).toBe(1);
+      expect(await s.t.run(async (ctx) => ctx.db.query("billingIntents").collect())).toHaveLength(1);
+      const view = (await s.as.query(api.billing.intent, { companyId: s.companyId, intentId }))!;
+      expect(view.stage).toBe("failed");
+      expect(view.problem).toMatch(/couldn’t confirm whether this went through/);
+      expect(view.problem).not.toMatch(/nothing was charged/i);
+
+      // It did go through after all: the next time Autumn's record is read, the purchase is closed as paid.
+      billing.state.outage = "none";
+      const customer = billing.customerFor(`company_${s.companyId}`);
+      customer.purchased += 500;
+      customer.invoices.push({ id: "in_late", plan_ids: ["credit_top_up"], status: "paid", total: 5, currency: "usd", created_at: Date.now(), hosted_invoice_url: null });
+      await sync(s.t, s.companyId);
+      expect(await s.as.query(api.billing.intent, { companyId: s.companyId, intentId })).toMatchObject({ stage: "done", problem: null });
+    });
+
+    it("still says nothing was charged when billing refused it or was never reached", async () => {
+      const s = await setup();
+      billing.seed(s.companyId, { plan: "operate", grant: 1000 });
+      await sync(s.t, s.companyId);
+      process.env.BILLING_TOP_UP_PACKS = "500";
+      // Unreachable before the price was even shown: nothing was sent.
+      billing.state.outage = "network";
+      const intentId = await s.as.mutation(api.billing.startTopUp, { companyId: s.companyId, credits: 500 });
+      await settle(s.t);
+      expect(await s.as.query(api.billing.intent, { companyId: s.companyId, intentId })).toMatchObject({ stage: "failed", problem: expect.stringContaining("Nothing was charged") });
+      expect(attaches()).toHaveLength(0);
+    });
+  });
+
+  describe("a purchase paid on the payment page", () => {
+    const pending = async (s: Awaited<ReturnType<typeof setup>>) => {
+      const view = await s.as.query(api.billing.planAndUsage, { companyId: s.companyId });
+      return view.connected ? view.pendingIntent : null;
+    };
+    async function start(s: Awaited<ReturnType<typeof setup>>) {
+      process.env.BILLING_TOP_UP_PACKS = "500";
+      const intentId = await s.as.mutation(api.billing.startTopUp, { companyId: s.companyId, credits: 500 });
+      await settle(s.t);
+      await s.as.mutation(api.billing.confirmIntent, { companyId: s.companyId, intentId });
+      await settle(s.t);
+      return intentId;
+    }
+
+    it("is closed once Autumn shows it, and stops being put in front of the Owner", async () => {
+      const s = await setup();
+      billing.seed(s.companyId, { plan: "operate", grant: 1000, cardOnFile: false });
+      await sync(s.t, s.companyId);
+      const intentId = await start(s);
+      expect(await s.as.query(api.billing.intent, { companyId: s.companyId, intentId })).toMatchObject({ stage: "payment_needed" });
+      expect(await pending(s)).toBe(intentId);
+      // Reading Autumn's record before the payment changes nothing.
+      await sync(s.t, s.companyId);
+      expect(await s.as.query(api.billing.intent, { companyId: s.companyId, intentId })).toMatchObject({ stage: "payment_needed" });
+
+      billing.payCheckout(s.companyId);
+      await s.as.mutation(api.billing.refresh, { companyId: s.companyId });
+      await settle(s.t);
+      expect(await s.as.query(api.billing.intent, { companyId: s.companyId, intentId })).toMatchObject({ stage: "done", url: null });
+      expect(await pending(s)).toBeNull();
+      expect(billing.customerFor(`company_${s.companyId}`).purchased).toBe(500);
+    });
+
+    it("closes a plan change the same way, from the plan Autumn reports", async () => {
+      const s = await setup();
+      billing.seed(s.companyId, { plan: null, cardOnFile: false });
+      await sync(s.t, s.companyId);
+      const intentId = await s.as.mutation(api.billing.startPlanChange, { companyId: s.companyId, plan: "operate" });
+      await settle(s.t);
+      await s.as.mutation(api.billing.confirmIntent, { companyId: s.companyId, intentId });
+      await settle(s.t);
+      expect(await s.as.query(api.billing.intent, { companyId: s.companyId, intentId })).toMatchObject({ stage: "payment_needed" });
+      billing.payCheckout(s.companyId);
+      await sync(s.t, s.companyId);
+      expect(await s.as.query(api.billing.intent, { companyId: s.companyId, intentId })).toMatchObject({ stage: "done" });
+      expect((await s.t.run(async (ctx) => ctx.db.get(s.companyId)))?.plan).toBe("operate");
+    });
+
+    it("does not close an abandoned purchase with the invoice of a later one", async () => {
+      const s = await setup();
+      billing.seed(s.companyId, { plan: "operate", grant: 1000, cardOnFile: false });
+      await sync(s.t, s.companyId);
+      const abandoned = await start(s);
+      // The Owner adds a card and buys again; this one is charged directly.
+      billing.customerFor(`company_${s.companyId}`).cardOnFile = true;
+      const paid = await start(s);
+      await sync(s.t, s.companyId);
+      expect(await s.as.query(api.billing.intent, { companyId: s.companyId, intentId: paid })).toMatchObject({ stage: "done" });
+      expect(await s.as.query(api.billing.intent, { companyId: s.companyId, intentId: abandoned })).toMatchObject({ stage: "payment_needed" });
+      expect(billing.customerFor(`company_${s.companyId}`).purchased).toBe(500);
+    });
+
+    it("lets the Owner close a purchase in progress, and forgets one left untouched for half an hour", async () => {
+      const s = await setup();
+      billing.seed(s.companyId, { plan: "operate", grant: 1000, cardOnFile: false });
+      await sync(s.t, s.companyId);
+      process.env.BILLING_TOP_UP_PACKS = "500";
+      // A price that was shown and never confirmed.
+      const previewed = await s.as.mutation(api.billing.startTopUp, { companyId: s.companyId, credits: 500 });
+      await settle(s.t);
+      expect(await pending(s)).toBe(previewed);
+      vi.setSystemTime(NOW + 31 * 60_000);
+      expect(await pending(s)).toBeNull();
+
+      const intentId = await start(s);
+      expect(await pending(s)).toBe(intentId);
+      const other = await company(s.t, "owner-b", "Beta Cleaning");
+      expect(await refusal(other.as.mutation(api.billing.dismissIntent, { companyId: other.companyId, intentId }))).toMatch(/not found/);
+      const manager = await addMember(s.t, s.as, s.companyId, "mgr", "manager");
+      expect(await refusal(manager.mutation(api.billing.dismissIntent, { companyId: s.companyId, intentId }))).toBe(NOT_ALLOWED);
+      await s.as.mutation(api.billing.dismissIntent, { companyId: s.companyId, intentId });
+      expect(await pending(s)).toBeNull();
+      // Closing the dialog is not canceling the purchase: paid later, it still counts.
+      billing.payCheckout(s.companyId);
+      await sync(s.t, s.companyId);
+      expect(await s.as.query(api.billing.intent, { companyId: s.companyId, intentId })).toMatchObject({ stage: "done" });
+    });
+  });
+
   describe("spending controls", () => {
     it("hold back work over the per-run limit, and automatic work over the monthly budget", async () => {
       const s = await setup();
@@ -446,6 +633,29 @@ describe("billing", () => {
       expect(results.chat2).toMatchObject({ ok: false, block: "budget", message: expect.stringContaining("monthly budget") });
       expect(results.auto1).toMatchObject({ ok: true });
       expect(results.auto2).toMatchObject({ ok: false, block: "budget" });
+    });
+
+    it("count work that was opened and has not held its credits yet, so a budget cannot be passed by opening several at once", async () => {
+      const s = await setup();
+      await sync(s.t, s.companyId);
+      await s.as.mutation(api.billing.setSpendingControls, { companyId: s.companyId, maxPerExecution: null, approvalThreshold: null, autonomousMonthly: 2, agentBudgets: { chat: 2 }, lowBalance: null, alertPercents: [80], autoTopUp: { enabled: false } });
+      const results = await s.t.run(async (ctx) => {
+        const { openExecution, finishExecution } = await import("./lib/billing/executions");
+        const company = (await ctx.db.get(s.companyId))!;
+        const open = (key: string) => openExecution(ctx, { company, key, agent: "chat", task: "chat_response_standard", units: 1, autonomous: false });
+        const auto = (key: string) => openExecution(ctx, { company, key, agent: "recruiter", task: "hiring_message_reading", units: 1, autonomous: true });
+        // All opened before any of them has held a credit.
+        const chats = [await open("c1"), await open("c2"), await open("c3")];
+        const autos = [await auto("a1"), await auto("a2"), await auto("a3")];
+        // One that never started stops counting, and its room is free again.
+        await finishExecution(ctx, (chats[0] as { executionId: Id<"aiExecutions"> }).executionId, { ended: "canceled" });
+        return { chats, autos, again: await open("c4"), full: await open("c5") };
+      });
+      expect(results.chats.map((row) => row.ok)).toEqual([true, true, false]);
+      expect(results.chats[2]).toMatchObject({ block: "budget" });
+      expect(results.autos.map((row) => row.ok)).toEqual([true, true, false]);
+      expect(results.again).toMatchObject({ ok: true });
+      expect(results.full).toMatchObject({ ok: false, block: "budget" });
     });
 
     it("alert the Owner once per threshold per period", async () => {

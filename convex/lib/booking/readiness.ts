@@ -46,7 +46,7 @@ export async function readiness(ctx: QueryCtx, company: Doc<"companies">, def: D
   const block = (message: string, fix: Fix, field?: string) => items.push({ severity: "blocker", message, fix, field });
   const warn = (message: string, fix: Fix, field?: string) => items.push({ severity: "warning", message, fix, field });
 
-  if (!verifiedPlan(company)) block("Booking pages need an active Operate or Expand plan.", "billing");
+  if (!verifiedPlan(company)) block("Booking pages need an active plan.", "billing");
   if (!settings.handle) block("Choose your booking address in the booking rules (for example /b/bright-homes).", "booking_rules", "handle");
 
   const shown = def.services.offered.filter((s) => !s.hidden);

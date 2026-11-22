@@ -44,7 +44,7 @@ export const startTopUp = ownerMutation({
     const state = connectedOrRefuse();
     wholeDollars(args.cents, "The amount", TOP_UP_MIN_CENTS, TOP_UP_MAX_CENTS);
     const account = await accountFor(ctx, ctx.companyId, state.env);
-    if (!account?.plan) throw userError("Messaging funds are for companies with an active Operate or Expand plan. Choose a plan first.");
+    if (!account?.plan) throw userError("Messaging funds are for companies with an active plan. Choose a plan first.");
     // $1 buys 10,000 units: the quantity is the units, so the charge is exactly the amount chosen.
     return startIntent(ctx, { kind: "messaging_top_up", planId: AUTUMN.messagingTopUpPlan, quantity: centsToUnits(args.cents), stage: "previewing" });
   },
@@ -71,8 +71,12 @@ export const setAutoTopUp = ownerMutation({
       // The Owner must have seen and accepted exactly these words; anything else is not an authorization.
       if (args.wording !== wording) throw userError("Read and accept the authorization for these exact amounts to turn automatic top-up on.");
       autoTopUp = { enabled: true, threshold, amount, monthlyMax, authorizedAt: now, authorizedBy: ctx.member._id, wording };
+    } else if (controls.autoTopUp.enabled) {
+      // It is on in Autumn until Autumn confirms otherwise, so it stays shown as on until then: the card can
+      // still be charged. The amounts the Owner authorized are left exactly as they were.
+      autoTopUp = { ...controls.autoTopUp, turningOffAt: now };
     } else {
-      autoTopUp = { ...controls.autoTopUp, enabled: false, threshold, amount, monthlyMax };
+      autoTopUp = { ...controls.autoTopUp, enabled: false, threshold, amount, monthlyMax, turningOffAt: undefined };
     }
     await ctx.db.patch(account._id, { messagingControls: { ...controls, autoTopUp } });
     await recordEvent(ctx, { companyId: ctx.companyId, type: args.enabled ? "billing.messaging_auto_topup_authorized" : "billing.messaging_auto_topup_off", actor: byMember(ctx), subject: { table: "billingAccounts", id: account._id }, data: { threshold, amount, monthlyMax } });
@@ -88,6 +92,46 @@ export const autoTopUpTarget = internalQuery({
     const account = await accountFor(ctx, args.companyId, state.env);
     if (!account) return null;
     return { customerId: customerIdFor(args.companyId), autoTopUp: controlsOf(account).autoTopUp };
+  },
+});
+
+/** Turning it off is tried again after these waits when Autumn could not be reached. */
+const OFF_RETRY_MINUTES = [1, 5, 15, 60];
+
+/** Autumn confirmed automatic top-up is off: only now is it shown as off. */
+export const autoTopUpOff = internalMutation({
+  args: { companyId: v.id("companies"), version: v.number() },
+  handler: async (ctx, args) => {
+    const state = connectedOrRefuse();
+    const account = await accountFor(ctx, args.companyId, state.env);
+    if (!account) return;
+    const controls = controlsOf(account);
+    if (controls.autoTopUp.turningOffAt !== args.version) return;
+    await ctx.db.patch(account._id, { messagingControls: { ...controls, autoTopUp: { ...controls.autoTopUp, enabled: false, turningOffAt: undefined } } });
+  },
+});
+
+/**
+ * Autumn did not confirm turning automatic top-up off. It stays shown as on, because the card can still be
+ * charged; the Owner is told, and it is tried again a few times before they are asked to do it again.
+ */
+export const autoTopUpStillOn = internalMutation({
+  args: { companyId: v.id("companies"), version: v.number(), attempt: v.number(), refused: v.boolean() },
+  handler: async (ctx, args) => {
+    const state = connectedOrRefuse();
+    const account = await accountFor(ctx, args.companyId, state.env);
+    if (!account) return;
+    const controls = controlsOf(account);
+    if (controls.autoTopUp.turningOffAt !== args.version) return;
+    const wait = args.refused ? undefined : OFF_RETRY_MINUTES[args.attempt];
+    if (wait !== undefined) {
+      if (args.attempt === 0) await noticeOnce(ctx, account, "messaging_topup_failed", "Automatic top-up could not be turned off yet because billing could not be reached. It is still on, and your card can still be charged. We’re trying again.", { always: true });
+      await ctx.scheduler.runAfter(wait * 60_000, internal.messagingFunds.applyAutoTopUp, { companyId: args.companyId, version: args.version, attempt: args.attempt + 1 });
+      return;
+    }
+    await ctx.db.patch(account._id, { messagingControls: { ...controls, autoTopUp: { ...controls.autoTopUp, turningOffAt: undefined } } });
+    await noticeOnce(ctx, (await ctx.db.get(account._id))!, "messaging_topup_failed", "Automatic top-up is still on: billing did not confirm turning it off. Your card can still be charged. Turn it off again on the Messaging tab, or contact Selestial support.", { always: true });
+    await recordEvent(ctx, { companyId: args.companyId, type: "billing.messaging_auto_topup_off_failed", actor: { kind: "system" }, subject: { table: "billingAccounts", id: account._id } });
   },
 });
 
@@ -108,13 +152,25 @@ export const autoTopUpProblem = internalMutation({
 
 /** Sends the Owner's automatic top-up setting to Autumn. */
 export const applyAutoTopUp = internalAction({
-  args: { companyId: v.id("companies"), version: v.number() },
+  args: { companyId: v.id("companies"), version: v.number(), attempt: v.optional(v.number()) },
   handler: async (ctx, args): Promise<void> => {
     const target = await ctx.runQuery(internal.messagingFunds.autoTopUpTarget, { companyId: args.companyId });
     if (!target) return;
     const a = target.autoTopUp;
-    const answer = await setMessagingAutoTopUp({ customerId: target.customerId, enabled: a.enabled, threshold: a.threshold, quantity: a.amount, perMonth: Math.floor(a.monthlyMax / a.amount) }, `autotopup:${args.companyId}:${args.version}`);
-    if (answer.kind === "ok" || answer.kind === "replayed") return;
+    const attempt = args.attempt ?? 0;
+    const turningOff = a.turningOffAt !== undefined;
+    // A retry of turning it off that the Owner has since replaced with a newer choice has nothing left to do.
+    if (attempt > 0 && a.turningOffAt !== args.version) return;
+    // Each try has its own key: a try that never reached Autumn must not make the next one look already done.
+    const answer = await setMessagingAutoTopUp({ customerId: target.customerId, enabled: a.enabled && !turningOff, threshold: a.threshold, quantity: a.amount, perMonth: Math.floor(a.monthlyMax / a.amount) }, `autotopup:${args.companyId}:${args.version}${attempt ? `:${attempt}` : ""}`);
+    if (answer.kind === "ok" || answer.kind === "replayed") {
+      if (turningOff) await ctx.runMutation(internal.messagingFunds.autoTopUpOff, { companyId: args.companyId, version: a.turningOffAt! });
+      return;
+    }
+    if (turningOff) {
+      await ctx.runMutation(internal.messagingFunds.autoTopUpStillOn, { companyId: args.companyId, version: a.turningOffAt!, attempt, refused: answer.kind === "refused" });
+      return;
+    }
     if (a.enabled) await ctx.runMutation(internal.messagingFunds.autoTopUpProblem, { companyId: args.companyId, problem: answer.kind === "unavailable" ? "Billing could not be reached." : answer.kind === "refused" ? answer.message : "Billing did not confirm it." });
   },
 });

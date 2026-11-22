@@ -58,8 +58,8 @@ export function agentVerdict(company: Pick<Doc<"companies">, "plan">, agent: Age
   const name = AGENT_CATALOG[agent].name;
   if (!agentReleased(agent)) return no("not_released", `${name} is not released yet. No plan or purchase makes it available before then.`);
   const plan = verifiedPlan(company);
-  if (!plan) return no("plan", `${name} needs an active Operate or Expand plan.`);
-  if (!planIncludesAgent(plan, agent)) return no("plan", `${name} is part of the Expand plan. This company is on ${PLANS[plan].name}.`);
+  if (!plan) return no("plan", `${name} needs an active plan.`);
+  if (!planIncludesAgent(plan, agent)) return no("plan", `${name} isn't part of the ${PLANS[plan].name} plan.`);
   return { ok: true };
 }
 
@@ -68,8 +68,8 @@ export function featureVerdict(company: Pick<Doc<"companies">, "plan">, feature:
   const entry = PLAN_FEATURES[feature];
   if (!entry.built) return no("not_released", `${entry.name} is not available yet. No plan or purchase makes it available before then.`);
   const plan = verifiedPlan(company);
-  if (!plan) return no("plan", `${entry.name} needs an active Expand plan.`);
-  if (!planIncludesFeature(plan, feature)) return no("plan", `${entry.name} is part of the Expand plan. This company is on ${PLANS[plan].name}.`);
+  if (!plan) return no("plan", `${entry.name} isn't part of the plan Selestial offers today.`);
+  if (!planIncludesFeature(plan, feature)) return no("plan", `${entry.name} isn't part of the ${PLANS[plan].name} plan.`);
   return { ok: true };
 }
 

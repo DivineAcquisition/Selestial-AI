@@ -64,6 +64,17 @@ async function agentOpportunities(ctx: QueryCtx, companyId: Id<"companies">, ope
   return out;
 }
 
+/**
+ * Who reads customer messages. An AI reader that is connected but has no approved credit rate on the active
+ * rate card cannot be charged for, so it is never called and the company's rules do all the reading. The
+ * readiness row and the overview both say what this says; approving a rate on the rate card changes both.
+ */
+function messageReader(): { reader: string; rate: number | null; reading: "rules" | "ai" } {
+  const reader = salesReaderName();
+  const rate = activeRateCard()?.rates.sales_message_reading ?? null;
+  return { reader, rate, reading: reader !== "rules" && rate !== null ? "ai" : "rules" };
+}
+
 /** What the agent needs connected before it can do each part of its work, and whether each is in place. Never a made-up "ready". */
 export const readiness = companyQuery({
   args: {},
@@ -82,8 +93,7 @@ export const readiness = companyQuery({
       .query("cleaners")
       .withIndex("by_company_status", (q) => q.eq("companyId", ctx.companyId).eq("status", "ready"))
       .take(5);
-    const reader = salesReaderName();
-    const rate = activeRateCard()?.rates.sales_message_reading ?? null;
+    const { reader, rate } = messageReader();
     return [
       { key: "services", label: "Published services", ok: catalog.length > 0, detail: catalog.length > 0 ? `${catalog.length} published. The agent quotes only from these.` : "No service is published, so the agent has nothing to quote from.", href: "/app/services", action: "Open Services & Pricing" },
       { key: "texting", label: "Text messages", ok: textingConnected && smsGaps.length === 0, detail: !textingConnected ? "Texting isn't connected for Selestial yet." : smsGaps.length > 0 ? smsGaps.map((gap) => gap.words).join(" ") : `Sends from ${profile.messaging.smsNumber}.`, href: "/app/texting", action: "Open texting setup" },
@@ -181,7 +191,8 @@ export const overview = companyQuery({
       paused,
       state,
       working: running.length,
-      reader: salesReaderName(),
+      // What reads customer messages in practice: an AI reader only once it is connected and has an approved credit rate.
+      reader: messageReader().reading,
       firstBatch: settings.firstBatchDecidedAt === null ? { decided: false as const, waiting: batchWaiting } : { decided: true as const, at: settings.firstBatchDecidedAt },
       counts: {
         newInquiries: cards.filter((card) => card.stage === "new").length,
