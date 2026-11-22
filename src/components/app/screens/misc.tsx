@@ -47,19 +47,6 @@ export function InsightsScreen() {
   );
 }
 
-export function InboxScreen() {
-  return (
-    <>
-      <PageHeader title="Inbox" lead="One conversation thread per person, shared by every agent, with a way for you to take over." />
-      <NotBuilt
-        title="Conversations are not built yet"
-        body="Texting needs carrier registration for your company, which takes the longest of anything in setup. Until messages can be sent and received, nothing is shown here."
-        points={["Customer and applicant conversations", "One send gate for consent, quiet hours and how often a person was contacted", "Take over a thread; the agent stops the moment you do"]}
-      />
-    </>
-  );
-}
-
 const INVITE_STATE: Record<string, { word: string; variant: "warning" | "outline" | "success" }> = {
   pending: { word: "Waiting to be accepted", variant: "warning" },
   expired: { word: "Expired", variant: "outline" },

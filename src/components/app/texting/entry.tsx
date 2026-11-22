@@ -47,6 +47,15 @@ export function TextingEntry() {
           ? `Texts go out from ${formatPhone(status.phoneNumber)}, under your business's own registration.`
           : status?.step ?? "Get a dedicated number for your cleaning company. Selestial prepares your carrier registration (A2P 10DLC) and tells you when your agents can start texting."}
       </p>
+      {status?.status !== "active" ? (
+        <p className="text-xs text-muted-foreground">
+          Already text from Quo (formerly OpenPhone)?{" "}
+          <Link href="/app/settings/integrations/quo" className="font-medium text-strong underline-offset-2 hover:underline">
+            Connect your Quo account instead
+          </Link>
+          .
+        </p>
+      ) : null}
       {role === "owner" ? (
         <Link href={TEXTING_PATH} className="inline-flex h-9 w-fit items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-sm font-medium text-strong hover:border-brand-500/50 focus-visible:outline-2 focus-visible:outline-brand-500">
           {words.action}

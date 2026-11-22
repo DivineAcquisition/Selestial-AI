@@ -268,6 +268,22 @@ async function retentionCase(ctx: MutationCtx, company: Doc<"companies">, event:
   });
 }
 
+/** Written from the connection as it is when the notice goes: a problem already fixed sends nothing. */
+async function quoAttention(ctx: MutationCtx, company: Doc<"companies">, ref: string | undefined, facts: NoticeFacts | undefined, c: Context): Promise<Built> {
+  const id = ref ? ctx.db.normalizeId("quoConnections", ref) : null;
+  const connection = id ? await ctx.db.get(id) : null;
+  if (!connection || connection.companyId !== company._id) return { problem: "The Quo connection no longer exists." };
+  const kind = str(facts, "kind");
+  const base = { ...c, eyebrow: "Quo", essential: true, because: "you're the Owner, and the Quo connection is part of your account" };
+  const button = { label: "Open the Quo connection", path: "/app/settings/integrations/quo" };
+  if (kind === "disconnected") {
+    if (connection.status !== "disconnected") return { problem: "Quo was connected again." };
+    return alertEmail({ ...base, tone: "warning", subject: "Quo was disconnected from Selestial", heading: "Quo was disconnected", body: "Nothing is sent through your Quo numbers now. Conversations and history are kept, and texts that were waiting won't be sent later. Connect again whenever you're ready.", button });
+  }
+  if (!connection.problem || connection.status === "ready") return { problem: "The Quo problem was already fixed." };
+  return alertEmail({ ...base, tone: "warning", subject: "Quo needs your attention", heading: "Texts through Quo are waiting", body: `${connection.problem.words} Texts through your Quo numbers wait until it's fixed; nothing is sent through another number instead.`, button });
+}
+
 /** Written only while it is still true: the worker is active and their onboarding was approved. */
 async function workerReady(ctx: MutationCtx, company: Doc<"companies">, ref: string | undefined, c: Context): Promise<Built> {
   const id = ref ? ctx.db.normalizeId("cleaners", ref) : null;
@@ -425,6 +441,8 @@ async function build(ctx: MutationCtx, message: Doc<"messages">, company: Doc<"c
       return customerPaymentFailed(ctx, notice.ref, c);
     case "worker_ready":
       return workerReady(ctx, company, notice.ref, c);
+    case "quo_attention":
+      return quoAttention(ctx, company, notice.ref, facts, c);
     case "inbox_reconnect":
       return inboxReconnect(ctx, notice.ref, facts, c);
     case "dispatch_escalation":

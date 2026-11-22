@@ -131,8 +131,10 @@ export type OutboundPlan =
  * plan), held (funds, limits, billing unreachable), or reserved: priced on the card in force now, with its
  * charge recorded and a hold to ask Autumn for.
  */
-export async function planOutbound(ctx: Ctx, message: Message, input: { body: string; viaGmail: boolean; agent?: string; memberId?: Id<"members">; origin?: string }): Promise<OutboundPlan> {
+export async function planOutbound(ctx: Ctx, message: Message, input: { body: string; viaGmail: boolean; viaQuo?: boolean; agent?: string; memberId?: Id<"members">; origin?: string }): Promise<OutboundPlan> {
   if (!meteringOn()) return { kind: "free" };
+  // A text through the company's own Quo account is paid for in Quo, not from Selestial's messaging balance.
+  if (input.viaQuo) return { kind: "free" };
   if (billingClassOf(message.purpose) === "included") return { kind: "free" };
   const channel = message.channel ?? "sms";
   if (channel === "email" && input.viaGmail) return { kind: "free" };

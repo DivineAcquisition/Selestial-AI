@@ -8,6 +8,7 @@
  * board itself is convex/pipeline.ts; quotes and bookings are the workspace's (convex/sales.ts,
  * convex/bookings.ts), which the agent uses too.
  */
+import { newConversationGaps, textingProvider } from "./lib/quo/route";
 import { v } from "convex/values";
 
 import type { Id } from "./_generated/dataModel";
@@ -22,7 +23,6 @@ import { userError } from "./lib/errors";
 import { byMember, recordEvent } from "./lib/events";
 import { emailProvider } from "./lib/messaging/email";
 import { senderGaps } from "./lib/messaging/policy";
-import { messagingProvider } from "./lib/messaging/provider";
 import { isManager, isOwner } from "./lib/roles";
 import { ACTION_WORDS, openActions, quiet } from "./lib/sales/actions";
 import { bookingReadiness } from "./lib/sales/agentBooking";
@@ -80,8 +80,8 @@ export const readiness = companyQuery({
   args: {},
   handler: async (ctx) => {
     const profile = await readProfile(ctx, ctx.companyId);
-    const smsGaps = senderGaps(profile.messaging, "sms");
-    const textingConnected = Boolean(messagingProvider());
+    const smsGaps = await newConversationGaps(ctx, ctx.companyId, senderGaps(profile.messaging, "sms"));
+    const textingConnected = Boolean(await textingProvider(ctx, ctx.companyId, null));
     const emailConnected = Boolean((await ownMailbox(ctx, ctx.companyId)) || emailProvider());
     const emailGaps = senderGaps(profile.messaging, "email");
     const catalog = (await publishedCatalog(ctx, ctx.companyId)).filter((row) => row.service.status === "active");
