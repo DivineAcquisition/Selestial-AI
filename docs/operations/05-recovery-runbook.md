@@ -87,7 +87,7 @@ npx convex run restoration:status
 | Restored rows | Check against | Then |
 |---|---|---|
 | Messages `queued`, `held`, `sending` | Telnyx and Resend logs, and Gmail Sent, after the backup time | Already sent: set the row to sent or delivered in the dashboard's data editor. Not sent: leave them, and note that they will be refused anyway if no longer relevant, since every message is checked again as it goes. |
-| Messages `unconfirmed` | Same | Apply the provider's outcome. Never send again without knowing. |
+| Messages `unconfirmed` | Same | Apply the provider's outcome. Never send again without knowing. Inside 23 hours of the first attempt, a text can be checked under its own key (`docs/operations/02-incidents.md`): only on the restored deployment once it is production, never from a test copy, which sends nothing. |
 | AI and messaging charges `pending_*`, `unverified` | Autumn usage and balances | Confirm or release each hold. Stripe and Autumn honor idempotency keys (Stripe for 24 hours), so retries with the original key are safe. |
 | Texting requests `approved`, `provisioning`, `waiting_on_carriers` | Telnyx numbers, brands, campaigns | Telnyx declares no idempotency on these endpoints: look up by the saved order, brand and campaign references before any retry. |
 | Google jobs `queued`, `running`, `uncertain` | The calendar, Drive or Ads object by its key | The worker reconciles uncertain writes by key before retrying. |

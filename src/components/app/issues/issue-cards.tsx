@@ -80,6 +80,10 @@ function IssueCard({ card }: { card: Card }) {
             <Button render={<Link href={action.href} />} size="sm" variant={card.tone === "action" ? "primary" : "outline"}>
               {action.label}
             </Button>
+          ) : action.kind === "messages" ? (
+            <Button size="sm" variant="primary" aria-expanded={open} aria-controls={detailsId} onClick={() => setOpen(true)}>
+              {action.label}
+            </Button>
           ) : action.kind === "retry" ? (
             role === "owner" ? (
               <Button size="sm" variant="primary" loading={busy} onClick={() => void run(() => retry({ companyId, taskId: action.taskId as Id<"activationTasks"> }))}>
@@ -98,6 +102,7 @@ function IssueCard({ card }: { card: Card }) {
       <FormError message={error} />
       {open ? (
         <div id={detailsId} className="mt-4 grid gap-3 border-t border-border pt-3 text-sm">
+          {action.kind === "messages" ? <UncertainMessages incidentId={card.id as Id<"incidents">} /> : null}
           <ol className="grid gap-1.5">
             {card.updates.map((update, index) => (
               <li key={index} className="flex justify-between gap-3">
@@ -125,6 +130,60 @@ function IssueCard({ card }: { card: Card }) {
         </div>
       ) : null}
     </article>
+  );
+}
+
+/**
+ * "We're checking whether a message was sent": each message (masked, never its words), and the two honest
+ * choices. Checking asks the texting provider under the message's own key: if it went, nothing is sent
+ * again; if it never arrived there, it goes now, after consent and settings are checked again.
+ */
+function UncertainMessages({ incidentId }: { incidentId: Id<"incidents"> }) {
+  const { companyId, timezone } = useCompany();
+  const rows = useQuery(api.operations.uncertainMessages, { companyId, incidentId });
+  const check = useMutation(api.operations.checkMessage);
+  const leave = useMutation(api.operations.leaveMessage);
+  const { busy, error, run } = useRun();
+  if (!rows) return null;
+  if (rows.length === 0) return <p className="text-muted-foreground">Nothing is waiting on a decision.</p>;
+  return (
+    <div className="grid gap-2">
+      <ul className="grid gap-2">
+        {rows.map((row) => (
+          <li key={row.id} className="rounded-xl border border-border px-3 py-2">
+            <p className="text-strong">
+              {row.what} by {row.channel === "email" ? "email" : "text"} to {row.to}
+              <span className="text-muted-foreground"> · tried {when(row.attemptedAt, timezone)}</span>
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {row.checking
+                ? "Checking with the texting provider now."
+                : row.canCheck
+                  ? "Selestial can ask the texting provider whether it went. If it did, nothing is sent again. If it never arrived there, it is sent now, after consent and your settings are checked again."
+                  : "It's too late to check this one with the provider. If it matters, reach the person another way."}
+            </p>
+            {row.checking ? null : (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {row.canCheck ? (
+                  <Button size="xs" variant="outline" loading={busy} onClick={() => void run(() => check({ companyId, messageId: row.id }))}>
+                    Check, and send only if it never went
+                  </Button>
+                ) : null}
+                <Button size="xs" variant="ghost" loading={busy} onClick={() => void run(() => leave({ companyId, messageId: row.id }))}>
+                  Leave it
+                </Button>
+                {row.visit ? (
+                  <Button size="xs" variant="ghost" render={<Link href={`/app/schedule?open=job:${row.visit}`} />}>
+                    View the visit
+                  </Button>
+                ) : null}
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+      <FormError message={error} />
+    </div>
   );
 }
 

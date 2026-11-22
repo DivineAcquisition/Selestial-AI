@@ -18,7 +18,7 @@ retry system.
 | Agent first work | `activations`, `activationTasks` with `leaseUntil`, `attempts` | `activation.sweep` every 5 min retries a step 30 s after its lease runs out, then fails it | Nothing notices if the sweep itself stops; failed tasks are seen only by the owner |
 | Company Chat runs | `chatRuns` with `heartbeatAt` | `chatRuns.sweep` every 2 min closes runs silent for 3 min | Same: no signal if the sweep stops |
 | Agent tasks and takeover | `tasks` (`withPersonSince` = a person holds it), `approvals`, `toolRuns` (idempotency keys) | `approvals.expireDue` every 15 min | Takeover is per task; no conversation-level takeover control (Phase 4) |
-| Messaging outbox | `messages` (`dedupeKey`, `status`, `attempts`, `holdReason`), `providerReceipts` (dedupe by event id, early receipts kept) | `messaging.sweepStuck` every 5 min marks a send that never finished `unconfirmed` and never resends it | Unconfirmed messages are not surfaced anywhere for follow-up |
+| Messaging outbox | `messages` (`dedupeKey`, `status`, `attempts`, `holdReason`), `providerReceipts` (dedupe by event id, early receipts kept) | `messaging.sweepStuck` every 5 min marks a send that never finished `unconfirmed` and never resends it | Unconfirmed messages are not surfaced anywhere for follow-up. Now: an incident, and a check with Telnyx under the message's own key (`02-incidents.md`) |
 | Inbound | `inboundMessages`; webhooks through `providerWebhook` | Providers retry on a 500 | A callback that verifies but throws left no record at all |
 | Owner notifications | `memberNotices` (in-app), `member_notice` messages (email), `lib/notify` catalog, preferences, digest, unsubscribe | Suppression after bounces (`lib/notify/delivery.ts`) | Repeated failures to reach an owner are not seen by staff |
 | Telnyx texting | `textingSetups`, `textingRequests` (status, `needs`, `diagnostics`, `leaseUntil`, attempt timestamps for create calls), `telnyxEvents` | `texting.reconcile` every 30 min reads quiet registrations back; `checkAllActive` daily | Stalled provisioning and "approved but number not attached" are only visible on the Texting staff page |
@@ -86,6 +86,9 @@ a Contact support handoff ([04-owner-recovery.md](04-owner-recovery.md)).
   messaging credits and refunds need `billing.adjust`.
 - Pausing explained to owners where they pause; suspension explained to staff. Both were already rechecked
   at the moment of sending, with refusals final, so resuming never releases a backlog (now tested).
+- A suspension also holds Google writes other people see (review replies, ads going live, conversions):
+  they wait in the queue and run once it is lifted (`convex/googleWork.ts`). Reads and private writes
+  (calendar, Drive) continue.
 - Restore tools (lock-down, status, verify, release) and the backup, restore and rollback runbook
   ([05-recovery-runbook.md](05-recovery-runbook.md)).
 

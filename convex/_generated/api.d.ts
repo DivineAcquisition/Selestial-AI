@@ -317,6 +317,7 @@ import type * as lib_operations_detectors from "../lib/operations/detectors.js";
 import type * as lib_operations_incidents from "../lib/operations/incidents.js";
 import type * as lib_operations_notify from "../lib/operations/notify.js";
 import type * as lib_operations_owner from "../lib/operations/owner.js";
+import type * as lib_operations_reconcile from "../lib/operations/reconcile.js";
 import type * as lib_permissionCatalog from "../lib/permissionCatalog.js";
 import type * as lib_rateLimit from "../lib/rateLimit.js";
 import type * as lib_reconnect from "../lib/reconnect.js";
@@ -831,6 +832,7 @@ declare const fullApi: ApiFromModules<{
   "lib/operations/incidents": typeof lib_operations_incidents;
   "lib/operations/notify": typeof lib_operations_notify;
   "lib/operations/owner": typeof lib_operations_owner;
+  "lib/operations/reconcile": typeof lib_operations_reconcile;
   "lib/permissionCatalog": typeof lib_permissionCatalog;
   "lib/rateLimit": typeof lib_rateLimit;
   "lib/reconnect": typeof lib_reconnect;
