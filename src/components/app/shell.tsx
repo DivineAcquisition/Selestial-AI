@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { Hand, Menu, ScheduleIcon } from "@/components/icons";
+import { PageHeader as SharedPageHeader, useLayoutVariable } from "@/components/app/layout";
 import { Sheet, SheetPopup, SheetTitle } from "@/components/ui/sheet";
 import { linkTo } from "@/lib/app/navigation-helpers";
 import { cn } from "@/lib/utils";
@@ -44,53 +45,68 @@ export function AppShell({
   const [menu, setMenu] = useState(false);
   const approvals = linkTo("approvals");
   const schedule = linkTo("dispatch.schedule");
+  const chrome = useRef<HTMLDivElement>(null);
+  // Sticky toolbars, inspectors and the Settings menu start below the header and any banner under it.
+  useLayoutVariable("--app-chrome-height", chrome);
   return (
     <div className="flex min-h-dvh bg-muted/50">
-      <aside className="sticky top-0 hidden h-dvh w-[17rem] shrink-0 border-r border-border bg-card lg:block">{sidebar()}</aside>
+      <aside aria-label="Navigation" className="sticky top-0 hidden h-dvh w-(--app-sidebar-width) shrink-0 border-r border-border bg-card lg:block">
+        {sidebar()}
+      </aside>
 
       <Sheet open={menu} onOpenChange={setMenu}>
-        <SheetPopup side="left" className="max-w-[19rem] bg-card" showCloseButton={false}>
+        <SheetPopup side="left" className="max-w-[min(19rem,calc(100vw-3rem))] bg-card" showCloseButton={false}>
           <SheetTitle className="sr-only">Menu</SheetTitle>
           {menu ? sidebar(() => setMenu(false)) : null}
         </SheetPopup>
       </Sheet>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex h-14 items-center gap-2 border-b border-border bg-background/90 px-3 backdrop-blur sm:px-6">
-          <button type="button" onClick={() => setMenu(true)} aria-label="Open menu" className="-ml-1 inline-flex size-10 items-center justify-center rounded-lg text-strong hover:bg-muted focus-visible:outline-2 focus-visible:outline-brand-500 lg:hidden">
-            <Menu className="size-5" aria-hidden />
-          </button>
-          <span className="truncate text-sm font-semibold text-strong lg:hidden">{company}</span>
-          <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
-            {assistant}
-            {notices}
-            {schedule ? (
-              <Link href={schedule} aria-label="Schedule" className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 text-sm font-medium text-strong hover:border-brand-500/50 focus-visible:outline-2 focus-visible:outline-brand-500">
-                <ScheduleIcon className="size-4" aria-hidden />
-                <span className="hidden sm:inline">Schedule</span>
-              </Link>
-            ) : null}
-            {approvals ? (
-              <Link
-                href={approvals}
-                aria-label={`Approvals, ${decisionCount ?? 0} waiting`}
-                className={cn(
-                  "inline-flex h-9 items-center gap-1.5 rounded-lg border px-2.5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-brand-500",
-                  decisionCount ? "border-warning/60 bg-warning/10 text-warning-foreground" : "border-border bg-card text-strong hover:border-brand-500/50",
-                )}
-              >
-                <Hand className="size-4" aria-hidden />
-                <span className="hidden sm:inline">Approvals</span>
-                <span className="tabular-nums" aria-label={`${decisionCount ?? 0} waiting`}>
-                  {decisionCount ?? 0}
-                </span>
-              </Link>
-            ) : null}
-            {userSlot}
-          </div>
-        </header>
-        {banner}
-        <main className="mx-auto w-full max-w-[1500px] flex-1 px-3 pt-5 pb-24 sm:px-6 sm:pt-6">{children}</main>
+      {/* With the chat panel open beside the page on a wide screen, the page makes room for it instead of sitting under it. */}
+      <div className="flex min-w-0 flex-1 flex-col xl:pr-(--app-panel-width)">
+        <div ref={chrome} className="sticky top-0 z-header">
+          <header className="flex h-(--app-header-height) items-center gap-2 border-b border-border bg-background/90 px-app-gutter backdrop-blur">
+            <button type="button" onClick={() => setMenu(true)} aria-label="Open menu" className="-ml-1 inline-flex size-10 shrink-0 items-center justify-center rounded-lg text-strong hover:bg-muted focus-visible:outline-2 focus-visible:outline-brand-500 lg:hidden">
+              <Menu className="size-5" aria-hidden />
+            </button>
+            <span title={company} className="min-w-0 truncate text-sm font-semibold text-strong lg:hidden">
+              {company}
+            </span>
+            <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
+              {assistant}
+              {notices}
+              {schedule ? (
+                <Link href={schedule} aria-label="Schedule" className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 text-sm font-medium text-strong hover:border-brand-500/50 focus-visible:outline-2 focus-visible:outline-brand-500">
+                  <ScheduleIcon className="size-4" aria-hidden />
+                  <span className="hidden sm:inline">Schedule</span>
+                </Link>
+              ) : null}
+              {approvals ? (
+                <Link
+                  href={approvals}
+                  aria-label={`Approvals, ${decisionCount ?? 0} waiting`}
+                  className={cn(
+                    "inline-flex h-9 items-center gap-1.5 rounded-lg border px-2.5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-brand-500",
+                    decisionCount ? "border-warning/60 bg-warning/10 text-warning-foreground" : "border-border bg-card text-strong hover:border-brand-500/50",
+                  )}
+                >
+                  <Hand className="size-4" aria-hidden />
+                  <span className="hidden sm:inline">Approvals</span>
+                  <span className="tabular-nums" aria-hidden>
+                    {decisionCount ?? 0}
+                  </span>
+                </Link>
+              ) : null}
+              {userSlot}
+            </div>
+          </header>
+          {banner}
+        </div>
+        {/*
+          The bottom keeps room for the team console, and for a bar fixed to the bottom when a page has one.
+          The page is a size container (@container/main): a layout chooses its columns from the room left
+          after the sidebar and any open panel, not from the width of the screen.
+        */}
+        <main className="@container/main mx-auto w-full max-w-(--app-width-wide) flex-1 px-app-gutter pt-5 pb-[calc(var(--app-dock-clearance)+var(--app-bottom-bar))] sm:pt-6">{children}</main>
       </div>
       {dock}
       {panel}
@@ -98,16 +114,9 @@ export function AppShell({
   );
 }
 
-export function PageHeader({ title, lead, actions }: { title: string; lead?: string; actions?: React.ReactNode }) {
-  return (
-    <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <h1 className="font-heading text-2xl tracking-tight text-strong">{title}</h1>
-        {lead ? <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{lead}</p> : null}
-      </div>
-      {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
-    </div>
-  );
+/** A page's title, purpose and actions. The shared header (layout.tsx) with the space every page puts under it. */
+export function PageHeader({ title, lead, actions, eyebrow, crumbs }: { title: string; lead?: string; actions?: React.ReactNode; eyebrow?: React.ReactNode; crumbs?: readonly { label: string; href?: string | null }[] }) {
+  return <SharedPageHeader title={title} lead={lead} actions={actions} eyebrow={eyebrow} crumbs={crumbs} className="mb-5" />;
 }
 
 export function Panel({ title, action, children, className, flush }: { title?: string; action?: React.ReactNode; children: React.ReactNode; className?: string; flush?: boolean }) {

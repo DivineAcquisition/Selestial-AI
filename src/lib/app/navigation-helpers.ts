@@ -50,6 +50,17 @@ export function allDestinations(): { id: string; label: string; destination: Des
   ];
 }
 
+/**
+ * The work tabs listed beneath an agent in the sidebar. A released agent lists all of them, and marks any
+ * not built yet. An agent that is not released lists only the tabs that really open a page: every other
+ * tab would lead to the same coming-soon page its name already opens, so they are left out. An empty
+ * list means the agent has nothing to expand.
+ */
+export function disclosedTabs(agent: AgentNav): WorkTab[] {
+  if (agent.workflow === "built") return [...agent.tabs];
+  return agent.tabs.filter((tab) => hrefFor(tab) !== null);
+}
+
 // ── Availability and access ─────────────────────────────────────────────────────────────────────────
 
 /**

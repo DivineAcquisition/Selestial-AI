@@ -72,8 +72,11 @@ export const tabPath = (agent: AgentId, tab: string) => `${agentPath(agent)}/${t
 
 // ── Sidebar layout ──────────────────────────────────────────────────────────────────────────────────
 
-/** The sidebar's sections, top to bottom. The order is fixed. */
-export const SIDEBAR_SECTIONS = ["business", "departments", "persistent", "agents", "shared", "footer"] as const;
+/**
+ * The sidebar's sections, top to bottom. The order is fixed. The company-wide shortcuts come before the
+ * department tabs, so the tabs sit directly above the agents they choose between (November 21, 2026).
+ */
+export const SIDEBAR_SECTIONS = ["business", "persistent", "departments", "agents", "shared", "footer"] as const;
 export type SidebarSection = (typeof SIDEBAR_SECTIONS)[number];
 
 /** A new workspace opens with Operations selected in the sidebar, on the Home page. */

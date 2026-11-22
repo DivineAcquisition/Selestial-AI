@@ -124,7 +124,8 @@ export function ChatScreen({ conversationId }: { conversationId: string | null }
   }, [conversationId, setConversationId]);
 
   return (
-    <div className={cn("-mb-20 grid min-h-[calc(100dvh-6.5rem)] gap-0", artifactId ? "lg:grid-cols-[minmax(0,1fr)_minmax(24rem,34rem)] lg:gap-5" : "")}>
+        // The conversation fills the page down to its bottom edge (cancelling the room the shell keeps there), so the composer sits at the bottom.
+    <div className={cn("-mb-[calc(var(--app-dock-clearance)+var(--app-bottom-bar))] grid min-h-[calc(100dvh-var(--app-chrome-height)-1.5rem)] gap-0", artifactId ? "@4xl/main:grid-cols-[minmax(0,1fr)_minmax(24rem,34rem)] @4xl/main:gap-5" : "")}>
       <div className="mx-auto flex w-full max-w-3xl min-w-0 flex-col">
         <Header conversationId={conversationId} />
         <ChatThread
@@ -142,7 +143,7 @@ export function ChatScreen({ conversationId }: { conversationId: string | null }
         )}
       </div>
       {artifactId ? (
-        <div className="fixed inset-0 z-50 flex flex-col lg:sticky lg:top-20 lg:z-auto lg:h-[calc(100dvh-7rem)] lg:overflow-hidden lg:rounded-2xl lg:border lg:border-border">
+        <div className="fixed inset-0 z-modal flex flex-col @4xl/main:sticky @4xl/main:top-app-sticky @4xl/main:z-auto @4xl/main:h-[calc(100dvh-var(--app-sticky-top)-var(--app-sticky-gap))] @4xl/main:overflow-hidden @4xl/main:rounded-2xl @4xl/main:border @4xl/main:border-border">
           <DocumentWorkspace artifactId={artifactId} onClose={() => openArtifact(null)} />
         </div>
       ) : null}

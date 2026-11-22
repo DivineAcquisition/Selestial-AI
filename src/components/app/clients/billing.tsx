@@ -35,7 +35,7 @@ export function BillingTab({ profile }: { profile: Profile }) {
       </p>
       <Amounts billing={billing} />
       <OpeningBalances customerId={profile.id} />
-      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="grid min-w-0 gap-4 @4xl/main:grid-cols-[minmax(0,1fr)_20rem]">
         <Card
           title="Invoices"
           action={

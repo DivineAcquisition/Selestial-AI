@@ -87,7 +87,7 @@ export function DepartmentScreen({ id }: { id: string }) {
     <>
       <PageHeader title={department.name} lead={department.purpose} />
       <div className="grid gap-5">
-        <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+        <div className="grid items-start gap-5 @4xl/main:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
           <Panel title="Summary">
             <p className="text-sm leading-relaxed text-strong">{department.summary}</p>
             <p className={cn(eyebrow, "mt-5")}>Assigned agents</p>

@@ -113,8 +113,9 @@ export function NewCustomerForm({ onDone }: { onDone: () => void }) {
           <TextInput value={form.line2} onChange={set("line2")} autoComplete="address-line2" />
         </Field>
       ) : null}
-      <div className="grid grid-cols-3 gap-3">
-        <Field label="City">
+      {/* The city gets the room; state and postal code are short. On a narrow screen the city has its own line. */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
+        <Field label="City" className="col-span-2 sm:col-span-1">
           <TextInput value={form.city} onChange={set("city")} required />
         </Field>
         <Field label="State">

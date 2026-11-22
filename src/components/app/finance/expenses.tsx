@@ -217,7 +217,7 @@ export function ExpensesTab({ nav }: { nav: Nav }) {
         ))}
       </section>
 
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="grid items-start gap-5 @4xl/main:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <SegmentedControl label="Show" hideLabel density="compact" value={filter} options={FILTERS.map((f) => ({ id: f.id, label: <>{f.label}{f.id in data.counts ? <span className="ml-1.5 text-xs tabular-nums text-muted-foreground">{data.counts[f.id as keyof typeof data.counts]}</span> : null}</> }))} onChange={(id) => nav.set({ filter: id === "review" ? null : id })} />
@@ -256,7 +256,7 @@ export function ExpensesTab({ nav }: { nav: Nav }) {
           {filter === "owed_back" && data.rows.length ? <RepaidBar rows={data.rows} /> : null}
         </div>
 
-        <aside className="grid min-w-0 gap-4 lg:sticky lg:top-20">
+        <aside className="grid min-w-0 gap-4 @4xl/main:sticky @4xl/main:top-app-sticky">
           <CategoryBreakdown data={data} />
           <p className="px-1 text-xs leading-relaxed text-muted-foreground">
             Stripe&apos;s card fees are kept on each payment and cleaner pay is in Team Pay, so neither is entered here. Spent counts recorded expenses by the day they were paid.

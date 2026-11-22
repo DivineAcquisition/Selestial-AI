@@ -43,7 +43,7 @@ function RecordPicker({ onPick, onClose }: { onPick: (record: OfferedRecord & { 
   const loading = customers === undefined || cleaners === undefined || drafts === undefined;
   return (
     <div
-      className="live-enter absolute bottom-full left-0 z-30 mb-2 w-[min(22rem,calc(100vw-2rem))] rounded-xl border border-border bg-card p-2 shadow-xl"
+      className="live-enter absolute bottom-full left-0 z-popover mb-2 w-[min(22rem,calc(100vw-2rem))] rounded-xl border border-border bg-card p-2 shadow-xl"
       onKeyDown={(event) => {
         if (event.key === "Escape") {
           event.stopPropagation();
@@ -95,7 +95,7 @@ function ModelPicker({ value, disabled, onPick }: { value: string | null; disabl
         <ChevronDown className="size-3 shrink-0" aria-hidden />
       </button>
       {open ? (
-        <div role="listbox" aria-label="Choose a model" tabIndex={-1} onKeyDown={(event) => event.key === "Escape" && setOpen(false)} className="live-enter absolute bottom-full left-0 z-30 mb-2 max-h-[min(28rem,60vh)] w-[min(21rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-border bg-card p-1 shadow-xl">
+        <div role="listbox" aria-label="Choose a model" tabIndex={-1} onKeyDown={(event) => event.key === "Escape" && setOpen(false)} className="live-enter absolute bottom-full left-0 z-popover mb-2 max-h-[min(28rem,60vh)] w-[min(21rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-border bg-card p-1 shadow-xl">
           {groups.map((group) => (
             <div key={group.maker} className="py-0.5">
               <p className="px-2.5 pt-1.5 pb-1 text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">{group.name}</p>
@@ -315,7 +315,7 @@ export function Composer({
               <Plus className="size-4" aria-hidden />
             </button>
             {menu === "plus" ? (
-              <ul role="menu" aria-label="Add" className="live-enter absolute bottom-full left-0 z-30 mb-2 grid w-56 gap-0.5 rounded-xl border border-border bg-card p-1 shadow-xl" onKeyDown={(event) => event.key === "Escape" && setMenu("none")}>
+              <ul role="menu" aria-label="Add" className="live-enter absolute bottom-full left-0 z-popover mb-2 grid w-56 gap-0.5 rounded-xl border border-border bg-card p-1 shadow-xl" onKeyDown={(event) => event.key === "Escape" && setMenu("none")}>
                 <li role="none">
                   <button
                     type="button"

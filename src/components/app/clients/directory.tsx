@@ -31,6 +31,7 @@ import { ClientQuickView } from "./quick-view";
 import { ActionMenu } from "./menu";
 import { rememberScroll, takeScroll, useDirectoryState, viewOf, type DirectoryState } from "./state";
 import { Checkbox, Select, tableSelection } from "@/components/ui/selection";
+import { PageHeader } from "@/components/app/layout";
 
 type Overview = FunctionReturnType<typeof api.clients.overview>;
 type Row = FunctionReturnType<typeof api.clients.directory>["page"][number];
@@ -70,12 +71,11 @@ export function ClientsScreen() {
   const filtersOn = [state.rel && state.rel !== "current", state.owner, view === "prospects" || view === "archived"].filter(Boolean).length;
   return (
     <div className="grid gap-5">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="font-heading text-2xl tracking-tight text-strong">Clients &amp; Properties</h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Every client, their properties and the services they have. Sales, Dispatch, Retention, Agreements and Finance all read these same records.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+      <PageHeader
+        title="Clients & Properties"
+        lead="Every client, their properties and the services they have. Sales, Dispatch, Retention, Agreements and Finance all read these same records."
+        actions={
+          <>
           <ActionMenu
             label="Create a booking or proposal"
             className="h-9 rounded-lg border border-border bg-card px-3 text-sm font-medium text-strong hover:bg-muted"
@@ -90,8 +90,9 @@ export function ClientsScreen() {
           <Button variant="primary" onClick={() => setAdding(true)}>
             <Plus aria-hidden /> Add client
           </Button>
-        </div>
-      </header>
+          </>
+        }
+      />
 
       {overview?.needsPrepare ? <PrepareDirectory /> : null}
       <AttentionStrip overview={overview} active={state.attention as Attention | undefined} onPick={(attention) => update({ attention: state.attention === attention ? undefined : attention, view: attention ? "all" : state.view })} />

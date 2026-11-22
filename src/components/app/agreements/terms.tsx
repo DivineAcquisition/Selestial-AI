@@ -15,6 +15,7 @@ import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { Checkbox, cleanerOption, customerOption, propertyOption, SearchableSelect, Select } from "@/components/ui/selection";
 import { EmailInput } from "@/components/ui/fields";
+import { StickyBar } from "@/components/app/layout";
 
 type Section = { group: string; label: string; answered: number; total: number; questions: Q[] };
 
@@ -71,7 +72,7 @@ export function KeyTerms({ detail, editable }: { detail: Detail; editable: boole
         </Panel>
       ))}
       {editable ? (
-        <div className="sticky bottom-3 z-10 grid gap-2 rounded-2xl border border-border bg-card/95 p-3 shadow-sm backdrop-blur">
+        <StickyBar className="grid gap-2 rounded-2xl border border-border bg-card/95 p-3 shadow-sm backdrop-blur">
           <FormError message={error} />
           {held ? (
             <Notice tone="warning">
@@ -87,7 +88,7 @@ export function KeyTerms({ detail, editable }: { detail: Detail; editable: boole
             </Button>
             <span className="text-xs text-muted-foreground">Each save is a new version. Earlier versions are kept and can be compared.</span>
           </div>
-        </div>
+        </StickyBar>
       ) : null}
       <Panel title="Assumptions you confirmed">
         {detail.assumptions.length ? (

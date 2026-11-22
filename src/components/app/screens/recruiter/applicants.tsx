@@ -59,7 +59,7 @@ export function ApplicantsScreen() {
       <Panel className="mb-5">
         <PipelineFlow counts={counts} selected={step} onSelect={(index) => setStep(step === index ? null : index)} />
       </Panel>
-      <div className={cn("grid items-start gap-5", openId ? "xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]" : "")}>
+      <div className={cn("grid items-start gap-5", openId ? "@4xl/main:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]" : "")}>
         <Panel
           title={`${showClosed ? "Closed" : step === null ? "In the pipeline" : STEPS[step].label} · ${list.length}`}
           flush

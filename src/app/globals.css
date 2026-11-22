@@ -359,7 +359,10 @@
     scroll-behavior: smooth;
     -webkit-text-size-adjust: 100%;
     text-rendering: optimizeLegibility;
-    scroll-padding-top: 6rem;
+    /* An anchor or a focused field is brought into view below the header and any sticky toolbar, and above
+       a bar fixed to the bottom (globals.css, "Application layout"). */
+    scroll-padding-top: max(6rem, var(--app-sticky-top));
+    scroll-padding-bottom: calc(var(--app-bottom-bar) + 1rem);
     @apply font-sans;
   }
 
@@ -3039,5 +3042,134 @@ textarea.bk-input {
   }
   details[open] > summary:not(.list-none)::after {
     transform: rotate(180deg);
+  }
+}
+
+/*
+ * Application layout. The frame every signed-in page sits in is measured in these, once, so the sidebar,
+ * the header, sticky toolbars, inspectors, bottom bars and the team console agree with each other
+ * instead of each guessing a number. docs/foundation/07-layout.md explains them.
+ *
+ * Three are written by the shell while it runs, from what is actually on screen:
+ *   --app-chrome-height  the header plus any banner under it. Sticky things start below it.
+ *   --app-toolbar-height a page's own sticky toolbar, under the header (0 when the page has none).
+ *   --app-bottom-bar     the height of a bar fixed to the bottom of the screen (0 when there is none).
+ *   --app-dock-lift      how far the team console must rise to clear a sticky save bar (0 when none).
+ *   --app-panel-width    the chat panel's width while it is open beside the page (0 when closed).
+ */
+:root {
+  --app-sidebar-width: 17rem;
+  --app-header-height: 3.5rem;
+  --app-chrome-height: var(--app-header-height);
+  --app-gutter: 0.75rem;
+  --app-sticky-gap: 1rem;
+  --app-toolbar-height: 0px;
+  --app-sticky-top: calc(var(--app-chrome-height) + var(--app-toolbar-height) + var(--app-sticky-gap));
+  --app-bottom-bar: 0px;
+  --app-dock-lift: 0px;
+  --app-dock-size: 3rem;
+  --app-dock-offset: 0.75rem;
+  /* Room kept under the last row of a page so the team console never sits on it. */
+  --app-dock-clearance: calc(var(--app-dock-size) + var(--app-dock-offset) * 2);
+  --app-panel-width: 0px;
+  /* Content widths: a focused form, a record, and the widest a workspace grows. */
+  --app-width-focused: 52rem;
+  --app-width-detail: 72rem;
+  --app-width-wide: 93.75rem;
+}
+@media (min-width: 40rem) {
+  :root {
+    --app-gutter: 1.5rem;
+    --app-dock-offset: 1.25rem;
+  }
+}
+
+/*
+ * Overlay layers, lowest first. Every floating thing takes one of these instead of its own number, so
+ * a collision is fixed by choosing the right layer, never by a bigger z-index.
+ *
+ *   raised    sticky within a section: a table header, a card's footer
+ *   sticky    a page's own sticky toolbar or save bar
+ *   header    the application header
+ *   floating  the team console and bars fixed to the bottom of the screen
+ *   panel     the chat panel beside the page (not modal)
+ *   modal     dialogs, sheets and drawers, with their backdrop
+ *   popover   select lists, menus, popovers and suggestions: above a modal so they work inside one
+ *   alert     a confirmation that interrupts everything, including an open menu
+ */
+@utility z-raised {
+  z-index: 10;
+}
+@utility z-sticky {
+  z-index: 20;
+}
+@utility z-header {
+  z-index: 30;
+}
+@utility z-floating {
+  z-index: 40;
+}
+@utility z-panel {
+  z-index: 45;
+}
+@utility z-modal {
+  z-index: 50;
+}
+@utility z-popover {
+  z-index: 60;
+}
+@utility z-alert {
+  z-index: 70;
+}
+
+/* A page toolbar sticks only on a screen tall enough to spare the room (not a phone on its side, not 200% zoom). */
+@custom-variant tall (@media (min-height: 36rem));
+
+/* Sticky offsets: below the header and banner, with a little air. */
+@utility top-app-chrome {
+  top: var(--app-chrome-height);
+}
+@utility top-app-sticky {
+  top: var(--app-sticky-top);
+}
+/* The tallest a sticky inspector may be, so its own scroll reaches its last line. */
+@utility max-h-app-sticky {
+  max-height: calc(100dvh - var(--app-sticky-top) - var(--app-sticky-gap) - var(--app-bottom-bar));
+}
+/* Page gutters, and the way out of them for a full-bleed toolbar or footer. */
+@utility px-app-gutter {
+  padding-inline: var(--app-gutter);
+}
+@utility -mx-app-gutter {
+  margin-inline: calc(var(--app-gutter) * -1);
+}
+/* A bar fixed to the bottom starts where the sidebar ends, never underneath it. */
+@utility left-app-content {
+  left: 0;
+  @media (min-width: 64rem) {
+    left: var(--app-sidebar-width);
+  }
+}
+@utility right-app-content {
+  right: 0;
+  @media (min-width: 80rem) {
+    right: var(--app-panel-width);
+  }
+}
+
+/*
+ * Fields in a row line up. In a grid made only of fields, each field takes three shared rows (label,
+ * control, words beneath), so a label that wraps or a hint under one field never pushes its neighbour's
+ * control out of line. A grid with anything else in it is left alone.
+ */
+@layer components {
+  .grid:not(:has(> :not([data-field]))) > [data-field] {
+    grid-row: span 3;
+    grid-template-rows: subgrid;
+    row-gap: 0;
+  }
+  .grid:not(:has(> :not([data-field]))) > [data-field] > [data-field-label] {
+    grid-row: span 2;
+    grid-template-rows: subgrid;
   }
 }
