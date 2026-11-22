@@ -55,6 +55,10 @@ tab's session storage, so other tabs, including the staff console and other supp
 company. Changing a company id in the browser does nothing: the server refuses a session used for any
 company but its own, and staff outside a session are not members of any company.
 
+Paginated reads (`usePaginatedQuery`, for example the activity log and the chat list) carry the session
+too. `convex/reconcile.test.ts` fails the build if any public function that takes a `companyId` does not
+also take `supportSessionId`, so a new company function can never be reached outside the session's rules.
+
 ### Closed by default
 
 A support session can change only what a function explicitly opens to it. Opened today:

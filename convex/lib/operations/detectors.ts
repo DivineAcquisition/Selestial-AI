@@ -7,6 +7,7 @@
  * says whether the condition is there. The same `evaluate` is what closes an incident: an incident
  * closes only when every record it names is evaluated again and none still shows the condition.
  */
+import { reconcilable } from "./reconcile";
 import type { Doc, Id, TableNames } from "../../_generated/dataModel";
 import type { QueryCtx } from "../../_generated/server";
 import { maskAddress } from "../cleaners/portal";
@@ -178,13 +179,27 @@ const uncertainMessages: Detector = {
       .withIndex("by_status_attempted", (q) => q.eq("status", "unconfirmed"))
       .order("desc")
       .take(200);
-    return rows.filter((row) => row.purpose !== "member_notice").map((row) => ref("messages", row._id));
+    // One being checked with the provider (lib/operations/reconcile.ts) is still unsettled until the check answers.
+    const checking = [];
+    for (const status of ["queued", "sending"] as const) {
+      const queued = await ctx.db
+        .query("messages")
+        .withIndex("by_status_attempted", (q) => q.eq("status", status))
+        .order("desc")
+        .take(200);
+      checking.push(...queued.filter((row) => row.reconcile !== undefined));
+    }
+    // A message a person chose to leave is no longer tracked.
+    return [...rows, ...checking].filter((row) => row.purpose !== "member_notice" && row.reviewedAt === undefined).map((row) => ref("messages", row._id));
   },
   async evaluate(ctx, source, now) {
     const message = await load(ctx, "messages", source);
-    if (!message || message.status !== "unconfirmed" || message.purpose === "member_notice") return null;
+    const unsettled = message && (message.status === "unconfirmed" || (message.reconcile !== undefined && (message.status === "queued" || message.status === "sending")));
+    if (!message || !unsettled || message.purpose === "member_notice" || message.reviewedAt !== undefined) return null;
     const since = message.attemptedAt ?? message.queuedAt;
-    const waiting = now - since < RECEIPT_WAIT;
+    // Waiting for the delivery report, or being checked with the provider under its own key (lib/operations/reconcile.ts).
+    const checkable = reconcilable(message, now);
+    const waiting = now - since < RECEIPT_WAIT || message.reconcile !== undefined;
     const route = message.sentVia ?? message.provider;
     return {
       key: `message_unconfirmed:${message.companyId}`,
@@ -197,8 +212,10 @@ const uncertainMessages: Detector = {
       title: "A message's delivery is not confirmed",
       impact: "It is not known whether one message reached its recipient. It is not being sent again.",
       nextAction: waiting
-        ? "Waiting for the provider's delivery report, which settles it either way."
-        : "No delivery report arrived. Look the message up at the provider before anyone sends it again.",
+        ? "Waiting for the provider's delivery report, or for the check under the message's own key; either settles it."
+        : checkable
+          ? "No delivery report arrived. The company (or support) can check with Telnyx under the message's key: a replay means it went, nothing is sent twice."
+          : "No delivery report arrived and the provider's replay window has passed. Look the message up at the provider before anyone sends it again.",
       diagnostics: `message ${message._id} (${message.purpose}, ${message.channel ?? "sms"} via ${route ?? "unknown"}${message.providerMessageId ? `, provider id ${message.providerMessageId}` : ", no provider id"})`,
       source,
       since,

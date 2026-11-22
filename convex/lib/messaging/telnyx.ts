@@ -1,6 +1,8 @@
 /**
  * Telnyx, for texts. Sending is one request with an Idempotency-Key, so a retry of the same message is
- * the same message at Telnyx. Webhooks are Ed25519-signed over "{timestamp}|{raw body}" and are refused
+ * the same message at Telnyx. Verified on November 21, 2026 in Telnyx's OpenAPI for POST /v2/messages: a
+ * successful response is replayed for 24 hours with `Idempotent-Replayed: true`; the same key still in
+ * progress is 409 (10036); the same key with a different body is 422; errors are not replayed. Webhooks are Ed25519-signed over "{timestamp}|{raw body}" and are refused
  * when the signature does not verify or the timestamp is more than five minutes from now.
  *
  * Settings on the deployment: TELNYX_API_KEY (the API v2 key), TELNYX_PUBLIC_KEY (the account's webhook
@@ -70,8 +72,14 @@ export function telnyxProvider(fetcher: typeof fetch = fetch): MessagingProvider
         // Telnyx takes the message here. Whether the phone got it arrives later, by webhook.
         // `parts` is Telnyx's billable segment count for this text, after any smart encoding. It is what the text is charged on.
         const parts = typeof data.parts === "number" && Number.isInteger(data.parts) && data.parts > 0 ? data.parts : undefined;
-        return { ok: true, providerMessageId: data.id, delivered: data.to?.[0]?.status === "delivered", ...(parts ? { parts } : {}) };
+        // A repeat of a key Telnyx already answered successfully is replayed, not sent again (verified in its OpenAPI, November 21, 2026).
+        const replayed = response.headers.get("idempotent-replayed")?.trim().toLowerCase() === "true";
+        return { ok: true, providerMessageId: data.id, delivered: data.to?.[0]?.status === "delivered", ...(parts ? { parts } : {}), ...(replayed ? { replayed: true } : {}) };
       }
+      // An earlier request with this key is still being worked on at Telnyx (10036): ask again later with the same key.
+      if (response.status === 409) return { ok: false, retryable: true, problem: "Telnyx is still working on an earlier attempt of this text. It will be checked again." };
+      // Telnyx holds a different request under this key, so the first attempt reached it. Not failed, and not sent again.
+      if (response.status === 422) return { ok: false, retryable: false, uncertain: true, problem: "Telnyx already has an earlier attempt of this text under its key, with different wording, so it was not sent again. It most likely went the first time." };
       const code = (json as { errors?: { code?: unknown }[] } | null)?.errors?.[0]?.code;
       const known = typeof code === "string" ? ERRORS[code] : undefined;
       if (known) return { ok: false, ...known };

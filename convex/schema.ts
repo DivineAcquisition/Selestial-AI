@@ -789,6 +789,17 @@ export default defineSchema({
     sentAt: v.optional(v.number()),
     deliveredAt: v.optional(v.number()),
     failedAt: v.optional(v.number()),
+    /**
+     * An unconfirmed text being checked with the provider under its own idempotency key
+     * (convex/lib/operations/reconcile.ts). `deadline` is inside the provider's replay window from the
+     * first attempt: past it, nothing is sent. `by` names who asked, and the support session if one did.
+     */
+    reconcile: v.optional(v.object({ requestedAt: v.number(), deadline: v.number(), by: v.string() })),
+    /** Telnyx answered a reconciliation with the response it stored: the original send had been accepted. */
+    replayedAt: v.optional(v.number()),
+    /** A person looked at an unconfirmed message and chose to leave it. It is not checked or tracked again. */
+    reviewedAt: v.optional(v.number()),
+    reviewedBy: v.optional(v.string()),
   })
     .index("by_company_dedupe", ["companyId", "dedupeKey"])
     .index("by_company_assignment", ["companyId", "assignmentId"])

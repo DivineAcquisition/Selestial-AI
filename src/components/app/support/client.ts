@@ -3,7 +3,7 @@
 import { ConvexReactClient } from "convex/react";
 
 /** The calls the record hooks make whose arguments carry the company. */
-const BOUND = new Set<PropertyKey>(["watchQuery", "mutation", "action", "query"]);
+const BOUND = new Set<PropertyKey>(["watchQuery", "watchPaginatedQuery", "mutation", "action", "query"]);
 
 /**
  * The record client for one Admin Support Session (docs/operations/03-support-sessions.md). It adds the
