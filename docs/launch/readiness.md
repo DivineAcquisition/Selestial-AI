@@ -23,6 +23,19 @@ Nothing in this record is marked passed on the strength of a mock, a screenshot 
 | **Assisted pilot** (you onboard each company, watch it daily) | **Not ready yet. Ready once the six "Before the first pilot company" actions below are done** and this branch is merged. | The code gates are closed and tested, but no money, text or mailbox journey has been run against a real provider from this work, the Stripe webhooks could not be found, and nothing outside Selestial watches the monitoring. |
 | **Unrestricted self-service** | **Not ready.** | Google restricted-scope verification for Gmail, real Indeed/ZipRecruiter samples, live Telnyx registration and release, a restore rehearsal, a test backend with test keys, and the $199 offer terms are all outstanding. |
 
+## Decisions recorded (November 22, 2026, by the Owner)
+
+| Question | Decision | What follows |
+|---|---|---|
+| Which Stripe account Selestial bills from | A Selestial account, not the one this work could reach. The Owner has added the webhook there. | Confirm in that dashboard that both `/webhooks/stripe-billing` and `/webhooks/stripe` (connected accounts) point at `stoic-gazelle-731.convex.site` and their signing secrets are set on that deployment. Then the unpaid-plan lock and payment reconciliation can be exercised. |
+| $199 offer: duration | $199 a month for the first 12 months, then $299. | To build. |
+| $199 offer: eligibility | The first 15 companies whose first plan payment succeeds. A sign-up that never pays does not use a place. | To build. |
+| $199 offer: after 12 months | Moves to $299 automatically, with an email and in-app notice about 30 days before. | To build. |
+| $199 offer: cancel and return | $299 on return. The place is not handed to anyone else. | To build. |
+| Messaging charges | On for all users. No company is live yet, so no notice period is needed. | Switch-on is one setting on `stoic-gazelle-731` (`MESSAGING_BILLING`); to be done with the Owner's approval of that exact step, after the Autumn catalog holds `messaging_balance` and `messaging_top_up`. |
+| Sales message reading | Approved at 1 credit per customer message read by AI (same as a hiring email read by AI). | Rate card `2026-11c` added; takes effect when `BILLING_RATE_CARD` is set to `2026-11c` on production. |
+| Company deletion vs. the 90-day promise | Both: build a staff-run deletion that honors 90 days and keeps legally required records, and have counsel tighten the wording on what is retained. | To build; wording to counsel (docs/operations/07-account-closure.md). |
+
 ## Environments (verified November 22, 2026)
 
 | Fact | Evidence | State |
@@ -163,7 +176,8 @@ Each gate: customer outcome · what exists (files) · what this work changed · 
 - **Path:** Sales calls the AI reader only when `SALES_MODEL=claude`, a key is set and a credit hold is verified. `sales_message_reading` has **no approved rate** on either production rate card (`convex/lib/billing/rateCards.ts`), so no hold can be made and the deterministic rules read every message.
 - **Fixed here:** the Sales overview said "An AI reader reads customer messages" whenever the model was configured. It now says rules or AI truthfully, from the same data as the readiness row. Staff see unapproved rates on `/staff/operations`.
 - **Prepared:** a test confirms that approving a rate on the rate card switches reading to AI with no code change. No rate was invented or borrowed.
-- **Remaining:** **pricing decision: approve a credit rate for Sales message reading, or keep rules-based reading for launch (owner action 9).**
+- **Decided:** 1 credit per message read by AI, on new rate card `2026-11c` (published cards are never edited). Rules-read messages stay free.
+- **Remaining:** set `BILLING_RATE_CARD=2026-11c` on production; then confirm in an Autumn sandbox run that one AI-read message holds and charges 1 credit. **Owner (setting) + engineer (sandbox run).**
 
 ### 11. Offer accuracy
 
@@ -253,18 +267,18 @@ These are what the code assumes. Each is from documentation and a fake, not from
 
 In priority order. The first six are required before the first pilot company.
 
-1. **Stripe webhooks (blocks billing lock and customer payments).** Stripe Dashboard › the account Selestial bills from › Developers › Webhooks. Confirm two live endpoints exist and are enabled: `https://stoic-gazelle-731.convex.site/webhooks/stripe-billing` (events `invoice.payment_failed`, `invoice.paid`, `invoice.voided`, `invoice.marked_uncollectible`, `charge.refunded`) and `https://stoic-gazelle-731.convex.site/webhooks/stripe` with "Listen to events on connected accounts" (payment intent, charge, refund, dispute and `account.updated` events). Copy each signing secret to the matching setting on `stoic-gazelle-731` (`STRIPE_BILLING_WEBHOOK_SECRET`, and the Connect webhook secret). Tell me which Stripe account it is; the one I could reach has neither.
-2. **Decide the $199 offer.** Duration (for example, for as long as they stay subscribed, or the first N months), eligibility (first 15 paid subscriptions, or first 15 sign-ups), and what happens on cancel-and-return. I will then build it in Autumn and the app.
+1. **Stripe webhooks (you've added one; confirm both).** Stripe Dashboard › the Selestial account › Developers › Webhooks. Confirm two live endpoints exist and are enabled: `https://stoic-gazelle-731.convex.site/webhooks/stripe-billing` (events `invoice.payment_failed`, `invoice.paid`, `invoice.voided`, `invoice.marked_uncollectible`, `charge.refunded`) and `https://stoic-gazelle-731.convex.site/webhooks/stripe` with "Listen to events on connected accounts" (payment intent, charge, refund, dispute and `account.updated` events). Copy each signing secret to the matching setting on `stoic-gazelle-731` (`STRIPE_BILLING_WEBHOOK_SECRET`, and the Connect webhook secret). Tell me which Stripe account it is; the one I could reach has neither.
+2. ~~Decide the $199 offer~~ Decided (see "Decisions recorded"). Being built.
 3. **Make a real test backend.** Follow `docs/foundation/06-deployments.md` "One-time setup": test keys for Stripe, Autumn and Resend, a development Clerk issuer, and `TEST_RECIPIENTS` set to your own email and phone. Give Vercel Preview that backend's address. This unlocks the sandbox runs and the signed-in walkthrough.
 4. **Remove the duplicate DMARC record.** At your DNS host, `_dmarc.selestial.io` has two TXT records. Delete one, leaving a single `v=DMARC1; p=none; rua=mailto:<an inbox you read>`.
-5. **Messaging charges.** After merge, open `/staff/operations` › Readiness. If it says OFF and that is intended for the pilot, set `MESSAGING_BILLING_SUBSIDY_NOTE` on `stoic-gazelle-731` (for example "Pilot: free messaging through <date>, approved by <name>"). If not, tell me and I will prepare the switch-on with notice to existing users.
+5. **Messaging charges: decided ON for all users.** Before switching, the Autumn catalog must hold the messaging balance (`cd billing && npx atmn push` preview, with Expand kept). Then approve the one step: set `MESSAGING_BILLING=on` on `stoic-gazelle-731`.
 6. **Approve one live texting registration** for the first pilot company (Telnyx brand and campaign fees, one number), and confirm the controlled phone number to test with. I will not file or buy anything without this.
 7. **Google Cloud › APIs & Services › OAuth consent screen:** report the publishing status and whether `gmail.readonly` verification has been submitted. If "Testing", add each pilot mailbox as a test user.
 8. **Send real Indeed and ZipRecruiter application notifications** (3–5 each, with headers), following `docs/recruiter/07-real-samples.md`.
-9. **Sales message reading:** approve a credit rate, or confirm rules-based reading for launch.
+9. ~~Sales message reading~~ Decided: 1 credit. Set `BILLING_RATE_CARD=2026-11c` on `stoic-gazelle-731` (Convex Dashboard › Settings › Environment Variables).
 10. **Uptime monitor:** in any uptime service, add an HTTPS check on `https://stoic-gazelle-731.convex.site/health` every 1–5 minutes, alerting a phone on any non-200 or timeout (`docs/operations/06-heartbeat.md`).
 11. **Backups:** Convex Dashboard › `stoic-gazelle-731` › Backups: confirm a daily backup **including file storage** is on, then schedule the restore rehearsal with me.
-12. **Privacy promises:** read the gap list in `docs/operations/07-account-closure.md` with counsel and decide.
+12. **Privacy wording:** decided "both". Deletion is being built; take the gap list in `docs/operations/07-account-closure.md` to counsel for the retention wording.
 13. **Branch protection:** GitHub › Settings › Branches › add a rule for `main` (settings in `docs/launch/release-checks.md`).
 
 ## Open issues carried forward

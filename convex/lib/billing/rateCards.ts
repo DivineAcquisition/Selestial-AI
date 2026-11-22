@@ -188,6 +188,34 @@ export const RATE_CARDS: readonly RateCard[] = [
     },
     startingAt: { video_generation: true },
   },
+  {
+    version: "2026-11c",
+    fixture: false,
+    note: "The 2026-11b rates unchanged, plus Sales message reading at 1 credit (the same as a hiring email read by AI), approved by the owner on November 22, 2026. Put in force by setting BILLING_RATE_CARD to 2026-11c.",
+    rates: {
+      chat_response_standard: 1,
+      chat_response_advanced: 5,
+      hiring_message_reading: 1,
+      image_generation: 20,
+      image_edit: 15,
+      video_generation: 200,
+      applicant_evaluation: null,
+      follow_up_draft: null,
+      dispatch_exception_analysis: null,
+      retention_assessment: null,
+      agreement_draft: null,
+      campaign_generation: null,
+      research_brief: 10,
+      /** One customer message read by the AI reader. Messages the rules settle alone, and mail Sales ignores, are not charged. */
+      sales_message_reading: 1,
+    },
+    specs: {
+      image_generation: { sizes: ["1024x1024"], fastAllowed: false, describe: "Standard quality, 1024 × 1024, one image per charge." },
+      image_edit: { sizes: ["1024x1024"], describe: "Standard quality, 1024 × 1024, one edited image per charge." },
+      video_generation: { durations: [6], describe: "One 6-second clip at the standard resolution with the model's default audio. Other lengths have no published price yet." },
+    },
+    startingAt: { video_generation: true },
+  },
 ];
 
 export function rateCard(version: string | undefined): RateCard | null {
