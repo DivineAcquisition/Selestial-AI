@@ -47,7 +47,8 @@ describe("public pricing", () => {
   it("states the offer honestly under the $299 plan and never promises a trial", () => {
     const [operate] = PRICING.plans;
     expect(operate.price).toBe("$299");
-    expect(operate.offer).toBe("Early-user offer: the first 15 companies pay $199 a month for their first 12 months, then $299. While places last.");
+    // Who, how much, for how long and the price after, all on the card (shown only while the offer is switched on).
+    expect(operate.offer).toEqual({ price: "$199", period: "/month", terms: "for your first 12 months, then $299", note: "For the first 15 companies. While places last." });
     expect(JSON.stringify(PRICING)).not.toMatch(TRIAL);
   });
 });

@@ -14,6 +14,8 @@ beforeEach(() => {
   billing = fakeAutumn();
   process.env.AUTUMN_SECRET_KEY = "am_sk_test_fake_key_for_tests";
   process.env.BILLING_RATE_CARD = "fixture-2026-11";
+  // The early-user offer's switch (convex/lib/billing/earlyOffer.ts): on in tests, so the offer is exercised.
+  process.env.EARLY_OFFER = "on";
   setAutumnTransportForTests(billing.fetch);
 });
 
@@ -22,4 +24,5 @@ afterEach(() => {
   delete process.env.AUTUMN_SECRET_KEY;
   delete process.env.BILLING_RATE_CARD;
   delete process.env.BILLING_TOP_UP_PACKS;
+  delete process.env.EARLY_OFFER;
 });

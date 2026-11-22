@@ -282,6 +282,21 @@ describe("billing", () => {
       expect(await refusal(s.as.mutation(api.creative.generate, { companyId: s.companyId, kind: "image_generate", prompt: "A tidy kitchen", params: {} }))).toMatch(/isn't part of the Operate plan/);
     });
 
+    it("sells $299 to everyone while the early-user offer is switched off, so no purchase names a plan Autumn may not have", async () => {
+      delete process.env.EARLY_OFFER;
+      const s = await setup();
+      billing.seed(s.companyId, { plan: null });
+      await sync(s.t, s.companyId);
+      const intentId = await s.as.mutation(api.billing.startPlanChange, { companyId: s.companyId, plan: "operate" });
+      await settle(s.t);
+      await s.as.mutation(api.billing.confirmIntent, { companyId: s.companyId, intentId });
+      await settle(s.t);
+      const attach = billing.state.calls.filter((call) => call.path === "/v1/billing.attach");
+      expect(attach).toHaveLength(1);
+      expect(attach[0]).toMatchObject({ body: { plan_id: "operate" } });
+      expect(await s.t.run((ctx) => ctx.db.query("earlyOffers").collect())).toEqual([]);
+    });
+
     it("sells only the plan on sale: Expand cannot be newly bought, and a company already on it keeps it", async () => {
       const s = await setup();
       billing.seed(s.companyId, { plan: "operate", grant: 1000 });

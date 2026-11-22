@@ -330,46 +330,72 @@ function Comparison({ catalog, current, canBuy }: { catalog: Data["catalog"]; cu
   return (
     <Panel title="Plans">
       <p className="mb-3 text-sm text-muted-foreground">{catalog.plans.length > 1 ? "Your plan, and the plan Selestial offers today." : "One plan, with four agents that work today."}</p>
-      {canBuy && !current ? (
-        <div className="mb-4 max-w-xl">
-          <EarlyOfferNote offer={offer} />
-        </div>
-      ) : null}
       {intentId ? <IntentDialog intentId={intentId} onClose={() => setIntentId(null)} /> : null}
-      <div className={catalog.plans.length > 1 ? "grid gap-4 md:grid-cols-2" : "grid max-w-xl gap-4"}>
+      <div className={catalog.plans.length > 1 ? "grid gap-4 md:grid-cols-2" : "grid max-w-2xl gap-4"}>
         {catalog.plans.map((plan) => {
           const mine = current === plan.id;
+          const buying = canBuy && !current && plan.onSale;
           const agents = catalog.agents.filter((row) => (plan.id === "expand" ? row.expand : row.operate));
+          const working = agents.filter((row) => row.released);
+          const later = agents.filter((row) => !row.released);
           return (
-            <section key={plan.id} className={`relative flex flex-col overflow-hidden rounded-2xl border bg-card p-5 ${mine ? "border-brand-500/50" : "border-border"}`}>
-              {mine ? <BorderBeam size={90} duration={8} colorFrom="#6838ef" colorTo="#b39eff" borderWidth={2} /> : null}
-              {plan.id === "expand" ? <div aria-hidden className="pointer-events-none absolute -top-16 -right-12 size-40 rounded-full bg-brand-500/10 blur-3xl" /> : null}
-              <div className="relative flex items-start justify-between gap-2">
-                <h3 className="font-heading text-xl tracking-tight text-strong">{plan.name}</h3>
-                {mine ? <span className="rounded-full bg-brand-500/10 px-2 py-0.5 text-xs font-medium text-brand-600 ring-1 ring-brand-500/25">Your plan</span> : null}
+            <section
+              key={plan.id}
+              aria-labelledby={`plan-card-${plan.id}`}
+              className={`relative flex flex-col overflow-hidden rounded-3xl border bg-card shadow-[0_24px_60px_-36px_rgba(104,56,239,0.5)] ${mine || buying ? "border-brand-500/40" : "border-border"}`}
+            >
+              {mine || buying ? <BorderBeam size={110} duration={9} colorFrom="#6838ef" colorTo="#b39eff" borderWidth={1.5} /> : null}
+              {/* Header: name, price and what it is for, on a soft brand wash. */}
+              <div className="relative overflow-hidden border-b border-brand-500/15 bg-gradient-to-br from-brand-500/[0.13] via-brand-500/[0.04] to-transparent p-5 sm:p-6">
+                <div aria-hidden className="pointer-events-none absolute -top-20 -right-16 size-52 rounded-full bg-brand-500/15 blur-3xl" />
+                <div className="relative flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-semibold tracking-[0.14em] text-brand-600 uppercase">{plan.onSale ? "Early-user plan" : "Your current plan"}</p>
+                    <h3 id={`plan-card-${plan.id}`} className="mt-1 font-heading text-2xl tracking-tight text-strong">
+                      {plan.name}
+                    </h3>
+                  </div>
+                  {mine ? <span className="rounded-full bg-brand-500/10 px-2.5 py-1 text-xs font-medium text-brand-600 ring-1 ring-brand-500/25">Your plan</span> : null}
+                </div>
+                <p className="relative mt-3 flex items-baseline gap-1 text-strong">
+                  <span className="font-heading text-5xl tracking-tight">{money(plan.monthlyCents)}</span>
+                  <span className="text-sm text-muted-foreground">a month</span>
+                </p>
+                <p className="relative mt-2 text-sm text-muted-foreground">{plan.summary}</p>
               </div>
-              <p className="relative mt-1 text-3xl font-semibold tracking-tight text-strong">
-                {money(plan.monthlyCents)}
-                <span className="text-sm font-normal text-muted-foreground"> a month</span>
-              </p>
-              <p className="relative mt-1 text-sm text-muted-foreground">{plan.summary}</p>
-              <div className="relative mt-4">
-                <AvatarStack agents={agents.map((row) => ({ id: row.agent, label: row.name }))} />
-                <ul className="mt-3 grid gap-1 text-sm">
-                  {agents.map((row) => (
-                    <li key={row.agent} className="flex items-center gap-2">
-                      <Check aria-hidden className={`size-4 shrink-0 ${row.released ? "text-success" : "text-muted-foreground"}`} />
-                      <span className={row.released ? "text-strong" : "text-muted-foreground"}>{row.name}</span>
-                      {!row.released ? <span className="text-xs text-muted-foreground">when released</span> : null}
+              {/* Body: the agents that work today, and what comes later. */}
+              <div className="relative flex flex-1 flex-col gap-4 p-5 sm:p-6">
+                <div className="flex items-center gap-3">
+                  <AvatarStack agents={working.map((row) => ({ id: row.agent, label: row.name }))} />
+                  <p className="text-sm text-muted-foreground">
+                    <span className="font-medium text-strong">{working.length} agents</span> working today
+                  </p>
+                </div>
+                <ul className="grid gap-2 sm:grid-cols-2">
+                  {working.map((row) => (
+                    <li key={row.agent} className="flex items-center gap-2.5 rounded-xl border border-border bg-background/60 px-3 py-2 text-sm">
+                      <span aria-hidden className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-success/15 text-success-foreground">
+                        <Check className="size-3.5" />
+                      </span>
+                      <span className="font-medium text-strong">{row.name}</span>
                     </li>
                   ))}
                 </ul>
+                {later.length ? (
+                  <p className="text-xs text-muted-foreground">
+                    Not released yet: {later.map((row) => row.name).join(", ")}. {plan.id === "expand" ? "Included when released." : "No plan or purchase makes one available sooner."}
+                  </p>
+                ) : null}
+                {buying ? (
+                  <div className="mt-auto grid gap-3 pt-1">
+                    <EarlyOfferNote offer={offer} />
+                    <Button className="w-full" size="lg" variant="gradient" loading={busy} onClick={() => void run(async () => setIntentId(await change({ companyId, plan: plan.id })))}>
+                      Choose {plan.name}
+                    </Button>
+                    <p className="text-center text-xs text-muted-foreground">You&rsquo;ll see the exact charge before you pay.</p>
+                  </div>
+                ) : null}
               </div>
-              {canBuy && !current && plan.onSale ? (
-                <Button className="relative mt-4 self-start" size="sm" variant="primary" loading={busy} onClick={() => void run(async () => setIntentId(await change({ companyId, plan: plan.id })))}>
-                  Choose {plan.name}
-                </Button>
-              ) : null}
             </section>
           );
         })}

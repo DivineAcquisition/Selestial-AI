@@ -78,7 +78,17 @@ export async function placesUsed(ctx: QueryCtx | MutationCtx, env: AutumnEnv, no
   return used + reserved.filter((row) => row.reservedUntil > now).length;
 }
 
-export type Eligibility = { eligible: boolean; placesLeft: number; reason: "eligible" | "full" | "held_before" | "paid_before" | "has_plan" };
+export type Eligibility = { eligible: boolean; placesLeft: number; reason: "eligible" | "off" | "full" | "held_before" | "paid_before" | "has_plan" };
+
+/**
+ * The offer is sold only once it is switched on: EARLY_OFFER=on on the Convex deployment. Off by default,
+ * because the "operate_early" plan must exist in Autumn first (cd billing && npx atmn push); attaching a plan
+ * Autumn does not know would fail the purchase. While off, every company is offered Operate at $299, nothing
+ * shows the offer, and places already held keep working (claims, the month-12 move and reminders still run).
+ */
+export function earlyOfferOn(env: Record<string, string | undefined> = process.env): boolean {
+  return env.EARLY_OFFER?.trim().toLowerCase() === "on";
+}
 
 /**
  * Whether this company would be offered $199 now. A company that reserved a place itself and has not paid
@@ -92,6 +102,8 @@ export async function eligibility(ctx: QueryCtx | MutationCtx, companyId: Id<"co
   const no = (reason: Eligibility["reason"]): Eligibility => ({ eligible: false, placesLeft, reason });
   // Claimed or ended: the company held a place. A reservation that was never paid (released or expired) is not holding one.
   if (row && (row.state === "claimed" || row.state === "ended")) return no("held_before");
+  // Switched off: no new place is offered, though a reservation already made is still honoured.
+  if (!earlyOfferOn() && !mine) return no("off");
   if (account?.plan) return no("has_plan");
   // A company that ever paid for a plan is not a first payment. Top-ups need a plan, so any paid invoice means one.
   if (account?.invoices.some((invoice) => invoice.status === "paid" && invoice.cents > 0)) return no("paid_before");

@@ -214,18 +214,23 @@ export const PRICING = {
        * cannot cheaply know the places left, so it says "while places last"; the app shows the live count
        * and never shows $199 unless it will be honored.
        */
-      offer: "Early-user offer: the first 15 companies pay $199 a month for their first 12 months, then $299. While places last.",
-      summary: "Keep sales, hiring, dispatch, and retention moving from one workspace.",
-      today: [
-        "Sales: inquiries by text and email, quotes customers accept online, follow-ups and bookings",
+      offer: { price: "$199", period: "/month", terms: "for your first 12 months, then $299", note: "For the first 15 companies. While places last." },
+      tagline: "Early-user plan",
+      /** The four agents that work today, each with what it does in one line. */
+      agents: [
+        { id: "sales", does: "Inquiries by text and email, quotes customers accept online, follow-ups and bookings" },
+        { id: "dispatch", does: "Offers, coverage, live jobs and cleaner text-message links" },
+        { id: "retention", does: "Concerns followed through to an outcome, plan changes, renewals and re-engagement" },
+        { id: "recruiter", does: "Your hiring inbox, invitations, applications, interviews and offers" },
+      ] as const,
+      /** Everything else in the plan. */
+      platform: [
         "Booking pages for your website, priced from your own services",
-        "Dispatch: offers, coverage, live jobs and cleaner text-message links",
-        "Retention: service concerns followed through to an outcome, recurring-plan changes customers can make themselves, renewals and re-engagement",
-        "Recruiter: your hiring inbox, invitations, applications, interviews and offers",
         "Clients & Properties, Cleaners, Services & Pricing and Finance",
         "Company Chat, approvals, and agreements with AI-guided drafting",
         "A monthly allowance of Selestial Credits for AI work",
       ],
+      summary: "Keep sales, hiring, dispatch, and retention moving from one workspace.",
       later: ["Marketing, Quality and Customer Care. They are not part of this plan today, and no plan or purchase makes one available sooner.", "Customer portal, your own domain for booking pages, and Creative Studio for images and video."],
     },
   ],

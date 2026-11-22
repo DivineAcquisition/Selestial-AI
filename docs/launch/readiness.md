@@ -270,6 +270,7 @@ These are what the code assumes. Each is from documentation and a fake, not from
 
 ## Actions that need you
 
+0. **Early-user offer is off until you switch it on** (docs/billing/README.md, "Switching the early-user offer on"): push `operate_early` to Autumn, then set `EARLY_OFFER=on` on Convex and `NEXT_PUBLIC_EARLY_OFFER=on` on Vercel.
 In priority order. The first six are required before the first pilot company.
 
 1. **Stripe webhooks (you've added one; confirm both).** Stripe Dashboard › the Selestial account › Developers › Webhooks. Confirm two live endpoints exist and are enabled: `https://stoic-gazelle-731.convex.site/webhooks/stripe-billing` (events `invoice.payment_failed`, `invoice.paid`, `invoice.voided`, `invoice.marked_uncollectible`, `charge.refunded`) and `https://stoic-gazelle-731.convex.site/webhooks/stripe` with "Listen to events on connected accounts" (payment intent, charge, refund, dispute and `account.updated` events). Copy each signing secret to the matching setting on `stoic-gazelle-731` (`STRIPE_BILLING_WEBHOOK_SECRET`, and the Connect webhook secret). Tell me which Stripe account it is; the one I could reach has neither.

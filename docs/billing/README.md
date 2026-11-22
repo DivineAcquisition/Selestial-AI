@@ -398,3 +398,20 @@ purchase, a month-12 move (advance the test clock) and a cancellation, then push
 - Automatic top-ups, outside-service pricing and the Expand customer portal are not built.
 - The landing page's pre-existing agent copy describes Sales and Retention in the present tense. The pricing
   section labels them unreleased; the rest of that page was left as it was.
+
+### Switching the early-user offer on
+
+The offer is **off by default**, so merging the code changes nothing a customer sees or pays. While it is off,
+every company is offered Operate at $299, no screen mentions $199, and the public pricing card has no offer box.
+Places already held keep working (claims, the month-12 move and the reminder still run).
+
+To switch it on, in this order:
+
+1. `cd billing && npx atmn push` against the sandbox, then against production. The config keeps `operate` and
+   `expand` and adds `operate_early`. Check in the Autumn dashboard that `operate_early` is $199/month, in group
+   `selestial`, with no trial and Operate's items.
+2. Convex Dashboard › `stoic-gazelle-731` › Settings › Environment Variables: `EARLY_OFFER` = `on`.
+3. Vercel › selestial-ai › Settings › Environment Variables: `NEXT_PUBLIC_EARLY_OFFER` = `on` (Production), then
+   redeploy so the public pricing card shows the offer.
+
+Switching off is the reverse (step 2 alone stops new places at once; step 3 removes the public line).
