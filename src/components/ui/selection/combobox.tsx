@@ -7,7 +7,7 @@ import { Check, ChevronDown, Loader2, Search, X } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 import { joinIds, markComposite, useFieldControl } from "./field-context";
-import { controlHeight, fieldSurface, focusRing, optionRow, popupSurface, type Density } from "./tokens";
+import { controlHeight, fieldSurface, focusRing, optionRow, overlayCollisionPadding, popupSurface, type Density } from "./tokens";
 import { matches, type ListState, type Option } from "./types";
 
 type Shared<V extends string> = ListState & {
@@ -108,7 +108,7 @@ function Row<V extends string>({ option }: { option: Option<V> }) {
 function Popup<V extends string>({ state }: { state: ListState }) {
   return (
     <Combobox.Portal>
-      <Combobox.Positioner className="z-[80] outline-none" sideOffset={6} collisionPadding={12}>
+      <Combobox.Positioner className="z-popover outline-none" sideOffset={6} collisionPadding={overlayCollisionPadding()}>
         <Combobox.Popup className={popupSurface}>
           <ListBody {...state} />
           {state.loading || state.error ? null : <Combobox.List>{(option: Option<V>) => <Row key={option.value} option={option} />}</Combobox.List>}
@@ -154,7 +154,7 @@ export function SearchableSelect<V extends string>({ value, onValueChange, optio
           data-testid={aria["data-testid"]}
           aria-describedby={joinIds(aria["aria-describedby"], field?.describedBy, current?.unavailable ? `${field?.controlId ?? id}-unavailable` : undefined)}
           aria-invalid={invalid || undefined}
-          className="h-full min-w-0 flex-1 bg-transparent text-sm text-strong outline-none placeholder:text-muted-foreground/70"
+          className="h-full w-0 min-w-0 flex-1 bg-transparent text-sm text-strong outline-none placeholder:text-muted-foreground/70"
         />
         {clearable && current && !disabled && !readOnly ? (
           <Combobox.Clear aria-label="Clear" className={cn("grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:text-strong", focusRing)}>
@@ -269,7 +269,7 @@ export function MultiSelect<V extends string>({
             aria-labelledby={aria["aria-labelledby"]}
             aria-describedby={joinIds(aria["aria-describedby"], field?.describedBy, statusId)}
             aria-invalid={invalid || undefined}
-            className="h-full min-w-0 flex-1 bg-transparent text-sm text-strong outline-none placeholder:text-muted-foreground/70"
+            className="h-full w-0 min-w-0 flex-1 bg-transparent text-sm text-strong outline-none placeholder:text-muted-foreground/70"
           />
           <Combobox.Trigger aria-label="Show options" className={cn("grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:text-strong", focusRing)}>
             <ChevronDown className="size-4" aria-hidden />

@@ -36,7 +36,7 @@ export const restingSurface = "border-border bg-card hover:border-[color-mix(in_
 
 /** A popup list for select, searchable select and multi-select. */
 export const popupSurface =
-  "z-[80] max-h-[min(22rem,var(--available-height))] min-w-[var(--anchor-width)] max-w-[min(32rem,calc(100vw-1.5rem))] overflow-y-auto overscroll-contain rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-lg shadow-black/10 outline-none origin-[var(--transform-origin)] transition-[opacity,scale] duration-150 motion-reduce:transition-none data-[ending-style]:scale-[0.98] data-[ending-style]:opacity-0 data-[starting-style]:scale-[0.98] data-[starting-style]:opacity-0";
+  "max-h-[min(22rem,var(--available-height))] min-w-[var(--anchor-width)] max-w-[min(32rem,calc(100vw-1.5rem))] overflow-y-auto overscroll-contain rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-lg shadow-black/10 outline-none origin-[var(--transform-origin)] transition-[opacity,scale] duration-150 motion-reduce:transition-none data-[ending-style]:scale-[0.98] data-[ending-style]:opacity-0 data-[starting-style]:scale-[0.98] data-[starting-style]:opacity-0";
 
 /** One option in a popup list. The check sits on the left so long labels never push it out of view. */
 export const optionRow =
@@ -50,3 +50,18 @@ export const markOn = "border-[var(--sel-accent,var(--brand))] bg-[var(--sel-acc
 /** Space between fields in a form, and between a label and its control. */
 export const fieldGap = "gap-1.5";
 export const formGap = "gap-4";
+
+/**
+ * Where a popup may go. It keeps 12px from the edges of the screen, and on a workspace page it keeps clear
+ * of the sticky header (and any banner or toolbar under it), so a list that opens upward never hides the
+ * header or slides beneath it. Read when the popup opens, so a banner that came and went is accounted for.
+ */
+export function overlayCollisionPadding(): { top: number; right: number; bottom: number; left: number } {
+  if (typeof window === "undefined") return { top: 12, right: 12, bottom: 12, left: 12 };
+  const root = getComputedStyle(document.documentElement);
+  const px = (name: string) => Number.parseFloat(root.getPropertyValue(name)) || 0;
+  // The variables are only measured inside the workspace shell; elsewhere (a public page) they are unset.
+  const chrome = document.documentElement.style.getPropertyValue("--app-chrome-height") ? px("--app-chrome-height") + px("--app-toolbar-height") : 0;
+  return { top: 12 + chrome, right: 12, bottom: 12, left: 12 };
+}
+

@@ -2,9 +2,10 @@
 
 import { useMutation, useQuery } from "convex/react";
 import Link from "next/link";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
+import { useBottomBar, useStickyToolbar } from "@/components/app/layout";
 import { FormError, messageOf } from "@/components/app/form";
 import { ArrowLeft, ChatIcon, ChevronDown, Eye, Save } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -63,7 +64,7 @@ function CustomerPreview({ working, data, onClose }: { working: Working; data: N
   const summary = useQuery(api.sales.price, { companyId, draftId: data.draft._id });
   const booking = summary?.mode === "booking" ? summary : null;
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="preview-title" className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={onClose}>
+    <div role="dialog" aria-modal="true" aria-labelledby="preview-title" className="fixed inset-0 z-modal grid place-items-center bg-black/40 p-4" onClick={onClose}>
       <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-card p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h2 id="preview-title" className="font-heading text-lg text-strong">
@@ -124,6 +125,8 @@ export function SalesWorkspace({ draftId }: { draftId: Id<"salesDrafts"> }) {
   const [preview, setPreview] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  const toolbar = useRef<HTMLDivElement>(null);
+  useStickyToolbar(toolbar, data !== undefined && data !== null && working !== null);
 
   if (data === undefined || working === null) return <Skeleton className="h-[70vh] rounded-2xl" />;
   if (data === null) return <p className="text-sm text-muted-foreground">This draft no longer exists.</p>;
@@ -148,9 +151,13 @@ export function SalesWorkspace({ draftId }: { draftId: Id<"salesDrafts"> }) {
   };
 
   return (
-    <div className="mx-auto max-w-[1320px] pb-28 xl:pb-10">
-      {/* Top bar */}
-      <div className="sticky top-0 z-30 -mx-4 mb-5 border-b border-border bg-background/90 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
+    <div className="mx-auto max-w-[1320px]">
+      {/*
+        Top bar. It sticks under the application header, never over it, and spans the page's gutters. On a
+        phone, or on a short screen, it scrolls away with the page instead, so it never takes a quarter of the
+        screen; the bar at the bottom keeps the summary and Review in reach there.
+      */}
+      <div ref={toolbar} className="relative z-sticky -mx-app-gutter mb-5 border-b border-border bg-background/90 px-app-gutter py-3 backdrop-blur @xl/main:tall:sticky @xl/main:tall:top-app-chrome">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <Link href={back} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-strong">
             <ArrowLeft aria-hidden className="size-4" />
@@ -218,8 +225,8 @@ export function SalesWorkspace({ draftId }: { draftId: Id<"salesDrafts"> }) {
       {working.mode === "proposal" ? (
         <ProposalWorkspace data={data} working={working} update={update} setBody={setBody} summary={summary} flush={flush} revision={revision} />
       ) : (
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-          <div className="grid gap-5 xl:col-span-8">
+        <div className="grid grid-cols-1 gap-6 @4xl/main:grid-cols-12">
+          <div className="grid min-w-0 gap-5 @4xl/main:col-span-8">
             <Segmented
               label="Booking type"
               value={working.bookingKind}
@@ -235,38 +242,54 @@ export function SalesWorkspace({ draftId }: { draftId: Id<"salesDrafts"> }) {
             <PaymentSection n={4} working={working} setBody={setBody} summary={summary} done={sectionDone("payment")} />
             <BookingActions n={5} data={data} working={working} setBody={setBody} summary={summary} flush={flush} revision={revision} saving={state.kind !== "saved"} />
           </div>
-          <aside className="hidden xl:col-span-4 xl:block" aria-label="Live summary">
-            <div className="sticky top-24">
+          <aside className="hidden @4xl/main:col-span-4 @4xl/main:block" aria-label="Live summary">
+            <div className="sticky top-app-sticky max-h-app-sticky overflow-y-auto">
               <BookingSummary data={data} working={working} summary={summary} saving={state.kind === "saving" || state.kind === "dirty"} />
             </div>
           </aside>
         </div>
       )}
 
-      {/* Small screens: a collapsible summary and an action bar that stay reachable. */}
+      {/* Without room for the summary beside the form: a collapsible summary and an action bar that stay reachable. */}
       {working.mode === "booking" ? (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card/95 backdrop-blur xl:hidden">
-          {summaryOpen ? (
-            <div id="mobile-summary" className="max-h-[60vh] overflow-y-auto px-4 pt-4">
-              <BookingSummary data={data} working={working} summary={summary} saving={state.kind !== "saved"} />
-            </div>
-          ) : null}
-          <div className="flex items-center gap-3 px-4 py-3">
-            <button type="button" aria-expanded={summaryOpen} aria-controls="mobile-summary" onClick={() => setSummaryOpen((v) => !v)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
-              <ChevronDown aria-hidden className={cn("size-4 shrink-0 transition-transform", summaryOpen ? "" : "rotate-180")} />
-              <span className="min-w-0">
-                <span className="block text-xs text-muted-foreground">{summaryOpen ? "Hide summary" : "Show summary"}</span>
-                <span className="block truncate font-semibold text-strong tabular-nums">{booking?.firstCents !== null && booking?.firstCents !== undefined ? money(booking.firstCents) : "—"}</span>
-              </span>
-            </button>
-            {booking && booking.needs.length ? <Chip tone="warning">{booking.needs.length} still needed</Chip> : <Chip tone="success">Ready</Chip>}
-            <a href="#review" className="inline-flex min-h-9 items-center rounded-lg bg-brand-500 px-3 text-sm font-medium text-white">
-              Review
-            </a>
-          </div>
-        </div>
+        <MobileBookingBar open={summaryOpen} onToggle={() => setSummaryOpen((v) => !v)} firstCents={booking?.firstCents ?? null} needs={booking ? booking.needs.length : null}>
+          <BookingSummary data={data} working={working} summary={summary} saving={state.kind !== "saved"} />
+        </MobileBookingBar>
       ) : null}
       {preview ? <CustomerPreview working={working} data={data} onClose={() => setPreview(false)} /> : null}
+    </div>
+  );
+}
+
+/**
+ * The booking's summary and next step on a phone or tablet, fixed to the bottom of the screen. It starts
+ * where the sidebar ends, keeps clear of the phone's home indicator, and tells the page how tall it is so
+ * the last field can still be scrolled above it and the team console rises over it.
+ */
+function MobileBookingBar({ open, onToggle, firstCents, needs, children }: { open: boolean; onToggle: () => void; firstCents: number | null; needs: number | null; children: React.ReactNode }) {
+  const bar = useRef<HTMLDivElement>(null);
+  useBottomBar(bar);
+  return (
+    <div ref={bar} className="fixed right-app-content bottom-0 left-app-content z-floating border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur @4xl/main:hidden">
+      {open ? (
+        <div id="mobile-summary" className="max-h-[min(60dvh,calc(100dvh-var(--app-chrome-height)-6rem))] overflow-y-auto px-4 pt-4">
+          {children}
+        </div>
+      ) : null}
+      <div className="flex items-center gap-3 px-4 py-3">
+        <button type="button" aria-expanded={open} aria-controls="mobile-summary" onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-2 rounded-lg text-left focus-visible:outline-2 focus-visible:outline-brand-500">
+          <ChevronDown aria-hidden className={cn("size-4 shrink-0 transition-transform", open ? "" : "rotate-180")} />
+          <span className="min-w-0">
+            <span className="block text-xs text-muted-foreground">{open ? "Hide summary" : "Show summary"}</span>
+            <span className="block truncate font-semibold text-strong tabular-nums">{firstCents !== null ? money(firstCents) : "—"}</span>
+          </span>
+        </button>
+        {/* Nothing is claimed until the price check has answered. */}
+        {needs === null ? null : needs > 0 ? <Chip tone="warning">{needs} still needed</Chip> : <Chip tone="success">Ready</Chip>}
+        <a href="#review" className="inline-flex min-h-9 shrink-0 items-center rounded-lg bg-brand-500 px-3 text-sm font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500">
+          Review
+        </a>
+      </div>
     </div>
   );
 }

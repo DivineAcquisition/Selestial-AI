@@ -6,6 +6,7 @@
  *
  * Nothing here reads a name, an address, a photo or free text to guess anything about a person.
  */
+import { reportAction } from "../controls/report";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import { requestApproval } from "../approvalQueue";
@@ -170,6 +171,7 @@ export async function requestInformation(ctx: MutationCtx, application: Doc<"app
   if (authority.kind !== "level" || authority.level === "off") return { outcome: "refused", detail: "Recruiter may not write to applicants." };
   if (authority.level !== "propose") {
     const sent = await sendInformationRequest(ctx, application._id, question, RECRUITER);
+    if (sent.ok) await reportAction(ctx, { companyId: company._id, agent: "recruiter", action: COLLECT, level: authority.level, subject: { table: "applications", id: application._id }, ref: `${application._id}:${question.slice(0, 40)}`, stage: "queued", kind: "information_request", data: { applicationId: application._id } });
     return { outcome: sent.ok ? "sent" : "refused", detail: sent.detail };
   }
   const decideBy = Date.now() + recruiterSettings(company).decideWithinHours * HOUR;

@@ -63,16 +63,16 @@ function Setup() {
           <Skeleton className="h-72 rounded-2xl" />
         </div>
       ) : (
-        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="grid items-start gap-5 @3xl/main:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <div className="grid gap-5">
             <StripeCard data={data} />
             <Reminders data={data} />
           </div>
           <InvoiceSettings data={data} />
-          <div className="lg:col-span-2">
+          <div className="@3xl/main:col-span-2">
             <TeamPaySettings data={data} />
           </div>
-          <div className="lg:col-span-2">
+          <div className="@3xl/main:col-span-2">
             <ExpenseCategories data={data} />
           </div>
         </div>
@@ -359,7 +359,7 @@ function TeamPaySettings({ data }: { data: Settings }) {
           });
         }}
       >
-        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+        <div className="grid items-start gap-6 @3xl/main:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         <fieldset className="grid gap-2">
           <legend className="mb-1 text-sm font-medium text-strong">Pay tiers</legend>
           <p className="text-xs text-muted-foreground">A share of each job&apos;s price before tax. Put a cleaner on a tier from their page in Team Pay, or give them their own %. Changing a tier&apos;s share applies to jobs worked out from now on.</p>

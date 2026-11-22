@@ -254,7 +254,7 @@ export function DocumentPane({ detail, editable }: { detail: Detail; editable: b
   const canEdit = editable && detail.isCurrent;
 
   const body = (
-    <div className={cn("flex flex-col", full ? "fixed inset-0 z-50 bg-background p-3 sm:p-5" : "")}>
+    <div className={cn("flex flex-col", full ? "fixed inset-0 z-modal bg-background p-3 sm:p-5" : "")}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex gap-1 rounded-lg border border-border bg-muted/40 p-0.5" role="tablist" aria-label="Document view">
           {(["read", "edit"] as const).map((value) => (

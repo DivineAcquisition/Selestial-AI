@@ -69,8 +69,8 @@ export function DispatchOverviewScreen() {
   const board = useQuery(api.dispatchViews.board, range);
   const readiness = useQuery(api.compliance.readiness, { companyId });
   const activity = useQuery(api.details.activity, now ? { companyId, asOf: now, limit: 60 } : "skip");
-  const setPaused = useMutation(api.companies.setPausedAgents);
-  const permissions = useQuery(api.permissions.list, { companyId });
+  const pauseAgent = useMutation(api.companies.pauseAgent);
+  const resumeAgent = useMutation(api.companies.resumeAgent);
   const { busy, error, run } = useRun();
   const [shown, setShown] = useState<string | null>(null);
 
@@ -129,7 +129,6 @@ export function DispatchOverviewScreen() {
   const withPerson = tasks.filter((task) => task.withPerson || task.handoffTo !== null || task.status === "needs_decision");
   const withDispatch = tasks.filter((task) => !withPerson.includes(task));
   const did = activity?.filter((event) => event.actor.agent === "dispatch").slice(0, 12);
-  const pausedAgents = permissions?.pausedAgents ?? [];
 
   return (
     <>
@@ -137,8 +136,8 @@ export function DispatchOverviewScreen() {
         title="Dispatch"
         lead="Staffs jobs, manages scheduling and coverage, and monitors service progress."
         actions={
-          role === "owner" && permissions ? (
-            <Button variant="outline" size="sm" loading={busy} onClick={() => void run(() => setPaused({ companyId, agents: overview.paused ? pausedAgents.filter((agent) => agent !== "dispatch") : [...pausedAgents, "dispatch"] }))}>
+          role === "owner" ? (
+            <Button variant="outline" size="sm" loading={busy} onClick={() => void run(() => (overview.paused ? resumeAgent : pauseAgent)({ companyId, agent: "dispatch" }))}>
               {overview.paused ? <Play aria-hidden /> : <PauseCircleIcon aria-hidden />}
               {overview.paused ? "Resume Dispatch" : "Pause Dispatch"}
             </Button>

@@ -7,6 +7,7 @@
  * The pay link is "{link}" until the moment of sending, when it is made from the invoice. An invoice
  * voided or paid in the meantime stops a message that would no longer be true.
  */
+import { textingProvider } from "../quo/route";
 import { internal } from "../../_generated/api";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
@@ -16,7 +17,6 @@ import { recordEvent, type Actor } from "../events";
 import { emailProvider } from "../messaging/email";
 import { messageByKey, type SendIntent } from "../messaging/outbox";
 import { checkSend, type PolicyAnswer, type PolicyCode } from "../messaging/policy";
-import { messagingProvider } from "../messaging/provider";
 import { amountRequested } from "./invoiceState";
 import { payToken, payUrl } from "./payLinks";
 
@@ -43,7 +43,7 @@ async function ownMailbox(ctx: Ctx, companyId: Id<"companies">) {
 /** Whether a message on this channel could go to this customer now, and if not, why, in the policy's words. */
 export async function canSend(ctx: Ctx, companyId: Id<"companies">, customer: Doc<"customers">, channel: Channel): Promise<PolicyAnswer & { address: string | null; connected: boolean }> {
   const address = addressFor(customer, channel);
-  const connected = channel === "email" ? Boolean((await ownMailbox(ctx, companyId)) || emailProvider()) : Boolean(messagingProvider());
+  const connected = channel === "email" ? Boolean((await ownMailbox(ctx, companyId)) || emailProvider()) : Boolean(await textingProvider(ctx, companyId, address));
   if (!connected) return { ok: false, code: "sender_not_ready", words: channel === "email" ? "Email isn't connected for Selestial yet." : "Texting isn't connected for Selestial yet.", address, connected };
   const answer = await checkSend(ctx, { companyId, channel, to: address ?? "", now: Date.now(), ...customerIntent(customer) });
   // The shared policy calls operational messages "work" messages; to a customer they are billing messages.
@@ -72,7 +72,7 @@ export async function queueCustomerMessage(ctx: MutationCtx, planned: PlannedCus
   const { company, customer, invoice, channel } = planned;
   const to = addressFor(customer, channel);
   const email = channel === "email";
-  const provider = email ? ((await ownMailbox(ctx, company._id)) ? { name: "gmail" } : emailProvider()) : messagingProvider();
+  const provider = email ? ((await ownMailbox(ctx, company._id)) ? { name: "gmail" } : emailProvider()) : await textingProvider(ctx, company._id, to);
   let problem: string | null = null;
   if (!to) problem = email ? "There is no valid email address for this customer." : "There is no valid phone number for this customer.";
   else if (!provider) problem = email ? "Email isn't connected for Selestial yet." : "Texting isn't connected for Selestial yet.";

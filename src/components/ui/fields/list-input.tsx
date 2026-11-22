@@ -1,10 +1,11 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 
 import { Plus, X } from "@/components/icons";
 import { joinIds, markComposite, useFieldControl } from "@/components/ui/selection/field-context";
 import { focusRing } from "@/components/ui/selection/tokens";
+import { usePlacement } from "@/components/ui/selection/use-placement";
 import { cn } from "@/lib/utils";
 
 export type ListSuggestion = { value: string; label?: string; detail?: string };
@@ -108,6 +109,8 @@ export function ListInput({
   };
 
   const listId = `${inputId}-suggestions`;
+  const box = useRef<HTMLDivElement>(null);
+  const placement = usePlacement(box, matches.length > 0 && text.length > 0);
   const problemId = `${inputId}-problem`;
   const labelOf = (entry: string) => suggestions.find((row) => row.value === entry)?.label ?? entry;
 
@@ -128,7 +131,7 @@ export function ListInput({
         </ul>
       ) : null}
       {!disabled ? (
-        <div className="relative">
+        <div ref={box} className="relative">
           <div className="flex min-h-control-md items-center gap-1 rounded-lg border border-border bg-card pr-1 pl-3 text-sm has-[:focus-visible]:border-[color-mix(in_srgb,var(--sel-accent,var(--brand))_60%,var(--border))] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[color-mix(in_srgb,var(--sel-accent,var(--brand))_55%,transparent)]">
             <input
               id={inputId}
@@ -179,7 +182,7 @@ export function ListInput({
             </button>
           </div>
           {matches.length > 0 && text.length > 0 ? (
-            <ul id={listId} role="listbox" className="absolute z-[80] mt-1 max-h-60 w-full overflow-y-auto rounded-xl border border-border bg-popover p-1 shadow-lg shadow-black/10">
+            <ul id={listId} role="listbox" style={{ maxHeight: placement.maxHeight }} className={cn("absolute z-popover w-full overflow-y-auto rounded-xl border border-border bg-popover p-1 shadow-lg shadow-black/10", placement.side === "top" ? "bottom-full mb-1" : "top-full mt-1")}>
               {matches.map((row, at) => (
                 <li
                   key={row.value}

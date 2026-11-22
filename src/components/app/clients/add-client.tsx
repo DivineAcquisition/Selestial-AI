@@ -32,7 +32,8 @@ export function AddressInputs({ value, onChange, label = "Address", required }: 
   return (
     <div className="grid gap-3">
       <AddressField label={label} value={value.line1} required={required} onChange={(line1) => onChange({ ...value, line1, place: null })} onPick={({ placeId, lat, lng, ...picked }) => onChange({ line1: picked.line1, line2: picked.line2 || value.line2, city: picked.city, region: picked.region, postalCode: picked.postalCode, place: { placeId, lat, lng } })} />
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {/* Unit and city, then state and postal code; one row once there is room, with the city given the most space. */}
+      <div className="grid grid-cols-2 gap-3 @2xl/main:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_minmax(0,0.8fr)_minmax(0,1fr)]">
         <Field label="Unit (optional)">
           <TextInput value={value.line2} onChange={set("line2")} autoComplete="address-line2" />
         </Field>

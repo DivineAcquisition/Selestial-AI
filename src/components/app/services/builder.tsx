@@ -189,7 +189,7 @@ function DraftEditor({ view, costs, canSeeCosts }: { view: View; costs: Paramete
       ) : null}
 
       {/* On a phone: one column, with a switch between editing and the preview. */}
-      <div role="tablist" aria-label="Builder view" className="flex rounded-lg border border-border bg-card p-1 lg:hidden">
+      <div role="tablist" aria-label="Builder view" className="flex rounded-lg border border-border bg-card p-1 @5xl/main:hidden">
         {(["edit", "preview"] as const).map((p) => (
           <button key={p} type="button" role="tab" aria-selected={pane === p} onClick={() => setPane(p)} className={cn("flex-1 rounded-md py-1.5 text-sm", pane === p ? "bg-brand-500/10 font-medium text-strong" : "text-muted-foreground")}>
             {p === "edit" ? "Edit" : "Preview"}
@@ -197,9 +197,9 @@ function DraftEditor({ view, costs, canSeeCosts }: { view: View; costs: Paramete
         ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[10.5rem_minmax(0,1fr)_minmax(0,20rem)] xl:grid-cols-[11rem_minmax(0,1fr)_minmax(0,22rem)] 2xl:grid-cols-[12rem_minmax(0,1fr)_minmax(0,26rem)]">
-        <nav aria-label="Builder steps" className={cn("lg:sticky lg:top-4 lg:self-start", pane === "preview" && "hidden lg:block")}>
-          <div className="mb-2 grid grid-cols-1 gap-1.5 lg:hidden">
+      <div className="grid grid-cols-1 gap-4 @5xl/main:grid-cols-[10.5rem_minmax(0,1fr)_minmax(0,20rem)] @6xl/main:grid-cols-[11rem_minmax(0,1fr)_minmax(0,22rem)] @7xl/main:grid-cols-[12rem_minmax(0,1fr)_minmax(0,26rem)]">
+        <nav aria-label="Builder steps" className={cn("@5xl/main:sticky @5xl/main:top-app-sticky @5xl/main:self-start", pane === "preview" && "hidden @5xl/main:block")}>
+          <div className="mb-2 grid grid-cols-1 gap-1.5 @5xl/main:hidden">
             <p className="flex items-baseline justify-between gap-2 text-xs text-muted-foreground">
               <span>
                 Step {index + 1} of {BUILDER_STEPS.length} · <span className="font-medium text-strong">{BUILDER_STEPS[index].label}</span>
@@ -210,7 +210,7 @@ function DraftEditor({ view, costs, canSeeCosts }: { view: View; costs: Paramete
               <span className="block h-full rounded-full bg-brand-500 transition-[width] duration-300 motion-reduce:transition-none" style={{ width: `${((index + 1) / BUILDER_STEPS.length) * 100}%` }} />
             </div>
           </div>
-          <ol className="flex gap-1 overflow-x-auto pb-1 lg:grid lg:gap-0.5 lg:overflow-visible">
+          <ol className="flex gap-1 overflow-x-auto pb-1 @5xl/main:grid @5xl/main:gap-0.5 @5xl/main:overflow-visible">
             {BUILDER_STEPS.map((s, i) => {
               const issues = problems.filter((p) => p.severity === "blocker" && fieldStep(p.field) === s.id).length;
               const current = step === s.id;
@@ -232,11 +232,11 @@ function DraftEditor({ view, costs, canSeeCosts }: { view: View; costs: Paramete
               );
             })}
           </ol>
-          <p className="mt-3 hidden text-xs text-muted-foreground lg:block">{BUILDER_STEPS[index].blurb}</p>
+          <p className="mt-3 hidden text-xs text-muted-foreground @5xl/main:block">{BUILDER_STEPS[index].blurb}</p>
           <AssistantCard serviceId={view.service.id} name={spec.name} />
         </nav>
 
-        <section aria-label={BUILDER_STEPS[index].label} className={cn("min-w-0 rounded-2xl border border-border bg-card p-4 sm:p-6", pane === "preview" && "hidden lg:block")}>
+        <section aria-label={BUILDER_STEPS[index].label} className={cn("min-w-0 rounded-2xl border border-border bg-card p-4 sm:p-6", pane === "preview" && "hidden @5xl/main:block")}>
           {step === "basics" ? <BasicsStep {...props} /> : step === "scope" ? <ScopeStep {...props} /> : step === "pricing" ? <PricingStep {...props} /> : step === "team" ? <TeamStep {...props} /> : step === "extras" ? <ExtrasStep {...props} /> : <ReviewStep view={view} spec={spec} edit={edit} kept={kept} revision={base.revision} dirty={dirty} blockers={blockers.map((b) => ({ message: b.message, step: fieldStep(b.field) }))} warnings={problems.filter((p) => p.severity === "warning").map((p) => p.message)} goTo={goTo} />}
           <div className="mt-6 flex items-center justify-between gap-2 border-t border-border pt-4">
             <Button variant="ghost" size="sm" disabled={index === 0} onClick={() => goTo(BUILDER_STEPS[index - 1].id)}>
@@ -250,7 +250,7 @@ function DraftEditor({ view, costs, canSeeCosts }: { view: View; costs: Paramete
           </div>
         </section>
 
-        <aside aria-label="Preview" className={cn("min-w-0 lg:sticky lg:top-4 lg:self-start", pane === "edit" && "hidden lg:block")}>
+        <aside aria-label="Preview" className={cn("min-w-0 @5xl/main:sticky @5xl/main:top-app-sticky @5xl/main:max-h-app-sticky @5xl/main:self-start @5xl/main:overflow-y-auto", pane === "edit" && "hidden @5xl/main:block")}>
           <ServicePreview spec={spec} costs={costs} canSeeCosts={canSeeCosts} />
         </aside>
       </div>
@@ -308,7 +308,7 @@ function AssistantCard({ serviceId, name }: { serviceId: string; name: string })
       setSent(result.conversationId as string);
     });
   return (
-    <div className="mt-4 hidden rounded-xl border border-brand-500/20 bg-brand-500/[0.04] p-3 lg:block">
+    <div className="mt-4 hidden rounded-xl border border-brand-500/20 bg-brand-500/[0.04] p-3 @5xl/main:block">
       <p className="flex items-center gap-1.5 text-sm font-medium text-strong">
         <Sparkles aria-hidden className="size-4 text-brand-600" /> Selestial
       </p>
@@ -533,7 +533,7 @@ function LiveService({ view, costs }: { view: View; costs: Parameters<typeof Ser
         ) : null}
       </div>
       <FormError message={error} />
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
+      <div className="grid grid-cols-1 gap-5 @4xl/main:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
         <div className="grid grid-cols-1 gap-5">
           <div className="rounded-2xl border border-border bg-card p-4 sm:p-5">
             <SectionTitle title="Versions" tip="Every published version is kept exactly as it was. Rolling back writes a new version from an old one, so history is never rewritten." />

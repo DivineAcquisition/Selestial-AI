@@ -9,6 +9,7 @@
  *
  * Money stays where Finance keeps it: invoice amounts are read for the Owner only.
  */
+import { newConversationGaps, textingProvider } from "./lib/quo/route";
 import { v } from "convex/values";
 
 import type { Doc, Id } from "./_generated/dataModel";
@@ -24,7 +25,6 @@ import { userError } from "./lib/errors";
 import { byMember, recordEvent } from "./lib/events";
 import { emailProvider } from "./lib/messaging/email";
 import { senderGaps } from "./lib/messaging/policy";
-import { messagingProvider } from "./lib/messaging/provider";
 import { actionDef } from "./lib/permissionCatalog";
 import { ACTION_WORDS, actionsOf, careChannel, correctionCost, prepareAction, setCorrectionPay as setCorrectionPayOn, stampFor, submitAction, whenWords } from "./lib/retention/actions";
 import { addEntry, areasIn, cleanAreas, closeCase, DAY, entriesOf, HOUR, KIND_WORDS, moveCase, openCase as openCaseRecord, OUTCOME_WORDS, propertyName, SEGMENT_WORDS, STATUS_WORDS, VERIFIED_OUTCOMES } from "./lib/retention/cases";
@@ -109,7 +109,7 @@ const byUrgency = <T extends { status: CaseStatus; dueAt: number; serious: boole
 /** What Retention can and cannot do right now, in words: sending, the AI reader, and what Selestial does not hold. */
 async function readiness(ctx: Ctx) {
   const profile = await readProfile(ctx, ctx.companyId);
-  const sms = messagingProvider() ? senderGaps(profile.messaging, "sms") : [{ key: "provider", words: "Texting isn't connected for Selestial yet." }];
+  const sms = (await textingProvider(ctx, ctx.companyId, null)) ? await newConversationGaps(ctx, ctx.companyId, senderGaps(profile.messaging, "sms")) : [{ key: "provider", words: "Texting isn't connected for Selestial yet." }];
   const email = emailProvider() !== null;
   const model = retentionModel();
   const billing = billingState();

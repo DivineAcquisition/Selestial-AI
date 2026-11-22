@@ -15,6 +15,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
+import { useDockLift } from "@/components/app/layout";
 import { FormError } from "@/components/app/form";
 import { ArrowLeft, ArrowRight, Check, Lock, Sparkles } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -118,6 +119,8 @@ export function TextingFrame() {
   const previous = STEPS[index - 1];
   const next = STEPS[index + 1];
   const reachable = (id: StepId) => id !== "progress" || view.request !== null;
+  const footer = useRef<HTMLElement>(null);
+  useDockLift(footer);
 
   return (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5">
@@ -140,7 +143,7 @@ export function TextingFrame() {
       </header>
 
       {/* Phone and tablet: compact progress. */}
-      <div className="min-w-0 xl:hidden">
+      <div className="min-w-0 @7xl/main:hidden">
         <p className="mb-1 text-xs text-muted-foreground">
           Step {index + 1} of {STEPS.length} · {STEPS[index].label}
         </p>
@@ -157,8 +160,9 @@ export function TextingFrame() {
         </nav>
       </div>
 
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] items-start gap-5 xl:grid-cols-[11.5rem_minmax(0,1fr)_19rem] 2xl:grid-cols-[13rem_minmax(0,1fr)_21rem]">
-        <nav aria-label="Steps" className="sticky top-20 hidden xl:block">
+      {/* Columns appear only when the room left beside the sidebar (and an open chat panel) can hold them. */}
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] items-start gap-5 @5xl/main:grid-cols-[minmax(0,1fr)_19rem] @7xl/main:grid-cols-[12.5rem_minmax(0,1fr)_21rem]">
+        <nav aria-label="Steps" className="sticky top-app-sticky hidden @7xl/main:block">
           <ol className="grid gap-1">
             {STEPS.map((row, at) => {
               const current = row.id === step;
@@ -200,7 +204,7 @@ export function TextingFrame() {
             </fieldset>
             <FormError message={error} />
           </div>
-          <details className="mt-4 rounded-2xl border border-border bg-card xl:hidden">
+          <details className="mt-4 rounded-2xl border border-border bg-card @5xl/main:hidden">
             <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 px-4 text-sm font-semibold text-strong focus-visible:outline-2 focus-visible:outline-brand-500 [&::-webkit-details-marker]:hidden">
               <Sparkles className="size-4 text-brand-300" aria-hidden />
               Selestial&apos;s notes and preview
@@ -211,7 +215,7 @@ export function TextingFrame() {
           </details>
         </main>
 
-        <aside className="sticky top-20 hidden xl:block" aria-label="Selestial's notes and preview">
+        <aside className="sticky top-app-sticky hidden max-h-app-sticky overflow-y-auto @5xl/main:block" aria-label="Selestial's notes and preview">
           <div className="rounded-2xl border border-border bg-card p-5">
             <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-strong">
               <Sparkles className="size-4 text-brand-300" aria-hidden />
@@ -222,8 +226,9 @@ export function TextingFrame() {
         </aside>
       </div>
 
-      <footer className="sticky bottom-0 z-10 -mx-3 border-t border-border bg-card/95 backdrop-blur sm:-mx-6">
-        <div className="flex flex-wrap items-center gap-2 px-3 py-3 sm:px-6">
+      {/* The step's actions stay in reach at the bottom; the team console rises above them instead of covering Continue. */}
+      <footer ref={footer} className="sticky bottom-0 z-sticky -mx-app-gutter -mb-(--app-dock-clearance) border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
+        <div className="flex flex-wrap items-center gap-2 px-app-gutter py-3">
           {previous ? (
             <Button variant="ghost" onClick={() => void go(previous.id)}>
               <ArrowLeft aria-hidden />

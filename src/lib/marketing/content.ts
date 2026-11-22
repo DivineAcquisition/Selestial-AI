@@ -417,7 +417,7 @@ export const INTEGRATIONS = {
         { name: "Google Ads", catalogId: "google-ads", mark: "google-ads", live: true, body: "Lead-form leads arrive in Sales with their source attached." },
         { name: "Google Business Profile", catalogId: "google-business-profile", mark: "google-business-profile", live: true, body: "Your business profile, connected to the workspace." },
         { name: "Business texting", catalogId: "texting-number", mark: "texting-number", live: true, body: "Text customers and cleaners from your company’s own number." },
-        { name: "Quo", catalogId: "quo", mark: "quo", live: false, body: "Keep your Quo number: its calls and texts appear beside the customer." },
+        { name: "Quo", catalogId: "quo", mark: "quo", live: true, body: "Keep your Quo number: agents text from it and replies come back to Selestial." },
         { name: "Meta lead ads", catalogId: "meta-lead-ads", mark: "meta-lead-ads", live: false, body: "New leads from Facebook and Instagram go straight to Sales." },
       ],
     },

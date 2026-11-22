@@ -5,6 +5,7 @@
  * Search, filters, sort and paging happen on the server; the view, filters and an open quick view live in
  * the address, and coming back from a profile returns to the same place on the page.
  */
+import { MIGRATION_PATH } from "@/components/app/migration/entry";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import Link from "next/link";
@@ -30,6 +31,7 @@ import { ClientQuickView } from "./quick-view";
 import { ActionMenu } from "./menu";
 import { rememberScroll, takeScroll, useDirectoryState, viewOf, type DirectoryState } from "./state";
 import { Checkbox, Select, tableSelection } from "@/components/ui/selection";
+import { PageHeader } from "@/components/app/layout";
 
 type Overview = FunctionReturnType<typeof api.clients.overview>;
 type Row = FunctionReturnType<typeof api.clients.directory>["page"][number];
@@ -69,12 +71,11 @@ export function ClientsScreen() {
   const filtersOn = [state.rel && state.rel !== "current", state.owner, view === "prospects" || view === "archived"].filter(Boolean).length;
   return (
     <div className="grid gap-5">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="font-heading text-2xl tracking-tight text-strong">Clients &amp; Properties</h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Every client, their properties and the services they have. Sales, Dispatch, Retention, Agreements and Finance all read these same records.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+      <PageHeader
+        title="Clients & Properties"
+        lead="Every client, their properties and the services they have. Sales, Dispatch, Retention, Agreements and Finance all read these same records."
+        actions={
+          <>
           <ActionMenu
             label="Create a booking or proposal"
             className="h-9 rounded-lg border border-border bg-card px-3 text-sm font-medium text-strong hover:bg-muted"
@@ -89,8 +90,9 @@ export function ClientsScreen() {
           <Button variant="primary" onClick={() => setAdding(true)}>
             <Plus aria-hidden /> Add client
           </Button>
-        </div>
-      </header>
+          </>
+        }
+      />
 
       {overview?.needsPrepare ? <PrepareDirectory /> : null}
       <AttentionStrip overview={overview} active={state.attention as Attention | undefined} onPick={(attention) => update({ attention: state.attention === attention ? undefined : attention, view: attention ? "all" : state.view })} />
@@ -333,7 +335,11 @@ function DirectoryTable({ state, view, canManage, owners, onQuickView, onBook, o
               </Button>
             }
           >
-            Add a client with their first property, then book a visit or set up a recurring plan.
+            Add a client with their first property, then book a visit or set up a recurring plan. Moving from Jobber, Housecall Pro, BookingKoala or a spreadsheet?{" "}
+            <Link href={MIGRATION_PATH} className="font-medium text-brand-300 underline-offset-2 hover:underline">
+              Bring your business to Selestial
+            </Link>
+            .
           </EmptyState>
         ) : (
           <EmptyState title="No clients in this view">{VIEWS.find((v) => v.id === view)?.detail ?? RESIDENTIAL_VIEWS.find((v) => v.id === view && "detail" in v)?.label}</EmptyState>

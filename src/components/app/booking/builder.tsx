@@ -266,7 +266,7 @@ export function ExperienceBuilder({ experienceId }: { experienceId: Id<"bookingE
       {!canEdit ? <Notice tone="info" title="View only">Managers and the Owner change booking experiences. You can look around.</Notice> : null}
 
       {/* Small screens: switch between editing and the preview. */}
-      <div role="tablist" aria-label="Builder" className="flex gap-1 rounded-lg border border-border p-0.5 lg:hidden">
+      <div role="tablist" aria-label="Builder" className="flex gap-1 rounded-lg border border-border p-0.5 @5xl/main:hidden">
         {(["edit", "preview"] as const).map((p) => (
           <button key={p} type="button" role="tab" aria-selected={pane === p} onClick={() => setPane(p)} className={cn("h-9 flex-1 rounded-md text-sm font-medium", pane === p ? "bg-brand-500/10 text-strong" : "text-muted-foreground")}>
             {p === "edit" ? "Edit" : "Preview"}
@@ -274,9 +274,9 @@ export function ExperienceBuilder({ experienceId }: { experienceId: Id<"bookingE
         ))}
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-[240px_minmax(0,1fr)_340px]">
+      <div className="grid gap-3 @5xl/main:grid-cols-[240px_minmax(0,1fr)_340px] @7xl/main:grid-cols-[260px_minmax(0,1fr)_360px]">
         {/* Left rail */}
-        <nav aria-label="Steps and settings" className={cn("space-y-4 rounded-2xl border border-border bg-card p-3 lg:max-h-[calc(100vh-170px)] lg:overflow-y-auto", pane === "preview" && "max-lg:hidden")}>
+        <nav aria-label="Steps and settings" className={cn("space-y-4 rounded-2xl border border-border bg-card p-3 @5xl/main:max-h-[calc(100dvh-170px)] @5xl/main:overflow-y-auto", pane === "preview" && "@max-5xl/main:hidden")}>
           <RailGroup title="Steps">
             {draft.steps.map((step) => (
               <RailItem key={step.id} active={selected === `copy:${step.id}`} onClick={() => select(`copy:${step.id}`)} icon={<span className="grid size-5 place-items-center rounded-full border border-border text-[10px] tabular-nums">{draft.steps.indexOf(step) + 1}</span>} label={STEP_LABELS[step.id]} hint={step.sections.filter((s) => !s.hidden).length ? `${step.sections.filter((s) => !s.hidden).length} block${step.sections.filter((s) => !s.hidden).length === 1 ? "" : "s"}` : undefined} />
@@ -303,7 +303,7 @@ export function ExperienceBuilder({ experienceId }: { experienceId: Id<"bookingE
         </nav>
 
         {/* Preview */}
-        <section aria-label="Customer preview" className={cn("min-w-0 rounded-2xl border border-border bg-muted/40 p-2", pane === "edit" && "max-lg:hidden")}>
+        <section aria-label="Customer preview" className={cn("min-w-0 rounded-2xl border border-border bg-muted/40 p-2", pane === "edit" && "@max-5xl/main:hidden")}>
           <div className="mb-2 flex items-center justify-between gap-2 px-1 text-xs text-muted-foreground">
             <span className="flex items-center gap-1.5">
               <Eye aria-hidden className="size-3.5" /> Test booking · nothing is charged or sent
@@ -329,7 +329,7 @@ export function ExperienceBuilder({ experienceId }: { experienceId: Id<"bookingE
         </section>
 
         {/* Inspector */}
-        <aside aria-label="Controls" className={cn("rounded-2xl border border-border bg-card p-4 lg:max-h-[calc(100vh-170px)] lg:overflow-y-auto", pane === "preview" && "max-lg:hidden")}>
+        <aside aria-label="Controls" className={cn("rounded-2xl border border-border bg-card p-4 @5xl/main:max-h-[calc(100dvh-170px)] @5xl/main:overflow-y-auto", pane === "preview" && "@max-5xl/main:hidden")}>
           <fieldset disabled={!canEdit} className="min-w-0">
             {selected === "checklist" ? (
               <Checklist items={data.items} />
@@ -354,7 +354,7 @@ function BuilderSkeleton() {
   return (
     <div className="grid gap-3" aria-busy="true">
       <div className="h-14 animate-pulse rounded-2xl bg-muted motion-reduce:animate-none" />
-      <div className="grid gap-3 lg:grid-cols-[240px_1fr_340px]">
+      <div className="grid gap-3 @5xl/main:grid-cols-[240px_1fr_340px]">
         <div className="h-[560px] animate-pulse rounded-2xl bg-muted motion-reduce:animate-none" />
         <div className="h-[560px] animate-pulse rounded-2xl bg-muted motion-reduce:animate-none" />
         <div className="h-[560px] animate-pulse rounded-2xl bg-muted motion-reduce:animate-none" />

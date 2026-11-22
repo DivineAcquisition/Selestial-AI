@@ -37,6 +37,10 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   { table: "tasks", index: "by_company_status_due" },
   { table: "permissions", index: "by_company_action" },
   { table: "approvals", index: "by_company_status_decideBy" },
+  // Agent Controls (convex/lib/controls/schema.ts): every settings change with the policy before and after, and the daily allowance ledger.
+  { table: "controlChanges", index: "by_company_revision" },
+  { table: "allowanceDays", index: "by_company_action_day" },
+  { table: "allowanceReservations", index: "by_company_action_day" },
   { table: "messages", index: "by_company_queued" },
   { table: "coverageRequests", index: "by_company_job" },
   { table: "checklistItems", index: "by_company_job" },
@@ -156,6 +160,10 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   { table: "servicePlans", index: "by_company_customer" },
   { table: "clientNotes", index: "by_company_customer" },
   { table: "inboundMessages", index: "by_company_customer" },
+  // Texting conversations and the company's Quo connection (convex/lib/quo/schema.ts). The connection's key and webhook secret are not on it.
+  { table: "smsConversations", index: "by_company_address" },
+  { table: "smsInbound", index: "by_company_received" },
+  { table: "quoConnections", index: "by_company" },
   // Retention (convex/lib/retention/schema.ts): signals, cases and their history, actions, feedback, and background runs.
   { table: "retentionSignals", index: "by_company_status" },
   { table: "retentionCases", index: "by_company_status" },
@@ -231,6 +239,11 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   { table: "bookingEvents", index: "by_company_experience_at" },
   // Notifications to members (convex/lib/notify/schema.ts): each person's choices. The notices themselves are messages.
   { table: "notificationPreferences", index: "by_company_member" },
+  // Migration (convex/lib/migration/schema.ts): the saved migration, its files and runs, and what each source record became.
+  { table: "migrations", index: "by_company" },
+  { table: "migrationLinks", index: "by_company_source_kind_external" },
+  { table: "importedHistory", index: "by_company_customer_day" },
+  { table: "openingBalances", index: "by_company_customer" },
 ];
 
 /** Company tables kept out of the export, and why. */
@@ -254,11 +267,15 @@ export const NOT_EXPORTED: Readonly<Record<string, string>> = {
   googleChoices: "A short-lived copy of what Google listed for the Owner to choose from.",
   googleBusy: "A short-lived copy of busy times read from Google Calendar; the calendar itself is the record.",
   connectorCredentials: "A sealed authorization to the company's Jobber or Housecall Pro account; it opens that account, so a copy must never leave. The connection itself is exported.",
+  quoSecrets: "The company's sealed Quo API key and webhook secret; they open the Quo account, so a copy must never leave. The connection itself is exported.",
   connectorStates: "Ten-minute, single-use records of a Jobber sign-in in progress; nothing in them is about the business.",
   connectorReads: "A copy of another system's client list kept for a day while the owner checks it; what was imported is exported as clients and properties.",
   googleTravel: "Cached drive times between rounded map points, recomputed as needed.",
   portalCodes: "Hashes of one-time codes that unlock a portal for ten minutes; nothing in them is about the business.",
   capacityHolds: "Short-lived reservations of a day's minutes while a booking waits; the booking keeps what matters.",
+  migrationFiles: "Each uploaded export's name, columns and mapping; the rows it contained are what was imported, exported as clients, properties, plans and visits.",
+  migrationRows: "Working copies of the rows of uploaded files while they were reviewed; what was imported is exported as clients, properties, plans and visits, and each one's source is in migrationLinks.",
+  migrationRuns: "Progress records of background imports; their totals are in the migration and each record's result in migrationLinks.",
   lockdownCompanies: "A restore's record of each company's sending and agent settings before Selestial paused them; the settings themselves are on the company, which is exported.",
   incidents: "Selestial's own operational records about the service (what broke, what recovery ran). What happened to the company's records is exported in those records and the event log.",
   trustRequests: "Requests to Selestial are Selestial's records about a person, answered through the privacy request process.",

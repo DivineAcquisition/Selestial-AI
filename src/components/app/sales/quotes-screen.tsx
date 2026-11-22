@@ -28,7 +28,7 @@ export function QuotesProposalsScreen() {
   const proposals = useQuery(api.proposals.list, { companyId });
   const [tab, setTab] = useState<"quotes" | "proposals" | "drafts">("quotes");
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="min-w-0">
       <PageHeader
         title="Quotes & Proposals"
         lead="Take a booking over the phone, save a quote, or prepare a commercial, office or short-term rental proposal."

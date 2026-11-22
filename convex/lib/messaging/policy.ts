@@ -15,6 +15,7 @@ import { AGENT_PROFILES } from "../departments";
 import { covers } from "../texting/plan";
 import type { Agent } from "../statuses";
 import { clock } from "../time";
+import { conversationAt, ownerBlocks, quoGaps, smsRouteFor } from "../quo/route";
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -22,7 +23,7 @@ const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
 const WEEK = 7 * DAY;
 
-export const POLICY_CODES = ["company_suspended", "agent_paused", "sender_not_ready", "no_address", "not_registered", "suppressed", "no_permission", "quiet_hours", "frequency"] as const;
+export const POLICY_CODES = ["company_suspended", "agent_paused", "sender_not_ready", "no_address", "not_registered", "suppressed", "no_permission", "quiet_hours", "frequency", "conversation_owned"] as const;
 export type PolicyCode = (typeof POLICY_CODES)[number];
 
 /** The general words for each code. An answer carries more exact words for the case at hand. */
@@ -36,6 +37,7 @@ export const POLICY_WORDS: Record<PolicyCode, string> = {
   no_permission: "There is no recorded permission to send this kind of message to this person.",
   quiet_hours: "It is within the company's quiet hours. It can go when they end.",
   frequency: "This person has had as many of these messages this week as the company allows.",
+  conversation_owned: "A person has this conversation, so agents don't answer in it.",
 };
 
 export type PolicyInput = {
@@ -124,16 +126,26 @@ export async function checkSend(ctx: Ctx, input: PolicyInput): Promise<PolicyAns
   }
 
   const profile = await readProfile(ctx, input.companyId);
-  const gaps = senderGaps(profile.messaging, input.channel);
-  if (gaps.length > 0) return no("sender_not_ready", gaps.map((gap) => gap.words).join(" "));
+  // A text goes by its conversation's route: the company's own Selestial number, or its connected Quo account
+  // (lib/quo/route.ts). Each has its own readiness; a blocked route is reported, never swapped for another.
+  const route = input.channel === "sms" ? await smsRouteFor(ctx, input.companyId, input.to) : null;
+  const gaps = route?.kind === "quo" ? quoGaps(route, input) : senderGaps(profile.messaging, input.channel).map((gap) => gap.words);
+  if (gaps.length > 0) return no("sender_not_ready", gaps.join(" "));
 
   const address = normalAddress(input.channel, input.to);
   if (!address) return no("no_address", input.channel === "sms" ? "There is no valid phone number to text." : "There is no valid email address to send to.");
 
+  // Who answers this conversation: an agent writing in it waits while a person has it (operational texts still go).
+  if (input.channel === "sms" && !input.reply) {
+    const owned = ownerBlocks(await conversationAt(ctx, input.companyId, address), input);
+    if (owned) return no("conversation_owned", owned);
+  }
+
   // A text goes only if the registration was filed for this audience and this kind of text. A reply to
-  // STOP, HELP or START answers the person's own text and is always allowed on a registered number.
+  // STOP, HELP or START answers the person's own text and is always allowed on a registered number. A Quo
+  // number's registration is the company's own with Quo: Selestial cannot read what it covers.
   const coverage = profile.messaging.registration.coverage;
-  if (input.channel === "sms" && !input.reply && coverage) {
+  if (input.channel === "sms" && route?.kind !== "quo" && !input.reply && coverage) {
     const kinds = input.recipient ? [input.recipient.kind] : [...new Set((await recipientsAt(ctx, input.companyId, "sms", address)).map((row) => row.kind))];
     if (kinds.length === 0 && !covers(coverage, undefined, input.category)) {
       return no("not_registered", `Your texting registration doesn't cover ${CATEGORY_WORDS[input.category]} texts. Add them in Set up business texting.`);

@@ -57,7 +57,7 @@ export function PlanDetail({ planId }: { planId: Id<"recurringPlans"> }) {
   };
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto w-full min-w-0 max-w-(--app-width-detail)">
       <PageHeader
         title={`${data.customer?.name ?? "Customer"} · recurring plan`}
         lead={`${current?.cadenceWords ?? ""}${current ? ` at ${minutesToTime(current.arrivalMinute)}` : ""} · ${data.property ? `${data.property.label ?? data.property.line1}, ${data.property.city}` : ""}`}
