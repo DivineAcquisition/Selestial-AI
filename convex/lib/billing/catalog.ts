@@ -64,7 +64,7 @@ export const AGENT_CATALOG: Record<AgentId, { name: string; department: "growth"
   dispatch: { name: "Dispatch", department: "operations", plans: ["operate", "expand"] },
   marketing: { name: "Marketing", department: "growth", plans: ["expand"] },
   quality: { name: "Quality", department: "operations", plans: ["expand"] },
-  "customer-care": { name: "Customer Care", department: "operations", plans: ["expand"] },
+  "customer-care": { name: "Care", department: "operations", plans: ["expand"] },
 };
 
 /**
@@ -118,7 +118,7 @@ export const PLANS: Record<PlanId, { name: string; monthlyCents: number; positio
     name: "Expand",
     monthlyCents: 499_00,
     positioning: "Everything in Operate, with advanced approval routing, template governance and Creative Studio.",
-    summary: "Not open to new companies. Marketing, Quality and Customer Care join it when each is released.",
+    summary: "Not open to new companies. Marketing, Quality and Care join it when each is released.",
   },
 };
 

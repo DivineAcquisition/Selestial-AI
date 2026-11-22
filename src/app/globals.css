@@ -142,10 +142,11 @@
   --animate-vistrial-grow: vistrial-grow 2.8s ease-in-out infinite;
   --animate-vistrial-highlight: vistrial-highlight 3.2s ease-in-out infinite;
   --animate-vistrial-glow: vistrial-glow 2.6s ease-in-out infinite;
-  --animate-hub-flow: hub-flow 3.6s linear infinite;
-  --animate-hub-flow-out: hub-flow-out 3.6s linear infinite;
-  --animate-hub-orbit: hub-orbit 48s linear infinite;
-  --animate-hub-orbit-reverse: hub-orbit 72s linear infinite reverse;
+  --animate-hub-flow: hub-flow 2.6s linear infinite;
+  --animate-hub-flow-out: hub-flow-out 2.6s linear infinite;
+  --animate-hub-orbit: hub-orbit 22s linear infinite;
+  --animate-hub-float: hub-float 4.5s ease-in-out infinite;
+  --animate-hub-orbit-reverse: hub-orbit 14s linear infinite reverse;
   --color-warning-foreground: var(--warning-foreground);
   --color-success-foreground: var(--success-foreground);
   --color-info-foreground: var(--info-foreground);
@@ -270,6 +271,16 @@
   @keyframes hub-orbit {
     to {
       rotate: 360deg;
+    }
+  }
+  /* The agents on the hub's inner ring drift gently, each a little out of step. */
+  @keyframes hub-float {
+    0%,
+    100% {
+      translate: 0 0;
+    }
+    50% {
+      translate: 0 -6%;
     }
   }
   @keyframes marquee {

@@ -347,7 +347,7 @@ function agent(spec: { id: AgentId; label: string; department: DepartmentId; res
  * Cleaners workspace holds the shared record. Its old pages lead to Recruiter and Dispatch.
  *
  * Two pairs of names are close on purpose and must stay distinct:
- * - Customer Setup (Customer Care) is about customers. Onboarding & Readiness (Recruiter) is about cleaners.
+ * - Customer Setup (Care) is about customers. Onboarding & Readiness (Recruiter) is about cleaners.
  * - Offers & Agreements (Recruiter) is about hiring. Offers & Coverage (Dispatch) is about job assignments.
  */
 export const AGENTS: readonly AgentNav[] = [
@@ -437,7 +437,7 @@ export const AGENTS: readonly AgentNav[] = [
   }),
   agent({
     id: "customer-care",
-    label: "Customer Care",
+    label: "Care",
     department: "operations",
     responsibility: "Handles customer communications, setup, requests, and scheduling changes.",
     backendAgent: null,

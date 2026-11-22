@@ -85,7 +85,7 @@ export const SPECIALIST_NAMES: Record<string, string> = {
   retention: "Retention",
   marketing: "Marketing",
   quality: "Quality",
-  "customer-care": "Customer Care",
+  "customer-care": "Care",
   /** Retired November 22, 2026. Kept so older conversations still say who did the work. */
   "team-coordinator": "Team Coordinator",
 };

@@ -235,13 +235,13 @@ export const PRICING = {
         "A monthly allowance of Selestial Credits for AI work",
       ],
       summary: "Keep sales, hiring, dispatch, and retention moving from one workspace.",
-      later: ["Marketing and Customer Care. They are not part of this plan today, and no plan or purchase makes one available sooner.", "Customer portal, your own domain for booking pages, and Creative Studio for images and video."],
+      later: ["Marketing and Care. They are not part of this plan today, and no plan or purchase makes one available sooner.", "Customer portal, your own domain for booking pages, and Creative Studio for images and video."],
     },
   ],
   allowanceNote: "The plan includes a monthly allowance of Selestial Credits. Your Usage page shows your allowance, what each piece of AI work costs, and what used it.",
   services: "Bespoke implementation, migration and custom development are scoped separately.",
   faqs: [
-    { q: "Which agents are included?", a: "Sales, Retention, Recruiter and Dispatch, all working today. Early users on the $199 price also get Quality, the Quality Control AI agent, at no extra cost. Onboarding new cleaners through to readiness is part of Recruiter, and coordinating their visits is part of Dispatch. Marketing and Customer Care are not released, and no plan or purchase makes one available sooner." },
+    { q: "Which agents are included?", a: "Sales, Retention, Recruiter and Dispatch, all working today. Early users on the $199 price also get Quality, the Quality Control AI agent, at no extra cost. Onboarding new cleaners through to readiness is part of Recruiter, and coordinating their visits is part of Dispatch. Marketing and Care are not released, and no plan or purchase makes one available sooner." },
     { q: "What uses credits?", a: "Selestial Credits pay for defined AI work, such as one Company Chat answer, one hiring email read by AI, or one generated image. Each is charged once when it is completed. Viewing records, opening or answering a cleaner’s link, accepting a job, status changes and scheduled reminders use no credits." },
     { q: "What happens when credits run out?", a: "New AI work pauses and the Owner is told. Schedules, records, cleaner links, active jobs and everything that does not use AI keep working. Nothing is bought automatically; you can buy a top-up or wait for the monthly reset." },
     { q: "Do top-ups unlock agents?", a: "No. A top-up adds credits only. Agents and features come with the plan, and only once they are released." },
@@ -407,7 +407,7 @@ export const TASK_TRAIL = {
 export const INTEGRATIONS = {
   id: "connections",
   headline: "Works with the tools you already use.",
-  lead: "Selestial connects to the places your leads, applicants, calendar and payments already live. Some connections work today; the rest are on the way, and each says which.",
+  lead: "Selestial connects to the places your leads, applicants, calendar and payments already live.",
   liveLabel: "Live",
   plannedLabel: "Coming soon",
   groups: [
@@ -559,7 +559,7 @@ export const PLATFORM = {
         { label: "1 more bathroom", value: "$25.00" },
       ],
       total: { label: "Per visit", value: "$185.00" },
-      status: "Live",
+      status: "Published",
     },
     booking: {
       title: "Booking pages",

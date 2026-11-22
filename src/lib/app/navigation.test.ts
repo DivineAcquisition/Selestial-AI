@@ -59,7 +59,7 @@ const SPEC: Record<string, Record<string, string[]>> = {
   Operations: {
     Dispatch: ["Dispatch Board", "Schedule", "Offers & Coverage", "Live Jobs", "Action Links", "Playbook"],
     Quality: ["Completion Review", "Checklists & Photos", "Service Issues", "Re-cleans", "Playbook"],
-    "Customer Care": ["Conversations", "Customer Setup", "Service Requests", "Rescheduling & Cancellations", "Playbook"],
+    "Care": ["Conversations", "Customer Setup", "Service Requests", "Rescheduling & Cancellations", "Playbook"],
   },
   Team: {
     Recruiter: ["Hiring Needs", "Applicants", "Screening", "Interviews", "Offers & Agreements", "Onboarding & Readiness", "Playbook"],

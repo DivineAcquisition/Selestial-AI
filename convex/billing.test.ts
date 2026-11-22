@@ -341,7 +341,7 @@ describe("billing", () => {
       await settle(s.t);
       const preview = (await s.as.query(api.billing.intent, { companyId: s.companyId, intentId }))!.preview!;
       // Nothing Recruiter or Dispatch does is lost on Operate: onboarding and visit coordination are theirs.
-      expect(preview.lostAgents).toEqual(["Marketing", "Quality", "Customer Care"]);
+      expect(preview.lostAgents).toEqual(["Marketing", "Quality", "Care"]);
       expect(preview.lostFeatures).toContain("Creative Studio");
       expect(preview.effectiveAt).toBe(billing.customerFor(`company_${s.companyId}`).periodEnd);
       await s.as.mutation(api.billing.confirmIntent, { companyId: s.companyId, intentId });
