@@ -18,6 +18,7 @@ import { httpRouter } from "convex/server";
 
 import { internal } from "./_generated/api";
 import { oauthCallback, oneClickUnsubscribe, providerWebhook, signedFileRoute } from "./lib/builders";
+import { evidenceRequestValid } from "./lib/texting/evidence";
 import { siteOrigin } from "./lib/dispatch/links";
 import { exchangeCode, googleApp } from "./lib/recruiter/gmail";
 import { hashToken, seal } from "./lib/recruiter/secrets";
@@ -206,6 +207,48 @@ http.route({
       if (!file) return null;
       const seconds = Math.max(0, Math.floor((Number(url.searchParams.get("exp")) - now) / 1000));
       return new Response(file, { status: 200, headers: { "content-type": file.type || "application/octet-stream", "cache-control": `private, max-age=${seconds}`, "referrer-policy": "no-referrer", "x-content-type-options": "nosniff" } });
+    },
+  }),
+});
+
+/**
+ * GET /texting-evidence/<evidence id>?exp=…&sig=…  one texting evidence file, for an address signed by this
+ * deployment within the last 15 minutes. Anything else is a plain 404. Never cached beyond its expiry.
+ */
+http.route({
+  pathPrefix: "/texting-evidence/",
+  method: "GET",
+  handler: signedFileRoute({
+    verify: async (request, now) => {
+      const url = new URL(request.url);
+      const evidenceId = url.pathname.slice("/texting-evidence/".length);
+      return /^[a-z0-9]{10,64}$/i.test(evidenceId) && evidenceRequestValid(evidenceId, url.searchParams.get("exp"), url.searchParams.get("sig"), now);
+    },
+    handler: async (ctx, request, now) => {
+      const url = new URL(request.url);
+      const storageId = await ctx.runQuery(internal.textingCase.evidenceFile, { evidenceId: url.pathname.slice("/texting-evidence/".length) });
+      const file = storageId ? await ctx.storage.get(storageId) : null;
+      if (!file) return null;
+      const seconds = Math.max(0, Math.floor((Number(url.searchParams.get("exp")) - now) / 1000));
+      return new Response(file, { status: 200, headers: { "content-type": file.type || "application/octet-stream", "content-disposition": "inline", "cache-control": `private, max-age=${seconds}`, "referrer-policy": "no-referrer", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox" } });
+    },
+  }),
+});
+
+/**
+ * GET /texting-review/<token>  a blank or redacted review copy the owner approved showing to carrier
+ * reviewers, and Selestial accepted. Never an original. Withdrawn or replaced copies are a plain 404.
+ */
+http.route({
+  pathPrefix: "/texting-review/",
+  method: "GET",
+  handler: signedFileRoute({
+    verify: async (request) => /^[A-Za-z0-9_-]{32}$/.test(new URL(request.url).pathname.slice("/texting-review/".length)),
+    handler: async (ctx, request) => {
+      const storageId = await ctx.runQuery(internal.textingCase.reviewCopyFile, { token: new URL(request.url).pathname.slice("/texting-review/".length) });
+      const file = storageId ? await ctx.storage.get(storageId) : null;
+      if (!file) return null;
+      return new Response(file, { status: 200, headers: { "content-type": file.type || "application/octet-stream", "cache-control": "public, max-age=300", "referrer-policy": "no-referrer", "x-content-type-options": "nosniff", "x-robots-tag": "noindex", "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox" } });
     },
   }),
 });

@@ -34,6 +34,11 @@ export const tutorialTables = {
     media: v.optional(mediaValidator),
     /** Staff's own note: what was checked, or what changed in the other system. */
     note: v.optional(v.string()),
+    /**
+     * Staff confirmed the written-guide criteria (catalog.ts WRITTEN_CRITERIA) for this content version: the
+     * guide may be published as written guidance, labelled as checked against documentation only.
+     */
+    writtenReview: v.optional(v.object({ contentVersion: v.number(), docsCheckedOn: v.string(), by: v.string(), at: v.number() })),
     /** When an owner last reported the steps as changed. Cleared when staff review it. */
     reportedAt: v.optional(v.number()),
     updatedBy: v.string(),

@@ -57,6 +57,23 @@ Help articles read November 20, 2026. "Interface" means followed in a real demo 
 | spreadsheet-prepare-clients (reference) | Selestial itself | Owner or Manager | ✓ | ✓ (code) | Ready for review; narration generated |
 | spreadsheet-prepare-team / records, fix errors, review | Selestial itself | Owner or Manager | ✓ | — | Draft |
 
+## November 22 additions
+
+- **GoHighLevel:** `ghl-export-contacts`, from HighLevel's "How to Export Contacts to a CSV in HighLevel"
+  (modified Dec 24, 2025, read Nov 22, 2026). Admin users only; downloaded from Contacts › Bulk Actions; only
+  visible columns are exported; the article doesn't mention DND/opt-out in the export. Ready for review,
+  not followed in an account. Its file goes through the generic CSV importer.
+- Jobber and Housecall Pro client export articles re-read Nov 22, 2026: steps unchanged.
+- **Mapping and errors** on the client tutorials: how columns land in Selestial and how to recover.
+- **Progress and resume:** each written step can be ticked; the guide says where to pick up
+  (`tutorialProgress`, per member, reset when the steps' version changes).
+- **Written-guide publication:** a tutorial not followed in a real account can be published only after
+  staff confirm every `WRITTEN_CRITERIA` item for its content version and check date, with no video, and
+  sources checked within 120 days. Owners see "Written guide · Checked against the help article on …; not
+  yet followed in a real account". A verified walkthrough keeps its existing rules.
+- Nothing was published by this change. Publication state lives in each deployment's `tutorialSettings`;
+  the staff readiness panel reads it from the deployment, not the repository.
+
 ## Still needed
 
 1. **Recording access.** Share a folder through Remote Control (Claude desktop app › Settings › Claude Code ›

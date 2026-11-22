@@ -22,7 +22,7 @@ import { api } from "../../../../convex/_generated/api";
 import { PLATFORM_WORDS, tutorialById, type Placement, type Tutorial } from "../../../../convex/lib/tutorials/catalog";
 import { TutorialPlayer, type PlayerEvent } from "./player";
 
-export type PublishedTutorial = Tutorial & { reported: boolean };
+export type PublishedTutorial = Tutorial & { reported: boolean; guide?: "walkthrough" | "written" };
 type TrackKind = "opened" | "play_started" | "play_completed" | "steps_expanded" | "action_selected" | "play_failed" | "suggestion_dismissed";
 
 type OpenOptions = {
@@ -195,6 +195,7 @@ function TutorialBody({ tutorial, placement, track, onUpload }: { tutorial: Publ
         <div className="flex flex-wrap items-center gap-1.5">
           {platform ? <Badge variant="outline">{platform}</Badge> : null}
           <Badge variant="outline">{tutorial.media ? `Video · ${Math.max(1, Math.round(tutorial.media.durationSeconds / 60))} min` : "Written guide"}</Badge>
+          {tutorial.interfaceVerifiedOn ? null : <Badge variant="outline">Checked against {platform ? `${platform}'s` : "the"} help article</Badge>}
         </div>
         <DialogTitle className="text-balance">{tutorial.title}</DialogTitle>
         <DialogDescription>{tutorial.purpose}</DialogDescription>
@@ -220,12 +221,32 @@ function TutorialBody({ tutorial, placement, track, onUpload }: { tutorial: Publ
 
         <div className="grid gap-2">
           <Section title="Written steps" defaultOpen={!tutorial.media} onOpen={expanded}>
-            <ol className="grid list-decimal gap-1.5 pl-5 text-strong marker:text-muted-foreground">
-              {tutorial.steps.map((step) => (
-                <li key={step}>{step}</li>
-              ))}
-            </ol>
+            <Steps tutorial={tutorial} />
           </Section>
+          {tutorial.mapping?.length ? (
+            <Section title="How the columns come into Selestial" onOpen={expanded}>
+              <dl className="grid gap-1.5 text-strong sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                {tutorial.mapping.map((row) => (
+                  <div key={row.from} className="contents">
+                    <dt className="font-medium">{row.from}</dt>
+                    <dd className="text-muted-foreground">→ {row.to}</dd>
+                  </div>
+                ))}
+              </dl>
+              <p className="mt-2 text-xs">Selestial suggests these matches; you confirm each on the mapping step. Importing a phone number or email never counts as permission to text or email.</p>
+            </Section>
+          ) : null}
+          {tutorial.errors?.length ? (
+            <Section title="If something goes wrong" onOpen={expanded}>
+              <ul className="grid gap-2">
+                {tutorial.errors.map((row) => (
+                  <li key={row.problem}>
+                    <span className="font-medium text-strong">{row.problem}</span> {row.fix}
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          ) : null}
           <Section title="Before you start" onOpen={expanded}>
             <ul className="grid list-disc gap-1 pl-5">
               {tutorial.prerequisites.map((item) => (
@@ -261,7 +282,7 @@ function TutorialBody({ tutorial, placement, track, onUpload }: { tutorial: Publ
         <footer className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-border pt-3 text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1.5">
             <Check className="size-3.5" aria-hidden />
-            Last verified {formatDay(tutorial.interfaceVerifiedOn ?? tutorial.docsCheckedOn)}
+            {tutorial.interfaceVerifiedOn ? `Followed in a real account on ${formatDay(tutorial.interfaceVerifiedOn)}` : `Checked against the help article on ${formatDay(tutorial.docsCheckedOn)}; not yet followed in a real account`}
             {tutorial.sources.filter((source) => source.url.startsWith("https://")).map((source) => (
               <a key={source.url} href={source.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline-offset-4 hover:text-strong hover:underline">
                 · {source.title.replace(/^[^:]+: /, "")}
@@ -274,6 +295,38 @@ function TutorialBody({ tutorial, placement, track, onUpload }: { tutorial: Publ
         </footer>
       </DialogPanel>
     </>
+  );
+}
+
+/** The written steps, each with a box to tick, so a person can stop and pick up where they left off. */
+function Steps({ tutorial }: { tutorial: PublishedTutorial }) {
+  const { companyId } = useCompany();
+  const progress = useQuery(api.tutorials.progress, { companyId });
+  const mark = useMutation(api.tutorials.markStep);
+  const done = new Set(progress?.find((row) => row.tutorialId === tutorial.id)?.done ?? []);
+  const next = tutorial.steps.findIndex((_, index) => !done.has(index));
+  return (
+    <div className="grid gap-2">
+      {done.size > 0 && next >= 0 ? <p className="text-xs" role="status">Pick up at step {next + 1}.</p> : null}
+      {done.size === tutorial.steps.length ? <p className="text-xs text-success-foreground" role="status">All steps ticked.</p> : null}
+      <ol className="grid gap-1.5 text-strong">
+        {tutorial.steps.map((step, index) => (
+          <li key={step} className="flex items-start gap-2">
+            <input
+              type="checkbox"
+              className="mt-1 size-4 shrink-0 accent-brand-500"
+              checked={done.has(index)}
+              onChange={(event) => void mark({ companyId, tutorialId: tutorial.id, step: index, done: event.target.checked }).catch(() => undefined)}
+              aria-label={`Step ${index + 1} done`}
+            />
+            <span className={cn(done.has(index) && "text-muted-foreground line-through decoration-muted-foreground/50")}>
+              <span className="mr-1 text-muted-foreground">{index + 1}.</span>
+              {step}
+            </span>
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }
 

@@ -248,6 +248,7 @@ export const chargeRegistrationFee = staffMutation({
 
 const staffView = (row: Doc<"textingRequests">, company: string) => ({
   requestId: row._id,
+  setupId: row.setupId ?? null,
   companyId: row.companyId,
   company,
   status: row.status,

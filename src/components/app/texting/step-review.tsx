@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { api } from "../../../../convex/_generated/api";
 import { ACTIVITIES_BY_KEY } from "./catalog";
 import { formatPhone, placeName, useSetup, type StepId } from "./context";
+import { EvidenceNotes } from "./evidence";
 import { Needs, Note, Section, StepHeading } from "./parts";
 import { Checkbox } from "@/components/ui/selection";
 
@@ -103,6 +104,8 @@ export function ReviewStep() {
           </Button>
         </div>
       </Section>
+
+      <EvidenceNotes companyId={companyId} context="review" />
     </>
   );
 }

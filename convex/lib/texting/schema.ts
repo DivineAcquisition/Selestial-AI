@@ -117,6 +117,12 @@ export const textingTables = {
     /** What Selestial actually did or checked for the owner, newest last. Never a guess. */
     notes: v.array(v.object({ key: v.string(), step: literals(SETUP_STEPS), words: v.string(), at: v.number() })),
     requestId: v.optional(v.id("textingRequests")),
+    /** Which number journey the owner chose. Absent: a new local number (the 10DLC journey). */
+    numberRoute: v.optional(v.union(v.literal("new_local"), v.literal("port_existing"), v.literal("toll_free"))),
+    /** The configuration version (textingConfigVersions) this setup was last checked against. 0: built-in. */
+    configVersion: v.optional(v.number()),
+    /** Steps a configuration change reopened, with why. Cleared when the owner reaches that step again. */
+    reopened: v.optional(v.array(v.object({ step: literals(SETUP_STEPS), words: v.string(), configVersion: v.number(), at: v.number() }))),
     revision: v.number(),
     updatedAt: v.number(),
     updatedBy: v.optional(v.id("members")),
@@ -156,6 +162,10 @@ export const textingTables = {
     links: v.object({ privacy: v.string(), terms: v.string(), signup: v.optional(v.string()) }),
     phoneNumber: v.string(),
     authorization: v.optional(v.object({ wording: v.string(), pricesVersion: v.string(), at: v.number(), by: v.id("members") })),
+    /** The exact evidence versions filed with this submission. Never updated when an item is replaced later. */
+    evidence: v.optional(v.array(v.object({ evidenceId: v.id("textingEvidence"), key: v.string(), version: v.number() }))),
+    /** The configuration version the submission was checked against. Later versions never reinterpret it. */
+    configVersion: v.optional(v.number()),
     submittedAt: v.number(),
     submittedBy: v.id("members"),
   })
@@ -168,6 +178,8 @@ export const textingTables = {
    * deleted. Mock filings are never sent to the carriers, and no number is bought.
    */
   telnyxChecks: defineTable({
+    /** "read_only": only GETs (the key and the messaging profile); nothing is filed, not even a mock. Absent: the full check. */
+    mode: v.optional(v.literal("read_only")),
     startedAt: v.number(),
     startedBy: v.id("staff"),
     status: v.union(v.literal("running"), v.literal("passed"), v.literal("failed")),

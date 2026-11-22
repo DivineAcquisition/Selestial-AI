@@ -175,6 +175,7 @@ const SOURCE_CHOICES: { id: Platform; label: string }[] = [
   { id: "jobber", label: "Jobber" },
   { id: "housecall_pro", label: "Housecall Pro" },
   { id: "bookingkoala", label: "BookingKoala" },
+  { id: "gohighlevel", label: "GoHighLevel" },
   { id: "spreadsheet", label: "A spreadsheet" },
 ];
 

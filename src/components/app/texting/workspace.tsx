@@ -188,6 +188,13 @@ export function TextingFrame() {
                 </span>
               </p>
             ) : null}
+            {view.config.reopened
+              .filter((row) => row.step === step)
+              .map((row) => (
+                <p key={row.step} role="status" className="rounded-xl bg-warning/10 px-3 py-2.5 text-xs text-warning-foreground">
+                  Reopened because Selestial&apos;s registration requirements changed: {row.words} Everything else you filled in is unchanged.
+                </p>
+              ))}
             <fieldset disabled={locked && step !== "progress" && step !== "review"} className="grid min-w-0 gap-5">
               {step === "business" ? <BusinessStep /> : step === "activities" ? <ActivitiesStep /> : step === "permission" ? <PermissionStep /> : step === "number" ? <NumberStep /> : step === "review" ? <ReviewStep /> : <ProgressStep />}
             </fieldset>

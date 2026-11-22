@@ -106,3 +106,17 @@ export function formatPhone(value: string | null | undefined): string {
   const digits = (value ?? "").replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
   return digits.length === 10 ? `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}` : (value ?? "");
 }
+
+/**
+ * A field's label and help, as the forms configuration words them (convex/lib/texting/config.ts). Falls back
+ * to the built-in words. Requirements never come from here: only presentation.
+ */
+export function useFieldCopy() {
+  const { view } = useSetup();
+  return (field: string, label: string, hint?: string): { label: string; hint?: string } => {
+    const row = view.config.fields.find((entry) => entry.field === field);
+    if (!row) return { label, hint };
+    const help = row.help ?? hint;
+    return { label: row.label ?? label, hint: row.example ? [help, `For example: ${row.example}`].filter(Boolean).join(" ") : help };
+  };
+}

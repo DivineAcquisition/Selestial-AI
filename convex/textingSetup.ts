@@ -15,7 +15,6 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalAction, internalMutation, internalQuery, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { ownerMutation, ownerQuery } from "./lib/builders";
-import { readProfile } from "./lib/compliance/profile";
 import { notFound, userError } from "./lib/errors";
 import { byMember, recordEvent } from "./lib/events";
 import { meteringOn } from "./lib/messagingBilling/ledger";
@@ -24,8 +23,9 @@ import { seal, secretsConfigured } from "./lib/recruiter/secrets";
 import { ACTIVITIES, GROUP_WORDS, isActivityKey } from "./lib/texting/activities";
 import { activityProblems, businessProblems, draftProblems, ENTITY_WORDS, needsTaxId, usPhone, VERTICALS, type PlaceState } from "./lib/texting/checks";
 import { draftFor, type DraftInput } from "./lib/texting/drafts";
+import { activeConfig, caseConfigProblems, currentEvidence, draftInput, evidenceRows, syncRecommendations } from "./lib/texting/case";
 import { milestones } from "./lib/texting/milestones";
-import { currentPage, ensureHandle, handleOf, linksFor, publishPage, type Links } from "./lib/texting/pages";
+import { currentPage, ensureHandle, handleOf, linksFor, publishPage } from "./lib/texting/pages";
 import { describe, planFor, sampleFor, sampleKeys } from "./lib/texting/plan";
 import { findDetails, fill, sourceWords } from "./lib/texting/prefill";
 import { chargesAt, registrationPricesAt, registrationWording } from "./lib/texting/prices";
@@ -60,28 +60,6 @@ async function requestOf(ctx: Ctx, setup: Doc<"textingSetups">): Promise<Doc<"te
 
 /** The owner can change their answers when nothing is filed yet, or when a correction or a new number is asked for. Not while a code is awaited. */
 const editable = (request: Doc<"textingRequests"> | null) => !request || (EDITABLE_REQUEST.includes(request.status) && request.needs?.kind !== "code");
-
-async function draftInput(ctx: Ctx, setup: Pick<Doc<"textingSetups">, "business" | "activities" | "places" | "otherPlace" | "hosting" | "ownSite">, company: Doc<"companies">, handle: string | null): Promise<DraftInput> {
-  const profile = await readProfile(ctx, company._id);
-  const b = setup.business;
-  const links: Links = linksFor(setup, handle) ?? { privacy: "(your privacy policy link)", terms: "(your texting terms link)", signup: "(your sign-up link)" };
-  return {
-    name: b.displayName || company.name,
-    legalName: b.entityType === "SOLE_PROPRIETOR" ? [b.contactFirstName, b.contactLastName].filter(Boolean).join(" ") || undefined : b.legalName,
-    website: b.website,
-    supportEmail: b.supportEmail,
-    supportPhone: b.supportPhone,
-    street: b.street,
-    city: b.city,
-    state: b.state,
-    postalCode: b.postalCode,
-    activities: setup.activities,
-    marketingPerWeek: profile.messaging.frequency.marketingPerWeek,
-    links,
-    places: setup.places,
-    otherPlace: setup.otherPlace,
-  };
-}
 
 /** Rewrites every draft the owner has not edited, from the details as they are now. Their own words are never replaced. */
 function regenerated(drafts: Doc<"textingSetups">["drafts"], input: DraftInput, now: number): Doc<"textingSetups">["drafts"] {
@@ -252,6 +230,7 @@ export const save = ownerMutation({
     const next = { ...setup, ...patch };
     patch.drafts = regenerated(drafts, await draftInput(ctx, next, ctx.company, await handleOf(ctx, ctx.companyId)), now);
     await ctx.db.patch(setup._id, patch);
+    if (changesAnswers) await syncRecommendations(ctx, setup._id);
     return { revision: setup.revision + 1 };
   },
 });
@@ -405,6 +384,7 @@ export const chooseNumber = ownerMutation({
     const setup = await writable(ctx, ctx.companyId, args.revision);
     const request = await requestOf(ctx, setup);
     if (!editable(request) && request?.needs?.kind !== "number") throw userError("Your request is with Selestial now, so the number can't be changed here.");
+    if ((setup.numberRoute ?? "new_local") !== "new_local") throw userError("You chose to bring a number or use a toll-free number. Switch to a new local number first.");
     const search = await ctx.db.get(args.searchId);
     const row = search && search.companyId === ctx.companyId ? search.results?.find((result) => result.phoneNumber === args.phoneNumber) : undefined;
     if (!row) throw userError("Choose a number from your search.");
@@ -482,7 +462,13 @@ export const view = ownerQuery({
       ...(setup.places.length && !places.some((row) => row.state === "records") ? ["At least one place must record each person's agreement before texts go out."] : []),
       ...pageStates.filter((row) => row.state !== "published").map((row) => (row.state === "drafted" ? `Publish your ${row.kind === "signup" ? "sign-up page" : row.kind === "terms" ? "texting terms" : "privacy policy"}.` : `Your ${row.kind === "signup" ? "sign-up page" : row.kind === "terms" ? "texting terms" : "privacy policy"} needs attention.`)),
     ];
-    const numberIssues = setup.number ? (setup.number.sms ? [] : ["This number can't text. Choose another."]) : ["Choose a number."];
+    const route = setup.numberRoute ?? "new_local";
+    const numberIssues = route !== "new_local" ? [route === "port_existing" ? "Bringing an existing number is handled with Selestial's help. See the request on this step." : "Toll-free numbers go through a separate toll-free verification, handled with Selestial's help. See the request on this step."] : setup.number ? (setup.number.sms ? [] : ["This number can't text. Choose another."]) : ["Choose a number."];
+    const { version: configVersion, config } = await activeConfig(ctx, now);
+    const extra = await caseConfigProblems(ctx, setup, config);
+    const extraFor = (step: string) => extra.filter((row) => row.step === step).map((row) => row.words);
+    // A configuration change reopens only the steps it actually added a requirement to, while that requirement stands.
+    const reopened = (setup.reopened ?? []).filter((row) => extra.some((problem) => problem.step === row.step));
     const samples = plan ? sampleKeys(setup.activities).map((key) => ({ key, text: sampleFor(key, input.name, setup.samples), edited: key in setup.samples })) : [];
     const { taxId, ...rest } = setup;
     return {
@@ -496,7 +482,9 @@ export const view = ownerQuery({
       plan,
       description: plan ? describe(input.name, setup.activities) : null,
       samples,
-      issues: { business: businessIssues, activities: activityIssues, permission: permissionIssues, number: numberIssues },
+      issues: { business: [...businessIssues, ...extra.filter((row) => row.step === "business").map((row) => ({ field: (row.field ?? "displayName") as (typeof businessIssues)[number]["field"], words: row.words }))], activities: [...activityIssues, ...extraFor("activities")], permission: [...permissionIssues, ...extraFor("permission")], number: [...numberIssues, ...extraFor("number")], review: extraFor("review") },
+      route,
+      config: { version: configVersion, fields: config.fields, prerequisites: config.prerequisites, reopened },
       drafts: draftStates,
       places,
       pages: pageStates,
@@ -548,6 +536,10 @@ export const submit = ownerMutation({
     const places = placeStates(setup.places, !!signup, setup.otherPlace);
     if (!places.some((row) => row.state === "records")) problems.push("At least one place must record each person's agreement.");
     if (!setup.number?.sms) problems.push("Choose a number that can text.");
+    // A toll-free number or a number being brought in is never filed through this local-number (10DLC) registration.
+    if ((setup.numberRoute ?? "new_local") !== "new_local") problems.unshift("This registration is for a new local number. Bringing a number or a toll-free number is a separate request, handled on Your number.");
+    const { version: configVersion, config } = await activeConfig(ctx, now);
+    problems.push(...(await caseConfigProblems(ctx, setup, config)).map((row) => row.words));
     const plan = planFor(setup.activities, entityType);
     if (problems.length || !plan || !links || !setup.number) throw userError(problems[0] ?? "Something is still missing.");
 
@@ -603,10 +595,20 @@ export const submit = ownerMutation({
       if (open && !["rejected", "cancelled", "failed"].includes(open.status)) throw userError("There's already a texting request for this company.");
       requestId = await ctx.db.insert("textingRequests", { companyId: ctx.companyId, status: "requested", requestedBy: ctx.member._id, requestedAt: now, submissionVersion: 1, step: "Waiting for Selestial review.", ...filing });
     }
+    // The exact evidence versions filed now. A later replacement adds a new version; these stay as they are.
+    const filedEvidence = currentEvidence(await evidenceRows(ctx, setup._id)).filter((row) => row.visibility === "company" && row.kind !== "placeholder" && row.state !== "missing" && row.state !== "needs_replacement");
+    for (const row of filedEvidence) await ctx.db.patch(row._id, { lockedIn: [...row.lockedIn, version], links: { ...row.links, submissionVersion: row.links.submissionVersion ?? version } });
+    const posted = await ctx.db
+      .query("textingNotes")
+      .withIndex("by_setup_created", (q) => q.eq("setupId", setup._id))
+      .take(500);
+    for (const note of posted) if (note.status === "posted" && note.audience === "company" && !note.lockedAt) await ctx.db.patch(note._id, { lockedAt: now });
     await ctx.db.insert("textingSubmissions", {
       companyId: ctx.companyId,
       requestId,
       version,
+      evidence: filedEvidence.map((row) => ({ evidenceId: row._id, key: row.key, version: row.version })),
+      configVersion,
       business: b,
       ...(setup.taxId && !sole ? { taxIdLast4: setup.taxId.last4 } : {}),
       activities: setup.activities,
@@ -621,6 +623,8 @@ export const submit = ownerMutation({
       submittedBy: ctx.member._id,
     });
     await ctx.db.patch(setup._id, { requestId, step: "progress", revision: setup.revision + 1, updatedAt: now, updatedBy: ctx.member._id, notes: [...setup.notes, { key: `submitted-${now}`, step: "progress" as SetupStep, words: correcting ? "I sent your corrected details to Selestial review. Everything else you'd filled in is unchanged." : "I sent your setup to Selestial review. Nothing is filed with the carriers or charged until Selestial approves it.", at: now }].slice(-40) });
+    await ctx.db.patch(setup._id, { configVersion });
+    await syncRecommendations(ctx, setup._id);
     await recordEvent(ctx, { companyId: ctx.companyId, type: correcting ? "texting.resubmitted" : "texting.requested", actor: byMember(ctx), subject: { table: "textingRequests", id: requestId }, data: { phoneNumber: setup.number.phoneNumber, version } });
     return { revision: setup.revision + 1, requestId };
   },

@@ -24,7 +24,8 @@ import { cn } from "@/lib/utils";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { Checkbox, Select } from "@/components/ui/selection";
-import { EmailInput, NumberField } from "@/components/ui/fields";
+import { Disclosure, EmailInput, NumberField } from "@/components/ui/fields";
+import { TextingCasePanel, TextingReadiness } from "@/components/staff/texting-case";
 
 /**
  * Selestial's own staff console: the public request queues, the trust records the public pages are
@@ -86,6 +87,7 @@ const NAV = [
   { href: "/staff/selection", label: "Selection system" },
   { href: "/staff/fields", label: "Form fields" },
   { href: "/staff/texting", label: "Texting" },
+  { href: "/staff/texting-config", label: "Texting forms" },
   { href: "/staff/messaging", label: "Messaging money" },
   { href: "/staff/unpaid", label: "Unpaid plans" },
   { href: "/staff/agent-requests", label: "Agent requests" },
@@ -1011,6 +1013,7 @@ export function TextingQueue() {
   return (
     <>
       <PageHeader title="Texting" lead="Selestial review for business texting. Each company registers in its own name, with its own privacy policy and texting terms. Approving files the registration with the carriers; the number is bought only after they approve." />
+      <TextingReadiness />
       <TelnyxCheck />
       <FormError message={error} />
       {rows === undefined ? (
@@ -1100,6 +1103,11 @@ export function TextingQueue() {
                       order {row.numberOrderId ?? "none"} · brand {row.brandId ?? "none"} · campaign {row.campaignId ?? "none"}
                       {row.diagnostics ? ` · ${[row.diagnostics.brand, row.diagnostics.campaign, row.diagnostics.order, row.diagnostics.assignment].filter(Boolean).join(" · ")}` : ""}
                     </p>
+                  ) : null}
+                  {row.setupId ? (
+                    <Disclosure title="Evidence, notes and exceptions">
+                      <TextingCasePanel setupId={row.setupId} />
+                    </Disclosure>
                   ) : null}
                   {row.feesAuthorized ? <RegistrationFee requestId={row.requestId} /> : <p className="text-xs text-muted-foreground">The owner did not authorize fees from the messaging balance for this request.</p>}
                   {row.status === "requested" ? (

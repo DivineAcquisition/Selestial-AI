@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { api } from "../../../../convex/_generated/api";
 import { PERMISSION_PLACES, type DraftKey } from "../../../../convex/lib/texting/schema";
 import { useSetup } from "./context";
+import { EvidenceNotes } from "./evidence";
 import { ChoiceCard, Disclosure, Note, PageState, Section, StepHeading } from "./parts";
 
 const PLACE_WORDS: Record<(typeof PERMISSION_PLACES)[number], { label: string; hint: string }> = {
@@ -46,7 +47,7 @@ const PLACE_STATE: Record<"records" | "not_yet" | "described", { label: string; 
 };
 
 export function PermissionStep() {
-  const { view, commit, locked } = useSetup();
+  const { view, commit, locked, companyId } = useSetup();
   const places = view.setup.places;
   const [other, setOther] = useState(view.setup.otherPlace ?? "");
   const marketing = view.setup.activities.includes("promotions");
@@ -117,6 +118,8 @@ export function PermissionStep() {
       <Disclosure summary={<span>How people agree, as the carriers read it</span>}>
         <Draft k="opt_in_flow" />
       </Disclosure>
+
+      <EvidenceNotes companyId={companyId} context="permission" />
     </>
   );
 }

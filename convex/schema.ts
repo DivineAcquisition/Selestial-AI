@@ -15,6 +15,7 @@ import { bookingTables } from "./lib/booking/schema";
 import { chatTables } from "./lib/chat/schema";
 import { complianceTables } from "./lib/compliance/schema";
 import { textingTables } from "./lib/texting/schema";
+import { caseTables } from "./lib/texting/caseSchema";
 import { financeTables } from "./lib/finance/schema";
 import { clientsTables, communicationValidator, propertyDetailsValidator, propertyKindValidator, relationshipValidator } from "./lib/clients/schema";
 import { trustTables } from "./lib/trust/schema";
@@ -216,6 +217,7 @@ export default defineSchema({
   ...complianceTables,
   // ── Business texting setup (convex/lib/texting/schema.ts) ────────────────────────────────────────
   ...textingTables,
+  ...caseTables,
   ...trustTables,
 
   // ── Public site ────────────────────────────────────────────────────────────────────────────────

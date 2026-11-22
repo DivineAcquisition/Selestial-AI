@@ -137,7 +137,7 @@ export const exportPage = internalQuery({
     const query = ctx.db.query(entry.table as TableNames) as unknown as LooseQuery;
     const page = await query.withIndex(entry.index, (q) => q.eq("companyId", args.companyId)).paginate({ cursor: args.cursor, numItems: PAGE_SIZE });
     // Checked again on every row: a row from another company never reaches the file, whatever the index says.
-    const rows = page.page.filter((row) => row.companyId === args.companyId).map((row) => without(row, entry.omit));
+    const rows = page.page.filter((row) => row.companyId === args.companyId && (!entry.keep || entry.keep(row as Record<string, unknown>))).map((row) => without(row, entry.omit));
     return { rows, isDone: page.isDone, continueCursor: page.continueCursor };
   },
 });
@@ -187,7 +187,7 @@ export const buildExport = internalAction({
           cursor = page.continueCursor;
         }
         tables[entry.table] = rows;
-        if (entry.omit?.length) omitted[entry.table] = `${entry.omit.join(", ")}: ${entry.why ?? "Internal."}`;
+        if (entry.omit?.length || entry.keepWhy) omitted[entry.table] = [entry.omit?.length ? `${entry.omit.join(", ")}: ${entry.why ?? "Internal."}` : "", entry.keepWhy ?? ""].filter(Boolean).join(" ");
       }
       const file = JSON.stringify(
         {

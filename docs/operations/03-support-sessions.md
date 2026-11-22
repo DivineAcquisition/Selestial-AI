@@ -70,6 +70,13 @@ A support session can change only what a function explicitly opens to it. Opened
 | `services.startDraft`, `saveDraft` | records.edit | started / edited a service draft for you to review |
 | `services.submit` | records.edit | sent a service change to you for approval |
 | `tasks.setNextAction`, `wait`, `escalate`, `complete`, `cancel` | records.edit | updated / completed / cancelled a task |
+| `textingCase.addEvidence`, `describeEvidence` | records.edit | added evidence / edited the description of texting evidence |
+| `textingCase.addNote`, `editNote` (internal notes need onboarding.evidence) | records.edit | added / edited a note on your texting setup |
+| `textingCase.actOnRecommendation` (apply or edit draft text, add a placeholder only) | records.edit | applied a suggested draft change |
+| `textingCase.manageException` | records.edit + onboarding.evidence | updated an onboarding item on your texting setup |
+
+Opening a texting evidence file in a session (`textingCase.fileLink`) also needs content revealed, because
+a screenshot can show a customer's details. See [../texting/02-case.md](../texting/02-case.md) §6.
 
 Everything else is refused in a support session, including approving anything (staff never approve for
 the owner), sending messages, publishing prices, changing agent authority, buying numbers, billing,
@@ -95,9 +102,9 @@ privilege after the session ends.
 
 | Role | Base capabilities |
 |---|---|
-| admin | workspace.view, records.edit, agents.recover; manages staff, roles and grants |
-| support | workspace.view, records.edit, agents.recover |
-| reviewer | none: request queues only, opens no workspace |
+| admin | workspace.view, records.edit, agents.recover, outbound.suspend, onboarding.evidence; manages staff, roles and grants |
+| support | workspace.view, records.edit, agents.recover, onboarding.evidence |
+| reviewer | onboarding.evidence (texting review in the staff console only); opens no workspace |
 
 Admins grant sensitive capabilities per person, with a reason (Staff page). Grants, role changes and
 removals are recorded in `staffAudit`. Removing a staff member ends their open sessions.

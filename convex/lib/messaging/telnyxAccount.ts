@@ -353,3 +353,22 @@ export const CAMPAIGN_APPEALABLE = new Set(["TELNYX_FAILED", "MNO_REJECTED"]);
 export const CAMPAIGN_INTERRUPTED = new Set(["TCR_SUSPENDED", "TCR_EXPIRED", "MNO_SUSPENDED", "TELNYX_SUSPENDED"]);
 export const ASSIGNED = "ASSIGNED";
 export const ASSIGNMENT_FAILED = new Set(["FAILED", "FAILED_ASSIGNMENT"]);
+
+// ── Number porting eligibility (assisted porting, convex/textingReview.ts) ──────────────────────────
+
+export type Portability = { phoneNumber: string; portable: boolean; fastPortable: boolean; reason: string | null };
+
+/**
+ * Asks Telnyx whether numbers can be moved to it (`POST /v2/portability_checks`, answered at once). It creates
+ * no porting order. Telnyx's reference does not say whether a check is charged, so only staff run it, on an
+ * owner's saved request. It is a POST, so a non-production backend refuses it like any other.
+ */
+export function checkPortability(fetcher: Fetcher, phoneNumbers: string[]): Promise<Answer<Portability[]>> {
+  return call(fetcher, "POST", "/portability_checks", { phone_numbers: phoneNumbers }, (json) => {
+    const list = (json as { data?: unknown } | null)?.data;
+    if (!Array.isArray(list)) return null;
+    return list
+      .filter((row): row is Record<string, unknown> => !!row && typeof row === "object")
+      .map((row) => ({ phoneNumber: str(row.phone_number) ?? "", portable: row.portable === true, fastPortable: row.fast_portable === true, reason: str(row.not_portable_reason) }));
+  });
+}

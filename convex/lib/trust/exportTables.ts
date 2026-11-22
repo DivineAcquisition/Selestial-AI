@@ -15,6 +15,13 @@ export type ExportTable = {
   omit?: readonly string[];
   /** Why the omitted fields are left out. */
   why?: string;
+  /**
+   * Rows to write, when only some belong in the company's file (for example Selestial's internal notes on a
+   * texting case, which are never the company's to download). Rows it refuses are left out entirely.
+   */
+  keep?: (row: Record<string, unknown>) => boolean;
+  /** Why some rows are left out. */
+  keepWhy?: string;
 };
 
 export const EXPORT_TABLES: readonly ExportTable[] = [
@@ -39,6 +46,12 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   { table: "textingSetups", index: "by_company", omit: ["taxId"], why: "The EIN is kept sealed and is not in the file." },
   { table: "textingPages", index: "by_company_kind_version" },
   { table: "textingSubmissions", index: "by_company_submitted" },
+  // The onboarding case around it (convex/lib/texting/caseSchema.ts). Selestial's internal items never leave Selestial.
+  { table: "textingEvidence", index: "by_company_key_version", omit: ["reviewCopy", "reviewedBy"], why: "The review copy's public address part and the reviewing staff member are Selestial's.", keep: (row) => row.visibility === "company", keepWhy: "Evidence Selestial kept to itself is not the company's." },
+  { table: "textingNotes", index: "by_company_created", keep: (row) => row.audience === "company" && row.status === "posted", keepWhy: "Selestial's internal notes, and unposted drafts, are left out." },
+  { table: "textingRecommendations", index: "by_company_updated" },
+  { table: "textingExceptions", index: "by_company_updated", omit: ["internalWords", "history"], why: "Selestial's internal words and its staff-attributed history are Selestial's; the owner-facing words and state are included." },
+  { table: "tutorialProgress", index: "by_company_member" },
   { table: "replyReadings", index: "by_company_received" },
   { table: "evidence", index: "by_company_job", omit: ["storageId", "clientKey"], why: "Internal file references. The photos themselves are not in the file." },
   { table: "jobReports", index: "by_company_job" },

@@ -8,7 +8,8 @@
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 
-import { Field, TextInput } from "@/components/app/form";
+import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
+import { Checkbox } from "@/components/ui/selection";
 import { Check, Phone, Search } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,9 +19,111 @@ import { cn } from "@/lib/utils";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { formatPhone, placeName, useSetup } from "./context";
-import { Note, Section, StepHeading } from "./parts";
+import { ChoiceCard, Note, Section, StepHeading } from "./parts";
+
+const ROUTES = [
+  { value: "new_local", title: "Get a new local number", hint: "Guided and automated: Selestial registers it with the carriers and buys it once they approve." },
+  { value: "port_existing", title: "Bring a number you already have", hint: "Assisted: Selestial checks it can move and what your current carrier needs. Nothing moves without your separate signed authorization." },
+  { value: "toll_free", title: "Use a toll-free number", hint: "Assisted: toll-free numbers go through their own carrier verification, not this registration." },
+] as const;
 
 export function NumberStep() {
+  const { view, companyId, run, locked } = useSetup();
+  const setRoute = useMutation(api.textingCase.setNumberRoute);
+  return (
+    <>
+      <StepHeading eyebrow="Step 4 of 6" title="Your number" lead="The number customers, cleaners and applicants see on every text." />
+      <div role="radiogroup" aria-label="Kind of number" className="grid gap-2 sm:grid-cols-3">
+        {ROUTES.map((route) => (
+          <ChoiceCard key={route.value} selected={view.route === route.value} disabled={locked} onPress={() => void run((revision) => setRoute({ companyId, revision, route: route.value }))} title={route.title} hint={route.hint}>
+            {route.value === "new_local" ? null : <Badge variant="outline">Assisted</Badge>}
+          </ChoiceCard>
+        ))}
+      </div>
+      {view.route === "new_local" ? <LocalNumber /> : <AssistedRoute route={view.route} />}
+    </>
+  );
+}
+
+/**
+ * Bringing a number or using a toll-free one: saved as a request assigned to Selestial, with its status and
+ * next action. Nothing is checked, moved, bought or filed by asking.
+ */
+function AssistedRoute({ route }: { route: "port_existing" | "toll_free" }) {
+  const { companyId } = useSetup();
+  const data = useQuery(api.textingCase.workspace, { companyId });
+  const ask = useMutation(api.textingCase.requestAssistance);
+  const { busy, error, run } = useRun();
+  const [phone, setPhone] = useState("");
+  const [carrier, setCarrier] = useState("");
+  const [words, setWords] = useState("");
+  const [accepted, setAccepted] = useState(false);
+  if (!data) return <Skeleton className="h-32 rounded-xl" />;
+  const open = data.exceptions.find((row) => row.assisted?.route === route && row.state !== "resolved");
+  if (open) {
+    return (
+      <Section title={route === "port_existing" ? "Your request to bring a number" : "Your toll-free request"} lead="Handled with Selestial's help, not automatically.">
+        <div className="grid gap-1.5 rounded-xl border border-border p-3 text-sm">
+          <p className="flex flex-wrap items-center gap-2">
+            <Badge variant={open.state === "waiting_owner" ? "warning" : "info"}>{open.state === "waiting_owner" ? "Needs you" : open.state === "waiting_provider" ? "Waiting on the provider" : "With Selestial"}</Badge>
+            {open.assisted?.phoneNumber ? <span className="font-medium text-strong tabular-nums">{formatPhone(open.assisted.phoneNumber)}</span> : null}
+          </p>
+          <p className="text-strong">{open.ownerWords}</p>
+          <p className="text-xs text-muted-foreground">Next: {open.nextAction}</p>
+          <p className="text-xs text-muted-foreground">{open.canContinue}</p>
+          {open.followUpAt ? <p className="text-xs text-muted-foreground">Selestial follows up by {new Date(open.followUpAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}.</p> : null}
+        </div>
+        <Note>Your local-number registration isn&apos;t sent while this is open. To go back to a new local number, choose it above: everything you filled in is kept.</Note>
+      </Section>
+    );
+  }
+  return (
+    <Section title={route === "port_existing" ? "Bring a number you already have" : "Use a toll-free number"} lead="This is an assisted request. Selestial reviews it and tells you exactly what's needed next.">
+      {route === "port_existing" ? (
+        <Note tone="warning">
+          Moving a number is called porting. Your current carrier sets the date, which isn&apos;t guaranteed, and calls and texts can be interrupted for a while on the day. You&apos;ll need the account holder&apos;s name, the account number and PIN from your current carrier, and a recent bill. Nothing is moved until you sign a separate authorization.
+        </Note>
+      ) : (
+        <Note>Toll-free numbers (800, 888 and others) are verified by the carriers separately from local-number registration, usually in one to two weeks. Your business details and permission wording here are reused; carriers also need to see how people opt in.</Note>
+      )}
+      <form
+        className="grid gap-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void run(() => ask({ companyId, route, ...(route === "port_existing" ? { phoneNumber: phone, acknowledgement: data.catalog.portWording } : {}), carrier: carrier || undefined, words: words || undefined }));
+        }}
+      >
+        {route === "port_existing" ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="The number to bring">
+              <TextInput value={phone} onChange={(event) => setPhone(event.target.value)} inputMode="tel" autoComplete="tel" required />
+            </Field>
+            <Field label="Current carrier (optional)">
+              <TextInput value={carrier} onChange={(event) => setCarrier(event.target.value)} />
+            </Field>
+          </div>
+        ) : null}
+        <Field label="Anything Selestial should know (optional)">
+          <TextArea rows={2} value={words} onChange={(event) => setWords(event.target.value)} maxLength={1000} />
+        </Field>
+        {route === "port_existing" ? (
+          <label className="flex items-start gap-2 text-xs text-strong">
+            <Checkbox checked={accepted} onCheckedChange={setAccepted} className="mt-0.5" />
+            <span>{data.catalog.portWording}</span>
+          </label>
+        ) : null}
+        <FormError message={error} />
+        <div>
+          <Button type="submit" variant="primary" loading={busy} disabled={route === "port_existing" && !accepted}>
+            Send request to Selestial
+          </Button>
+        </div>
+      </form>
+    </Section>
+  );
+}
+
+function LocalNumber() {
   const { view, companyId, run, locked } = useSetup();
   const startSearch = useMutation(api.texting.searchNumbersFor);
   const choose = useMutation(api.textingSetup.chooseNumber);
@@ -44,7 +147,6 @@ export function NumberStep() {
 
   return (
     <>
-      <StepHeading eyebrow="Step 4 of 6" title="Your number" lead="A dedicated local number for your business. Customers, cleaners and applicants see it on every text." />
       {needsNumber ? <Note tone="warning">{view.request?.needs?.words}</Note> : null}
 
       {chosen ? (
@@ -127,7 +229,6 @@ export function NumberStep() {
       </Section>
 
       <Note>Choosing a number doesn&apos;t hold it. It&apos;s bought only after the carriers approve your registration, and checked again first. If it&apos;s been taken by then, Selestial asks you to choose another instead of picking one for you.</Note>
-      <p className="text-xs text-muted-foreground">Toll-free numbers and bringing a number you already have are separate requests, not part of this setup. Write to support if you need either.</p>
     </>
   );
 }

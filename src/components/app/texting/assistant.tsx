@@ -7,6 +7,7 @@
 import { ACTIVITIES_BY_KEY } from "./catalog";
 import { formatPhone, placeName, useSetup } from "./context";
 import { Bubble, Needs } from "./parts";
+import { Recommendations } from "./recommendations";
 import { Checkbox } from "@/components/ui/selection";
 
 const when = (at: number) => new Date(at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
@@ -25,6 +26,8 @@ export function Assistant() {
           <Needs items={issues} />
         </section>
       ) : null}
+
+      <Recommendations step={step} />
 
       <section className="grid gap-2" aria-label={step === "review" ? "What it costs" : step === "progress" ? "What happens next" : "Preview"}>
         <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{step === "review" ? "What it costs" : step === "progress" ? "What happens next" : "Preview"}</h3>

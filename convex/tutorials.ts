@@ -13,10 +13,12 @@ import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { companyMutation, companyQuery, staffMutation, staffQuery } from "./lib/builders";
+import { notFound } from "./lib/errors";
 import { userError } from "./lib/errors";
 import { allow } from "./lib/rateLimit";
 import { optionalText } from "./lib/text";
-import { TUTORIALS, tutorialById, type Media, type State, type Tutorial } from "./lib/tutorials/catalog";
+import { TUTORIALS, tutorialById, WRITTEN_CRITERIA, WRITTEN_MAX_AGE_DAYS, type Media, type State, type Tutorial } from "./lib/tutorials/catalog";
+import { activeConfig } from "./lib/texting/case";
 import { mediaValidator, placementValidator, stateValidator, tutorialEventValidator, TUTORIAL_EVENTS } from "./lib/tutorials/schema";
 
 type Settings = Doc<"tutorialSettings">;
@@ -47,11 +49,50 @@ export const published = companyQuery({
   args: {},
   handler: async (ctx) => {
     const settings = await settingsMap(ctx);
+    // Staff may place a tutorial at more screens through the forms configuration; never fewer than the catalog's.
+    const { config } = await activeConfig(ctx);
     return TUTORIALS.flatMap((tutorial) => {
-      const now = effective(tutorial, settings.get(tutorial.id));
+      const row = settings.get(tutorial.id);
+      const now = effective(tutorial, row);
       if (now.state !== "published") return [];
-      return [{ ...tutorial, media: now.media, reported: now.reportedAt !== null }];
+      const extra = config.tutorials.filter((entry) => entry.tutorialId === tutorial.id).map((entry) => entry.placement as Tutorial["placements"][number]);
+      // How it was checked, said plainly: a walkthrough followed in a real account, or a written guide checked against the platform's documentation.
+      const guide = tutorial.interfaceVerifiedOn ? ("walkthrough" as const) : ("written" as const);
+      return [{ ...tutorial, placements: [...new Set([...tutorial.placements, ...extra])], media: guide === "written" ? null : now.media, guide, reported: now.reportedAt !== null }];
     });
+  },
+});
+
+/** Where the signed-in person is in each tutorial's written steps, so they can pick up where they left off. */
+export const progress = companyQuery({
+  args: {},
+  handler: async (ctx) => {
+    const rows = await ctx.db
+      .query("tutorialProgress")
+      .withIndex("by_member_tutorial", (q) => q.eq("memberId", ctx.member._id))
+      .take(200);
+    return rows.filter((row) => row.companyId === ctx.companyId && tutorialById(row.tutorialId)?.contentVersion === row.contentVersion).map((row) => ({ tutorialId: row.tutorialId, done: row.done, completedAt: row.completedAt ?? null }));
+  },
+});
+
+/** Ticks or unticks one written step. Progress from an older version of the steps is started over, not misapplied. */
+export const markStep = companyMutation({
+  args: { tutorialId: v.string(), step: v.number(), done: v.boolean() },
+  handler: async (ctx, args) => {
+    if (ctx.support) return null;
+    const tutorial = tutorialById(args.tutorialId);
+    if (!tutorial) throw userError("That tutorial is not in the catalog.");
+    if (!Number.isInteger(args.step) || args.step < 0 || args.step >= tutorial.steps.length) throw userError("That step isn't in this tutorial.");
+    const row = await ctx.db
+      .query("tutorialProgress")
+      .withIndex("by_member_tutorial", (q) => q.eq("memberId", ctx.member._id).eq("tutorialId", tutorial.id))
+      .first();
+    const base = row && row.contentVersion === tutorial.contentVersion && row.companyId === ctx.companyId ? row.done : [];
+    const done = [...new Set(args.done ? [...base, args.step] : base.filter((n) => n !== args.step))].sort((a, b) => a - b);
+    const completedAt = done.length === tutorial.steps.length ? Date.now() : undefined;
+    if (row) await ctx.db.patch(row._id, { companyId: ctx.companyId, contentVersion: tutorial.contentVersion, done, completedAt, updatedAt: Date.now() });
+    else await ctx.db.insert("tutorialProgress", { companyId: ctx.companyId, memberId: ctx.member._id, tutorialId: tutorial.id, contentVersion: tutorial.contentVersion, done, completedAt, updatedAt: Date.now() });
+    return null;
   },
 });
 
@@ -119,6 +160,8 @@ export const staffList = staffQuery({
         docsCheckedOn: tutorial.docsCheckedOn,
         interfaceVerifiedOn: tutorial.interfaceVerifiedOn,
         hasTranscript: tutorial.transcript !== null,
+        writtenReview: row?.writtenReview ?? null,
+        writtenReviewCurrent: Boolean(row?.writtenReview && row.writtenReview.contentVersion === tutorial.contentVersion && row.writtenReview.docsCheckedOn === tutorial.docsCheckedOn),
         sources: tutorial.sources,
         note: row?.note ?? null,
         updatedBy: row?.updatedBy ?? null,
@@ -146,11 +189,35 @@ export const setState = staffMutation({
     const tutorial = tutorialById(args.tutorialId);
     if (!tutorial) throw userError("That tutorial is not in the catalog.");
     if (args.state === "published") {
-      if (!tutorial.interfaceVerifiedOn) throw userError("Follow the steps in a real account and record the date in the catalog before publishing.");
       const row = await ctx.db.query("tutorialSettings").withIndex("by_tutorial", (q) => q.eq("tutorialId", tutorial.id)).first();
-      if ((row?.media ?? tutorial.media) && !tutorial.transcript) throw userError("A video needs its reviewed transcript in the catalog before it is published.");
+      const media = row?.media ?? tutorial.media;
+      if (!tutorial.interfaceVerifiedOn) {
+        // A written guide: its own criteria, never a video, and labelled as checked against documentation only.
+        const review = row?.writtenReview;
+        if (!review || review.contentVersion !== tutorial.contentVersion || review.docsCheckedOn !== tutorial.docsCheckedOn) throw userError("Follow the steps in a real account and record the date in the catalog, or confirm the written-guide criteria for this version first.");
+        if (media) throw userError("A written guide can't carry a video. Remove the media, or verify the walkthrough in a real account.");
+        if (Date.now() - Date.parse(`${tutorial.docsCheckedOn}T00:00:00Z`) > WRITTEN_MAX_AGE_DAYS * 86_400_000) throw userError(`The sources were last checked more than ${WRITTEN_MAX_AGE_DAYS} days ago. Check them again before publishing a written guide.`);
+      } else if (media && !tutorial.transcript) throw userError("A video needs its reviewed transcript in the catalog before it is published.");
     }
     await upsert(ctx, tutorial, { state: args.state, note: optionalText(args.note?.trim() || undefined, "The note", 1000), ...(args.state !== "needs_update" ? { reportedAt: undefined } : {}) });
+    return null;
+  },
+});
+
+/**
+ * Staff confirm, one by one, the criteria for publishing a guide that was checked against the platform's
+ * documentation but not followed in a real account. Bound to the content version and the check date: a new
+ * version of the steps, or a newer check, needs confirming again.
+ */
+export const confirmWrittenReview = staffMutation({
+  args: { tutorialId: v.string(), confirmed: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    const tutorial = tutorialById(args.tutorialId);
+    if (!tutorial) notFound();
+    const missing = WRITTEN_CRITERIA.filter((criterion) => !args.confirmed.includes(criterion));
+    if (missing.length) throw userError(`Confirm every criterion first. Missing: ${missing[0]}`);
+    if (tutorial.steps.some((step) => /^to be written/i.test(step))) throw userError("This guide still has steps to be written.");
+    await upsert(ctx, tutorial, { writtenReview: { contentVersion: tutorial.contentVersion, docsCheckedOn: tutorial.docsCheckedOn, by: ctx.staff.name || ctx.email, at: Date.now() } });
     return null;
   },
 });

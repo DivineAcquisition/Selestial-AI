@@ -12,13 +12,14 @@
  * platform's own article and a way to ask for help, never a guess.
  */
 
-export const PLATFORMS = ["jobber", "housecall_pro", "bookingkoala", "spreadsheet"] as const;
+export const PLATFORMS = ["jobber", "housecall_pro", "bookingkoala", "gohighlevel", "spreadsheet"] as const;
 export type Platform = (typeof PLATFORMS)[number];
 
 export const PLATFORM_WORDS: Record<Platform, string> = {
   jobber: "Jobber",
   housecall_pro: "Housecall Pro",
   bookingkoala: "BookingKoala",
+  gohighlevel: "GoHighLevel",
   spreadsheet: "a spreadsheet",
 };
 
@@ -116,7 +117,40 @@ export type Tutorial = {
   transcript: string | null;
   /** The reviewed media in this release. Staff may point a tutorial at a newer version without a release. */
   media: Media | null;
+  /** How the export's columns land in Selestial's import. Only where the importer's own matching was checked. */
+  mapping?: { from: string; to: string }[];
+  /** Problems owners meet with this export, and how to recover. */
+  errors?: { problem: string; fix: string }[];
 };
+
+/**
+ * Publishing a written guide without a walkthrough in a real account is allowed only after staff confirm
+ * each of these, in the staff console. It is shown to owners as a written guide checked against the
+ * platform's documentation, never as a verified walkthrough, and it can carry no video.
+ */
+export const WRITTEN_CRITERIA = [
+  "Every step matches the platform's current help article, opened on the day of this review.",
+  "The role and plan requirements are copied from the article, or say plainly that they are unknown.",
+  "The limitations say what was not followed in a real account.",
+  "The field mapping matches what Selestial's importer does with this export.",
+  "No video or narration is attached.",
+] as const;
+/** A written guide must have been checked against its sources this recently to be published. */
+export const WRITTEN_MAX_AGE_DAYS = 120;
+
+const CLIENT_MAPPING = [
+  { from: "Name, or First Name and Last Name", to: "Client name (first and last names are joined)" },
+  { from: "Email / E-mails", to: "Email" },
+  { from: "Phone / Mobile / Main Phone", to: "Phone" },
+  { from: "Street, City, State, ZIP", to: "Property address (only when all four are present)" },
+  { from: "The other system's client ID", to: "ID in the old system, so a second import skips clients already brought in" },
+];
+const CLIENT_ERRORS = [
+  { problem: "Selestial says the file isn't a CSV.", fix: "Export as CSV, or open the file and save it as Comma-separated values (.csv). Excel and Numbers files can't be read." },
+  { problem: "Columns weren't matched.", fix: "On the mapping step, choose the column for each detail yourself. Selestial's guesses are suggestions." },
+  { problem: "Some clients were skipped as possible duplicates.", fix: "Review each one: add it anyway only if it's a different client." },
+  { problem: "Clients came in without a property.", fix: "A property is created only with street, city, state and ZIP. Add the missing parts in the file and import again; clients already imported are skipped." },
+];
 
 const SUPPORT: TutorialAction = { kind: "support", label: "Get migration help" };
 const UPLOAD_CLIENTS: TutorialAction = { kind: "upload", label: "Upload your client file", target: "clients" };
@@ -132,6 +166,9 @@ const BK_PROVIDERS: Source = { title: "BookingKoala: How to export provider data
 const BK_CHANGELOG: Source = { title: "BookingKoala changelog (Booking CSV export)", url: "https://feedback.bookingkoala.com/changelog/" };
 
 const CHECKED = "2026-11-20";
+/** Re-read against the help article on this date (the steps were unchanged). */
+const RECHECKED = "2026-11-22";
+const GHL_EXPORT: Source = { title: "HighLevel: How to Export Contacts to a CSV in HighLevel", url: "https://help.gohighlevel.com/support/solutions/articles/48001238482-contacts-export-as-csv-upgrade", updated: "2025-12-24" };
 
 export const TUTORIALS: Tutorial[] = [
   // ── Spreadsheet and Selestial (verified in Selestial itself) ──────────────────────────────────
@@ -167,6 +204,8 @@ export const TUTORIALS: Tutorial[] = [
     action: { kind: "template", label: "Download the client template", href: "/templates/selestial-clients.csv", filename: "selestial-clients.csv" },
     transcript: null,
     media: null,
+    mapping: CLIENT_MAPPING,
+    errors: CLIENT_ERRORS,
   },
   {
     id: "spreadsheet-prepare-team",
@@ -304,7 +343,9 @@ export const TUTORIALS: Tutorial[] = [
       "Choosing tags exports only clients that have every selected tag.",
     ],
     sources: [JOBBER_CLIENT_EXPORT],
-    docsCheckedOn: CHECKED,
+    mapping: CLIENT_MAPPING,
+    errors: [{ problem: "Several files arrived in Jobber's email.", fix: "Jobber puts up to 1,500 rows in each file. Import each file; clients already imported are skipped." }, ...CLIENT_ERRORS],
+    docsCheckedOn: RECHECKED,
     interfaceVerifiedOn: null,
     contentVersion: 1,
     defaultState: "ready_for_review",
@@ -418,7 +459,9 @@ export const TUTORIALS: Tutorial[] = [
     format: "CSV, sent by email.",
     limitations: ["If the email has not arrived within an hour, check your spam folder."],
     sources: [HCP_EXPORT],
-    docsCheckedOn: CHECKED,
+    mapping: CLIENT_MAPPING,
+    errors: [{ problem: "The export email didn't arrive.", fix: "Housecall Pro sends it from notifications@housecallpro.com. Check spam after an hour, and that you're an Admin." }, ...CLIENT_ERRORS],
+    docsCheckedOn: RECHECKED,
     interfaceVerifiedOn: null,
     contentVersion: 1,
     defaultState: "ready_for_review",
@@ -506,6 +549,55 @@ export const TUTORIALS: Tutorial[] = [
     defaultState: "ready_for_review",
     placements: ["import.history", "help"],
     action: UPLOAD_RECORDS,
+    transcript: null,
+    media: null,
+  },
+
+  // ── GoHighLevel (steps from HighLevel's help center; interface to be verified in an account) ───────
+  {
+    id: "ghl-export-contacts",
+    platform: "gohighlevel",
+    task: "customers",
+    title: "Export your contacts from GoHighLevel",
+    purpose: "Get a CSV of your HighLevel contacts to import into Selestial as clients.",
+    prerequisites: ["Sign in to the HighLevel sub-account your clients are in, on a computer.", "Show the name, email, phone and address columns in your Contacts table: the export holds only the columns shown."],
+    role: "HighLevel says only admin users can export contacts, and only Agency Admins and Location Admins can download completed exports.",
+    plan: null,
+    steps: [
+      "In your HighLevel sub-account, open Contacts, then Smart Lists.",
+      "Tick the contacts to export, or use Select All Contacts.",
+      "Optional: click Manage Fields and choose the columns to include.",
+      "Click More, then Export (or the three dots beside + Add Contact, then Export).",
+      "Confirm in the export window and click Export. HighLevel prepares the file in the background.",
+      "When it's ready, open Contacts, then Bulk Actions, and download the file with the down-arrow icon.",
+      "Return to Selestial and upload the file you just downloaded.",
+    ],
+    format: "CSV, downloaded from Contacts › Bulk Actions. HighLevel keeps finished exports for 30 days.",
+    limitations: [
+      "The file holds only the columns visible in your Contacts table, so column names vary. Check each match on Selestial's mapping step.",
+      "HighLevel's article doesn't say the export carries do-not-disturb or text opt-out status. Importing never counts as permission to text: anyone who opted out stays opted out only if you record it in Selestial.",
+      "Notes longer than 255 characters are cut short in the export.",
+      "Not yet followed in a real HighLevel account.",
+    ],
+    sources: [GHL_EXPORT],
+    mapping: [
+      { from: "First Name and Last Name", to: "Client name (joined)" },
+      { from: "Email", to: "Email" },
+      { from: "Phone", to: "Phone" },
+      { from: "Address, City, State, Postal Code (if shown in your table)", to: "Property address (only when all four are present)" },
+      { from: "Tags, custom fields", to: "Not imported. Leave them unmatched." },
+    ],
+    errors: [
+      { problem: "The file has no address columns.", fix: "Show the address columns in your Contacts table (or choose them in Manage Fields) and export again." },
+      { problem: "Export isn't offered.", fix: "HighLevel lets only admin users export. Ask an admin of the sub-account." },
+      ...CLIENT_ERRORS,
+    ],
+    docsCheckedOn: "2026-11-22",
+    interfaceVerifiedOn: null,
+    contentVersion: 1,
+    defaultState: "ready_for_review",
+    placements: ["setup.source", "import.clients.upload", "import.clients.empty", "import.clients.unsupported", "import.clients.missing_columns", "help"],
+    action: UPLOAD_CLIENTS,
     transcript: null,
     media: null,
   },

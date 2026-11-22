@@ -15,7 +15,7 @@ import { Select, SelectionCards } from "@/components/ui/selection";
 
 import { api } from "../../../../convex/_generated/api";
 import type { BusinessField } from "../../../../convex/lib/texting/schema";
-import { formatPhone, useSetup } from "./context";
+import { formatPhone, useFieldCopy, useSetup } from "./context";
 import { Note, Section, SourceChip, StepHeading } from "./parts";
 
 const ENTITY_ORDER = ["PRIVATE_PROFIT", "SOLE_PROPRIETOR", "NON_PROFIT", "PUBLIC_PROFIT"] as const;
@@ -23,6 +23,7 @@ const EXCHANGES = ["NASDAQ", "NYSE", "AMEX", "TSX", "LON"];
 
 export function BusinessStep() {
   const { view, commit, locked } = useSetup();
+  const copy = useFieldCopy();
   const b = view.setup.business;
   // Phone numbers are kept in international form and shown the way people write them.
   const [values, setValues] = useState<Partial<Record<BusinessField, string>>>(() => ({ ...b, ...(b.supportPhone ? { supportPhone: formatPhone(b.supportPhone) } : {}), ...(b.mobilePhone ? { mobilePhone: formatPhone(b.mobilePhone) } : {}) }));
@@ -68,14 +69,14 @@ export function BusinessStep() {
       <Section title="Names" lead="The name customers see on every text, and the name on your official records.">
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="grid gap-1">
-            <Field label="Name customers know you by" hint="Every text starts with this name." error={problem("displayName")}>
+            <Field {...copy("displayName", "Name customers know you by", "Every text starts with this name.")} error={problem("displayName")}>
               <TextInput {...field("displayName")} autoComplete="organization" maxLength={100} />
             </Field>
             <SourceChip field="displayName" />
           </div>
           {!sole ? (
             <div className="grid gap-1">
-              <Field label="Legal business name" hint="Exactly as on your IRS records (your CP 575 or 147C letter)." error={problem("legalName")}>
+              <Field {...copy("legalName", "Legal business name", "Exactly as on your IRS records (your CP 575 or 147C letter).")} error={problem("legalName")}>
                 <TextInput {...field("legalName")} maxLength={100} />
               </Field>
               <SourceChip field="legalName" />
@@ -87,13 +88,13 @@ export function BusinessStep() {
       {sole ? (
         <Section title="You, as the owner" lead="A sole proprietor registers in their own name.">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="First name" error={problem("contactFirstName")}>
+            <Field {...copy("contactFirstName", "First name")} error={problem("contactFirstName")}>
               <TextInput {...field("contactFirstName")} autoComplete="given-name" />
             </Field>
-            <Field label="Last name" error={problem("contactLastName")}>
+            <Field {...copy("contactLastName", "Last name")} error={problem("contactLastName")}>
               <TextInput {...field("contactLastName")} autoComplete="family-name" />
             </Field>
-            <Field label="Your mobile number" hint="The carriers text a one-time code here after Selestial review. It must be a US mobile you can reach." error={problem("mobilePhone")}>
+            <Field {...copy("mobilePhone", "Your mobile number", "The carriers text a one-time code here after Selestial review. It must be a US mobile you can reach.")} error={problem("mobilePhone")}>
               <TextInput {...field("mobilePhone")} autoComplete="tel" inputMode="tel" />
             </Field>
           </div>
@@ -110,13 +111,13 @@ export function BusinessStep() {
       {entity === "PUBLIC_PROFIT" ? (
         <Section title="Stock listing">
           <div className="grid gap-4 sm:grid-cols-3">
-            <Field label="Stock symbol" error={problem("stockSymbol")}>
+            <Field {...copy("stockSymbol", "Stock symbol")} error={problem("stockSymbol")}>
               <TextInput {...field("stockSymbol")} maxLength={10} />
             </Field>
-            <Field label="Exchange" error={problem("stockExchange")}>
+            <Field {...copy("stockExchange", "Exchange")} error={problem("stockExchange")}>
               <Select value={values.stockExchange ?? ""} onValueChange={(code) => choose("stockExchange", code ?? "")} options={EXCHANGES.map((code) => ({ value: code, label: code }))} disabled={locked} />
             </Field>
-            <Field label="Business contact email" error={problem("contactEmail")}>
+            <Field {...copy("contactEmail", "Business contact email")} error={problem("contactEmail")}>
               <TextInput {...field("contactEmail")} type="email" />
             </Field>
           </div>
@@ -124,7 +125,7 @@ export function BusinessStep() {
       ) : null}
 
       <Section title="Kind of work" lead="Carriers don't list cleaning, so choose the closest fit.">
-        <Field label="Industry" error={problem("vertical")} aside={<SourceChip field="vertical" />}>
+        <Field {...copy("vertical", "Industry")} error={problem("vertical")} aside={<SourceChip field="vertical" />}>
           <Select value={values.vertical ?? ""} onValueChange={(next) => (next ? choose("vertical", next) : undefined)} options={view.catalog.verticals.map((row) => ({ value: row.value, label: row.label }))} placeholder="Choose the closest fit" disabled={locked} />
         </Field>
       </Section>
@@ -132,18 +133,18 @@ export function BusinessStep() {
       <Section title="Business address" lead={sole ? "Where you run the business." : "The address the IRS has for the business."}>
         <div className="grid gap-4 sm:grid-cols-6">
           <div className="grid gap-1 sm:col-span-6">
-            <Field label="Street address" error={problem("street")}>
+            <Field {...copy("street", "Street address")} error={problem("street")}>
               <TextInput {...field("street")} autoComplete="street-address" />
             </Field>
             <SourceChip field="street" />
           </div>
-          <Field label="City" error={problem("city")} className="sm:col-span-3">
+          <Field {...copy("city", "City")} error={problem("city")} className="sm:col-span-3">
             <TextInput {...field("city")} autoComplete="address-level2" />
           </Field>
-          <Field label="State" error={problem("state")} className="sm:col-span-1">
+          <Field {...copy("state", "State")} error={problem("state")} className="sm:col-span-1">
             <TextInput {...field("state")} autoComplete="address-level1" maxLength={2} placeholder="TX" />
           </Field>
-          <Field label="ZIP code" error={problem("postalCode")} className="sm:col-span-2">
+          <Field {...copy("postalCode", "ZIP code")} error={problem("postalCode")} className="sm:col-span-2">
             <TextInput {...field("postalCode")} autoComplete="postal-code" inputMode="numeric" maxLength={5} />
           </Field>
         </div>
@@ -158,13 +159,13 @@ export function BusinessStep() {
             <SourceChip field="website" />
           </div>
           <div className="grid gap-1">
-            <Field label="Support email" hint="Shown in your HELP reply and texting terms." error={problem("supportEmail")}>
+            <Field {...copy("supportEmail", "Support email", "Shown in your HELP reply and texting terms.")} error={problem("supportEmail")}>
               <TextInput {...field("supportEmail")} type="email" autoComplete="email" />
             </Field>
             <SourceChip field="supportEmail" />
           </div>
           <div className="grid gap-1">
-            <Field label="Support phone" error={problem("supportPhone")}>
+            <Field {...copy("supportPhone", "Support phone")} error={problem("supportPhone")}>
               <TextInput {...field("supportPhone")} type="tel" autoComplete="tel" />
             </Field>
             <SourceChip field="supportPhone" />

@@ -57,6 +57,7 @@ Environment variables on the Convex backend (names only):
 | `MAILBOX_TOKEN_KEY` | sealing EINs | Already set where Gmail connections work. Without it, saving an EIN is refused, nothing is stored in the clear. |
 | `LINK_ORIGIN` | company page addresses | Already used for `/c` links. |
 | `PUBLIC_FORM_SECRET` | the hosted sign-up form | Already used by booking pages. Also needed by the Next.js app (Vercel). |
+| `ACTION_LINK_SECRET` (32+ characters) and `CONVEX_SITE_URL` | opening evidence files | Already used for crew photo links. Without them evidence files can't be opened at all. |
 | `MESSAGING_BILLING=on` | charging the fees | Off by default; with it off, authorizations are recorded and nothing is charged. |
 
 Scheduled jobs added (`convex/crons.ts`): reconcile quiet registrations every 30 minutes; check active
@@ -77,5 +78,5 @@ Before the first real company:
   (the same rule booking already uses for email: whoever typed the address may not own the record).
 - Low Volume Mixed is not offered; standard registrations are recommended so a growing company never has to
   re-register. Telnyx's cost is higher ($10 vs $1.50 a month) and is covered by the $10 retail fee.
-- Toll-free verification and number transfer are separate journeys and are not offered here.
+- Toll-free verification and number transfer are offered as assisted requests, not automated (see `02-case.md` §5).
 - Messaging profiles stay platform-wide; per-company profiles can be added later without re-registering.

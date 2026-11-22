@@ -23,6 +23,11 @@ export const CAPABILITIES = [
   "records.destroy",
   /** Emergency suspension: stop every outbound message for a company until it is lifted. */
   "outbound.suspend",
+  /**
+   * Onboarding evidence and notes: open evidence files on a texting case, record Selestial's internal review
+   * of them, write internal staff notes, and track onboarding exceptions. Never an owner attestation.
+   */
+  "onboarding.evidence",
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 export const capabilityValidator = literals(CAPABILITIES);
@@ -35,13 +40,14 @@ export const CAPABILITY_LABELS: Record<Capability, { label: string; detail: stri
   "billing.adjust": { label: "Billing adjustments", detail: "Credits, balances, refunds and plans. Granted per person.", sensitive: true },
   "records.destroy": { label: "Destructive actions", detail: "Deleting or cancelling what cannot be restored. Granted per person.", sensitive: true },
   "outbound.suspend": { label: "Emergency suspension", detail: "Stop every outbound message for a company until it is lifted. Admins have it; granted to others per person.", sensitive: true },
+  "onboarding.evidence": { label: "Onboarding evidence and notes", detail: "Open texting-setup evidence files, record Selestial's internal review of them, write internal notes and track onboarding exceptions. In a workspace, only inside a support session; changes need Manage.", sensitive: false },
 };
 
 /** What each staff role holds without a grant. Reviewers work the request queues and open no workspace. */
 export const ROLE_CAPABILITIES: Record<"admin" | "support" | "reviewer", readonly Capability[]> = {
-  admin: ["workspace.view", "records.edit", "agents.recover", "outbound.suspend"],
-  support: ["workspace.view", "records.edit", "agents.recover"],
-  reviewer: [],
+  admin: ["workspace.view", "records.edit", "agents.recover", "outbound.suspend", "onboarding.evidence"],
+  support: ["workspace.view", "records.edit", "agents.recover", "onboarding.evidence"],
+  reviewer: ["onboarding.evidence"],
 };
 
 export function capabilitiesOf(staff: { role: "admin" | "support" | "reviewer"; capabilities?: readonly Capability[] }): Set<Capability> {

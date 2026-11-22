@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 
 import { api } from "../../../../convex/_generated/api";
 import { formatPhone, useSetup } from "./context";
+import { EvidenceNotes } from "./evidence";
 import { Note, StepHeading, type Milestone } from "./parts";
 
 const STATE: Record<Milestone["state"], { icon: typeof CheckCircle2; label: string; className: string }> = {
@@ -29,7 +30,7 @@ const STATE: Record<Milestone["state"], { icon: typeof CheckCircle2; label: stri
 const when = (at: number | null) => (at ? new Date(at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : null);
 
 export function ProgressStep() {
-  const { view, go } = useSetup();
+  const { view, go, companyId } = useSetup();
   const request = view.request;
   if (!request) {
     return (
@@ -85,6 +86,7 @@ export function ProgressStep() {
         })}
       </ol>
       {ready || request.status === "interrupted" ? <AgentTexts /> : null}
+      <EvidenceNotes companyId={companyId} context={request.needs?.kind === "correction" ? "correction" : "review"} />
       <Withdraw />
     </>
   );
