@@ -10,6 +10,7 @@ import { companyQuery, managerMutation, ownerMutation } from "./lib/builders";
 import { userError } from "./lib/errors";
 import { byMember, recordEvent } from "./lib/events";
 import { cleanerStatusValidator } from "./lib/statuses";
+import { changeRoutineStatus } from "./lib/cleaners/status";
 import { optionalEmail, optionalText, tags, text } from "./lib/text";
 import { payValidator } from "./schema";
 
@@ -99,14 +100,7 @@ export const setStatus = managerMutation({
     if (args.status === "suspended" || args.status === "ended" || cleaner.status === "suspended" || cleaner.status === "ended") {
       throw userError("Suspending or ending an engagement, and undoing either, is a personnel request an authorized person decides.");
     }
-    await ctx.db.patch(cleaner._id, { status: args.status, statusChangedAt: Date.now() });
-    await recordEvent(ctx, {
-      companyId: ctx.companyId,
-      type: "cleaner.status_changed",
-      actor: byMember(ctx),
-      subject: { table: "cleaners", id: cleaner._id },
-      data: { from: cleaner.status, to: args.status },
-    });
+    await changeRoutineStatus(ctx, ctx.company, cleaner, args.status, byMember(ctx));
     return null;
   },
 });

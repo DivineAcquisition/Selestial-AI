@@ -8,7 +8,7 @@
 import type { MockKind, SceneSpec } from "@/components/agents/scene";
 import { COMING_SOON } from "@/lib/app/coming-soon";
 
-export const AGENT_PAGE_IDS = ["sales", "recruiter", "dispatch", "retention", "marketing", "quality", "customer-care", "team-coordinator"] as const;
+export const AGENT_PAGE_IDS = ["sales", "recruiter", "dispatch", "retention", "marketing", "quality", "customer-care"] as const;
 export type AgentPageId = (typeof AGENT_PAGE_IDS)[number];
 
 export type AgentPage = {
@@ -64,14 +64,14 @@ const LIVE: AgentPage[] = [
     department: "Team",
     status: "live",
     headline: "Build the team your schedule needs.",
-    pitch: "Works your hiring inbox: reads applications against your requirements, invites good fits to finish applying, schedules interviews from your open times, and prepares offers for your approval.",
+    pitch: "Works your hiring inbox: reads applications against your requirements, invites good fits to finish applying, schedules interviews from your open times, prepares offers for your approval, and sees each new cleaner through onboarding until you approve them as ready.",
     scene: {
       trigger: { title: "New application in your hiring inbox", detail: "Maria · 3 years residential experience" },
       work: ["Checks it against your requirements", "Invites her to finish the application", "Books an interview from your open times"],
       outcomes: [
         { title: "Interview booked", detail: "Thursday 2pm, reminders sent" },
         { title: "Offer prepared", detail: "Sent after your approval" },
-        { title: "Accepted and handed over", detail: "Onboarding starts" },
+        { title: "Onboarding complete", detail: "Ready once you approve" },
       ],
     },
     capabilities: [
@@ -79,12 +79,10 @@ const LIVE: AgentPage[] = [
       { title: "Screening against your requirements", detail: "Experience, availability, area and documents, checked the same way for everyone.", mock: "checklist" },
       { title: "Interviews scheduled for you", detail: "Applicants pick from your open times; reminders go out so fewer people miss them.", mock: "week" },
       { title: "Offers and agreements", detail: "Prepared from your terms, sent only once you approve, and tracked to signature.", mock: "progress" },
+      { title: "Onboarding to ready", detail: "Your onboarding checklist for each new cleaner, what's received and what's approved, and a readiness summary for you to approve.", mock: "checklist" },
     ],
-    bringsToYou: ["Every hiring decision", "Every offer, before it is sent", "Every decline, before the applicant hears it"],
-    handoffs: [
-      { agent: "team-coordinator", what: "New cleaners, for onboarding (when released)" },
-      { agent: "dispatch", what: "Cleaners who are ready to be offered work" },
-    ],
+    bringsToYou: ["Every hiring decision", "Every offer, before it is sent", "Every decline, before the applicant hears it", "Each new cleaner's readiness, for your approval"],
+    handoffs: [{ agent: "dispatch", what: "Cleaners you approved as ready, to consider for visits" }],
     plan: "Included in Operate and Expand.",
   },
   {
@@ -147,7 +145,7 @@ const LIVE: AgentPage[] = [
   },
 ];
 
-const HANDOFFS: Record<"marketing" | "quality" | "customer-care" | "team-coordinator", AgentPage["handoffs"]> = {
+const HANDOFFS: Record<"marketing" | "quality" | "customer-care", AgentPage["handoffs"]> = {
   marketing: [{ agent: "sales", what: "New inquiries its campaigns bring in" }],
   quality: [
     { agent: "dispatch", what: "Re-clean visits to schedule" },
@@ -157,13 +155,9 @@ const HANDOFFS: Record<"marketing" | "quality" | "customer-care" | "team-coordin
     { agent: "dispatch", what: "Schedule changes to staff" },
     { agent: "retention", what: "Concerns that need a follow-through" },
   ],
-  "team-coordinator": [
-    { agent: "recruiter", what: "New hires, once their offer is signed" },
-    { agent: "dispatch", what: "Cleaners who are ready for jobs" },
-  ],
 };
 
-const SOON: AgentPage[] = (["marketing", "quality", "customer-care", "team-coordinator"] as const).map((id) => {
+const SOON: AgentPage[] = (["marketing", "quality", "customer-care"] as const).map((id) => {
   const soon = COMING_SOON[id];
   return {
     id,

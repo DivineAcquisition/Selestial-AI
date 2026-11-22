@@ -11,7 +11,7 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { REGISTRY } from "./lib/ai/registry";
 import { accountFor, billingState, BLOCK_WORDS, pricing, verifiedPlan } from "./lib/billing/access";
-import { AGENT_CATALOG, agentReleased, planIncludesAgent, planIncludesFeature } from "./lib/billing/catalog";
+import { AGENT_CATALOG, agentReleased, planIncludesAgent, planIncludesFeature, RETIRED_AGENT_NAMES } from "./lib/billing/catalog";
 import { TASKS, type Task } from "./lib/billing/rateCards";
 import { companyQuery, ownerQuery } from "./lib/builders";
 
@@ -23,11 +23,11 @@ type Execution = Doc<"aiExecutions">;
 type AgentKey = Execution["agent"];
 
 export function agentLabel(agent: AgentKey): string {
-  return agent === "chat" ? "Company Chat" : agent === "studio" ? "Marketing · Creative Studio" : agent === "services" ? "Services & Pricing research" : AGENT_CATALOG[agent].name;
+  return agent === "chat" ? "Company Chat" : agent === "studio" ? "Marketing · Creative Studio" : agent === "services" ? "Services & Pricing research" : agent === "team-coordinator" ? RETIRED_AGENT_NAMES[agent] : AGENT_CATALOG[agent].name;
 }
 
 /** Fixed order, so an agent keeps its colour whatever the filter shows. */
-export const AGENT_ORDER: AgentKey[] = ["chat", "services", "recruiter", "dispatch", "studio", "sales", "retention", "marketing", "quality", "customer-care", "team-coordinator"];
+export const AGENT_ORDER: AgentKey[] = ["chat", "services", "recruiter", "dispatch", "studio", "sales", "retention", "marketing", "quality", "customer-care"];
 
 const STATUS_WORDS: Record<Execution["state"], string> = {
   pending: "Waiting",

@@ -12,8 +12,9 @@ export type Department = { id: DepartmentId; name: string; purpose: string; agen
 
 /**
  * The three departments. They are departments, not lifecycle stages. Only the agents the backend
- * knows are listed here; Marketing, Quality, Customer Care and Team Coordinator join their departments
- * when each is designed (docs/foundation/01-navigation.md). The sidebar's own list of all eight is
+ * knows are listed here; Marketing, Quality and Customer Care join their departments when each is designed
+ * (docs/foundation/01-navigation.md). Team Coordinator was retired: Team is Recruiter alone, with the shared
+ * Cleaners workspace. The sidebar's own list of all seven is
  * src/lib/app/navigation.ts, and a test keeps the two in agreement.
  */
 export const DEPARTMENTS: readonly Department[] = [

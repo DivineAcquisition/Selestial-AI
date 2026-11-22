@@ -13,7 +13,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { internalAction, internalMutation, internalQuery, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { accountFor, agentVerdict, billingState, BLOCK_WORDS, customerIdFor, featureVerdict, verifiedPlan } from "./lib/billing/access";
 import { attach, attachBody, finalizeLock, openPortal, previewAttach, setupPayment, updateSubscription, type RawInvoice } from "./lib/billing/autumn";
-import { AGENT_CATALOG, AGENT_IDS, agentReleased, AUTUMN, BOTH_PLANS_INCLUDE, lostOnChange, PLAN_FEATURES, PLAN_IDS, planIncludesAgent, planIncludesFeature, PLANS, type PlanFeature } from "./lib/billing/catalog";
+import { AGENT_CATALOG, AGENT_IDS, agentReleased, AUTUMN, BOTH_PLANS_INCLUDE, lostOnChange, PLAN_FEATURES, PLAN_IDS, planIncludesAgent, planIncludesFeature, PLANS, RETIRED_AGENT_NAMES, type PlanFeature } from "./lib/billing/catalog";
 import { HOLD_MS, noteExecution } from "./lib/billing/executions";
 import type { Projection } from "./lib/billing/projection";
 import { TASKS } from "./lib/billing/rateCards";
@@ -58,6 +58,9 @@ export const planCheck = internalQuery({
     const company = (await ctx.db.get(execution.companyId))!;
     if (execution.agent === "chat" || execution.agent === "studio" || execution.agent === "services") {
       if (!verifiedPlan(company)) return { ok: false as const, block: "plan" as const, message: "AI work needs an active Operate or Expand plan." };
+    } else if (execution.agent === "team-coordinator") {
+      // Retired and never released: nothing new runs under its name.
+      return { ok: false as const, block: "not_released" as const, message: "Team Coordinator was retired. Its work is Recruiter's and Dispatch's." };
     } else {
       const verdict = agentVerdict(company, execution.agent);
       if (!verdict.ok) return verdict;
@@ -667,5 +670,5 @@ export const planAndUsage = ownerQuery({
 const TASKS_LIST = Object.keys(TASKS) as (keyof typeof TASKS)[];
 
 function agentName(agent: Doc<"aiExecutions">["agent"]): string {
-  return agent === "chat" ? "Company Chat" : agent === "studio" ? "Marketing · Creative Studio" : agent === "services" ? "Services & Pricing research" : AGENT_CATALOG[agent].name;
+  return agent === "chat" ? "Company Chat" : agent === "studio" ? "Marketing · Creative Studio" : agent === "services" ? "Services & Pricing research" : agent === "team-coordinator" ? RETIRED_AGENT_NAMES[agent] : AGENT_CATALOG[agent].name;
 }

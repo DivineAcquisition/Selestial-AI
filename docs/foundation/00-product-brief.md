@@ -22,7 +22,7 @@ Two references sit behind it:
 |---|---|
 | Name | Selestial. |
 | Philosophy | Ownership of the outcome. |
-| Agents | Eight, in three departments (decided later on November 15; see `01-navigation.md`). Growth: Marketing, Sales, Retention. Operations: Dispatch, Quality, Customer Care. Team: Recruiter, Team Coordinator. Sections 3 and 11 to 14 below describe the first four (Sales, Recruiter, Dispatch, Retention); the other four are named and not yet designed. |
+| Agents | Eight, in three departments (decided later on November 15; see `01-navigation.md`). Growth: Marketing, Sales, Retention. Operations: Dispatch, Quality, Customer Care. Team: Recruiter (Team Coordinator was retired on November 22, 2026; its work is Recruiter's and Dispatch's). Sections 3 and 11 to 14 below describe the first four (Sales, Recruiter, Dispatch, Retention); the other four are named and not yet designed. |
 | Departments | Growth, Operations, Team. They are departments, not lifecycle stages. |
 | Navigation | `01-navigation.md` sets the sidebar, the route map and the interaction rules. |
 | Workers | Contractors paid a share of the job, and hourly employees. Both at launch. |

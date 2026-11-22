@@ -1,22 +1,24 @@
 /**
  * Dispatch does not hire, change a customer's price, settle a complaint, judge quality or pay anyone.
  * When its work reaches one of those, it opens a task in that agent's queue and says so. Recruiter is an
- * agent the record already knows. Team Coordinator, Customer Care, Quality and Finance are not built, so
- * their queues are worked by a person: the task is held for a person from the start, never left for an
- * agent that does not exist.
+ * agent the record already knows. Customer Care, Quality and Finance are not built, so their queues are
+ * worked by a person: the task is held for a person from the start, never left for an agent that does not
+ * exist. Cleaner contact and availability problems are Dispatch's own (lib/dispatch/delivery.ts), not a
+ * handoff: Team Coordinator was retired and its operational work is Dispatch's.
  */
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx } from "../../_generated/server";
 import type { aboutValidator } from "../../schema";
 import type { Actor } from "../events";
-import type { HandoffQueue } from "../statuses";
+import type { HandoffQueue, StoredHandoffQueue } from "../statuses";
 import { liveTaskByKey, openTask, setTaskState } from "../taskState";
 
 type About = typeof aboutValidator.type;
 
-export const QUEUE_NAMES: Record<HandoffQueue, string> = {
+/** Names for every queue a task may carry, including the retired one on older tasks. */
+export const QUEUE_NAMES: Record<StoredHandoffQueue, string> = {
   recruiter: "Recruiter",
-  team_coordinator: "Team Coordinator",
+  team_coordinator: "Team Coordinator (retired)",
   customer_care: "Customer Care",
   quality: "Quality",
   finance: "Finance",

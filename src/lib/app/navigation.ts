@@ -19,7 +19,7 @@ import { SETTINGS_SECTIONS } from "./settings";
 export const DEPARTMENT_IDS = ["growth", "operations", "team"] as const;
 export type DepartmentId = (typeof DEPARTMENT_IDS)[number];
 
-export const AGENT_IDS = ["marketing", "sales", "retention", "dispatch", "quality", "customer-care", "recruiter", "team-coordinator"] as const;
+export const AGENT_IDS = ["marketing", "sales", "retention", "dispatch", "quality", "customer-care", "recruiter"] as const;
 export type AgentId = (typeof AGENT_IDS)[number];
 
 /** The agents the Convex backend knows today (convex/lib/statuses.ts). The other four have no record yet. */
@@ -339,10 +339,15 @@ function agent(spec: { id: AgentId; label: string; department: DepartmentId; res
 }
 
 /**
- * The eight agents, in sidebar order within each department. Names, order and tabs are the owner's.
+ * The seven agents, in sidebar order within each department. Names, order and tabs are the owner's. The
+ * departments need not have equal numbers: Team is Recruiter, with the shared Cleaners workspace.
+ *
+ * Team Coordinator was retired on November 22, 2026 (docs/foundation/01-navigation.md). Recruiter gets a
+ * person ready for work; Dispatch decides whether they can take a specific visit and coordinates it; the
+ * Cleaners workspace holds the shared record. Its old pages lead to Recruiter and Dispatch.
  *
  * Two pairs of names are close on purpose and must stay distinct:
- * - Customer Setup (Customer Care) is about customers. Onboarding (Team Coordinator) is about cleaners.
+ * - Customer Setup (Customer Care) is about customers. Onboarding & Readiness (Recruiter) is about cleaners.
  * - Offers & Agreements (Recruiter) is about hiring. Offers & Coverage (Dispatch) is about job assignments.
  */
 export const AGENTS: readonly AgentNav[] = [
@@ -403,7 +408,7 @@ export const AGENTS: readonly AgentNav[] = [
     id: "dispatch",
     label: "Dispatch",
     department: "operations",
-    responsibility: "Staffs jobs, manages scheduling and coverage, and monitors service progress.",
+    responsibility: "Visit eligibility, assignments, coverage, and service coordination.",
     backendAgent: "dispatch",
     workflow: "built",
     overview: LIVE,
@@ -450,7 +455,7 @@ export const AGENTS: readonly AgentNav[] = [
     id: "recruiter",
     label: "Recruiter",
     department: "team",
-    responsibility: "Manages candidate acquisition, screening, interviews, and hiring offers.",
+    responsibility: "Applications, hiring, onboarding, and readiness.",
     backendAgent: "recruiter",
     workflow: "built",
     overview: LIVE,
@@ -460,22 +465,8 @@ export const AGENTS: readonly AgentNav[] = [
       ["screening", "Screening", LIVE],
       ["interviews", "Interviews", LIVE],
       ["offers-agreements", "Offers & Agreements", LIVE],
+      ["onboarding-readiness", "Onboarding & Readiness", LIVE],
       ["playbook", "Playbook", LIVE],
-    ],
-  }),
-  agent({
-    id: "team-coordinator",
-    label: "Team Coordinator",
-    department: "team",
-    responsibility: "Manages cleaner onboarding, documentation, training, readiness, and ongoing availability.",
-    backendAgent: null,
-    tabs: [
-      ["onboarding", "Onboarding"],
-      ["documents-training", "Documents & Training"],
-      ["readiness", "Readiness"],
-      ["availability", "Availability"],
-      ["team-check-ins", "Team Check-ins"],
-      ["playbook", "Playbook"],
     ],
   }),
 ];
@@ -501,7 +492,26 @@ export const EXISTING_ROUTES: readonly { pattern: string; today: string; becomes
     today: "A workspace per department. Nothing links to it now that Dispatch has its own screens.",
     becomes: "Nothing directly. Departments are sidebar tabs and have no page; the content moves to agent workspaces.",
   },
+  {
+    pattern: `${APP_ROOT}/agents/team-coordinator`,
+    today: "Team Coordinator was retired (November 22, 2026). A short page says where its work went, with links to Recruiter and Dispatch.",
+    becomes: "Removed once old links have had time to move.",
+  },
+  {
+    pattern: `${APP_ROOT}/agents/team-coordinator/[tab]`,
+    today: "Redirects: Onboarding, Documents & Training and Readiness to Recruiter › Onboarding & Readiness; Availability to Cleaners; Team Check-ins to Dispatch; anything else to the page above.",
+    becomes: "Removed once old links have had time to move.",
+  },
 ];
+
+/** Where each tab of the retired Team Coordinator went. Anything not listed goes to its transition page. */
+export const TEAM_COORDINATOR_MOVED: Record<string, string> = {
+  onboarding: `${APP_ROOT}/agents/recruiter/onboarding-readiness`,
+  "documents-training": `${APP_ROOT}/agents/recruiter/onboarding-readiness`,
+  readiness: `${APP_ROOT}/agents/recruiter/onboarding-readiness`,
+  availability: `${APP_ROOT}/cleaners`,
+  "team-check-ins": `${APP_ROOT}/agents/dispatch`,
+};
 
 // ── Badges ──────────────────────────────────────────────────────────────────────────────────────────
 

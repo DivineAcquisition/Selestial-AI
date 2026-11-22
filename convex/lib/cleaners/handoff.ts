@@ -9,6 +9,7 @@ import type { MutationCtx } from "../../_generated/server";
 import { notAllowed } from "../errors";
 import { recordEvent, type Actor } from "../events";
 import { isManager, isOwner, roleOf } from "../roles";
+import { setTaskState } from "../taskState";
 import { normalEmail, normalPhone } from "./duplicates";
 import { applyTemplate } from "./enroll";
 import { companyDefinitions } from "./records";
@@ -68,9 +69,30 @@ async function openHandoffFor(ctx: MutationCtx, companyId: Id<"companies">, clea
   return rows.find((row) => row.cleanerId === cleanerId) ?? null;
 }
 
-function nextActionOf(requirements: Doc<"onboardingHandoffs">["requirements"]): string {
+export const READY_FOR_APPROVAL = "Every onboarding item is recorded. Review the readiness summary in Recruiter › Onboarding & Readiness and approve it when you are satisfied.";
+
+export function nextActionOf(requirements: Doc<"onboardingHandoffs">["requirements"]): string {
   const left = requirements.filter((row) => row.status === "outstanding");
-  return left.length > 0 ? `Still outstanding: ${left.map((row) => row.label.toLowerCase()).join(", ")}.` : "Every requirement is recorded. Complete the handoff, then make the engagement active when you are satisfied.";
+  return left.length > 0 ? `Still outstanding: ${left.map((row) => row.label.toLowerCase()).join(", ")}.` : READY_FOR_APPROVAL;
+}
+
+/**
+ * Recruiter presents the person for readiness approval once every onboarding item is recorded: its task asks
+ * the question. Recording an item as outstanding again takes the question back. Asking twice changes nothing.
+ */
+export async function presentForApproval(ctx: MutationCtx, handoff: Doc<"onboardingHandoffs">, actor: Actor): Promise<void> {
+  if (!handoff.taskId) return;
+  const task = await ctx.db.get(handoff.taskId);
+  if (!task || task.status === "done" || task.status === "cancelled") return;
+  const cleaner = await ctx.db.get(handoff.cleanerId);
+  const name = cleaner?.name ?? "The new hire";
+  const question = handoff.requirements.every((row) => row.status === "done")
+    ? `Every onboarding item for ${name} is recorded. Approve their readiness so Dispatch can consider them for visits that match their availability, skills and service area.`
+    : `${nextActionOf(handoff.requirements)} ${name} is not ready for work until you approve it.`;
+  if (task.openQuestion === question) return;
+  // Already with a person: only the question changes. Otherwise it moves to a person now.
+  if (task.status === "needs_decision") await ctx.db.patch(task._id, { openQuestion: question });
+  else await setTaskState(ctx, task, "needs_decision", { openQuestion: question, dueAt: task.dueAt, withPersonSince: task.withPersonSince ?? Date.now() }, actor);
 }
 
 /** A review in Cleaners shows on Recruiter's handoff at once. */
@@ -80,6 +102,7 @@ export async function syncHandoffRequirement(ctx: MutationCtx, cleaner: Doc<"cle
   const memberId = actor.kind === "member" ? actor.memberId : undefined;
   const requirements = handoff.requirements.map((row) => (row.key === key ? { ...row, status: done ? ("done" as const) : ("outstanding" as const), note: note?.slice(0, 500), recordedBy: memberId, at: Date.now() } : row));
   await ctx.db.patch(handoff._id, { requirements, nextAction: nextActionOf(requirements) });
+  await presentForApproval(ctx, { ...handoff, requirements }, actor);
 }
 
 /**
