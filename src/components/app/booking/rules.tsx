@@ -12,6 +12,7 @@ import { useState } from "react";
 
 import { useCompany } from "@/components/app/company";
 import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
+import { IntegrationMark } from "@/components/app/integration-mark";
 import { Notice, Segmented } from "@/components/app/services/shared";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Consequence, Select, type Option } from "@/components/ui/selection";
@@ -182,7 +183,10 @@ function RulesForm({ rules, onClose }: { rules: RulesData; onClose: () => void }
 
         <div className="space-y-4">
           <h3 className="font-medium text-strong">Payment policies</h3>
-          <p className="text-sm text-muted-foreground">Card payments go to your own Stripe account through Finance. The rest is collected with a Finance invoice after the visit.</p>
+          <p className="flex items-start gap-2.5 text-sm text-muted-foreground">
+            <IntegrationMark id="stripe" size="sm" />
+            <span>Card payments go to your own Stripe account through Finance. The rest is collected with a Finance invoice after the visit.</span>
+          </p>
           {state.policies.map((p, i) => (
             <div key={p.id} className="space-y-3 rounded-xl border border-border p-3">
               <div className="flex gap-2">

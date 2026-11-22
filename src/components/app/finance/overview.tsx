@@ -5,6 +5,7 @@ import Link from "next/link";
 
 import { useCompany } from "@/components/app/company";
 import { useRun } from "@/components/app/form";
+import { IntegrationMark } from "@/components/app/integration-mark";
 import { Select } from "@/components/ui/selection";
 import { AlertTriangle, ArrowRight, CircleDollarSign, Clock, FileText, HistoryIcon, Info, Plus, ReceiptIcon, Sparkles, Users, Wallet } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -347,7 +348,8 @@ function FindingCard({ finding, nav }: { finding: Finding; nav: Nav }) {
           {error ? <p className="mt-2 text-xs text-destructive-foreground">{error}</p> : null}
           <div className="mt-3">
             {finding.action.kind === "open_setup" ? (
-              <Link href={`${FINANCE_PATH}/setup`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 text-sm font-medium text-strong hover:border-brand-500/50 focus-visible:outline-2 focus-visible:outline-brand-500">
+              <Link href={`${FINANCE_PATH}/setup`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card pr-2.5 pl-1.5 text-sm font-medium text-strong hover:border-brand-500/50 focus-visible:outline-2 focus-visible:outline-brand-500">
+                <IntegrationMark id="stripe" size="xs" />
                 {finding.action.label}
                 <ArrowRight className="size-3.5" aria-hidden />
               </Link>

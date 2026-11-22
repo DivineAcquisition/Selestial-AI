@@ -373,7 +373,10 @@ export function IntegrationsScreen({ embedded = false }: { embedded?: boolean })
       <Sheet open={openFeature !== undefined || openCard === "gmail"} onOpenChange={(next) => (next ? undefined : setOpenCard(null))}>
         <SheetPopup side="right" className="max-w-xl bg-card">
           <SheetHeader>
-            <SheetTitle>{openCard === "gmail" ? "Connected inboxes" : openName}</SheetTitle>
+            <SheetTitle className="flex items-center gap-2.5">
+              {openCard ? <IntegrationMark id={openCard} size="sm" /> : null}
+              {openCard === "gmail" ? "Connected inboxes" : openName}
+            </SheetTitle>
           </SheetHeader>
           <SheetPanel>{openCard === "gmail" ? <InboxesPanel result={result} /> : openFeature ? <GoogleToolPanel feature={openFeature} result={result} /> : null}</SheetPanel>
         </SheetPopup>

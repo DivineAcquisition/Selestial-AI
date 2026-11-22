@@ -8,7 +8,8 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { useCompany } from "@/components/app/company";
 import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { PageHeader } from "@/components/app/shell";
-import { ArrowLeft, CheckCircle2, ExternalLink, Loader2, Plus, RefreshCw, ShieldCheck, Trash2, Wallet } from "@/components/icons";
+import { IntegrationMark } from "@/components/app/integration-mark";
+import { ArrowLeft, CheckCircle2, ExternalLink, Loader2, Plus, RefreshCw, ShieldCheck, Trash2 } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FINANCE_PATH, moment } from "@/lib/app/finance";
@@ -123,9 +124,7 @@ function StripeCard({ data }: { data: Settings }) {
     <Section title="Card and bank payments" description="Through your own Stripe account">
       <div className="grid gap-4">
         <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/30 p-3.5">
-          <span className="grid size-10 place-items-center rounded-xl bg-[#635bff] text-white" aria-hidden>
-            <Wallet className="size-5" />
-          </span>
+          <IntegrationMark id="stripe" size="lg" />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-strong">{stripe.businessName ?? "Stripe"}</p>
             <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">

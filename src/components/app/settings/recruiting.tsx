@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
 import { Field, FormError, messageOf, TextArea, TextInput, useRun } from "@/components/app/form";
+import { IntegrationMark } from "@/components/app/integration-mark";
 import { Guard } from "@/components/app/settings/guard";
 import { SaveBar, useSavedDraft, useUnsavedWarning } from "@/components/app/settings/save-bar";
 import { Plus, Trash2 } from "@/components/icons";
@@ -75,7 +76,9 @@ function HiringInbox({ canEdit, companyId }: { canEdit: boolean; companyId: Id<"
         <ul className="mb-3 grid gap-2">
           {inboxes.map((row) => (
             <li key={row.connectionId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2">
-              <div className="grid gap-0.5">
+              <div className="flex min-w-0 items-start gap-2.5">
+              {row.provider === "gmail" ? <IntegrationMark id="gmail" size="sm" className="mt-0.5" /> : null}
+              <div className="grid min-w-0 gap-0.5">
                 <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-strong">
                   {row.address}
                   {row.status === "connected" ? (
@@ -92,6 +95,7 @@ function HiringInbox({ canEdit, companyId }: { canEdit: boolean; companyId: Id<"
                   {row.status === "connected" ? (row.lastSyncAt ? `Last checked ${new Date(row.lastSyncAt).toLocaleString()}.` : "Waiting for the first check.") : "Selestial can't read this inbox right now. Reconnect Gmail to fix it."}
                   {row.sendsApplicantEmail ? " Applicant email is sent from this address." : ""}
                 </span>
+              </div>
               </div>
               {canEdit ? (
                 confirming === row.connectionId ? (
@@ -121,6 +125,10 @@ function HiringInbox({ canEdit, companyId }: { canEdit: boolean; companyId: Id<"
       {canEdit && overview.gmailAvailable ? (
         <div className="grid gap-3 rounded-xl border border-border p-3 sm:grid-cols-[1fr_auto] sm:items-end">
           <div className="grid gap-2">
+            <p className="flex items-center gap-2 text-sm font-medium text-strong">
+              <IntegrationMark id="gmail" size="sm" />
+              {hasGmail ? "Reconnect Gmail" : "Connect a Gmail inbox"}
+            </p>
             <Field label="Gmail label to read (optional)" hint="Leave empty to read the whole inbox. Recruiter only opens mail that looks like it's about hiring.">
               <TextInput value={label} onChange={(event) => setLabel(event.target.value)} placeholder="Hiring" />
             </Field>
