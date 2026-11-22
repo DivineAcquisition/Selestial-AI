@@ -6,6 +6,7 @@ import { ConvexHttpClient } from "convex/browser";
 import { headers } from "next/headers";
 
 import { submitEarlyAccess, type EarlyAccessState, type Save } from "@/lib/early-access";
+import { serverBackendUrl } from "@/lib/app/server-backend";
 
 import { api } from "../../convex/_generated/api";
 
@@ -14,9 +15,10 @@ import { api } from "../../convex/_generated/api";
  * requests are not open. The secret never leaves the server.
  */
 function saver(): Save {
-  const url = process.env.NEXT_PUBLIC_CONVEX_URL?.trim();
+  // Never the live backend from a preview (src/lib/app/server-backend.ts).
+  const url = serverBackendUrl();
   const secret = process.env.PUBLIC_FORM_SECRET?.trim();
-  if (!url || !/^https:\/\//.test(url) || !secret) return null;
+  if (!url || !secret) return null;
   return async (entry) => {
     const client = new ConvexHttpClient(url);
     let timer: ReturnType<typeof setTimeout> | undefined;

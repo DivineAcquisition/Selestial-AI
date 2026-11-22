@@ -197,7 +197,7 @@ function MobileMenu({ onClose }: { onClose: () => void }) {
           </div>
         ))}
         <a href={SITE_NAV.pricing.href} onClick={onClose} className="flex items-start gap-3 rounded-xl border border-border bg-card p-3">
-          <ItemBody item={{ href: SITE_NAV.pricing.href, label: "Pricing", description: "Operate $299 and Expand $499 a month.", icon: "pricing" }} />
+          <ItemBody item={{ href: SITE_NAV.pricing.href, label: "Pricing", description: "One plan with four working agents: $299 a month.", icon: "pricing" }} />
         </a>
         <div className="grid gap-2">
           <Link href={SITE_NAV.cta.href} onClick={onClose} className="icon-gradient flex h-12 items-center justify-center rounded-xl text-[15px] font-semibold">

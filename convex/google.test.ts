@@ -12,7 +12,7 @@ import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { conversionEligibility, parseLeadForm } from "./googleAds";
 import { enabledFeatures, SCOPE } from "./lib/google/features";
-import { GoogleError, googleCall } from "./lib/google/http";
+import { GoogleError, googleCall, NOT_RUN_ON_TEST, writesToGoogle } from "./lib/google/http";
 import { backoff } from "./lib/google/jobs";
 import { gmailScopes } from "./lib/recruiter/gmail";
 import { hashToken } from "./lib/recruiter/secrets";
@@ -421,5 +421,142 @@ describe("Chat's Google tools", () => {
       expect(status).toMatchObject({ status: "done", data: { connected: false } });
       expect(tool("publish_google_review_reply")).toMatchObject({ confirm: true, minimumRole: "manager" });
     });
+  });
+});
+
+describe("a backend that is not production never writes to a Google account", () => {
+  const TEST_BACKEND = "https://terrific-avocet-835.convex.cloud";
+  const LIVE_BACKEND = "https://stoic-gazelle-731.convex.cloud";
+  // convex/googleWork.ts HELD_MAX_AGE_MS. Written out: importing that module here changes the order modules load in for the whole file.
+  const HELD_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+  let t: T;
+  beforeEach(() => {
+    for (const [name, value] of Object.entries(ENV)) vi.stubEnv(name, value);
+    t = start();
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it("knows a write from a read: signing in, queries and busy times are reads; events, replies, ads, conversions and files are writes", () => {
+    const reads: [string, string][] = [
+      ["https://www.googleapis.com/calendar/v3/users/me/calendarList", "GET"],
+      ["https://oauth2.googleapis.com/token", "POST"],
+      ["https://oauth2.googleapis.com/revoke", "POST"],
+      ["https://www.googleapis.com/calendar/v3/freeBusy", "POST"],
+      ["https://googleads.googleapis.com/v21/customers/123/googleAds:search", "POST"],
+      ["https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix", "POST"],
+    ];
+    const writes: [string, string][] = [
+      ["https://www.googleapis.com/calendar/v3/calendars/c/events?sendUpdates=none", "POST"],
+      ["https://www.googleapis.com/calendar/v3/calendars/c/events/e?sendUpdates=none", "PUT"],
+      ["https://www.googleapis.com/calendar/v3/calendars/c/events/e?sendUpdates=none", "DELETE"],
+      ["https://www.googleapis.com/calendar/v3/calendars/c/events/watch", "POST"],
+      ["https://www.googleapis.com/calendar/v3/channels/stop", "POST"],
+      ["https://mybusiness.googleapis.com/v4/accounts/1/locations/2/reviews/3/reply", "PUT"],
+      ["https://mybusinessnotifications.googleapis.com/v1/accounts/1/notificationSetting?updateMask=pubsubTopic", "PATCH"],
+      ["https://googleads.googleapis.com/v21/customers/123/campaigns:mutate", "POST"],
+      ["https://googleads.googleapis.com/v21/customers/123/campaignBudgets:mutate", "POST"],
+      ["https://datamanager.googleapis.com/v1/events:ingest", "POST"],
+      ["https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", "POST"],
+      ["https://sheets.googleapis.com/v4/spreadsheets/s/values/A1?valueInputOption=RAW", "PUT"],
+    ];
+    for (const [url, method] of reads) expect(writesToGoogle(url, method), `${method} ${url}`).toBe(false);
+    for (const [url, method] of writes) expect(writesToGoogle(url, method), `${method} ${url}`).toBe(true);
+  });
+
+  it("refuses every write at the one call wrapper, and lets reads, sign-in and production through", async () => {
+    const fetcher = vi.fn(async () => new Response("{}", { status: 200 })) as unknown as typeof fetch;
+    const write = () => googleCall("https://www.googleapis.com/calendar/v3/calendars/c/events?sendUpdates=none", "t", { method: "POST", body: {}, fetcher });
+    vi.stubEnv("CONVEX_CLOUD_URL", TEST_BACKEND);
+    const refused = await write().catch((e: GoogleError) => e);
+    expect(refused).toMatchObject({ kind: "not_production", message: NOT_RUN_ON_TEST, retryable: false });
+    await expect(googleCall("https://googleads.googleapis.com/v21/customers/1/campaigns:mutate", "t", { method: "POST", body: {}, fetcher })).rejects.toMatchObject({ kind: "not_production" });
+    expect(fetcher).not.toHaveBeenCalled();
+    // Reads and token exchange still work there.
+    await googleCall("https://www.googleapis.com/calendar/v3/users/me/calendarList", "t", { fetcher });
+    await googleCall("https://oauth2.googleapis.com/token", null, { method: "POST", rawBody: "grant_type=refresh_token", fetcher });
+    await googleCall("https://www.googleapis.com/calendar/v3/freeBusy", "t", { method: "POST", body: {}, fetcher });
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    // Production writes.
+    vi.stubEnv("CONVEX_CLOUD_URL", LIVE_BACKEND);
+    await write();
+    expect(fetcher).toHaveBeenCalledTimes(4);
+  });
+
+  it("a job that would write is settled once as not run: not failed, not retried, and nothing reaches Google", async () => {
+    const { as, companyId } = await company(t, "owner", "Alpha");
+    await connect(t, as, companyId, { feature: "business_profile", grant: [SCOPE.business] });
+    await as.mutation(api.google.addResource, { companyId, kind: "business_location", externalId: "locations/22", label: "Alpha Austin", detail: "accounts/11" });
+    const name = "accounts/11/locations/22/reviews/r1";
+    const reviewId = await t.run((ctx) => ctx.db.insert("googleReviews", { companyId, location: "locations/22", reviewName: name, reviewer: "Pat", stars: 5, createdAt: 0, state: "new", seenAt: 0 }));
+    const { jobId } = await as.mutation(api.googleBusiness.approveReply, { companyId, reviewId, text: "Thank you, Pat!" });
+    await t.run((ctx) => ctx.db.patch(jobId, { status: "running", attempts: 1 }));
+    // The old backend: a copy of real rows and real Google access, but not production by name.
+    vi.stubEnv("CONVEX_CLOUD_URL", TEST_BACKEND);
+    const google = fakeGoogleApi({
+      "oauth2.googleapis.com/token": () => ({ body: { access_token: "a", scope: [SCOPE.business].join(" ") } }),
+      [`/${name}`]: () => ({ body: { name } }),
+    });
+    await t.action(internal.googleWork.run, { jobId });
+    // It signed in (allowed), and wrote nothing.
+    expect(google.calls.some((c) => c.url.includes("oauth2.googleapis.com/token"))).toBe(true);
+    expect(google.calls.filter((c) => c.method !== "GET" && !c.url.includes("oauth2.googleapis.com"))).toEqual([]);
+    expect(await t.run((ctx) => ctx.db.get(jobId))).toMatchObject({ status: "cancelled", lastError: NOT_RUN_ON_TEST });
+    expect((await t.run((ctx) => ctx.db.get(reviewId)))!.state).not.toBe("published");
+    expect(await t.run(async (ctx) => (await ctx.db.query("events").collect()).filter((e) => e.type === "google.job_failed"))).toEqual([]);
+    // Settled: a second run finds nothing to do.
+    await t.action(internal.googleWork.run, { jobId });
+    expect((await t.run((ctx) => ctx.db.get(jobId)))!.status).toBe("cancelled");
+  });
+
+  it("opens no calendar channel and changes no review notification setting, without even asking Google", async () => {
+    const { as, companyId } = await company(t, "owner", "Alpha");
+    await connect(t, as, companyId, { feature: "calendar", grant: [SCOPE.calendarList, SCOPE.calendarEvents, SCOPE.calendarFreeBusy] });
+    await t.run(async (ctx) => {
+      const connection = (await ctx.db.query("googleConnections").collect())[0];
+      await ctx.db.insert("googleResources", { companyId, connectionId: connection._id, kind: "calendar_sync", externalId: "work@alpha.test", label: "Work", access: "verified", addedBy: connection.connectedBy, createdAt: Date.now() });
+    });
+    // There is a calendar to watch: on production this would open a channel.
+    expect(await t.query(internal.googleCalendar.watchTarget, { companyId })).not.toBeNull();
+    vi.stubEnv("CONVEX_CLOUD_URL", TEST_BACKEND);
+    vi.stubEnv("GOOGLE_PUBSUB_TOPIC", "projects/p/topics/reviews");
+    const google = fakeGoogleApi({});
+    expect(await t.action(internal.googleCalendar.ensureWatch, { companyId })).toBeNull();
+    expect(await t.action(internal.googleBusiness.ensureNotifications, { companyId })).toBeNull();
+    expect(google.calls).toEqual([]);
+    expect(await t.run((ctx) => ctx.db.query("googleWatches").collect())).toEqual([]);
+  });
+
+  it("a public write held through a suspension runs if it is still fresh, and is cancelled and reported if it is not", async () => {
+    const { as, companyId } = await company(t, "owner", "Alpha");
+    await connect(t, as, companyId, { feature: "business_profile", grant: [SCOPE.business] });
+    const now = Date.now();
+    const job = (key: string, createdAt: number) =>
+      t.run(async (ctx) => {
+        const connection = (await ctx.db.query("googleConnections").collect())[0];
+        return ctx.db.insert("googleJobs", { companyId, connectionId: connection._id, kind: "review_reply", key, status: "queued", payload: "{}", attempts: 0, nextAt: now - 1000, createdAt, updatedAt: createdAt });
+      });
+    const fresh = await job("reply:fresh", now - 60 * 60 * 1000);
+    const stale = await job("reply:stale", now - HELD_MAX_AGE_MS - 60 * 1000);
+    await t.run((ctx) => ctx.db.patch(companyId, { suspendedAt: now }));
+    expect(await t.mutation(internal.googleWork.tick, {})).toBe(0);
+    for (const id of [fresh, stale]) expect((await t.run((ctx) => ctx.db.get(id)))!.lastError).toMatch(/^Held:/);
+    // Released: both are due again.
+    await t.run(async (ctx) => {
+      await ctx.db.patch(companyId, { suspendedAt: undefined });
+      for (const id of [fresh, stale]) await ctx.db.patch(id, { nextAt: now - 1000 });
+    });
+    expect(await t.mutation(internal.googleWork.tick, {})).toBe(1);
+    expect((await t.run((ctx) => ctx.db.get(fresh)))!.status).toBe("running");
+    expect(await t.run((ctx) => ctx.db.get(stale))).toMatchObject({ status: "cancelled" });
+    expect((await t.run((ctx) => ctx.db.get(stale)))!.lastError).toMatch(/out of date/);
+    const notices = await t.run((ctx) => ctx.db.query("memberNotices").collect());
+    expect(notices.filter((n) => n.headline === "A review reply was not sent to Google")).toHaveLength(1);
+    // A write that was never held is not cancelled for its age alone.
+    const old = await job("reply:old", now - 3 * HELD_MAX_AGE_MS);
+    await t.mutation(internal.googleWork.tick, {});
+    expect((await t.run((ctx) => ctx.db.get(old)))!.status).toBe("running");
   });
 });

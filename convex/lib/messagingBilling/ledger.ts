@@ -140,7 +140,7 @@ export async function planOutbound(ctx: Ctx, message: Message, input: { body: st
   const state = billingState();
   if (!state.connected) return { kind: "hold", reason: "billing_unavailable", words: "Messaging billing isn't connected yet, so this message is waiting. Nothing was charged." };
   const company = (await ctx.db.get(message.companyId))!;
-  if (!verifiedPlan(company)) return { kind: "refuse", code: "no_plan", words: "Sending business messages needs an active Operate or Expand plan. Unused messaging funds stay on the account." };
+  if (!verifiedPlan(company)) return { kind: "refuse", code: "no_plan", words: "Sending business messages needs an active plan. Unused messaging funds stay on the account." };
 
   // Agent-written texts use plain punctuation, so a curly quote never doubles the price. A person's words are sent as written.
   let body = input.body;

@@ -2,6 +2,8 @@
 
 import { ConvexHttpClient } from "convex/browser";
 
+import { serverBackendUrl } from "@/lib/app/server-backend";
+
 import { api } from "../../../convex/_generated/api";
 
 /**
@@ -9,9 +11,10 @@ import { api } from "../../../convex/_generated/api";
  * adds the secret it shares with Convex. Nothing else passes through here.
  */
 export async function unsubscribeFromNotices(input: { token: string }): Promise<{ ok: true } | { ok: false; why: string }> {
-  const url = process.env.NEXT_PUBLIC_CONVEX_URL?.trim();
+  // Never the live backend from a preview (src/lib/app/server-backend.ts).
+  const url = serverBackendUrl();
   const secret = process.env.PUBLIC_FORM_SECRET?.trim();
-  if (!url || !/^https:\/\//.test(url) || !secret) return { ok: false, why: "This can't be done from the link right now. You can change notifications in Selestial's settings." };
+  if (!url || !secret) return { ok: false, why: "This can't be done from the link right now. You can change notifications in Selestial's settings." };
   try {
     return await new ConvexHttpClient(url).mutation(api.notifications.unsubscribe, { secret, token: input.token.slice(0, 200) });
   } catch {

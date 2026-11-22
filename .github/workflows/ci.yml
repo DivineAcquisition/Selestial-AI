@@ -1,0 +1,67 @@
+# Checks every pull request and every push to main (docs/launch/release-checks.md).
+#
+# Nothing here can deploy. The build deploys the live backend only when VERCEL_ENV is "production" AND
+# CONVEX_DEPLOY_KEY is set (scripts/build.mjs); this workflow sets neither, holds no provider secret, and
+# its first step fails if either appears. Vercel's own production build remains the only thing that deploys.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  checks:
+    name: Lint, types, tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Lint
+        run: npx eslint --max-warnings 50
+      - name: Type-check the app
+        run: npm run typecheck
+      - name: Type-check the Convex backend
+        run: npx tsc --noEmit -p convex
+      - name: Tests
+        run: npx vitest run
+
+  build:
+    name: Build (deploys nothing) and smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: This job must not be able to deploy
+        run: |
+          if [ -n "${CONVEX_DEPLOY_KEY:-}" ] || [ "${VERCEL_ENV:-}" = "production" ]; then
+            echo "CI must not hold CONVEX_DEPLOY_KEY or run as a production build." >&2
+            exit 1
+          fi
+      - run: npm ci
+      - name: Build the site with no backend and no keys
+        run: npm run build
+      - name: Smoke the built site in isolation
+        run: |
+          npx next start -p 3210 > next.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:3210/ > /dev/null && break; sleep 1; done
+          SMOKE_BASE=http://localhost:3210 node tests/e2e/smoke.mjs || { tail -50 next.log; exit 1; }

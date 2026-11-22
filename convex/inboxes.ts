@@ -19,7 +19,7 @@ import { companyQuery, ownerMutation } from "./lib/builders";
 import { userError } from "./lib/errors";
 import { byMember, recordEvent } from "./lib/events";
 import { resumeWaiting, waitingMessages } from "./lib/inbox/events";
-import { agentsOf, PURPOSE_INFO, purposesOf } from "./lib/inbox/mailboxes";
+import { agentsOf, PURPOSE_INFO, purposesOf, sharesGoogleGrant } from "./lib/inbox/mailboxes";
 import { returnOrigin } from "./lib/invitations";
 import { notifyMembers } from "./lib/notify/route";
 import { accessToken, authorizationUrl, googleApp, revokeToken } from "./lib/recruiter/gmail";
@@ -159,42 +159,31 @@ export const update = ownerMutation({
  */
 export const disconnect = ownerMutation({
   args: { connectionId: v.id("mailboxConnections") },
-  handler: async (ctx, args) => {
-    const row = await ownInbox(ctx, args.connectionId);
-    if (row.status === "disconnected") return { grant: row.grant ?? null };
-    const credentials = await ctx.db
-      .query("mailboxCredentials")
-      .withIndex("by_connection", (q) => q.eq("connectionId", row._id))
-      .take(10);
-    const shared = await sharesGrant(ctx, row);
-    const now = Date.now();
-    await ctx.db.patch(row._id, { status: "disconnected", problem: undefined, disconnectedAt: now, disconnectedBy: ctx.member._id, canSend: false, watchExpiresAt: undefined, grant: shared ? "kept_shared" : undefined });
-    // The token travels to the revoke step in the scheduled call only, never stored again.
-    const sealed = credentials[0]?.sealedRefreshToken ?? null;
-    for (const credential of credentials) await ctx.db.delete(credential._id);
-    if (!shared && sealed) await ctx.scheduler.runAfter(0, internal.inboxes.revokeGrant, { connectionId: row._id, sealed });
-    await recordEvent(ctx, { companyId: ctx.companyId, type: "mailbox.disconnected", actor: byMember(ctx), subject: { table: "mailboxConnections", id: row._id }, data: { provider: row.provider, grantShared: shared } });
-    await notifyMembers(ctx, { companyId: ctx.companyId, event: "security_change", key: `inbox-disconnected:${row._id}:${now}`, facts: { kind: "inbox_disconnected", address: row.address, byName: ctx.member.name, at: now } });
-    await resumeWaiting(ctx, ctx.companyId);
-    return { grant: shared ? ("kept_shared" as const) : ("revoking" as const) };
-  },
+  handler: async (ctx, args) => disconnectInbox(ctx, await ownInbox(ctx, args.connectionId)),
 });
 
-/** Whether ending this inbox's Google grant would also end another connection of the company's. */
-async function sharesGrant(ctx: MutationCtx, row: Doc<"mailboxConnections">): Promise<boolean> {
-  const sameAddress = (
-    await ctx.db
-      .query("mailboxConnections")
-      .withIndex("by_address", (q) => q.eq("address", row.address))
-      .take(50)
-  ).some((other) => other._id !== row._id && other.status !== "disconnected");
-  const google = (
-    await ctx.db
-      .query("googleConnections")
-      .withIndex("by_company", (q) => q.eq("companyId", row.companyId))
-      .take(20)
-  ).some((connection) => connection.status !== "disconnected" && connection.email.trim().toLowerCase() === row.address);
-  return sameAddress || google;
+/**
+ * The one way an inbox is disconnected, whichever page asked (Connected apps here, Recruiting settings
+ * through convex/recruiter.ts): stop, delete the authorization, end Google's grant when nothing else
+ * uses it, drop the push watch, tell the Owner, and let waiting mail go the shared way.
+ */
+export async function disconnectInbox(ctx: MutationCtx & { companyId: Id<"companies">; member: Doc<"members"> }, row: Doc<"mailboxConnections">): Promise<{ grant: "kept_shared" | "revoking" | "revoked" | "revoke_failed" | null }> {
+  if (row.status === "disconnected") return { grant: row.grant ?? null };
+  const credentials = await ctx.db
+    .query("mailboxCredentials")
+    .withIndex("by_connection", (q) => q.eq("connectionId", row._id))
+    .take(10);
+  const shared = await sharesGoogleGrant(ctx, row.companyId, row.address, row._id);
+  const now = Date.now();
+  await ctx.db.patch(row._id, { status: "disconnected", problem: undefined, disconnectedAt: now, disconnectedBy: ctx.member._id, canSend: false, watchExpiresAt: undefined, syncLeaseUntil: undefined, grant: shared ? "kept_shared" : undefined });
+  // The token travels to the revoke step in the scheduled call only, never stored again.
+  const sealed = credentials[0]?.sealedRefreshToken ?? null;
+  for (const credential of credentials) await ctx.db.delete(credential._id);
+  if (!shared && sealed) await ctx.scheduler.runAfter(0, internal.inboxes.revokeGrant, { connectionId: row._id, sealed });
+  await recordEvent(ctx, { companyId: ctx.companyId, type: "mailbox.disconnected", actor: byMember(ctx), subject: { table: "mailboxConnections", id: row._id }, data: { provider: row.provider, grantShared: shared } });
+  await notifyMembers(ctx, { companyId: ctx.companyId, event: "security_change", key: `inbox-disconnected:${row._id}:${now}`, facts: { kind: "inbox_disconnected", address: row.address, byName: ctx.member.name, at: now } });
+  await resumeWaiting(ctx, ctx.companyId);
+  return { grant: shared ? ("kept_shared" as const) : ("revoking" as const) };
 }
 
 export const revokeGrant = internalAction({

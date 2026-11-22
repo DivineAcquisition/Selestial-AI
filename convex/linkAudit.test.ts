@@ -229,6 +229,14 @@ describe("link audit: cleaner action links", () => {
     const storageId = await s.t.run((ctx) => ctx.storage.store(new Blob(["y"], { type: "image/jpeg" })));
     expect(await refusal(s.t.mutation(api.links.attachPhoto, { token: a.jobToken, storageId, kind: "item", clientKey: "alpha-photo-1", itemId: bItem._id }))).toBe(NOT_FOUND);
 
+    // A stored photo that is already someone's evidence cannot be attached again or thrown away through a link:
+    // handing in Beta's file id (as a duplicate, or as a second file under a key Alpha already used) leaves it stored.
+    const betaFile = (await s.t.run((ctx) => ctx.db.get(bPhoto)))!.storageId;
+    expect(await refusal(s.t.mutation(api.links.attachPhoto, { token: a.jobToken, storageId: betaFile, kind: "before", clientKey: "alpha-photo-2" }))).toBe("This photo is already recorded.");
+    await s.t.mutation(api.links.attachPhoto, { token: a.jobToken, storageId, kind: "before", clientKey: "alpha-photo-3" });
+    expect(await s.t.mutation(api.links.attachPhoto, { token: a.jobToken, storageId: betaFile, kind: "before", clientKey: "alpha-photo-3" })).toMatchObject({ duplicate: true });
+    expect(await s.t.run((ctx) => ctx.db.system.get(betaFile))).not.toBeNull();
+
     // Alpha's page shows Alpha only.
     const page = JSON.stringify(await s.t.query(api.links.job, { token: a.jobToken }));
     expect(page).toContain("Alpha Cleaning");

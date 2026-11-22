@@ -276,6 +276,10 @@ export const financeTables = {
     createdBy: v.optional(v.id("members")),
     /** The online booking this invoice collects for (convex/lib/booking/payments.ts). */
     bookingSessionId: v.optional(v.id("bookingSessions")),
+    /** A monthly invoice for a recurring plan: the visits it bills, so none of them is invoiced a second time on its own. */
+    coveredJobIds: v.optional(v.array(v.id("jobs"))),
+    /** The plan and calendar month (YYYY-MM) a monthly invoice was drafted for. */
+    monthly: v.optional(v.object({ planId: v.id("recurringPlans"), month: v.string() })),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -363,7 +367,10 @@ export const financeTables = {
     stripeRefundId: v.optional(v.string()),
     tries: v.number(),
     problem: v.optional(v.string()),
-    requestedBy: v.id("members"),
+    /** Absent on a refund the Owner made in their Stripe Dashboard (`origin`), which no member asked Selestial for. */
+    requestedBy: v.optional(v.id("members")),
+    /** "stripe_dashboard": made in Stripe, not in Selestial, and recorded here from Stripe's own record of it. */
+    origin: v.optional(v.literal("stripe_dashboard")),
     clientKey: v.string(),
     createdAt: v.number(),
     updatedAt: v.number(),

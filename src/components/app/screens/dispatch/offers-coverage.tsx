@@ -22,7 +22,7 @@ type TabId = "offers" | "coverage" | "gaps" | "history";
 
 const CAUSE: Record<string, string> = { drop: "A cleaner said they cannot attend", no_show: "A cleaner was confirmed a no-show", delay: "A cleaner is running too late", released: "A person released the cleaner", undelivered: "The offer text was not delivered" };
 const ENDED: Record<string, string> = { declined: "Declined", expired: "No answer in time", cancelled: "Ended" };
-const ENDED_CAUSE: Record<string, string> = { released: "Released by a person", job_covered: "Withdrawn: the place was filled", job_cancelled: "The visit was cancelled", job_moved: "The visit was moved", dropped: "Said they cannot attend", no_show: "Confirmed no-show", undelivered: "The text was not delivered" };
+const ENDED_CAUSE: Record<string, string> = { sending_blocked: "Not texted: the company's texts were not going out", released: "Released by a person", job_covered: "Withdrawn: the place was filled", job_cancelled: "The visit was cancelled", job_moved: "The visit was moved", dropped: "Said they cannot attend", no_show: "Confirmed no-show", undelivered: "The text was not delivered" };
 
 function Visit({ customer, startsAt, timezone, onOpen }: { customer: string | null; startsAt: number; timezone: string; onOpen: () => void }) {
   return (

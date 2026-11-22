@@ -6,6 +6,8 @@ import { ConvexHttpClient } from "convex/browser";
 import { ConvexError } from "convex/values";
 import { headers } from "next/headers";
 
+import { serverBackendUrl } from "@/lib/app/server-backend";
+
 import { api } from "../../../convex/_generated/api";
 
 /**
@@ -14,9 +16,10 @@ import { api } from "../../../convex/_generated/api";
  * limits and signing evidence, and the secret it shares with Convex. Nothing else passes through here.
  */
 function client(): { client: ConvexHttpClient; secret: string } | null {
-  const url = process.env.NEXT_PUBLIC_CONVEX_URL?.trim();
+  // Never the live backend from a preview (src/lib/app/server-backend.ts).
+  const url = serverBackendUrl();
   const secret = process.env.PUBLIC_FORM_SECRET?.trim();
-  if (!url || !/^https:\/\//.test(url) || !secret) return null;
+  if (!url || !secret) return null;
   return { client: new ConvexHttpClient(url), secret };
 }
 

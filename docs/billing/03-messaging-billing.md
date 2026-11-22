@@ -110,6 +110,34 @@ none". Text composers show "This message uses 2 SMS segments. Estimated cost: $0
 7. Run one sandbox pass of every case in the table below against the real Autumn, Stripe and Telnyx.
 8. Then set `MESSAGING_BILLING=on`. Until then nothing is metered and every screen says so.
 
+### While it is off: staff can see it, and a deliberate subsidy is recorded
+
+`MESSAGING_BILLING` is off unless it is exactly `on`, and while it is off **every text and email is free**
+for every company. That is the right state before the checklist above is done, and a costly one to be in by
+accident. So the state is shown and, on production, alerted on. Nothing here changes the default or turns
+charging on.
+
+- **Staff see it.** `/staff/operations` › Readiness shows "Messaging charges: ON / OFF". On the production
+  backend with charging off it warns: "Messages are not being charged. If this is a deliberate pilot
+  subsidy, record it."
+- **A deliberate subsidy is written down.** Set `MESSAGING_BILLING_SUBSIDY_NOTE` on the backend to say what
+  was approved, by whom and until when, for example
+  `Pilot: free messaging through 2027-01-31, approved by <name>`. The item then reads
+  "Off — pilot subsidy: <note>" with no warning. The note is free text (300 characters shown); it does not
+  expire by itself, so whoever sets it owns removing it. Never put a key or a customer's details in it.
+- **One incident.** While production is unmetered with no note, the messaging-settlement check keeps one
+  staff incident open, "Messages are not being charged" (high, needs staff). It alerts staff once, does not
+  repeat, cannot be closed by hand while the condition holds, and resolves by itself at the next check
+  (every ten minutes) once `MESSAGING_BILLING=on` or the note is set. Test and restored backends never
+  raise it.
+- **The AI rate card is shown beside it.** The same panel names the card in force (`BILLING_RATE_CARD`) and
+  lists every task with no approved rate on it (`null` in `convex/lib/billing/rateCards.ts`), for example
+  "sales_message_reading: no approved rate". Such a task is never charged: it runs its rules-based path, or
+  is not offered, until the owner approves a rate and a new card is put in force.
+
+Code: `convex/lib/operations/readiness.ts`, `convex/lib/operations/detectors.ts` (`messaging_unmetered`),
+`convex/operations.ts` (`overview.readiness`). Tests: `convex/operations.test.ts`.
+
 `MESSAGING_RATE_CARD` pins a price list version; leave it unset in production (the test-only list
 `msg-fixture-higher` can only be reached through it).
 

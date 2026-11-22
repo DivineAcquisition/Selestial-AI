@@ -27,7 +27,8 @@ export const saved = internalMutation({
   args: { connectionId: v.id("mailboxConnections"), expiresAt: v.number() },
   handler: async (ctx, args) => {
     const connection = await ctx.db.get(args.connectionId);
-    if (connection) await ctx.db.patch(connection._id, { watchExpiresAt: args.expiresAt });
+    // Disconnected while the watch was being asked for: it stays without one.
+    if (connection && connection.status !== "disconnected") await ctx.db.patch(connection._id, { watchExpiresAt: args.expiresAt });
     return null;
   },
 });

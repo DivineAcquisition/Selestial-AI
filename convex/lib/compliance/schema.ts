@@ -149,7 +149,7 @@ export type MessagingSetup = typeof messagingSetupValidator.type;
  * Selestial staff approve, because buying the number and filing the registration are charged to
  * Selestial's Telnyx account. Each step's Telnyx reference is kept so a retry continues, never repeats.
  */
-export const TEXTING_REQUEST_STATUSES = ["requested", "approved", "provisioning", "waiting_on_carriers", "needs_you", "active", "interrupted", "failed", "rejected", "cancelled"] as const;
+export const TEXTING_REQUEST_STATUSES = ["requested", "approved", "provisioning", "waiting_on_carriers", "needs_you", "active", "interrupted", "failed", "rejected", "cancelled", "released"] as const;
 export type TextingRequestStatus = (typeof TEXTING_REQUEST_STATUSES)[number];
 
 export const brandDetailsValidator = v.object({
@@ -255,6 +255,27 @@ export const complianceTables = {
     /** How many corrected registrations have been filed. Each one is charged once (prices.resubmission). */
     resubmissions: v.optional(v.number()),
     registrationMonth: v.optional(v.string()),
+    /**
+     * Giving the number up (docs/texting/03-offboarding.md): started by Selestial staff under the owner's recorded
+     * authorization, one step at a time at Telnyx. Each finished step is kept, so a run that stops is continued,
+     * never repeated. The request becomes "released" only when every step is done.
+     */
+    offboarding: v.optional(
+      v.object({
+        route: v.union(v.literal("release"), v.literal("port_out")),
+        exceptionId: v.id("textingExceptions"),
+        startedAt: v.number(),
+        startedBy: v.id("staff"),
+        unassignedAt: v.optional(v.number()),
+        numberRemovedAt: v.optional(v.number()),
+        campaignRemovedAt: v.optional(v.number()),
+        /** Why the last run stopped, for staff. */
+        problem: v.optional(v.string()),
+        leaseUntil: v.optional(v.number()),
+        leaseToken: v.optional(v.string()),
+      }),
+    ),
+    releasedAt: v.optional(v.number()),
     /** Raw provider states for Selestial staff. Never shown to the owner. */
     diagnostics: v.optional(v.object({ brand: v.optional(v.string()), campaign: v.optional(v.string()), assignment: v.optional(v.string()), order: v.optional(v.string()), at: v.number() })),
     /** When anything about this request last changed, for "last update" on each milestone. */

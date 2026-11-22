@@ -9,6 +9,9 @@
  *  - sends email and texts only to the addresses in TEST_RECIPIENTS (comma-separated), never to a real
  *    customer, cleaner, applicant or owner;
  *  - refuses Telnyx calls that buy or change anything (numbers, brands, campaigns);
+ *  - never writes to a company's Google account (calendar events, review replies, ads, conversion uploads,
+ *    Drive and Sheets files, notification channels): refused at the one call wrapper, convex/lib/google/http.ts.
+ *    Signing in, refreshing a token and reads still work; a Google job that would write is settled once as not run;
  *  - ignores live Stripe and Autumn keys, so nothing it does can charge a real card.
  *
  * Code run with no deployment at all (the test harness) has no name and is left as it is.

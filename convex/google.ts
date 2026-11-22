@@ -27,6 +27,7 @@ import { byMember, recordEvent } from "./lib/events";
 import { activeConnection } from "./lib/google/connection";
 import { enabledFeatures, FEATURE_INFO, FEATURES, missingScopes, scopesFor, type Feature } from "./lib/google/features";
 import { GoogleError } from "./lib/google/http";
+import { gmailInboxOn } from "./lib/inbox/mailboxes";
 import { consentUrl, googleApp, redirectUri, refresh, revoke } from "./lib/google/oauth";
 import { featureValidator, resourceKindValidator } from "./lib/google/schema";
 import { appOrigin, returnOrigin } from "./lib/invitations";
@@ -167,7 +168,11 @@ export const disconnect = ownerMutation({
     const credential = await ctx.db.query("googleCredentials").withIndex("by_connection", (q) => q.eq("connectionId", connection._id)).first();
     // Google revokes a whole account's grant to Selestial, not one tool's. While another connected tool uses
     // the same account, only this tool's token is deleted; the last one to go also revokes at Google.
-    const shared = (await ctx.db.query("googleConnections").withIndex("by_sub", (q) => q.eq("googleSub", connection.googleSub)).take(100)).some((row) => row._id !== connection._id && row.status !== "disconnected");
+    // A Gmail inbox connected with the same Google account uses that same grant (the same Google app): it
+    // counts as "another tool" here, exactly as convex/inboxes.ts counts these tools when an inbox goes.
+    const shared =
+      (await ctx.db.query("googleConnections").withIndex("by_sub", (q) => q.eq("googleSub", connection.googleSub)).take(100)).some((row) => row._id !== connection._id && row.status !== "disconnected") ||
+      (await gmailInboxOn(ctx, connection.email));
     if (credential) {
       if (!shared) await ctx.scheduler.runAfter(0, internal.google.revokeGrant, { connectionId: connection._id, sealedRefreshToken: credential.sealedRefreshToken });
       await ctx.db.delete(credential._id);

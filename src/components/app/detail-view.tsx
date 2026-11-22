@@ -12,7 +12,7 @@ const TONE: Record<Detail["status"]["tone"], NonNullable<BadgeProps["variant"]>>
 
 const ASSIGNMENT_WORDS: Record<string, string> = { offered: "Offered · not accepted", accepted: "Accepted", declined: "Declined", expired: "No answer in time", cancelled: "Released" };
 /** A cancelled assignment says why it ended. Only a person's release reads as "Released". */
-const ENDED_WORDS: Record<string, string> = { job_covered: "Offer withdrawn · place filled", job_cancelled: "Visit cancelled", job_moved: "Ended · visit moved", dropped: "Could not attend", no_show: "No-show", undelivered: "Text not delivered" };
+const ENDED_WORDS: Record<string, string> = { sending_blocked: "Not texted: the company's texts were not going out", job_covered: "Offer withdrawn · place filled", job_cancelled: "Visit cancelled", job_moved: "Ended · visit moved", dropped: "Could not attend", no_show: "No-show", undelivered: "Text not delivered" };
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (

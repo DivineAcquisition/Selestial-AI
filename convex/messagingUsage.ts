@@ -206,6 +206,8 @@ export const overview = ownerQuery({
         })),
         autoTopUp: {
           enabled: controls.autoTopUp.enabled,
+          // Asked to turn off, and Autumn has not confirmed it yet: still on, and the card can still be charged.
+          turningOff: controls.autoTopUp.turningOffAt !== undefined,
           threshold: controls.autoTopUp.threshold,
           amount: controls.autoTopUp.amount,
           monthlyMax: controls.autoTopUp.monthlyMax,

@@ -13,7 +13,7 @@ import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/
 import { PageHeader, Panel } from "@/components/app/shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Disclosure } from "@/components/ui/fields";
+import { Disclosure, useConfirm } from "@/components/ui/fields";
 import { Checkbox, Select } from "@/components/ui/selection";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -187,6 +187,7 @@ export function TextingCasePanel({ setupId }: { setupId: Id<"textingSetups"> }) 
               Blocked: {row.blocker} · Next: {row.nextAction}
               {row.followUpAt ? ` · follow up ${when(row.followUpAt)}` : ""}
             </p>
+            {row.assisted?.route === "release" || row.assisted?.route === "port_out" ? <Offboarding row={row} /> : null}
             <ExceptionControls setupId={setupId} row={row} />
             {row.assisted?.route === "port_existing" ? (
               <div>
@@ -207,6 +208,109 @@ export function TextingCasePanel({ setupId }: { setupId: Id<"textingSetups"> }) 
         <p className="text-muted-foreground">
           Submissions: {data.submissions.map((row) => `v${row.version} (configuration ${row.configVersion || "built-in"}, ${row.evidence.length} evidence item(s))`).join(" · ")}
         </p>
+      ) : null}
+    </div>
+  );
+}
+
+type OffboardingRow = {
+  state: string;
+  requestId?: Id<"textingRequests">;
+  assisted?: { route: string; phoneNumber?: string; source?: "owner" | "plan_cancelled"; authorization?: { at: number; wording: string } };
+  offboarding: { status: string; sameNumber: boolean; started: boolean; route: string | null; running: boolean; unassignedAt: number | null; numberRemovedAt: number | null; campaignRemovedAt: number | null; problem: string | null } | null;
+};
+
+/**
+ * Giving a number up (docs/texting/03-offboarding.md). Shows whether the owner authorized it, for which
+ * number, and how far it has got. Both actions are admin-only, need the destructive-actions capability, and
+ * are refused by the server without the owner's recorded authorization for this number.
+ */
+function Offboarding({ row }: { row: OffboardingRow }) {
+  const release = useMutation(api.texting.releaseNumber);
+  const complete = useMutation(api.texting.completeTransfer);
+  const { ask, element } = useConfirm();
+  const [done, setDone] = useState<string | null>(null);
+  const assisted = row.assisted!;
+  const o = row.offboarding;
+  const transfer = assisted.route === "port_out";
+  const number = assisted.phoneNumber ?? "the number";
+  const authorized = assisted.authorization !== undefined;
+  const open = row.state !== "resolved" && o !== null && o.status !== "released";
+  const steps = o ? ([["Off its campaign", o.unassignedAt], [transfer ? "Left Telnyx" : "Deleted at Telnyx", o.numberRemovedAt], ["Campaign deleted", o.campaignRemovedAt]] as const) : [];
+  return (
+    <div className="grid gap-1.5 rounded-lg bg-muted/50 p-2">
+      {element}
+      <p className="flex flex-wrap items-center gap-1.5">
+        <Badge size="sm" variant={transfer ? "info" : "warning"}>
+          {transfer ? "Moving to another provider" : "Release"}
+        </Badge>
+        <Badge size="sm" variant={authorized ? "success" : "outline"}>
+          {authorized ? `Owner authorized ${when(assisted.authorization!.at)}` : "No owner authorization"}
+        </Badge>
+        {assisted.source === "plan_cancelled" ? <Badge size="sm" variant="outline">Opened when the plan was cancelled</Badge> : null}
+        {o?.status === "released" ? <Badge size="sm" variant="success">Done</Badge> : null}
+      </p>
+      {!authorized ? <p className="text-warning-foreground">This is a work item only. Nothing may be released or moved until the Owner asks for it under &ldquo;Stop using this number&rdquo; on their texting screen.</p> : null}
+      {o && !o.sameNumber ? <p className="text-destructive-foreground">This item is for a different number than the request has now. It authorizes nothing.</p> : null}
+      {o?.started ? (
+        <ul className="flex flex-wrap gap-x-3 gap-y-0.5 text-muted-foreground" aria-label="Offboarding steps">
+          {steps.map(([label, at]) => (
+            <li key={label}>
+              {label}: <span className="text-strong">{at ? when(at) : "not yet"}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {o?.running ? <p className="text-muted-foreground">Running now…</p> : null}
+      {o?.problem ? <p className="text-destructive-foreground">Stopped: {o.problem}</p> : null}
+      {done ? <p className="text-muted-foreground">{done}</p> : null}
+      {open && authorized && o.sameNumber && row.requestId ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {transfer ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={o.running}
+              onClick={() =>
+                void ask({
+                  title: `Mark the transfer of ${number} complete?`,
+                  body: "Selestial first checks with Telnyx that the number has left the account. If it is still there, nothing changes. If it has left, the campaign is deleted, texts from Selestial stop for this company, and its monthly fees stop.",
+                  details: [{ label: "Number", value: number }],
+                  confirmLabel: "Check and mark complete",
+                  cancelLabel: "Not yet",
+                  tone: "danger",
+                  retryable: false,
+                  failureNote: "Nothing was changed.",
+                  action: async () => setDone((await complete({ requestId: row.requestId! })) === "released" ? "Already complete." : "Checking with Telnyx. The steps appear here."),
+                })
+              }
+            >
+              Mark transfer complete
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="destructive-outline"
+              disabled={o.running}
+              onClick={() =>
+                void ask({
+                  title: `Release ${number}?`,
+                  body: "This takes the number off its campaign, deletes it at Telnyx and deletes the campaign. It is permanent: the number can't be recovered. Texts for this company stop as soon as the first step succeeds. Steps already done are not repeated.",
+                  details: [{ label: "Number", value: number }],
+                  confirmLabel: o.started ? "Continue the release" : "Release the number",
+                  cancelLabel: "Keep the number",
+                  tone: "danger",
+                  retryable: false,
+                  failureNote: "Nothing was changed by this attempt. Check Mission Control before trying again.",
+                  action: async () => setDone((await release({ requestId: row.requestId! })) === "released" ? "Already released." : "Release started. The steps appear here."),
+                })
+              }
+            >
+              {o.started ? "Continue the release" : "Release number"}
+            </Button>
+          )}
+          <span className="text-muted-foreground">Admin only, with the destructive-actions capability.</span>
+        </div>
       ) : null}
     </div>
   );

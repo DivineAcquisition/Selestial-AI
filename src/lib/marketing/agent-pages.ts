@@ -56,7 +56,7 @@ const LIVE: AgentPage[] = [
       { agent: "dispatch", what: "Confirmed bookings, to staff and cover" },
       { agent: "retention", what: "New customers, once the first clean is done" },
     ],
-    plan: "Included in Operate and Expand.",
+    plan: "Included in the Selestial plan.",
   },
   {
     id: "recruiter",
@@ -83,7 +83,7 @@ const LIVE: AgentPage[] = [
     ],
     bringsToYou: ["Every hiring decision", "Every offer, before it is sent", "Every decline, before the applicant hears it", "Each new cleaner's readiness, for your approval"],
     handoffs: [{ agent: "dispatch", what: "Cleaners you approved as ready, to consider for visits" }],
-    plan: "Included in Operate and Expand.",
+    plan: "Included in the Selestial plan.",
   },
   {
     id: "dispatch",
@@ -112,7 +112,7 @@ const LIVE: AgentPage[] = [
       { agent: "sales", what: "Takes confirmed bookings from Sales" },
       { agent: "retention", what: "Correction visits Retention arranges" },
     ],
-    plan: "Included in Operate and Expand.",
+    plan: "Included in the Selestial plan.",
   },
   {
     id: "retention",
@@ -141,7 +141,7 @@ const LIVE: AgentPage[] = [
       { agent: "dispatch", what: "Correction visits to schedule" },
       { agent: "sales", what: "Customers ready for a recurring plan" },
     ],
-    plan: "Included in Operate and Expand.",
+    plan: "Included in the Selestial plan.",
   },
 ];
 
@@ -170,7 +170,7 @@ const SOON: AgentPage[] = (["marketing", "quality", "customer-care"] as const).m
     capabilities: soon.capabilities.map(({ title, detail, mock }) => ({ title, detail, mock })),
     bringsToYou: ["Anything outside the permissions you set", "Every decision that costs you money"],
     handoffs: HANDOFFS[id],
-    plan: "Included in Expand when it's released.",
+    plan: "Not released yet.",
   };
 });
 

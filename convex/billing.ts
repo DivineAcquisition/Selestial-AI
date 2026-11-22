@@ -13,7 +13,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { internalAction, internalMutation, internalQuery, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { accountFor, agentVerdict, billingState, BLOCK_WORDS, customerIdFor, featureVerdict, verifiedPlan } from "./lib/billing/access";
 import { attach, attachBody, finalizeLock, openPortal, previewAttach, setupPayment, updateSubscription, type RawInvoice } from "./lib/billing/autumn";
-import { AGENT_CATALOG, AGENT_IDS, agentReleased, AUTUMN, BOTH_PLANS_INCLUDE, lostOnChange, PLAN_FEATURES, PLAN_IDS, planIncludesAgent, planIncludesFeature, PLANS, RETIRED_AGENT_NAMES, type PlanFeature } from "./lib/billing/catalog";
+import { AGENT_CATALOG, AGENT_IDS, agentReleased, AUTUMN, BOTH_PLANS_INCLUDE, lostOnChange, PLAN_FEATURES, PLAN_IDS, planIncludesAgent, planIncludesFeature, planOnSale, PLANS, RETIRED_AGENT_NAMES, type PlanFeature } from "./lib/billing/catalog";
 import { HOLD_MS, noteExecution } from "./lib/billing/executions";
 import type { Projection } from "./lib/billing/projection";
 import { TASKS } from "./lib/billing/rateCards";
@@ -24,6 +24,7 @@ import { userError } from "./lib/errors";
 import { byMember, recordEvent } from "./lib/events";
 import { appOrigin } from "./lib/invitations";
 import { allow } from "./lib/rateLimit";
+import { openPlanCancelledWork } from "./lib/texting/offboarding";
 
 const MINUTE = 60_000;
 const ACTIVE_STATES = new Set(["reserving", "reserved"]);
@@ -57,7 +58,7 @@ export const planCheck = internalQuery({
     const execution = (await ctx.db.get(args.executionId))!;
     const company = (await ctx.db.get(execution.companyId))!;
     if (execution.agent === "chat" || execution.agent === "studio" || execution.agent === "services") {
-      if (!verifiedPlan(company)) return { ok: false as const, block: "plan" as const, message: "AI work needs an active Operate or Expand plan." };
+      if (!verifiedPlan(company)) return { ok: false as const, block: "plan" as const, message: "AI work needs an active plan." };
     } else if (execution.agent === "team-coordinator") {
       // Retired and never released: nothing new runs under its name.
       return { ok: false as const, block: "not_released" as const, message: "Team Coordinator was retired. Its work is Recruiter's and Dispatch's." };
@@ -221,7 +222,8 @@ export const storeAccount = internalMutation({
   args: { companyId: v.id("companies"), env: envValidator, customerId: v.string(), projection: v.string(), invoices: v.string(), ledger: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const projection = JSON.parse(args.projection) as Projection;
-    const invoices = (JSON.parse(args.invoices) as RawInvoice[]).slice(0, 24).map((row) => ({ id: row.id, status: row.status, cents: Math.round(Number(row.total) * 100), currency: row.currency, createdAt: row.created_at, url: row.hosted_invoice_url ?? null }));
+    const rawInvoices = JSON.parse(args.invoices) as RawInvoice[];
+    const invoices = rawInvoices.slice(0, 24).map((row) => ({ id: row.id, status: row.status, cents: Math.round(Number(row.total) * 100), currency: row.currency, createdAt: row.created_at, url: row.hosted_invoice_url ?? null }));
     const now = Date.now();
     let account = await accountFor(ctx, args.companyId, args.env);
     const ledger = args.ledger ? (JSON.parse(args.ledger) as Doc<"billingAccounts">["ledger"]) : undefined;
@@ -237,15 +239,67 @@ export const storeAccount = internalMutation({
     if (billingState().connected && (verifiedPlan(company) ?? null) !== projection.plan) {
       await ctx.db.patch(company._id, { plan: projection.plan ?? undefined });
       await recordEvent(ctx, { companyId: company._id, type: "company.plan_changed", actor: { kind: "system" }, subject: { table: "companies", id: company._id }, data: { from: verifiedPlan(company), to: projection.plan, source: "autumn" } });
+      // The plan ended while a texting number is still set up: a work item for Selestial staff, so the number and
+      // its fees are not forgotten. It releases nothing; only the Owner's own request can (convex/lib/texting/offboarding.ts).
+      if (!projection.plan && verifiedPlan(company)) await openPlanCancelledWork(ctx, company._id, "owner_cancelled");
     }
     const low = account.controls.lowBalance;
     if (low !== undefined && projection.credits && projection.credits.remaining > 0 && projection.credits.remaining < low) await notify(ctx, account, "low_balance", `Fewer than ${low.toLocaleString("en-US")} credits are left. AI work pauses at zero; buy a top-up or wait for the monthly reset.`);
     if (projection.subscription.pastDue) await notify(ctx, account, "past_due", "The last payment for this plan did not go through. Update the payment method in Plan & Usage to keep the plan.");
     await usageAlerts(ctx, account);
+    await closePaidIntents(ctx, args.companyId, args.env, projection, rawInvoices, now);
     // Funds arrived (a purchase paid on Stripe's page, an automatic top-up): messages that waited are checked again and sent.
     if (projection.messaging && projection.messaging.remaining > 0) await ctx.scheduler.runAfter(0, internal.messagingBilling.releaseHeld, { companyId: args.companyId });
   },
 });
+
+/** A payment page stays open for a day at most; a purchase older than that is not waiting on one. */
+const PAYMENT_WINDOW = 24 * 60 * MINUTE;
+
+/**
+ * Purchases that left for the payment page, or whose outcome billing never confirmed, are closed here once
+ * Autumn's own record shows them: the plan for a plan change, a paid invoice for a top-up. Each invoice
+ * closes one purchase. Purchases Autumn charged directly claim their invoice first, so a later purchase's
+ * invoice is never taken for an earlier one that was abandoned.
+ */
+async function closePaidIntents(ctx: MutationCtx, companyId: Id<"companies">, env: Doc<"billingIntents">["env"], projection: Projection, invoices: RawInvoice[], now: number) {
+  const recent = (
+    await ctx.db
+      .query("billingIntents")
+      .withIndex("by_company_created", (q) => q.eq("companyId", companyId).gt("createdAt", now - PAYMENT_WINDOW))
+      .order("desc")
+      .take(30)
+  )
+    .filter((row) => row.env === env)
+    .reverse();
+  const claimed = new Set(recent.map((row) => row.invoiceId).filter((id): id is string => id !== undefined));
+  const isTopUp = (row: Doc<"billingIntents">) => row.kind === "top_up" || row.kind === "messaging_top_up";
+  const invoiceFor = (intent: Doc<"billingIntents">) => {
+    // A messaging top-up is charged exactly its amount ($1 per 10,000 units) plus any tax, never less.
+    const least = intent.kind === "messaging_top_up" ? (intent.quantity ?? 0) / 10_000 : 0;
+    const found = invoices.filter((row) => row.status === "paid" && (row.plan_ids ?? []).includes(intent.planId ?? "") && row.created_at >= intent.createdAt && Number(row.total) >= least && !claimed.has(row.id)).sort((a, b) => a.created_at - b.created_at)[0];
+    if (found) claimed.add(found.id);
+    return found ?? null;
+  };
+  for (const intent of recent) {
+    if (intent.stage !== "done" || !isTopUp(intent) || intent.invoiceId !== undefined) continue;
+    const invoice = invoiceFor(intent);
+    if (invoice) await ctx.db.patch(intent._id, { invoiceId: invoice.id });
+  }
+  for (const intent of recent) {
+    if (intent.stage !== "payment_needed" && !(intent.stage === "failed" && intent.unconfirmed)) continue;
+    let invoice: RawInvoice | null = null;
+    if (intent.kind === "plan_change") {
+      if (projection.plan !== intent.planId && projection.subscription.scheduledPlan !== intent.planId) continue;
+    } else if (isTopUp(intent)) {
+      invoice = invoiceFor(intent);
+      if (!invoice) continue;
+    } else continue;
+    await ctx.db.patch(intent._id, { stage: "done", url: undefined, problem: undefined, unconfirmed: undefined, invoiceId: invoice?.id, updatedAt: now });
+    await recordEvent(ctx, { companyId, type: `billing.${intent.kind}_done`, actor: { kind: "system" }, subject: { table: "billingIntents", id: intent._id }, data: { planId: intent.planId ?? null, source: "autumn" } });
+    if (intent.kind === "messaging_top_up") await ctx.scheduler.runAfter(0, internal.messagingFunds.purchaseAnswered, { intentId: intent._id, paid: true, url: invoice?.hosted_invoice_url ?? undefined });
+  }
+}
 
 async function usageAlerts(ctx: MutationCtx, account: Doc<"billingAccounts">) {
   const credits = account.credits;
@@ -358,6 +412,8 @@ export const startPlanChange = ownerMutation({
     const state = connectedOrRefuse();
     const account = await accountFor(ctx, ctx.companyId, state.env);
     if (account?.plan === args.plan && !account.subscription.scheduledPlan) throw userError(`This company is already on ${PLANS[args.plan].name}.`);
+    // A plan that is not on sale can only be kept (undoing a scheduled move away from it), never newly bought.
+    if (!planOnSale(args.plan) && account?.plan !== args.plan) throw userError(`${PLANS[args.plan].name} isn't open to new companies yet. Your plan is ${PLANS.operate.name}.`);
     return startIntent(ctx, { kind: "plan_change", planId: args.plan, stage: "previewing" });
   },
 });
@@ -424,7 +480,49 @@ export const refresh = ownerMutation({
     connectedOrRefuse();
     if (!(await allow(ctx, `billing.refresh:${ctx.companyId}`, 6, MINUTE))) throw userError("Refreshed a moment ago. Try again shortly.", "limit");
     await ctx.scheduler.runAfter(0, internal.billing.syncCompany, { companyId: ctx.companyId });
+    // "I've paid, check again": Stripe is asked about the unpaid invoice itself, and the lock lifts only if Stripe says it is paid.
+    if (ctx.company.billingLockedAt !== undefined) await ctx.scheduler.runAfter(0, internal.billingLock.recheck, { companyId: ctx.companyId });
     return null;
+  },
+});
+
+/** The Owner closes the dialog for a purchase. It is not reopened; the purchase itself is left as it is. */
+export const dismissIntent = ownerMutation({
+  args: { intentId: v.id("billingIntents") },
+  whileLocked: true,
+  handler: async (ctx, args) => {
+    const intent = await ctx.db.get(args.intentId);
+    if (!intent || intent.companyId !== ctx.companyId) throw userError("That request was not found.", "not_found");
+    if (intent.dismissedAt === undefined) await ctx.db.patch(intent._id, { dismissedAt: Date.now() });
+    return null;
+  },
+});
+
+/** After a purchase was sent and billing did not answer, it is sent again after these waits, under the same Idempotency-Key. */
+const UNKNOWN_RETRY = [1, 5, 15].map((minutes) => minutes * MINUTE);
+const UNCONFIRMED_SO_FAR = "We couldn’t confirm this with billing yet, so we don’t know whether it went through. We’re checking again, and you won’t be charged twice for it.";
+const UNCONFIRMED = "We couldn’t confirm whether this went through. Check your invoices on the Billing tab before trying again. If you were charged, it will show here once billing reports it; if it doesn’t, contact Selestial support.";
+
+/**
+ * A purchase was sent and its outcome is not known (a timeout, a busy or failing billing service). The
+ * intent stays as it is and is sent again later under the same key, so it can only ever be one purchase.
+ * Returns false once the retries are used up; the Owner is then told plainly that it could not be confirmed.
+ */
+export const intentUnknown = internalMutation({
+  args: { intentId: v.id("billingIntents") },
+  handler: async (ctx, args): Promise<boolean> => {
+    const intent = await ctx.db.get(args.intentId);
+    if (!intent || intent.stage !== "submitting") return true;
+    const attempts = intent.attempts ?? 0;
+    const now = Date.now();
+    if (attempts >= UNKNOWN_RETRY.length) {
+      await ctx.db.patch(intent._id, { stage: "failed", unconfirmed: true, problem: UNCONFIRMED, updatedAt: now });
+      await recordEvent(ctx, { companyId: intent.companyId, type: `billing.${intent.kind}_failed`, actor: { kind: "system" }, subject: { table: "billingIntents", id: intent._id }, data: { planId: intent.planId ?? null, unconfirmed: true } });
+      return false;
+    }
+    await ctx.db.patch(intent._id, { attempts: attempts + 1, problem: UNCONFIRMED_SO_FAR, updatedAt: now });
+    await ctx.scheduler.runAfter(UNKNOWN_RETRY[attempts], internal.billing.runIntent, { intentId: intent._id });
+    return true;
   },
 });
 
@@ -463,8 +561,14 @@ export const runIntent = internalAction({
     };
     const failed = (answer: { kind: string; message?: string }): Promise<void> => answered("failed", { problem: answer.kind === "unavailable" ? "Billing could not be reached. Nothing was charged. Try again in a few minutes." : (answer.message ?? "Autumn refused this request. Nothing was charged.") });
 
+    // Sent, and billing did not say what happened: never "nothing was charged". The same request goes again later.
+    const unknown = async (): Promise<void> => {
+      if (await ctx.runMutation(internal.billing.intentUnknown, { intentId: intent._id })) return;
+      if (intent.kind === "messaging_top_up") await ctx.runMutation(internal.messagingFunds.purchaseAnswered, { intentId: intent._id, paid: false, problem: UNCONFIRMED });
+    };
+
     // The customer must exist in Autumn before anything is attached to it.
-    if (!(await syncAccount(ctx, intent.companyId))) return failed({ kind: "unavailable" });
+    if (!(await syncAccount(ctx, intent.companyId))) return intent.stage === "submitting" && (intent.attempts ?? 0) > 0 ? unknown() : failed({ kind: "unavailable" });
 
     if (intent.kind === "portal" || intent.kind === "payment_method") {
       const answer = intent.kind === "portal" ? await openPortal(customerId, returnUrl) : await setupPayment(customerId, returnUrl);
@@ -514,8 +618,18 @@ export const runIntent = internalAction({
       if (intent.kind === "messaging_top_up") await ctx.runMutation(internal.messagingFunds.purchaseAnswered, { intentId: intent._id, paid: !answer.data.payment_url, url: answer.data.payment_url ?? answer.data.invoice?.hosted_invoice_url ?? undefined });
       return;
     }
-    if (answer.kind === "replayed") return answered("done");
-    if (intent.kind === "messaging_top_up") await ctx.runMutation(internal.messagingFunds.purchaseAnswered, { intentId: intent._id, paid: false, problem: answer.kind === "unavailable" ? "Billing could not be reached. Nothing was charged." : "The purchase was refused. Nothing was charged." });
+    if (answer.kind === "replayed") {
+      if (!topUp) return answered("done");
+      // Autumn already has this exact purchase from an earlier try whose answer was lost. Whether it was paid
+      // is read from Autumn's record: the sync closes it as soon as its paid invoice is there.
+      await answered("payment_needed", { problem: "Billing already has this purchase. It shows here as soon as the payment is confirmed." });
+      if (intent.kind === "messaging_top_up") await ctx.runMutation(internal.messagingFunds.purchaseAnswered, { intentId: intent._id, paid: false });
+      await syncAccount(ctx, intent.companyId);
+      return;
+    }
+    // A timeout, 429 or 5xx after the purchase was sent: it may have gone through.
+    if (answer.kind === "unavailable") return unknown();
+    if (intent.kind === "messaging_top_up") await ctx.runMutation(internal.messagingFunds.purchaseAnswered, { intentId: intent._id, paid: false, problem: "The purchase was refused. Nothing was charged." });
     return failed(answer as never);
   },
 });
@@ -586,7 +700,7 @@ export const creditIndicator = companyQuery({
     const account = await accountFor(ctx, ctx.companyId, state.env);
     const reserved = await reservedCredits(ctx, ctx.companyId, Date.now() - 24 * 60 * MINUTE);
     if (!account) return { state: "unknown" as const, message: "Credits are checked when AI work starts.", available: null, reserved, low: false };
-    if (!account.plan) return { state: "no_plan" as const, message: "AI work needs an active Operate or Expand plan.", available: account.credits?.remaining ?? 0, reserved, low: true };
+    if (!account.plan) return { state: "no_plan" as const, message: "AI work needs an active plan.", available: account.credits?.remaining ?? 0, reserved, low: true };
     const available = account.credits?.remaining ?? 0;
     const included = account.credits?.included.granted ?? 0;
     return { state: available <= 0 ? ("empty" as const) : ("ok" as const), message: available <= 0 ? "No credits left. New AI work is paused; everything else keeps working." : "", available, reserved, low: included > 0 && available < included * 0.1 };
@@ -610,7 +724,8 @@ export const planAndUsage = ownerQuery({
     const state = billingState();
     const plan = verifiedPlan(ctx.company);
     const catalog = {
-      plans: PLAN_IDS.map((id) => ({ id, name: PLANS[id].name, monthlyCents: PLANS[id].monthlyCents, positioning: PLANS[id].positioning, summary: PLANS[id].summary })),
+      // Plans on sale, plus the one this company is on (a plan no longer sold is kept, never offered).
+      plans: PLAN_IDS.filter((id) => planOnSale(id) || id === plan).map((id) => ({ id, name: PLANS[id].name, monthlyCents: PLANS[id].monthlyCents, positioning: PLANS[id].positioning, summary: PLANS[id].summary, onSale: planOnSale(id) })),
       bothInclude: [...BOTH_PLANS_INCLUDE],
       agents: AGENT_IDS.map((agent) => ({ agent, name: AGENT_CATALOG[agent].name, department: AGENT_CATALOG[agent].department, released: agentReleased(agent), operate: planIncludesAgent("operate", agent), expand: planIncludesAgent("expand", agent), here: agentVerdict(ctx.company, agent).ok })),
       features: (Object.keys(PLAN_FEATURES) as PlanFeature[]).map((feature) => ({ feature, name: PLAN_FEATURES[feature].name, built: PLAN_FEATURES[feature].built, expandOnly: !planIncludesFeature("operate", feature), here: plan ? planIncludesFeature(plan, feature) && PLAN_FEATURES[feature].built : false })),
@@ -662,7 +777,8 @@ export const planAndUsage = ownerQuery({
       usage: [...usage.values()].sort((a, b) => b.credits - a.credits),
       recent: executions.slice(0, 25).map((row) => ({ id: row._id, at: row.createdAt, agent: agentName(row.agent), task: TASKS[row.task].label, units: row.completedUnits ?? row.units, credits: row.charged ?? (ACTIVE_STATES.has(row.state) ? row.credits : 0), state: row.state, settlement: row.settlement, block: row.block ? BLOCK_WORDS[row.block] : null, rateCard: row.rateCardVersion, source: row.source ?? null })),
       topUps: { packs: topUpPacks(), validity: "Purchased credits are used after the month's included credits run out. They do not reset or expire on a date, and can be used only while the company has an active plan.", consumption: "Included credits first, then purchased credits." },
-      pendingIntent: intents.find((row) => row.stage === "previewing" || row.stage === "awaiting_confirmation" || row.stage === "submitting" || row.stage === "payment_needed")?._id ?? null,
+      // A purchase still in progress is reopened for the Owner, unless they closed it or it has sat untouched for half an hour.
+      pendingIntent: intents.find((row) => (row.stage === "previewing" || row.stage === "awaiting_confirmation" || row.stage === "submitting" || row.stage === "payment_needed") && row.dismissedAt === undefined && now - row.updatedAt < 30 * MINUTE)?._id ?? null,
     };
   },
 });

@@ -179,4 +179,73 @@ describe("Owner recovery and notifications", () => {
     expect((await owner.query(api.operations.issues, { companyId })).open).toHaveLength(0);
     expect(await notices(t, "service_issue")).toHaveLength(0);
   });
+
+  // ── Alerts are sent only when someone was reached ───────────────────────────────────────────────
+
+  const reviewer = { subject: "user_queue", email: "queue@selestial.example", emailVerified: true, name: "Queue" };
+  async function oneAlert(t: T) {
+    const { companyId } = await company(t, "owner_a", "Alpha");
+    const boxId = await mailbox(t, companyId, "connected", 3);
+    await run(t, "mailboxes");
+    await t.run((ctx) => ctx.db.patch(boxId, { failures: 6 }));
+    await run(t, "mailboxes");
+    expect(await t.run((ctx) => ctx.db.query("staffAlerts").collect())).toHaveLength(1);
+  }
+  const waiting = (t: T) => t.run(async (ctx) => (await ctx.db.query("staffAlerts").collect()).filter((row) => row.sentAt === 0).length);
+
+  test("an alert the email service refuses for everyone stays waiting, and staff are shown that alerts are not being delivered", async () => {
+    const t = start();
+    // Both addresses are refused outright (not a retry): what a revoked key or an unverified domain looks like.
+    await t.mutation(internal.staff.grant, { email: "ops@fail.test", name: "Ops", role: "admin" });
+    await t.mutation(internal.staff.grant, { email: "help@fail.test", name: "Help", role: "support" });
+    // A reviewer reads the staff console but is not sent alerts.
+    await t.mutation(internal.staff.grant, { email: reviewer.email, name: "Queue", role: "reviewer" });
+    await oneAlert(t);
+    expect(await t.action(internal.operations.sendStaffAlerts, {})).toEqual({ sent: 0 });
+    expect(await waiting(t)).toBe(1);
+    expect(await t.run((ctx) => ctx.db.query("alertDelivery").first())).toMatchObject({ problem: "provider_refused" });
+    {
+      const overview = await t.withIdentity(reviewer).query(api.operations.overview, {});
+      expect(overview.alerts.delivering).toBe(false);
+      expect(overview.alerts.problem).toMatch(/refused every alert/);
+      expect(overview.alerts.problem).not.toContain("fail.test");
+      // One person who can be reached is enough: the batch goes, and the state clears.
+      await t.mutation(internal.staff.grant, { email: "ops@selestial.example", name: "Ops", role: "admin" });
+      expect(await t.action(internal.operations.sendStaffAlerts, {})).toEqual({ sent: 1 });
+      expect(await waiting(t)).toBe(0);
+      const after = await t.withIdentity(reviewer).query(api.operations.overview, {});
+      expect(after.alerts).toMatchObject({ delivering: true, problem: null, failingSince: null });
+    }
+  });
+
+  test("with no admin or support staff, or no email service, an alert is never marked sent", async () => {
+    const t = start();
+    await t.mutation(internal.staff.grant, { email: "queue@selestial.example", name: "Queue", role: "reviewer" });
+    await oneAlert(t);
+    expect(await t.action(internal.operations.sendStaffAlerts, {})).toEqual({ sent: 0 });
+    expect(await waiting(t)).toBe(1);
+    expect(await t.run((ctx) => ctx.db.query("alertDelivery").first())).toMatchObject({ problem: "no_recipients" });
+    expect(mockEmailOutbox).toHaveLength(0);
+    delete process.env.EMAIL_PROVIDER;
+    await t.mutation(internal.staff.grant, { email: "ops@selestial.example", name: "Ops", role: "admin" });
+    expect(await t.action(internal.operations.sendStaffAlerts, {})).toEqual({ sent: 0 });
+    expect(await waiting(t)).toBe(1);
+    const state = (await t.run((ctx) => ctx.db.query("alertDelivery").first()))!;
+    expect(state.problem).toBe("not_configured");
+    expect(state.failingSince).toBeDefined();
+    expect(state.lastDeliveredAt).toBeUndefined();
+  });
+
+  test("a busy email service leaves the batch waiting and the same batch goes once, to each person, when it answers", async () => {
+    const t = start();
+    await t.mutation(internal.staff.grant, { email: "ops@busy.test", name: "Ops", role: "admin" });
+    await oneAlert(t);
+    expect(await t.action(internal.operations.sendStaffAlerts, {})).toEqual({ sent: 0 });
+    expect(await t.action(internal.operations.sendStaffAlerts, {})).toEqual({ sent: 0 });
+    expect(await waiting(t)).toBe(1);
+    expect(await t.action(internal.operations.sendStaffAlerts, {})).toEqual({ sent: 1 });
+    expect(await waiting(t)).toBe(0);
+    expect(mockEmailOutbox.filter((row) => row.result === "accepted")).toHaveLength(1);
+    expect(new Set(mockEmailOutbox.map((row) => row.idempotencyKey)).size).toBe(1);
+  });
 });

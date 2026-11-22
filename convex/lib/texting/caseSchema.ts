@@ -208,8 +208,23 @@ export const caseTables = {
     nextAction: v.string(),
     followUpAt: v.optional(v.number()),
     state: v.union(v.literal("waiting_owner"), v.literal("waiting_selestial"), v.literal("waiting_provider"), v.literal("resolved")),
-    /** Assisted routes (port, toll-free): what the owner asked for, kept as they wrote it. */
-    assisted: v.optional(v.object({ route: v.union(v.literal("port_existing"), v.literal("toll_free")), phoneNumber: v.optional(v.string()), carrier: v.optional(v.string()), words: v.optional(v.string()) })),
+    /**
+     * Assisted routes: what the owner asked for, kept as they wrote it. Bringing a number in (port_existing),
+     * a toll-free number, or giving the active number up: releasing it (release) or moving it to another
+     * provider (port_out), see docs/texting/03-offboarding.md.
+     */
+    assisted: v.optional(
+      v.object({
+        route: v.union(v.literal("port_existing"), v.literal("toll_free"), v.literal("release"), v.literal("port_out")),
+        phoneNumber: v.optional(v.string()),
+        carrier: v.optional(v.string()),
+        words: v.optional(v.string()),
+        /** Giving a number up only: the owner's explicit acceptance, in the exact words shown, for exactly `phoneNumber`. Nothing is released without it. */
+        authorization: v.optional(v.object({ wording: v.string(), at: v.number(), by: v.id("members") })),
+        /** Who opened it: the owner, or Selestial when the plan was cancelled (a work item only, with no authorization). */
+        source: v.optional(v.union(v.literal("owner"), v.literal("plan_cancelled"))),
+      }),
+    ),
     resolution: v.optional(v.string()),
     history: v.array(v.object({ at: v.number(), state: v.string(), words: v.string(), by: v.string() })),
     reopened: v.number(),

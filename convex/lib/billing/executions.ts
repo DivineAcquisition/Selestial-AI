@@ -81,7 +81,7 @@ export async function openExecution(
   for (const verdict of [input.agent === "chat" || input.agent === "studio" || input.agent === "services" ? null : agentVerdict(input.company, input.agent), input.feature ? featureVerdict(input.company, input.feature) : null]) {
     if (verdict && !verdict.ok && (verdict.block !== "plan" || knowsPlan)) return verdict;
   }
-  if (input.agent === "chat" && knowsPlan && verifiedPlan(input.company) === null) return { ok: false, block: "plan", message: "Company Chat needs an active Operate or Expand plan." };
+  if (input.agent === "chat" && knowsPlan && verifiedPlan(input.company) === null) return { ok: false, block: "plan", message: "Company Chat needs an active plan." };
 
   const controls = account?.controls;
   // Hard limits first: nothing over them runs, approved or not.
@@ -138,7 +138,11 @@ export async function noteExecution(ctx: MutationCtx, executionId: Id<"aiExecuti
   await ctx.db.patch(executionId, { history: [...(row.history ?? []), { at: Date.now(), ...step }].slice(-20) });
 }
 
-/** Credits held or charged this calendar month (UTC) by the executions `which` selects. */
+/**
+ * Credits held or charged this calendar month (UTC) by the executions `which` selects. Work that was opened
+ * and has not held its credits yet counts at its estimate, so several pieces opened together cannot each
+ * pass a budget only the first of them fits in. Work that never starts is canceled and stops counting.
+ */
 export async function monthSpend(ctx: MutationCtx, companyId: Id<"companies">, now: number, which: (row: Doc<"aiExecutions">) => boolean): Promise<number> {
   const date = new Date(now);
   const monthStart = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1);
@@ -146,7 +150,7 @@ export async function monthSpend(ctx: MutationCtx, companyId: Id<"companies">, n
     .query("aiExecutions")
     .withIndex("by_company_created", (q) => q.eq("companyId", companyId).gte("createdAt", monthStart))
     .take(5000);
-  return rows.filter(which).reduce((sum, row) => sum + (row.state === "completed" ? (row.charged ?? 0) : row.state === "reserved" || row.state === "reserving" ? row.credits : 0), 0);
+  return rows.filter(which).reduce((sum, row) => sum + (row.state === "completed" ? (row.charged ?? 0) : row.state === "reserved" || row.state === "reserving" || row.state === "pending" ? row.credits : 0), 0);
 }
 
 /** Credits held or charged this calendar month (UTC) for autonomous work. */

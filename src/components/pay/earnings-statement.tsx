@@ -120,7 +120,7 @@ export function EarningsStatement({ token }: { token: string }) {
 function Summary({ view }: { view: View }) {
   const cells = [
     { label: "Paid", cents: view.totals.paidCents },
-    { label: "On its way", cents: view.totals.onTheWayCents },
+    { label: "Started, not confirmed", cents: view.totals.onTheWayCents },
     { label: "Approved, not paid yet", cents: view.totals.approvedUnpaidCents },
   ];
   return (
@@ -143,6 +143,9 @@ function Summary({ view }: { view: View }) {
           </div>
         ))}
       </dl>
+      <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+        Selestial doesn&apos;t send money. {view.company.replace(/\.$/, "")} pays you directly, outside Selestial, and records each payment here.
+      </p>
     </Panel>
   );
 }

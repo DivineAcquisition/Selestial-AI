@@ -627,10 +627,10 @@ describe("lifecycle, renewals and plans", () => {
     const id = await s.make(s.as);
     // A retired, staff-set value grants nothing.
     await s.t.run(async (ctx) => ctx.db.patch(s.companyId, { plan: "scale" }));
-    expect(await refusal(s.as.mutation(api.companyAgreements.setSecondApproval, { companyId: s.companyId, agreementId: id, required: true }))).toMatch(/needs an active Expand plan/);
+    expect(await refusal(s.as.mutation(api.companyAgreements.setSecondApproval, { companyId: s.companyId, agreementId: id, required: true }))).toMatch(/isn't part of the plan Selestial offers today/);
     billing.seed(s.companyId, { plan: "operate", grant: 1000 });
     await s.t.action(internal.billing.syncCompany, { companyId: s.companyId });
-    expect(await refusal(s.as.mutation(api.companyAgreements.setSecondApproval, { companyId: s.companyId, agreementId: id, required: true }))).toMatch(/part of the Expand plan/);
+    expect(await refusal(s.as.mutation(api.companyAgreements.setSecondApproval, { companyId: s.companyId, agreementId: id, required: true }))).toMatch(/isn't part of the Operate plan/);
     const operate = (await s.as.query(api.companyAgreements.catalog, { companyId: s.companyId })).entitlements;
     expect(operate).toMatchObject({ plan: "operate", core: { library: true, guidedDrafting: true, versionHistory: true, basicApproval: true }, expand: { advanced_approval: false, customer_portal: false } });
     billing.seed(s.companyId, { plan: "expand", grant: 2000 });

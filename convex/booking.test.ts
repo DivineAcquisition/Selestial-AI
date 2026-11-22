@@ -231,7 +231,7 @@ describe("building and publishing", () => {
     });
     const got = await s.as.query(api.bookingExperiences.get, { companyId: s.companyId, experienceId: s.experienceId });
     const blockers = got.items.filter((i) => i.severity === "blocker").map((i) => i.message);
-    expect(blockers).toEqual(expect.arrayContaining([expect.stringContaining("Operate or Expand"), expect.stringContaining("Fully insured")]));
+    expect(blockers).toEqual(expect.arrayContaining([expect.stringContaining("need an active plan"), expect.stringContaining("Fully insured")]));
     expect(await refusal(publish(s.as, s.companyId, s.experienceId))).toContain("can't be published yet");
   });
 

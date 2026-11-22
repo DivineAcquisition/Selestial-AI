@@ -65,6 +65,7 @@ export const KINDS = [
   "message_unconfirmed",
   "owner_notice_failing",
   "send_recovery_stopped",
+  "message_stuck_queued",
   "inbound_processing_failed",
   "texting_needs_owner",
   "texting_interrupted",
@@ -81,10 +82,13 @@ export const KINDS = [
   // Billing
   "ai_settlement_unverified",
   "ai_settlement_overdue",
+  "ai_work_unbilled",
+  "plan_invoice_unmatched",
   "messaging_settlement_unverified",
   "messaging_settlement_overdue",
   "messaging_overdraft_floor",
   "messaging_inbound_spike",
+  "messaging_unmetered",
   // Grouped: one provider failing for several companies at once.
   "provider_outage",
 ] as const;
@@ -99,6 +103,7 @@ export const KIND_LABELS: Record<Kind, string> = {
   message_unconfirmed: "Delivery not confirmed",
   owner_notice_failing: "Owner notifications failing",
   send_recovery_stopped: "Stuck-send recovery stopped",
+  message_stuck_queued: "Messages queued and never sent",
   inbound_processing_failed: "Provider callbacks failing",
   texting_needs_owner: "Texting registration needs the owner",
   texting_interrupted: "Texting interrupted by carriers",
@@ -113,10 +118,13 @@ export const KIND_LABELS: Record<Kind, string> = {
   connector_reconnect: "Connected system needs reconnecting",
   ai_settlement_unverified: "AI credit charge unsettled",
   ai_settlement_overdue: "AI credit settlement overdue",
+  ai_work_unbilled: "Finished AI work not charged",
+  plan_invoice_unmatched: "Failed plan payment matched to no company",
   messaging_settlement_unverified: "Messaging charge unsettled",
   messaging_settlement_overdue: "Messaging settlement overdue",
   messaging_overdraft_floor: "Messaging balance at overdraft floor",
   messaging_inbound_spike: "Unusual burst of incoming texts",
+  messaging_unmetered: "Messages are not being charged",
   provider_outage: "Provider failing for several companies",
 };
 

@@ -46,6 +46,8 @@ const PAGE_SIZE = 500;
 // ── Exports ───────────────────────────────────────────────────────────────────────────────────────
 
 export const requestExport = ownerMutation({
+  // Still open while the account is locked for an unpaid plan: the Terms say to export first (convex/billingLock.ts).
+  whileLocked: true,
   args: {},
   handler: async (ctx): Promise<{ exportId: Id<"dataExports"> }> => {
     const recent = await ctx.db
@@ -68,6 +70,8 @@ export const requestExport = ownerMutation({
 });
 
 export const exports = ownerQuery({
+  // Still open while the account is locked for an unpaid plan: the Terms say to export first (convex/billingLock.ts).
+  whileLocked: true,
   args: {},
   handler: async (ctx) => {
     const now = Date.now();
@@ -90,6 +94,8 @@ export const exports = ownerQuery({
 
 /** A download address for a ready export of this company. Recorded each time it is asked for. */
 export const downloadUrl = ownerMutation({
+  // Still open while the account is locked for an unpaid plan: the Terms say to export first (convex/billingLock.ts).
+  whileLocked: true,
   args: { exportId: v.id("dataExports") },
   handler: async (ctx, args): Promise<{ url: string }> => {
     const row = await owned(ctx, args.exportId);

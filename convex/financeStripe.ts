@@ -510,6 +510,14 @@ export const refundRead = internalMutation({
   args: { refundId: v.id("refunds"), stripeRefundId: v.string(), facts: refundFactsValidator },
   handler: async (ctx, args) => {
     const refund = (await ctx.db.get(args.refundId))!;
+    await applyRefund(ctx, refund, args.stripeRefundId, args.facts);
+  },
+});
+
+/** Writes what Stripe says about a refund, and adds the payment and the invoice up again. */
+async function applyRefund(ctx: MutationCtx, refund: Doc<"refunds">, stripeRefundId: string, facts: typeof refundFactsValidator.type) {
+  const args = { stripeRefundId, facts };
+  {
     if (refund.stripeRefundId && refund.stripeRefundId !== args.stripeRefundId) return;
     const now = Date.now();
     const wasDone = refund.status === "succeeded";
@@ -528,6 +536,75 @@ export const refundRead = internalMutation({
       await recordEvent(ctx, { companyId: refund.companyId, type: "refund.failed", actor: SYSTEM, subject: { table: "refunds", id: refund._id }, data: { amountCents: refund.amountCents } });
     }
     await recompute(ctx, refund.invoiceId);
+  }
+}
+
+// ── Refunds made in the Stripe Dashboard ─────────────────────────────────────────────────────────
+
+/** What the Owner reads on a refund they made in Stripe rather than in Selestial. */
+export const STRIPE_REFUND_REASON = "Refunded in Stripe";
+
+/**
+ * A company's Stripe Dashboard can refund a payment without Selestial. When Stripe reports a refund
+ * Selestial did not start, the payment's refunds are read back from Stripe (the event itself is never
+ * trusted) and each one Selestial has no record of is written down once, by Stripe's refund id, so the
+ * invoice and the money received say what really happened.
+ */
+export const syncStripeRefunds = internalAction({
+  args: { paymentId: v.id("payments") },
+  handler: async (ctx, args) => {
+    const found = await ctx.runQuery(internal.financeStripe.paymentFor, { paymentId: args.paymentId });
+    const stripe = found?.payment.stripe;
+    if (!found || !stripe?.paymentIntentId) return;
+    const list = await listRefunds(stripe.accountId, stripe.paymentIntentId);
+    if (list.kind !== "ok") return;
+    for (const refund of list.data.data) {
+      // A refund Selestial sent carries its own id and is followed by its own record.
+      if (refund.metadata?.selestial_refund) continue;
+      if (typeof refund.id !== "string" || !Number.isSafeInteger(refund.amount) || refund.amount <= 0) continue;
+      await ctx.runMutation(internal.financeStripe.stripeRefundRead, { paymentId: args.paymentId, stripeRefundId: refund.id.slice(0, 100), amountCents: refund.amount, facts: refundFacts(refund) });
+    }
+  },
+});
+
+export const stripeRefundRead = internalMutation({
+  args: { paymentId: v.id("payments"), stripeRefundId: v.string(), amountCents: v.number(), facts: refundFactsValidator },
+  handler: async (ctx, args) => {
+    const payment = await ctx.db.get(args.paymentId);
+    if (!payment || payment.source !== "stripe") return;
+    const existing = await ctx.db
+      .query("refunds")
+      .withIndex("by_stripe_refund", (q) => q.eq("stripeRefundId", args.stripeRefundId))
+      .first();
+    if (existing) {
+      // Known already: only Stripe's later word on one made in Stripe is applied here. One Selestial sent has its own path.
+      if (existing.paymentId === payment._id && existing.origin === "stripe_dashboard") await applyRefund(ctx, existing, args.stripeRefundId, args.facts);
+      return;
+    }
+    // A refund that never went through returned nothing: there is nothing to record.
+    if (args.facts.status === "failed" || args.facts.status === "canceled") return;
+    if (payment.status !== "succeeded") return;
+    // The charge may include a tip; only what paid the invoice can come back off it.
+    const amountCents = Math.min(args.amountCents, payment.amountCents - payment.refundedCents);
+    if (amountCents <= 0) return;
+    const now = Date.now();
+    const refundId = await ctx.db.insert("refunds", {
+      companyId: payment.companyId,
+      paymentId: payment._id,
+      invoiceId: payment.invoiceId,
+      customerId: payment.customerId,
+      amountCents,
+      reason: STRIPE_REFUND_REASON,
+      status: "pending",
+      alsoCredit: false,
+      origin: "stripe_dashboard",
+      tries: 0,
+      clientKey: `stripe-${args.stripeRefundId}`.slice(0, 80),
+      createdAt: now,
+      updatedAt: now,
+    });
+    await recordEvent(ctx, { companyId: payment.companyId, type: "refund.found_in_stripe", actor: SYSTEM, subject: { table: "refunds", id: refundId }, data: { amountCents, stripeAmountCents: args.amountCents } });
+    await applyRefund(ctx, (await ctx.db.get(refundId))!, args.stripeRefundId, args.facts);
   },
 });
 
@@ -609,8 +686,16 @@ export const webhookReceived = internalMutation({
         .query("refunds")
         .withIndex("by_stripe_refund", (q) => q.eq("stripeRefundId", event.objectId!))
         .first();
-      if (refund && refund.companyId === row.companyId) await ctx.scheduler.runAfter(0, internal.financeStripe.syncRefund, { refundId: refund._id });
-      return { handled: Boolean(refund) };
+      if (refund && refund.companyId === row.companyId) {
+        await ctx.scheduler.runAfter(0, internal.financeStripe.syncRefund, { refundId: refund._id });
+        return { handled: true };
+      }
+      // Not one Selestial started: a refund made in the Stripe Dashboard, on a payment of this company's.
+      if (!refund && payment) {
+        await ctx.scheduler.runAfter(0, internal.financeStripe.syncStripeRefunds, { paymentId: payment._id });
+        return { handled: true };
+      }
+      return { handled: false };
     }
     if (payment) {
       await ctx.scheduler.runAfter(0, internal.financeStripe.syncPayment, { paymentId: payment._id });
@@ -620,6 +705,8 @@ export const webhookReceived = internalMutation({
           .withIndex("by_company_payment", (q) => q.eq("companyId", payment.companyId).eq("paymentId", payment._id))
           .take(50);
         for (const refund of refunds) if (refund.status !== "succeeded" && refund.status !== "recorded") await ctx.scheduler.runAfter(0, internal.financeStripe.syncRefund, { refundId: refund._id });
+        // And any refund on this charge made in the Stripe Dashboard, which Selestial has no record of yet.
+        await ctx.scheduler.runAfter(0, internal.financeStripe.syncStripeRefunds, { paymentId: payment._id });
       }
       return { handled: true };
     }

@@ -85,3 +85,34 @@ export async function threadFor(ctx: Ctx, message: Doc<"messages">, connectionId
   const own = rows.filter((row) => row.connectionId === connectionId && row.threadId && row.fromAddress?.toLowerCase() === to).sort((a, b) => b.receivedAt - a.receivedAt);
   return own[0]?.threadId ?? null;
 }
+
+/**
+ * Whether a working Gmail inbox is connected for this Google account, in any company. Google keeps one
+ * grant per account for Selestial (the inbox and the Google tools use the same Google app), and revoking
+ * any token ends all of it, so nothing on that account may be revoked while such an inbox is in use.
+ */
+export async function gmailInboxOn(ctx: Ctx, email: string, except?: Id<"mailboxConnections">): Promise<boolean> {
+  const rows = await ctx.db
+    .query("mailboxConnections")
+    .withIndex("by_address", (q) => q.eq("address", email.trim().toLowerCase()))
+    .take(50);
+  return rows.some((row) => row._id !== except && row.provider === "gmail" && row.status !== "disconnected");
+}
+
+/** Whether ending Google's grant for this address would also end another connection: another inbox, or one of the company's Google tools. */
+export async function sharesGoogleGrant(ctx: Ctx, companyId: Id<"companies">, address: string, except?: Id<"mailboxConnections">): Promise<boolean> {
+  const email = address.trim().toLowerCase();
+  const sameAddress = (
+    await ctx.db
+      .query("mailboxConnections")
+      .withIndex("by_address", (q) => q.eq("address", email))
+      .take(50)
+  ).some((other) => other._id !== except && other.status !== "disconnected");
+  const google = (
+    await ctx.db
+      .query("googleConnections")
+      .withIndex("by_company", (q) => q.eq("companyId", companyId))
+      .take(20)
+  ).some((connection) => connection.status !== "disconnected" && connection.email.trim().toLowerCase() === email);
+  return sameAddress || google;
+}

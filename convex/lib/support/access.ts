@@ -164,12 +164,20 @@ export async function recordSupportChange(ctx: MutationCtx, support: SupportCont
 
 const REDACTED_TABLES = Object.keys(REDACTED_FIELDS) as TableNames[];
 
-function redactDoc(table: string | null, doc: unknown): unknown {
+/** One row with its table's customer words hidden. Exported for its test. */
+export function redactDoc(table: string | null, doc: unknown): unknown {
   if (!table || !doc || typeof doc !== "object" || !("_id" in doc)) return doc;
   const rule = REDACTED_FIELDS[table];
   if (!rule) return doc;
   const out: Record<string, unknown> = { ...(doc as Record<string, unknown>) };
-  for (const field of rule.hide) if (typeof out[field] === "string" && out[field] !== "") out[field] = HIDDEN_WORDS;
+  for (const field of rule.hide) {
+    const value = out[field];
+    if (typeof value === "string" && value !== "") out[field] = HIDDEN_WORDS;
+    // A message kept as an object (retentionActions.message): its words are hidden, its channel and purpose stay.
+    else if (value && typeof value === "object" && !Array.isArray(value)) {
+      out[field] = Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, (key === "body" || key === "subject") && typeof inner === "string" && inner !== "" ? HIDDEN_WORDS : inner]));
+    }
+  }
   for (const field of rule.mask ?? []) {
     const value = out[field];
     if (typeof value === "string" && value) out[field] = maskAddress(value.includes("@") ? "email" : "sms", value);

@@ -311,6 +311,36 @@ describe("paying by card on the pay page", () => {
   });
 });
 
+describe("a declined card and a second try", () => {
+  it("closes the declined payment at Stripe when a new one starts, so a tab left open can't pay twice", async () => {
+    const s = await setup();
+    const accountId = await connectStripe(s);
+    const invoiceId = await issued(s);
+    const token = await tokenOf(s.t, invoiceId);
+    const first = await s.t.mutation(api.pay.start, { token, amountCents: 24000, clientKey: key(70) });
+    await settle(s.t);
+    const [declined] = stripe.intentsFor(first.paymentId!);
+    stripe.settle(declined.id, "declined");
+    await webhook(s.t, { id: "evt_70", type: "payment_intent.payment_failed", account: accountId, livemode: false, data: { object: { id: declined.id, object: "payment_intent" } } });
+    await settle(s.t);
+    expect((await s.t.run(async (ctx) => ctx.db.get(first.paymentId!)))?.status).toBe("failed");
+    // Stripe would still take another try on the declined payment.
+    expect(stripe.state.intents.get(declined.id)!.status).toBe("requires_payment_method");
+
+    const second = await s.t.mutation(api.pay.start, { token, amountCents: 24000, clientKey: key(71) });
+    await settle(s.t);
+    expect(stripe.state.intents.get(declined.id)!.status).toBe("canceled");
+    expect((await s.t.run(async (ctx) => ctx.db.get(first.paymentId!)))?.status).toBe("canceled");
+    const [live] = stripe.intentsFor(second.paymentId!);
+    stripe.settle(live.id, "succeeded");
+    await s.t.mutation(api.pay.returned, { token, paymentId: second.paymentId! });
+    await settle(s.t);
+    const detail = await s.as.query(api.finance.invoice, { companyId: s.companyId, invoiceId });
+    expect(detail.totals).toMatchObject({ paidCents: 24000, balanceCents: 0 });
+    expect([...stripe.state.intents.values()].filter((pi) => pi.status === "succeeded")).toHaveLength(1);
+  });
+});
+
 describe("refunds through Stripe", () => {
   async function paidByCard() {
     const s = await setup();
@@ -360,6 +390,80 @@ describe("refunds through Stripe", () => {
     const detail = await s.as.query(api.finance.invoice, { companyId: s.companyId, invoiceId: s.invoiceId });
     expect(detail.state).toBe("requested");
     expect(detail.totals.balanceCents).toBe(24000);
+  });
+});
+
+describe("refunds made in the Stripe Dashboard", () => {
+  async function paidByCard() {
+    const s = await setup();
+    const accountId = await connectStripe(s);
+    const invoiceId = await issued(s);
+    const token = await tokenOf(s.t, invoiceId);
+    const { paymentId } = await s.t.mutation(api.pay.start, { token, amountCents: 24000, clientKey: key(60) });
+    await settle(s.t);
+    const intent = stripe.intentsFor(paymentId!)[0];
+    stripe.settle(intent.id, "succeeded");
+    await s.t.mutation(api.pay.returned, { token, paymentId: paymentId! });
+    await settle(s.t);
+    return { ...s, accountId, invoiceId, paymentId: paymentId!, intentId: intent.id };
+  }
+  /** The Owner refunds in Stripe: Stripe has a refund Selestial never asked for. */
+  function dashboardRefund(s: { accountId: string; intentId: string }, id: string, amount: number, status: "pending" | "succeeded" | "failed" = "succeeded") {
+    stripe.state.refunds.set(id, { id, account: s.accountId, payment_intent: s.intentId, amount, status, metadata: {} });
+  }
+  const refundRows = (s: { t: T; companyId: Id<"companies">; invoiceId: Id<"invoices"> }) => s.t.run((ctx) => ctx.db.query("refunds").withIndex("by_company_invoice", (q) => q.eq("companyId", s.companyId).eq("invoiceId", s.invoiceId)).collect());
+
+  it("records the refund once from Stripe's own record, so the invoice stops saying paid", async () => {
+    const s = await paidByCard();
+    expect((await s.as.query(api.finance.invoice, { companyId: s.companyId, invoiceId: s.invoiceId })).state).toBe("paid");
+    dashboardRefund(s, "re_dash_1", 9000);
+    // The event's own amount is never trusted: Stripe is asked what the refund is.
+    const event = { id: "evt_r1", type: "refund.created", account: s.accountId, livemode: false, data: { object: { id: "re_dash_1", object: "refund", payment_intent: s.intentId, amount: 1, status: "succeeded" } } };
+    await webhook(s.t, event);
+    await settle(s.t);
+    await webhook(s.t, event);
+    await webhook(s.t, { id: "evt_r2", type: "charge.refunded", account: s.accountId, livemode: false, data: { object: { id: `ch_${s.intentId}`, object: "charge", payment_intent: s.intentId, amount_refunded: 9000 } } });
+    await webhook(s.t, { id: "evt_r3", type: "refund.updated", account: s.accountId, livemode: false, data: { object: { id: "re_dash_1", object: "refund", payment_intent: s.intentId } } });
+    await settle(s.t);
+    const rows = await refundRows(s);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ amountCents: 9000, status: "succeeded", origin: "stripe_dashboard", stripeRefundId: "re_dash_1", reason: "Refunded in Stripe", alsoCredit: false });
+    expect(rows[0]!.requestedBy).toBeUndefined();
+    const detail = await s.as.query(api.finance.invoice, { companyId: s.companyId, invoiceId: s.invoiceId });
+    expect(detail.totals).toMatchObject({ paidCents: 24000, refundedCents: 9000, balanceCents: 9000 });
+    expect(detail.state).not.toBe("paid");
+    expect(detail.refunds[0]).toMatchObject({ reason: "Refunded in Stripe", madeInStripe: true, amountCents: 9000 });
+    expect(detail.payments[0].refundableCents).toBe(15000);
+  });
+
+  it("leaves Selestial's own refunds alone, waits for a pending one, and ignores another company's account", async () => {
+    const s = await paidByCard();
+    // A refund Selestial sent is not recorded a second time as one made in Stripe.
+    const preview = await s.as.query(api.finance.refundPreview, { companyId: s.companyId, paymentId: s.paymentId, amountCents: 4000, alsoCredit: false });
+    await s.as.mutation(api.finance.requestRefund, { companyId: s.companyId, paymentId: s.paymentId, amountCents: 4000, reason: "Missed the oven", alsoCredit: false, bindsTo: preview.bindsTo, clientKey: key(61) });
+    await settle(s.t);
+    await webhook(s.t, { id: "evt_r4", type: "charge.refunded", account: s.accountId, livemode: false, data: { object: { id: `ch_${s.intentId}`, object: "charge", payment_intent: s.intentId } } });
+    await settle(s.t);
+    expect(await refundRows(s)).toHaveLength(1);
+
+    // An event from an account that isn't this company's changes nothing.
+    dashboardRefund(s, "re_dash_2", 5000, "pending");
+    await webhook(s.t, { id: "evt_r5", type: "refund.created", account: "acct_someone_else", livemode: false, data: { object: { id: "re_dash_2", object: "refund", payment_intent: s.intentId } } });
+    await settle(s.t);
+    expect(await refundRows(s)).toHaveLength(1);
+
+    // Pending at the bank: shown, not counted, until Stripe says it went through.
+    await webhook(s.t, { id: "evt_r6", type: "refund.created", account: s.accountId, livemode: false, data: { object: { id: "re_dash_2", object: "refund", payment_intent: s.intentId } } });
+    await settle(s.t);
+    let detail = await s.as.query(api.finance.invoice, { companyId: s.companyId, invoiceId: s.invoiceId });
+    expect(detail.totals.refundedCents).toBe(4000);
+    expect(detail.refunds.find((r) => r.madeInStripe)).toMatchObject({ status: "pending", amountCents: 5000 });
+    stripe.state.refunds.get("re_dash_2")!.status = "succeeded";
+    await webhook(s.t, { id: "evt_r7", type: "refund.updated", account: s.accountId, livemode: false, data: { object: { id: "re_dash_2", object: "refund", payment_intent: s.intentId } } });
+    await settle(s.t);
+    detail = await s.as.query(api.finance.invoice, { companyId: s.companyId, invoiceId: s.invoiceId });
+    expect(detail.totals).toMatchObject({ refundedCents: 9000, balanceCents: 9000 });
+    expect(await refundRows(s)).toHaveLength(2);
   });
 });
 

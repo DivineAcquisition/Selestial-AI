@@ -133,6 +133,7 @@ function OverviewView({ onOpen }: { onOpen: (id: Id<"incidents">) => void }) {
   return (
     <div className="grid gap-5 [&>*]:min-w-0">
       <MonitoringStrip checks={data.checks} now={data.now} healthy={data.monitoringHealthy} />
+      {data.alerts.delivering ? null : <AlertsNotDelivered alerts={data.alerts} now={data.now} />}
       <dl className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <Count label="Open incidents" value={data.openCount} note={data.complete ? null : "First 500 shown"} />
         <Count label="Need Selestial staff" value={needsStaff} tone={needsStaff > 0 ? "warning" : undefined} />
@@ -181,7 +182,73 @@ function OverviewView({ onOpen }: { onOpen: (id: Id<"incidents">) => void }) {
       <Panel title="Recently resolved" flush>
         {data.recentlyResolved.length ? <IncidentTable rows={data.recentlyResolved} now={data.now} onOpen={onOpen} compact /> : <Empty words="Nothing resolved in the last day." />}
       </Panel>
+      <ReadinessPanel readiness={data.readiness} />
     </div>
+  );
+}
+
+/** Staff alerts that reached nobody. Shown until one is delivered; never reported as sent. */
+function AlertsNotDelivered({ alerts, now }: { alerts: Overview["alerts"]; now: number }) {
+  return (
+    <section role="alert" aria-label="Staff alerts" className="flex items-start gap-2 rounded-2xl border border-destructive/40 bg-card px-4 py-3 text-sm sm:px-5">
+      <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive-foreground" />
+      <div className="grid gap-0.5">
+        <p className="font-medium text-strong">Alerts are not being delivered</p>
+        <p className="text-muted-foreground">
+          {alerts.problem} {alerts.waitingSince ? `The oldest alert has waited since ${time(alerts.waitingSince)} (${ago(alerts.waitingSince, now)}).` : null} Nothing is marked as sent until a person has been reached; this page is the only place these incidents show until then.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+/** Deployment settings that change what companies are charged, read from this backend. Never a key or a secret. */
+function ReadinessPanel({ readiness }: { readiness: Overview["readiness"] }) {
+  const charges = readiness.messagingCharges;
+  const card = readiness.rateCard;
+  return (
+    <Panel title="Readiness">
+      <dl className="grid gap-4 text-sm">
+        <div className="grid gap-1">
+          <dt className="flex flex-wrap items-center gap-2 text-strong">
+            <span className="font-medium">Messaging charges</span>
+            <Badge variant={charges.state === "on" ? "success" : charges.warning ? "warning" : "outline"} size="sm">{charges.state === "on" ? "ON" : "OFF"}</Badge>
+          </dt>
+          <dd className="text-muted-foreground">
+            {charges.state === "on" ? "On: texts and emails are charged to each company’s messaging balance." : charges.words}
+            {readiness.environment === "production" ? null : " This is not the production backend."}
+          </dd>
+          {charges.warning ? (
+            <dd className="flex items-start gap-1.5 font-medium text-warning-foreground">
+              <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
+              <span>{charges.warning} Set MESSAGING_BILLING_SUBSIDY_NOTE on the backend to say what was approved, by whom and until when.</span>
+            </dd>
+          ) : null}
+        </div>
+        <div className="grid gap-1">
+          <dt className="flex flex-wrap items-center gap-2 text-strong">
+            <span className="font-medium">AI rate card</span>
+            <Badge variant={card.version ? "outline" : "warning"} size="sm">{card.version ?? "None in force"}</Badge>
+          </dt>
+          {card.version === null ? (
+            <dd className="text-muted-foreground">BILLING_RATE_CARD names no rate card, so no AI work can be priced.</dd>
+          ) : card.unapproved.length === 0 ? (
+            <dd className="text-muted-foreground">Every task on it has an approved rate.</dd>
+          ) : (
+            <dd className="grid gap-1 text-muted-foreground">
+              <span>No approved rate for {card.unapproved.length} {card.unapproved.length === 1 ? "task" : "tasks"}. Each runs without a model (its rules-based path) or is not offered until a rate is approved.</span>
+              <ul className="grid gap-0.5">
+                {card.unapproved.map((row) => (
+                  <li key={row.task}>
+                    <span className="font-mono text-xs text-strong">{row.task}</span>: no approved rate ({row.label})
+                  </li>
+                ))}
+              </ul>
+            </dd>
+          )}
+        </div>
+      </dl>
+    </Panel>
   );
 }
 

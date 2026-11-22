@@ -164,7 +164,7 @@ function CurrentPlan({ data, onIntent }: { data: Connected; onIntent: (id: Id<"b
             <div>
               <p className="text-xs font-semibold tracking-[0.14em] text-brand-600 uppercase">Your plan</p>
               <h2 className="mt-1 font-heading text-2xl tracking-tight text-strong">No active plan yet</h2>
-              <p className="mt-1 text-sm text-muted-foreground">Agents and AI work need the Operate or Expand plan. Compare them below.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Agents and AI work need an active plan. See what it includes below.</p>
             </div>
           ) : (
             <div>
@@ -211,11 +211,7 @@ function CurrentPlan({ data, onIntent }: { data: Connected; onIntent: (id: Id<"b
       </div>
       {plan ? (
         <div className="mt-5 flex flex-wrap gap-2 border-t border-border pt-4">
-          {plan === "operate" ? (
-            <Button size="sm" variant="primary" loading={busy} onClick={() => void run(async () => onIntent(await change({ companyId, plan: "expand" })))}>
-              Upgrade to Expand
-            </Button>
-          ) : !sub?.scheduledPlan ? (
+          {plan === "operate" ? null : !sub?.scheduledPlan ? (
             <Button size="sm" variant="outline" loading={busy} onClick={() => void run(async () => onIntent(await change({ companyId, plan: "operate" })))}>
               Move to Operate at renewal
             </Button>
@@ -325,9 +321,9 @@ function Comparison({ catalog, current, canBuy }: { catalog: Data["catalog"]; cu
   const [intentId, setIntentId] = useState<Id<"billingIntents"> | null>(null);
   return (
     <Panel title="Plans">
-      <p className="mb-3 text-sm text-muted-foreground">Start with four essential agents. Expand into a complete team as your operation grows.</p>
+      <p className="mb-3 text-sm text-muted-foreground">{catalog.plans.length > 1 ? "Your plan, and the plan Selestial offers today." : "One plan, with four agents that work today."}</p>
       {intentId ? <IntentDialog intentId={intentId} onClose={() => setIntentId(null)} /> : null}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className={catalog.plans.length > 1 ? "grid gap-4 md:grid-cols-2" : "grid max-w-xl gap-4"}>
         {catalog.plans.map((plan) => {
           const mine = current === plan.id;
           const agents = catalog.agents.filter((row) => (plan.id === "expand" ? row.expand : row.operate));
@@ -356,7 +352,7 @@ function Comparison({ catalog, current, canBuy }: { catalog: Data["catalog"]; cu
                   ))}
                 </ul>
               </div>
-              {canBuy && !current ? (
+              {canBuy && !current && plan.onSale ? (
                 <Button className="relative mt-4 self-start" size="sm" variant="primary" loading={busy} onClick={() => void run(async () => setIntentId(await change({ companyId, plan: plan.id })))}>
                   Choose {plan.name}
                 </Button>
@@ -366,13 +362,16 @@ function Comparison({ catalog, current, canBuy }: { catalog: Data["catalog"]; cu
         })}
       </div>
       <details className="group mt-4">
-        <summary className="cursor-pointer text-sm font-medium text-brand-600 focus-visible:outline-2 focus-visible:outline-brand-500">Compare everything in each plan</summary>
+        <summary className="cursor-pointer text-sm font-medium text-brand-600 focus-visible:outline-2 focus-visible:outline-brand-500">{catalog.plans.length > 1 ? "Compare everything in each plan" : "See everything in the plan, and what isn't released yet"}</summary>
       <table className="mt-4 w-full text-sm">
         <thead>
           <tr className="text-left text-xs text-muted-foreground">
             <th className="py-1 font-medium">Agent</th>
-            <th className="py-1 font-medium">Operate</th>
-            <th className="py-1 font-medium">Expand</th>
+            {catalog.plans.map((plan) => (
+              <th key={plan.id} className="py-1 font-medium">
+                {plan.name}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
@@ -381,8 +380,11 @@ function Comparison({ catalog, current, canBuy }: { catalog: Data["catalog"]; cu
               <td className="py-1.5 text-strong">
                 {row.name} {!row.released ? <span className="text-xs text-muted-foreground">· not released yet</span> : null}
               </td>
-              <td className="py-1.5 text-muted-foreground">{row.operate ? (row.released ? "Included" : "Included when released") : "—"}</td>
-              <td className="py-1.5 text-muted-foreground">{row.expand ? (row.released ? "Included" : "Included when released") : "—"}</td>
+              {catalog.plans.map((plan) => (
+                <td key={plan.id} className="py-1.5 text-muted-foreground">
+                  {(plan.id === "expand" ? row.expand : row.operate) ? (row.released ? "Included" : "Included when released") : "—"}
+                </td>
+              ))}
             </tr>
           ))}
           {catalog.features.map((row) => (
@@ -390,14 +392,17 @@ function Comparison({ catalog, current, canBuy }: { catalog: Data["catalog"]; cu
               <td className="py-1.5 text-strong">
                 {row.name} {!row.built ? <span className="text-xs text-muted-foreground">· not available yet</span> : null}
               </td>
-              <td className="py-1.5 text-muted-foreground">{row.expandOnly ? "—" : "Included"}</td>
-              <td className="py-1.5 text-muted-foreground">{row.built ? "Included" : "Included when available"}</td>
+              {catalog.plans.map((plan) => (
+                <td key={plan.id} className="py-1.5 text-muted-foreground">
+                  {plan.id === "expand" ? (row.built ? "Included" : "Included when available") : row.expandOnly ? "—" : "Included"}
+                </td>
+              ))}
             </tr>
           ))}
         </tbody>
       </table>
       </details>
-      <p className="mt-3 text-xs text-muted-foreground">Both plans include: {catalog.bothInclude.join("; ")}. Expand includes a larger monthly credit allowance. Bespoke implementation, migration and custom development are scoped separately.</p>
+      <p className="mt-3 text-xs text-muted-foreground">Also included: {catalog.bothInclude.join("; ")}. Bespoke implementation, migration and custom development are scoped separately.</p>
       <FormError message={error} />
     </Panel>
   );
@@ -408,7 +413,13 @@ function IntentDialog({ intentId, onClose }: { intentId: Id<"billingIntents">; o
   const { companyId } = useCompany();
   const intent = useQuery(api.billing.intent, { companyId, intentId });
   const confirm = useMutation(api.billing.confirmIntent);
+  const dismiss = useMutation(api.billing.dismissIntent);
   const { busy, error, run } = useRun();
+  // Closing is remembered, so a purchase that was closed is not put back in front of the Owner on the next visit.
+  const close = () => {
+    void dismiss({ companyId, intentId }).catch(() => undefined);
+    onClose();
+  };
   if (intent === undefined) return null;
   if (intent === null) return null;
   const preview = intent.preview;
@@ -416,7 +427,8 @@ function IntentDialog({ intentId, onClose }: { intentId: Id<"billingIntents">; o
   return (
     <div role="dialog" aria-label={what} className="rounded-2xl border border-brand-500/40 bg-card p-4">
       <h3 className="text-base font-semibold text-strong">{what}</h3>
-      {intent.stage === "previewing" || intent.stage === "submitting" ? <p className="mt-1 text-sm text-muted-foreground">Asking billing…</p> : null}
+      {intent.stage === "previewing" || (intent.stage === "submitting" && !intent.problem) ? <p className="mt-1 text-sm text-muted-foreground">Asking billing…</p> : null}
+      {(intent.stage === "submitting" || intent.stage === "payment_needed") && intent.problem ? <p role="status" className="mt-1 text-sm text-strong">{intent.problem}</p> : null}
       {intent.stage === "awaiting_confirmation" && preview ? (
         <div className="mt-2 grid gap-1 text-sm">
           <p className="text-strong">
@@ -430,7 +442,7 @@ function IntentDialog({ intentId, onClose }: { intentId: Id<"billingIntents">; o
             <Button size="sm" variant="primary" loading={busy} onClick={() => void run(() => confirm({ companyId, intentId }))}>
               Confirm and pay
             </Button>
-            <Button size="sm" variant="ghost" onClick={onClose}>
+            <Button size="sm" variant="ghost" onClick={close}>
               Not now
             </Button>
           </div>
@@ -446,8 +458,8 @@ function IntentDialog({ intentId, onClose }: { intentId: Id<"billingIntents">; o
       ) : null}
       {intent.stage === "done" && !intent.url ? <p className="mt-2 text-sm text-strong">Done. This page updates when billing confirms it.</p> : null}
       {intent.stage === "failed" ? <p className="mt-2 text-sm text-destructive-foreground">{intent.problem}</p> : null}
-      {intent.stage === "done" || intent.stage === "failed" ? (
-        <Button className="mt-2" size="sm" variant="ghost" onClick={onClose}>
+      {intent.stage !== "awaiting_confirmation" || !preview ? (
+        <Button className="mt-2" size="sm" variant="ghost" onClick={close}>
           Close
         </Button>
       ) : null}

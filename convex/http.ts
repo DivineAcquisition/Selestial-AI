@@ -17,12 +17,12 @@
 import { httpRouter } from "convex/server";
 
 import { internal } from "./_generated/api";
-import { oauthCallback, oneClickUnsubscribe, providerWebhook, signedFileRoute } from "./lib/builders";
+import { oauthCallback, oneClickUnsubscribe, providerWebhook, selfCheckRoute, signedFileRoute } from "./lib/builders";
 import { evidenceRequestValid } from "./lib/texting/evidence";
 import { siteOrigin } from "./lib/dispatch/links";
 import { exchangeCode, googleApp } from "./lib/recruiter/gmail";
-import { hashToken, seal } from "./lib/recruiter/secrets";
-import { afterConnect, googleRedirectUri } from "./recruiterMailbox";
+import { hashToken, randomToken, seal } from "./lib/recruiter/secrets";
+import { afterConnect, googleRedirectUri, pendingBinding } from "./recruiterMailbox";
 import { afterGoogle } from "./google";
 import { jobberCallback } from "./connectors";
 import { exchange as googleExchange, googleApp as googleConnectApp, identityFrom, redirectUri as googleConnectRedirect } from "./lib/google/oauth";
@@ -312,11 +312,15 @@ http.route({
         .then((response) => (response.ok ? (response.json() as Promise<{ emailAddress?: string }>) : null))
         .catch(() => null);
       if (!profile?.emailAddress) return afterConnect("failed", taken.returnOrigin, shared);
-      const connectionId = await ctx.runMutation(internal.recruiterMailbox.completeConnect, { companyId: taken.companyId, memberId: taken.memberId, address: profile.emailAddress, folder: taken.folder, sources: taken.sources, processFrom: taken.processFrom, canSend: taken.canSend, scopes, purposes: taken.purposes });
-      const sealed = await seal(tokens.refreshToken, connectionId);
+      // This request has no session: the state proves who STARTED, not whose browser came back from Google.
+      // So nothing is connected here. The authorization waits, sealed to the state record, and the browser
+      // goes on to the app with a one-time value; there the signed-in member who started sees the address
+      // and confirms it (recruiterMailbox.confirmConnect). Unconfirmed, it is deleted after fifteen minutes.
+      const sealed = await seal(tokens.refreshToken, pendingBinding(taken.stateId));
       if (!sealed) return afterConnect("failed", taken.returnOrigin, shared);
-      await ctx.runMutation(internal.recruiterMailbox.storeCredential, { companyId: taken.companyId, connectionId, sealedRefreshToken: sealed, scopes });
-      return afterConnect("connected", taken.returnOrigin, shared);
+      const confirm = await randomToken();
+      const held = await ctx.runMutation(internal.recruiterMailbox.holdPending, { stateId: taken.stateId, address: profile.emailAddress, sealedRefreshToken: sealed, scopes, confirmHash: await hashToken(confirm) });
+      return held ? afterConnect("confirm", taken.returnOrigin, shared, confirm) : afterConnect("failed", taken.returnOrigin, shared);
     },
   }),
 });
@@ -394,5 +398,12 @@ http.route({
     },
   }),
 });
+
+/**
+ * GET /health  for an outside uptime monitor (docs/operations/06-heartbeat.md): 200 {"ok":true} only while
+ * the operations checks are finishing and staff alerts are reaching someone; 503 with reason codes otherwise.
+ * It answers for this backend itself and is never forwarded.
+ */
+http.route({ path: "/health", method: "GET", handler: selfCheckRoute({ handler: (ctx) => ctx.runQuery(internal.operations.health, {}) }) });
 
 export default http;

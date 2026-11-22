@@ -625,7 +625,8 @@ function CompanyDeletion() {
     <div className="grid gap-3 border-t border-border pt-5">
       <div>
         <h3 className="text-sm font-semibold text-strong">Delete the company</h3>
-        <p className="text-sm text-muted-foreground">A person at Selestial handles this, so nothing is lost by a mistaken click. Download an export first if you want to keep anything.</p>
+        <p className="text-sm text-muted-foreground">This sends a request to Selestial’s team. Nothing is deleted when you click: a person checks the request with you, then closes the account and deletes the company’s records within 90 days, as the Privacy Notice says. Download an export first if you want to keep anything.</p>
+        <p className="text-sm text-muted-foreground">Some records are kept after that because they have to be: opt-out records, so nobody who asked not to be contacted is contacted again; invoices and payment records your business or Selestial must keep for tax and accounting; the record that messages were sent and with what permission, which phone carriers require; and the record that the deletion was done. Open invoices, card payments in progress and your texting number are settled or released first.</p>
       </div>
       {reference ? (
         <p role="status" className="text-sm text-strong">

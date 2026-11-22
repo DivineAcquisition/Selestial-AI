@@ -58,8 +58,14 @@ async function requestOf(ctx: Ctx, setup: Doc<"textingSetups">): Promise<Doc<"te
   return setup.requestId ? ctx.db.get(setup.requestId) : null;
 }
 
-/** The owner can change their answers when nothing is filed yet, or when a correction or a new number is asked for. Not while a code is awaited. */
-const editable = (request: Doc<"textingRequests"> | null) => !request || (EDITABLE_REQUEST.includes(request.status) && request.needs?.kind !== "code");
+/**
+ * The carriers approved the registration and only the number has to be chosen again. Nothing else may change
+ * then: what the company texts is exactly what the approved campaign covers, and a change is never filed here.
+ */
+const numberOnly = (request: Doc<"textingRequests"> | null) => request?.status === "needs_you" && request.needs?.kind === "number";
+
+/** The owner can change their answers when nothing is filed yet, or when a correction is asked for. Not while a code is awaited, and not when only a new number is needed. */
+const editable = (request: Doc<"textingRequests"> | null) => !request || (EDITABLE_REQUEST.includes(request.status) && request.needs?.kind !== "code" && !numberOnly(request));
 
 /** Rewrites every draft the owner has not edited, from the details as they are now. Their own words are never replaced. */
 function regenerated(drafts: Doc<"textingSetups">["drafts"], input: DraftInput, now: number): Doc<"textingSetups">["drafts"] {
@@ -176,6 +182,7 @@ export const save = ownerMutation({
     const setup = await writable(ctx, ctx.companyId, args.revision);
     const request = await requestOf(ctx, setup);
     const changesAnswers = Object.keys(args).some((key) => !["revision", "step", "companyId"].includes(key));
+    if (changesAnswers && numberOnly(request)) throw userError("The carriers approved your registration as you filed it, so only the number can change now. Choose another number on Your number, then send it from Review. To change what you text, write to Selestial in Evidence & notes.");
     if (changesAnswers && !editable(request)) throw userError("Your details are with Selestial and the carriers now, so they can't be changed here. If something is wrong, withdraw the request or write to support.");
     const now = Date.now();
     const patch: Partial<Doc<"textingSetups">> = { revision: setup.revision + 1, updatedAt: now, updatedBy: ctx.member._id };
@@ -383,7 +390,7 @@ export const chooseNumber = ownerMutation({
   handler: async (ctx, args) => {
     const setup = await writable(ctx, ctx.companyId, args.revision);
     const request = await requestOf(ctx, setup);
-    if (!editable(request) && request?.needs?.kind !== "number") throw userError("Your request is with Selestial now, so the number can't be changed here.");
+    if (!editable(request) && !numberOnly(request)) throw userError("Your request is with Selestial now, so the number can't be changed here.");
     if ((setup.numberRoute ?? "new_local") !== "new_local") throw userError("You chose to bring a number or use a toll-free number. Switch to a new local number first.");
     const search = await ctx.db.get(args.searchId);
     const row = search && search.companyId === ctx.companyId ? search.results?.find((result) => result.phoneNumber === args.phoneNumber) : undefined;
@@ -475,6 +482,8 @@ export const view = ownerQuery({
       setup: { ...rest, taxIdLast4: taxId?.last4 ?? null },
       company: { name: ctx.company.name, handle },
       editable: editable(request),
+      /** Only the number can change: the carriers approved everything else as filed. */
+      numberOnly: numberOnly(request),
       secureStorage: await secretsConfigured(),
       catalog: { activities: ACTIVITIES.map(({ sample, ...row }) => ({ ...row, sample: sample(input.name) })), groups: GROUP_WORDS, verticals: VERTICALS, entities: ENTITY_WORDS },
       sources: setup.sources.map((row) => ({ ...row, words: sourceWords(row.source) })),
@@ -489,7 +498,7 @@ export const view = ownerQuery({
       places,
       pages: pageStates,
       charges: { rows: charges.rows, wording: registrationWording(now), version: registrationPricesAt(now).version, required: meteringOn() },
-      request: request ? { requestId: request._id, status: request.status, phoneNumber: request.phoneNumber, requestedAt: request.requestedAt, needs: request.needs ?? null, milestones: milestones(request), resubmissions: request.resubmissions ?? 0 } : null,
+      request: request ? { requestId: request._id, status: request.status, phoneNumber: request.phoneNumber, requestedAt: request.requestedAt, needs: request.needs ?? null, milestones: milestones(request), resubmissions: request.resubmissions ?? 0, offboarding: request.offboarding ? { route: request.offboarding.route, startedAt: request.offboarding.startedAt } : null } : null,
     };
   },
 });
@@ -506,7 +515,7 @@ export const submit = ownerMutation({
   handler: async (ctx, args) => {
     const setup = await writable(ctx, ctx.companyId, args.revision);
     const request = await requestOf(ctx, setup);
-    if (!editable(request)) throw userError("This setup is already with Selestial.");
+    if (!editable(request) && !numberOnly(request)) throw userError("This setup is already with Selestial.");
     const now = Date.now();
     const wording = registrationWording(now);
     if (args.authorization !== wording) throw userError("Read and accept the charges to submit. They may have changed since the page loaded; the latest are shown now.");

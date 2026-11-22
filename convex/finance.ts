@@ -19,7 +19,7 @@ import { requireFinance } from "./lib/finance/authority";
 import { bindsTo, requireSame } from "./lib/finance/confirm";
 import { findings } from "./lib/finance/findings";
 import { amountRequested, depositOutstanding, inDepositStage, invoiceState, STATE_WORDS } from "./lib/finance/invoiceState";
-import { emptyTotals, invoiceRows, recompute, REFUND_COUNTS, REFUND_IN_FLIGHT } from "./lib/finance/ledger";
+import { emptyTotals, invoiceRows, liveInvoiceForJob, recompute, REFUND_COUNTS, REFUND_IN_FLIGHT } from "./lib/finance/ledger";
 import { cleanLines, dollars, LIMITS, linesTotal, percentLabel } from "./lib/finance/money";
 import { newPublicId, payLinksConfigured, payToken, payUrl } from "./lib/finance/payLinks";
 import { invoiceLineValidator, MANUAL_METHODS, paymentMethodValidator, type InvoiceLine, type PaymentMethod } from "./lib/finance/schema";
@@ -213,11 +213,8 @@ async function uninvoicedJobs(ctx: QueryCtx, companyId: Id<"companies">, now: nu
     if (job.priceCents === undefined) continue;
     // A correction visit is at no charge to the customer: its price is only the basis the crew is paid from.
     if (job.recovery) continue;
-    const invoices = await ctx.db
-      .query("invoices")
-      .withIndex("by_company_job", (q) => q.eq("companyId", companyId).eq("jobId", job._id))
-      .take(10);
-    if (!invoices.some((invoice) => invoice.status !== "void")) out.push(job);
+    // Its own invoice, or a monthly plan invoice that lists it: either way it is already billed.
+    if (!(await liveInvoiceForJob(ctx, job))) out.push(job);
   }
   return out;
 }
@@ -562,7 +559,7 @@ export const invoice = ownerQuery({
       payLink: token ? payUrl(token) : null,
       payLinksConfigured: payLinksConfigured(),
       payments: rows.payments.filter((p) => p.status !== "awaiting_customer" && p.status !== "canceled").sort((a, b) => b.createdAt - a.createdAt).map((p) => paymentView(p, tz)),
-      refunds: rows.refunds.sort((a, b) => b.createdAt - a.createdAt).map((r) => ({ id: r._id, paymentId: r.paymentId, amountCents: r.amountCents, reason: r.reason, status: r.status, statusWords: REFUND_WORDS[r.status], problem: r.problem ?? null, createdAt: r.createdAt, settledAt: r.settledAt ?? null, inFlight: REFUND_IN_FLIGHT.includes(r.status) })),
+      refunds: rows.refunds.sort((a, b) => b.createdAt - a.createdAt).map((r) => ({ id: r._id, paymentId: r.paymentId, amountCents: r.amountCents, reason: r.reason, status: r.status, statusWords: REFUND_WORDS[r.status], problem: r.problem ?? null, createdAt: r.createdAt, settledAt: r.settledAt ?? null, inFlight: REFUND_IN_FLIGHT.includes(r.status), madeInStripe: r.origin === "stripe_dashboard" })),
       credits: rows.credits.sort((a, b) => b.at - a.at).map((c) => ({ id: c._id, amountCents: c.amountCents, reason: c.reason, at: c.at, reversed: c.reversed ? { at: c.reversed.at, reason: c.reversed.reason } : null, fromRefund: c.refundId !== undefined })),
       timeline,
       taxSettings: { rateBps: settings.taxRateBps, label: settings.taxLabel },
@@ -728,12 +725,8 @@ export const createInvoice = ownerMutation({
     let jobId: Id<"jobs"> | undefined;
     if (args.jobId) {
       const job = await owned(ctx, args.jobId);
-      const existing = await ctx.db
-        .query("invoices")
-        .withIndex("by_company_job", (q) => q.eq("companyId", ctx.companyId).eq("jobId", job._id))
-        .take(10);
-      const live = existing.find((invoice) => invoice.status !== "void");
-      // One invoice per visit: asking again opens the one that exists.
+      const live = await liveInvoiceForJob(ctx, job);
+      // One invoice per visit: asking again opens the one that exists, including a monthly plan invoice that lists this visit.
       if (live) return { invoiceId: live._id, existing: true };
       if (job.status === "cancelled") throw userError("This visit was cancelled. Start an invoice for the customer instead if something is still owed.");
       customerId = job.customerId;
@@ -924,7 +917,11 @@ export const voidInvoice = ownerMutation({
   },
 });
 
-/** Payments a customer started and never finished are stopped, so they can't complete for money no longer owed. */
+/**
+ * Payments a customer started and never finished are stopped, so they can't complete for money no longer
+ * owed. A declined card payment counts: Stripe keeps it open for another try, so a tab left open could
+ * still pay it after a new payment was started. It is cancelled at Stripe like an unfinished one.
+ */
 export async function cancelStartedPayments(ctx: MutationCtx, invoiceId: Id<"invoices">, except?: Id<"payments">) {
   const invoice = (await ctx.db.get(invoiceId))!;
   const started = await ctx.db
@@ -932,7 +929,9 @@ export async function cancelStartedPayments(ctx: MutationCtx, invoiceId: Id<"inv
     .withIndex("by_company_invoice", (q) => q.eq("companyId", invoice.companyId).eq("invoiceId", invoiceId))
     .take(200);
   for (const payment of started) {
-    if (payment._id === except || payment.status !== "awaiting_customer") continue;
+    if (payment._id === except) continue;
+    const declinedButOpen = payment.status === "failed" && Boolean(payment.stripe?.paymentIntentId);
+    if (payment.status !== "awaiting_customer" && !declinedButOpen) continue;
     await ctx.scheduler.runAfter(0, internal.financeStripe.cancelStarted, { paymentId: payment._id });
   }
 }
@@ -1218,7 +1217,8 @@ export async function addRefundCredit(ctx: MutationCtx, refundId: Id<"refunds">)
     .query("invoiceCredits")
     .withIndex("by_company_invoice", (q) => q.eq("companyId", refund.companyId).eq("invoiceId", refund.invoiceId))
     .take(200);
-  if (existing.some((c) => c.refundId === refund._id)) return;
+  // A credit is the Owner's decision with their name on it; a refund made in Stripe has no member and never carries one.
+  if (existing.some((c) => c.refundId === refund._id) || !refund.requestedBy) return;
   const creditId = await ctx.db.insert("invoiceCredits", { companyId: refund.companyId, invoiceId: refund.invoiceId, customerId: refund.customerId, amountCents: refund.amountCents, reason: refund.reason, refundId: refund._id, by: refund.requestedBy, at: Date.now() });
   await recordEvent(ctx, { companyId: refund.companyId, type: "credit.added", actor: { kind: "member", memberId: refund.requestedBy }, subject: { table: "invoiceCredits", id: creditId }, data: { amountCents: refund.amountCents } });
 }

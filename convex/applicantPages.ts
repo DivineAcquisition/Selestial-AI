@@ -7,6 +7,7 @@
  * Reads change nothing: opening a link submits nothing and accepts nothing. A page for a link that has
  * expired or been revoked says so and shows none of the applicant's answers.
  */
+import { discardUpload } from "./lib/uploads";
 import { v } from "convex/values";
 
 import type { Doc } from "./_generated/dataModel";
@@ -154,14 +155,14 @@ export const attachFile = applicantMutation({
     const files = await filesOf(ctx);
     const existing = files.find((file) => file.clientKey === clientKey);
     if (existing) {
-      if (existing.storageId !== args.storageId) await ctx.storage.delete(args.storageId);
+      if (existing.storageId !== args.storageId) await discardUpload(ctx, args.storageId);
       return { attachmentId: existing._id, duplicate: true };
     }
     const file = await ctx.db.system.get(args.storageId);
     if (!file) throw userError("That upload was not found. Try again.");
     // The type and size are checked on what was stored, not on what the browser said. The file is kept as data and never opened or run.
     if (!file.contentType || !FILE_TYPES.includes(file.contentType) || file.size > MAX_FILE_BYTES || files.length >= MAX_FILES) {
-      await ctx.storage.delete(args.storageId);
+      await discardUpload(ctx, args.storageId);
       throw userError(`Files must be PDF, Word, plain text, JPG or PNG, 10 MB or smaller, and at most ${MAX_FILES}.`);
     }
     const everyone = await ctx.db

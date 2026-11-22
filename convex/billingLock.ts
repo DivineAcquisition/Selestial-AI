@@ -26,10 +26,11 @@ import { customerHintOfCustomer, DUNNING_EVENTS, lockDeadlines, locksAt, type In
 import { companyQuery, staffMutation, staffQuery } from "./lib/builders";
 import { notFound, userError } from "./lib/errors";
 import { recordEvent } from "./lib/events";
-import { getPlatformCustomer } from "./lib/finance/stripe";
+import { getPlatformCustomer, getPlatformInvoice } from "./lib/finance/stripe";
 import { notifyMembers } from "./lib/notify/route";
 import { isOwner } from "./lib/roles";
 import { AGENTS } from "./lib/statuses";
+import { openPlanCancelledWork } from "./lib/texting/offboarding";
 
 const HOUR = 3_600_000;
 
@@ -51,6 +52,9 @@ const eventValidator = v.object({
 
 type Outcome = "applied" | "duplicate" | "ignored" | "unmatched";
 
+/** How a failed plan payment that no company could be found for is kept in billingWebhooks. */
+export const UNMATCHED_FAILURE = "stripe.invoice.payment_failed.unmatched";
+
 // ── Receiving Stripe's events ────────────────────────────────────────────────────────────────────
 
 /**
@@ -62,10 +66,13 @@ export const received = internalAction({
   args: { event: eventValidator },
   handler: async (ctx, args): Promise<Outcome> => {
     const first: Outcome = await ctx.runMutation(internal.billingLock.apply, { event: args.event as InvoiceEvent, customerHint: args.event.customerHint });
-    if (first !== "unmatched" || !args.event.stripeCustomerId) return first;
-    const customer = await getPlatformCustomer(args.event.stripeCustomerId);
-    const hint = customer.kind === "ok" ? customerHintOfCustomer(customer.data) : null;
-    if (hint) return ctx.runMutation(internal.billingLock.apply, { event: args.event as InvoiceEvent, customerHint: hint });
+    if (first !== "unmatched") return first;
+    const customer = args.event.stripeCustomerId ? await getPlatformCustomer(args.event.stripeCustomerId) : null;
+    const hint = customer?.kind === "ok" ? customerHintOfCustomer(customer.data) : null;
+    if (hint) {
+      const second: Outcome = await ctx.runMutation(internal.billingLock.apply, { event: args.event as InvoiceEvent, customerHint: hint });
+      if (second !== "unmatched") return second;
+    }
     await ctx.runMutation(internal.billingLock.unmatched, { event: args.event as InvoiceEvent });
     return "unmatched";
   },
@@ -80,7 +87,10 @@ export const unmatched = internalMutation({
       .query("billingWebhooks")
       .withIndex("by_env_delivery", (q) => q.eq("env", state.env).eq("deliveryId", args.event.eventId))
       .first();
-    if (!seen) await ctx.db.insert("billingWebhooks", { env: state.env, deliveryId: args.event.eventId, type: `stripe.${args.event.type}.unmatched`, customerId: args.event.stripeCustomerId ?? undefined, receivedAt: Date.now() });
+    // A failure nobody can be told about is the one that matters: it is kept where the billing check finds it
+    // for staff (convex/lib/operations/detectors.ts). A paid or voided invoice for a stranger needs nothing.
+    if (args.event.type !== "invoice.payment_failed") return;
+    if (!seen) await ctx.db.insert("billingWebhooks", { env: state.env, deliveryId: args.event.eventId, type: UNMATCHED_FAILURE, customerId: args.event.stripeCustomerId ?? undefined, receivedAt: Date.now() });
     console.warn(`billingLock: no company for Stripe invoice ${args.event.invoiceId} (${args.event.type})`);
   },
 });
@@ -99,8 +109,7 @@ export const apply = internalMutation({
     if (row?.events.includes(event.eventId)) return "duplicate";
 
     if (!row) {
-      // Only a failure starts a record. A paid or voided invoice we never saw fail has nothing to undo.
-      if (event.type !== "invoice.payment_failed") return "ignored";
+      if (event.type === "invoice.marked_uncollectible") return "ignored";
       const account = args.customerHint
         ? await ctx.db
             .query("billingAccounts")
@@ -110,6 +119,28 @@ export const apply = internalMutation({
       // The hint is only a pointer: the account must be Selestial's own record, under the id derived from its company.
       if (!account || account.customerId !== customerIdFor(account.companyId)) return "unmatched";
       const now = Date.now();
+      if (event.type !== "invoice.payment_failed") {
+        // Paid or voided before any failure was seen. Stripe's events can arrive out of order, so the invoice
+        // is recorded as settled: a failure for it that arrives late finds this and locks nothing.
+        await ctx.db.insert("billingDunning", {
+          companyId: account.companyId,
+          env: state.env,
+          invoiceId: event.invoiceId,
+          stripeCustomerId: event.stripeCustomerId ?? undefined,
+          attempts: 0,
+          amountCents: event.amountCents,
+          currency: event.currency,
+          hostedUrl: event.hostedUrl,
+          firstFailedAt: event.at,
+          lastFailedAt: event.at,
+          nextAttemptAt: null,
+          resolvedAt: now,
+          resolution: event.type === "invoice.paid" ? "paid" : "voided",
+          events: [event.eventId],
+          updatedAt: now,
+        });
+        return "applied";
+      }
       const id = await ctx.db.insert("billingDunning", {
         companyId: account.companyId,
         env: state.env,
@@ -170,6 +201,9 @@ async function lock(ctx: MutationCtx, row: Doc<"billingDunning">) {
   if (!alreadyLocked) await ctx.db.patch(company._id, { billingLockedAt: now, pausedAgents: [...AGENTS] });
   await recordEvent(ctx, { companyId: company._id, type: "billing.account_locked", actor: { kind: "system" }, subject: { table: "billingDunning", id: row._id }, data: { attempts: row.attempts, amountCents: row.amountCents } });
   await notifyMembers(ctx, { companyId: company._id, event: "plan_access", ref: row._id, key: "locked", facts: { kind: "locked" } });
+  // A second look, at Stripe itself: if the invoice is in fact paid (its "paid" event was lost or could not be
+  // matched), the lock lifts straight away instead of waiting for someone to notice.
+  await ctx.scheduler.runAfter(0, internal.billingLock.recheck, { companyId: company._id });
 }
 
 type Resolution = NonNullable<Doc<"billingDunning">["resolution"]>;
@@ -210,6 +244,47 @@ async function priorHolder(ctx: MutationCtx, companyId: Id<"companies">) {
     .take(20);
   return rows.find((row) => row.priorPausedAgents !== undefined) ?? null;
 }
+
+// ── Asking Stripe directly ───────────────────────────────────────────────────────────────────────
+
+export const unpaidFor = internalQuery({
+  args: { companyId: v.id("companies") },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("billingDunning")
+      .withIndex("by_company_resolved", (q) => q.eq("companyId", args.companyId).eq("resolvedAt", undefined))
+      .take(5);
+    return rows.map((row) => ({ rowId: row._id, invoiceId: row.invoiceId, stripeCustomerId: row.stripeCustomerId ?? null }));
+  },
+});
+
+/**
+ * Reads each unpaid plan invoice of a company from Stripe and ends its lock when Stripe itself says the
+ * invoice is paid or voided. Run when an account locks and when the Owner says they've paid. What the
+ * browser says is never the reason: only Stripe's own record of the invoice Selestial already holds is.
+ */
+export const recheck = internalAction({
+  args: { companyId: v.id("companies") },
+  handler: async (ctx, args): Promise<void> => {
+    const rows = await ctx.runQuery(internal.billingLock.unpaidFor, { companyId: args.companyId });
+    for (const row of rows) {
+      const answer = await getPlatformInvoice(row.invoiceId);
+      if (answer.kind !== "ok" || answer.data.id !== row.invoiceId) continue;
+      const customer = typeof answer.data.customer === "string" ? answer.data.customer : (answer.data.customer?.id ?? null);
+      // The invoice must still belong to the Stripe customer the failure named.
+      if (row.stripeCustomerId && customer !== row.stripeCustomerId) continue;
+      const resolution = answer.data.status === "paid" ? ("paid" as const) : answer.data.status === "void" ? ("voided" as const) : null;
+      if (resolution) await ctx.runMutation(internal.billingLock.settled, { rowId: row.rowId, resolution });
+    }
+  },
+});
+
+export const settled = internalMutation({
+  args: { rowId: v.id("billingDunning"), resolution: v.union(v.literal("paid"), v.literal("voided")) },
+  handler: async (ctx, args) => {
+    await resolve(ctx, args.rowId, args.resolution, "Read from Stripe's record of the invoice.");
+  },
+});
 
 // ── 23 and 30 days ───────────────────────────────────────────────────────────────────────────────
 
@@ -257,7 +332,8 @@ export const cancelUnpaid = internalAction({
     if (!target) return;
     if (target.planId) {
       const answer = await updateSubscription({ customerId: target.customerId, planId: target.planId, cancelAction: "cancel_immediately" }, `dunning-cancel:${args.rowId}`);
-      if (answer.kind !== "ok") {
+      // A replay means Autumn already has this exact cancellation: it is done, not failed.
+      if (answer.kind !== "ok" && answer.kind !== "replayed") {
         console.warn(`billingLock: canceling the unpaid plan failed (${answer.kind}); a later sweep tries again`);
         return;
       }
@@ -273,6 +349,8 @@ export const canceled = internalMutation({
     if (!row || row.resolvedAt !== undefined) return;
     await recordEvent(ctx, { companyId: row.companyId, type: "billing.plan_canceled_unpaid", actor: { kind: "system" }, subject: { table: "billingDunning", id: row._id }, data: { amountCents: row.amountCents } });
     await notifyMembers(ctx, { companyId: row.companyId, event: "plan_access", ref: row._id, key: "canceled", facts: { kind: "canceled" } });
+    // A texting number still set up becomes a work item for Selestial staff. It releases nothing by itself.
+    await openPlanCancelledWork(ctx, row.companyId, "unpaid");
     await resolve(ctx, row._id, "canceled");
   },
 });

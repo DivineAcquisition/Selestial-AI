@@ -115,6 +115,19 @@ export const operationsTables = {
     sentAt: v.number(),
   }).index("by_sent_at", ["sentAt", "at"]),
 
+  /**
+   * One row: whether staff alerts are reaching anyone (convex/operations.ts sendStaffAlerts). An alert is
+   * marked sent only when a person was reached; otherwise it stays waiting and this says since when and why.
+   */
+  alertDelivery: defineTable({
+    lastAttemptAt: v.number(),
+    lastDeliveredAt: v.optional(v.number()),
+    /** Set while no alert is reaching anyone; cleared by the next delivery. */
+    failingSince: v.optional(v.number()),
+    /** A reason code (convex/lib/operations/alerts.ts AlertProblem). Never an address or a key. */
+    problem: v.optional(v.string()),
+  }),
+
   monitorChecks: defineTable({
     check: checkValidator,
     /** When the scheduler last asked for it. */
@@ -142,6 +155,8 @@ export const operationsTables = {
     companyId: v.id("companies"),
     priorSuspendedAt: v.optional(v.number()),
     priorPausedAgents: v.array(v.string()),
+    /** The suspension time the lock-down itself wrote, when the company was not suspended before. Release clears only this. */
+    suspendedAtSet: v.optional(v.number()),
   })
     .index("by_lockdown_company", ["lockdownId", "companyId"])
     .index("by_lockdown", ["lockdownId"]),

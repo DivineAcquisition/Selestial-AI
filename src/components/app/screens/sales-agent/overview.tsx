@@ -140,7 +140,7 @@ export function SalesOverviewScreen() {
   const briefing = [
     counts.open === 0 ? "No inquiry is open." : `${plural(counts.open, "open opportunity", "open opportunities")}: ${counts.needsYou} waiting on you, ${counts.awaitingDetails} waiting on details from the customer, ${counts.quotesWithCustomer} with a quote in the customer’s hands, ${counts.bookingPending} accepted and being booked.`,
     counts.followUpsDue > 0 ? `${plural(counts.followUpsDue, "follow-up")} due in the next day.` : null,
-    overview.reader === "rules" ? null : "An AI reader reads customer messages; your rules decide everything that is sent, priced or booked.",
+    overview.reader === "ai" ? "An AI reader reads customer messages; your rules decide everything that is sent, priced or booked." : "Your company’s rules read customer messages and decide everything that is sent, priced or booked. No AI credits are used for reading.",
   ].filter((line): line is string => Boolean(line));
 
   const next = overview.paused

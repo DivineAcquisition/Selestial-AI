@@ -509,6 +509,8 @@ export default defineSchema({
     completionReview: v.optional(v.object({ decision: v.union(v.literal("closed"), v.literal("closed_without_review")), by: v.id("members"), at: v.number(), note: v.optional(v.string()) })),
     /** How many times the crew's report was sent back for correction. */
     completionReturns: v.optional(v.number()),
+    /** The latest note sent back with the report, shown to the crew on the job page until they report again. */
+    completionReturn: v.optional(v.object({ note: v.string(), at: v.number() })),
     /** The checklist template version this visit's checklist was copied from, if any. */
     checklistTemplate: v.optional(v.object({ templateId: v.id("checklistTemplates"), version: v.number() })),
     /** The service plan that booked this visit, and the day of the series it is. */
@@ -930,7 +932,9 @@ export default defineSchema({
     uploadedAt: v.number(),
   })
     .index("by_company_job", ["companyId", "jobId"])
-    .index("by_company_assignment_key", ["companyId", "assignmentId", "clientKey"]),
+    .index("by_company_assignment_key", ["companyId", "assignmentId", "clientKey"])
+    // So an upload already kept as evidence is never deleted through another link (lib/uploads.ts).
+    .index("by_storage", ["storageId"]),
 
   /**
    * Something a cleaner reported from the job: an unexpected condition, work left incomplete, or a

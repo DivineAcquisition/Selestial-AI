@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
 import { Field, FormError, messageOf, TextArea, TextInput, useRun } from "@/components/app/form";
+import { ConfirmInbox } from "@/components/app/integrations/confirm-inbox";
 import { IntegrationMark } from "@/components/app/integration-mark";
 import { Guard } from "@/components/app/settings/guard";
 import { SaveBar, useSavedDraft, useUnsavedWarning } from "@/components/app/settings/save-bar";
@@ -45,7 +46,6 @@ export function RecruitingRules() {
 
 /** What Google sent the Owner back with, in words. */
 const RETURN_WORDS: Record<string, string> = {
-  connected: "Gmail is connected. Recruiter is reading your hiring inbox now.",
   failed: "Gmail wasn't connected because Google didn't give Selestial permission to read the inbox. Try again, and allow reading when Google asks.",
   expired: "That sign-in had already been used or took longer than ten minutes. Please start again.",
 };
@@ -58,8 +58,11 @@ function HiringInbox({ canEdit, companyId }: { canEdit: boolean; companyId: Id<"
   const [label, setLabel] = useState("");
   const [canSend, setCanSend] = useState(true);
   const [confirming, setConfirming] = useState<string | null>(null);
-  // Google sends the Owner back here with ?mailbox=<outcome>.
-  const outcome = useSearchParams().get("mailbox");
+  // Google sends the Owner back here with ?mailbox=<outcome>. "confirm" also carries ?pending=<one-time value>:
+  // the mailbox is waiting, and is connected only once the Owner has seen its address and confirmed it.
+  const params = useSearchParams();
+  const outcome = params.get("mailbox");
+  const pending = outcome === "confirm" ? params.get("pending") : null;
   const returned = outcome ? (RETURN_WORDS[outcome] ?? null) : null;
   if (!overview) return <Skeleton className="h-32 rounded-2xl" />;
   const inboxes = overview.inbox.filter((row) => row.status !== "disconnected" && row.provider !== "mock");
@@ -67,6 +70,11 @@ function HiringInbox({ canEdit, companyId }: { canEdit: boolean; companyId: Id<"
   const hasGmail = inboxes.some((row) => row.provider === "gmail");
   return (
     <Panel title="Hiring inbox">
+      {pending ? (
+        <div className="mb-3">
+          <ConfirmInbox token={pending} />
+        </div>
+      ) : null}
       {returned ? (
         <p role="status" className="mb-3 rounded-lg border border-border bg-muted px-3 py-2 text-sm text-strong">
           {returned}

@@ -16,7 +16,8 @@ import { endAssignment } from "../dispatch/assignmentState";
 import { coverJob } from "../dispatch/workflow";
 import { refreshClient } from "../clients/directory";
 import { recordEvent, type Actor } from "../events";
-import { recompute, emptyTotals } from "../finance/ledger";
+import { recompute, emptyTotals, invoicesCovering } from "../finance/ledger";
+import type { InvoiceLine } from "../finance/schema";
 import { linesTotal } from "../finance/money";
 import { settingsOf, settingsRow } from "../finance/settings";
 import { businessSettingsOf } from "../settings/business";
@@ -285,25 +286,33 @@ export async function replaceFrom(ctx: MutationCtx, plan: Doc<"recurringPlans">,
   return replaced;
 }
 
+function monthBefore(month: string): string {
+  const [y, m] = [Number(month.slice(0, 4)), Number(month.slice(5, 7))];
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
+}
+
 /**
- * Monthly consolidated billing: one draft invoice per plan per finished calendar month, listing the
+ * Monthly consolidated billing: a draft invoice per plan per finished calendar month, listing the
  * visits completed in it. A draft only: an Owner reviews and issues it in Finance.
+ *
+ * Every visit a monthly invoice bills is recorded on it (`coveredJobIds`), so Finance never offers the
+ * visit for an invoice of its own. A visit marked complete after its month was drafted is not lost:
+ * each run looks again at the last two finished months and adds what is still unbilled to that month's
+ * draft, or to a new draft when the first was already issued. A visit on a monthly invoice the Owner
+ * discarded is not drafted again; it shows in Finance as not invoiced.
  */
 export async function draftMonthlyInvoice(ctx: MutationCtx, plan: Doc<"recurringPlans">): Promise<Id<"invoices"> | null> {
   if (plan.billing !== "monthly_consolidated") return null;
-  const today = todayIn(plan.timezone);
-  const lastMonth = (() => {
-    const [y, m] = [Number(today.slice(0, 4)), Number(today.slice(5, 7))];
-    return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
-  })();
-  if (plan.billedThrough && plan.billedThrough >= lastMonth) return null;
-  if (plan.startDate.slice(0, 7) > lastMonth) return null;
+  const lastMonth = monthBefore(todayIn(plan.timezone).slice(0, 7));
+  const startMonth = plan.startDate.slice(0, 7);
+  if (startMonth > lastMonth) return null;
+  const from = startMonth > monthBefore(lastMonth) ? lastMonth : monthBefore(lastMonth);
   const visits = await ctx.db
     .query("planVisits")
-    .withIndex("by_plan_date", (q) => q.eq("planId", plan._id).gte("date", `${lastMonth}-01`).lte("date", `${lastMonth}-31`))
-    .take(100);
-  const lines = [];
+    .withIndex("by_plan_date", (q) => q.eq("planId", plan._id).gte("date", `${from}-01`).lte("date", `${lastMonth}-31`))
+    .take(200);
   const settings = settingsOf(await settingsRow(ctx, plan.companyId));
+  const months = new Map<string, { lines: InvoiceLine[]; jobIds: Id<"jobs">[] }>();
   for (const visit of visits) {
     if (!visit.jobId) continue;
     const job = await ctx.db.get(visit.jobId);
@@ -314,17 +323,53 @@ export async function draftMonthlyInvoice(ctx: MutationCtx, plan: Doc<"recurring
       .withIndex("by_company_job", (q) => q.eq("companyId", plan.companyId).eq("jobId", job._id))
       .take(5);
     if (own.some((invoice) => invoice.status !== "void")) continue;
+    const lineId = `${visit._id}`.slice(-12);
+    // Nor one a monthly invoice already lists, whatever became of that invoice.
+    if ((await invoicesCovering(ctx, job)).length) continue;
+    // Monthly invoices made before visits were recorded on them are recognized by the line made for the visit.
+    const month = visit.date.slice(0, 7);
+    if (plan.billedThrough && plan.billedThrough >= month && (await legacyMonthlyLine(ctx, plan, job, lineId))) continue;
     const price = job.priceCents ?? 0;
-    lines.push({ id: `${visit._id}`.slice(-12), kind: "service" as const, description: `${job.serviceSnapshot?.name ?? job.serviceType} · ${visit.date}`, quantity: 1, unitCents: price, amountCents: price, taxable: job.serviceSnapshot?.serviceId ? settings.taxableServiceIds.includes(job.serviceSnapshot.serviceId) : false, serviceId: job.serviceSnapshot?.serviceId });
+    const entry = months.get(month) ?? { lines: [], jobIds: [] };
+    entry.lines.push({ id: lineId, kind: "service" as const, description: `${job.serviceSnapshot?.name ?? job.serviceType} · ${visit.date}`, quantity: 1, unitCents: price, amountCents: price, taxable: job.serviceSnapshot?.serviceId ? settings.taxableServiceIds.includes(job.serviceSnapshot.serviceId) : false, serviceId: job.serviceSnapshot?.serviceId });
+    entry.jobIds.push(job._id);
+    months.set(month, entry);
   }
-  await ctx.db.patch(plan._id, { billedThrough: lastMonth, updatedAt: Date.now() });
-  if (!lines.length) return null;
-  const now = Date.now();
-  const base = linesTotal(lines, settings.taxRateBps ?? 0);
-  const invoiceId = await ctx.db.insert("invoices", { companyId: plan.companyId, customerId: plan.customerId, propertyId: plan.propertyId, status: "draft", lines, taxRateBps: settings.taxRateBps ?? 0, taxLabel: settings.taxLabel, totals: { ...emptyTotals(), ...base, balanceCents: base.totalCents }, memo: `Visits in ${lastMonth} under the recurring plan.`, revision: 0, createdBy: plan.createdBy, createdAt: now, updatedAt: now });
-  await recompute(ctx, invoiceId);
-  await recordEvent(ctx, { companyId: plan.companyId, type: "invoice.created", actor: { kind: "system" }, subject: { table: "invoices", id: invoiceId }, data: { planId: plan._id, month: lastMonth } });
-  return invoiceId;
+  if (!plan.billedThrough || plan.billedThrough < lastMonth) await ctx.db.patch(plan._id, { billedThrough: lastMonth, updatedAt: Date.now() });
+  let latest: Id<"invoices"> | null = null;
+  for (const month of [...months.keys()].sort()) {
+    const { lines, jobIds } = months.get(month)!;
+    const now = Date.now();
+    const drafts = await ctx.db
+      .query("invoices")
+      .withIndex("by_company_customer", (q) => q.eq("companyId", plan.companyId).eq("customerId", plan.customerId))
+      .order("desc")
+      .take(100);
+    const open = drafts.find((invoice) => invoice.status === "draft" && invoice.monthly?.planId === plan._id && invoice.monthly.month === month);
+    if (open) {
+      // The month's draft is still a draft: the late visits join it. The revision moves so an open editor can't save over them.
+      await ctx.db.patch(open._id, { lines: [...open.lines, ...lines], coveredJobIds: [...(open.coveredJobIds ?? []), ...jobIds], revision: open.revision + 1, updatedAt: now });
+      await recompute(ctx, open._id);
+      await recordEvent(ctx, { companyId: plan.companyId, type: "invoice.visits_added", actor: { kind: "system" }, subject: { table: "invoices", id: open._id }, data: { planId: plan._id, month, visits: jobIds.length } });
+      latest = open._id;
+      continue;
+    }
+    const base = linesTotal(lines, settings.taxRateBps ?? 0);
+    const invoiceId = await ctx.db.insert("invoices", { companyId: plan.companyId, customerId: plan.customerId, propertyId: plan.propertyId, status: "draft", lines, taxRateBps: settings.taxRateBps ?? 0, taxLabel: settings.taxLabel, totals: { ...emptyTotals(), ...base, balanceCents: base.totalCents }, memo: `Visits in ${month} under the recurring plan.`, revision: 0, coveredJobIds: jobIds, monthly: { planId: plan._id, month }, createdBy: plan.createdBy, createdAt: now, updatedAt: now });
+    await recompute(ctx, invoiceId);
+    await recordEvent(ctx, { companyId: plan.companyId, type: "invoice.created", actor: { kind: "system" }, subject: { table: "invoices", id: invoiceId }, data: { planId: plan._id, month } });
+    latest = invoiceId;
+  }
+  return latest;
+}
+
+/** A monthly invoice made before `coveredJobIds` existed has one line per visit, with the visit's id as the line id. */
+async function legacyMonthlyLine(ctx: MutationCtx, plan: Doc<"recurringPlans">, job: Doc<"jobs">, lineId: string): Promise<boolean> {
+  const since = await ctx.db
+    .query("invoices")
+    .withIndex("by_company_customer", (q) => q.eq("companyId", plan.companyId).eq("customerId", plan.customerId).gte("createdAt", Math.floor(job._creationTime)))
+    .take(300);
+  return since.some((invoice) => !invoice.jobId && !invoice.coveredJobIds && invoice.lines.some((line) => line.id === lineId));
 }
 
 export function isDate(value: string): boolean {

@@ -8,6 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { addMember, company, NOW, person, refusal, staffWith, start, type T } from "../tests/harness";
+import { fakeStripe } from "../tests/fakeStripe";
 import { billing } from "../tests/setupBilling";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -143,8 +144,79 @@ describe("an unpaid plan", () => {
     const body = JSON.stringify(invoiceEvent("invoice.payment_failed", s.companyId, { attempt_count: 3 }));
     const forged = await s.t.fetch("/webhooks/stripe-billing", { method: "POST", headers: { "stripe-signature": "t=1,v1=00" }, body });
     expect(forged.status).toBe(401);
-    expect(await s.t.run((ctx) => ctx.db.query("billingDunning").collect())).toEqual([]);
+    // The paid invoice is only remembered as settled; nothing is open, warned about or locked.
+    expect(await s.t.run((ctx) => ctx.db.query("billingDunning").collect())).toEqual([expect.objectContaining({ invoiceId: "in_other", attempts: 0, resolution: "paid", resolvedAt: expect.any(Number) })]);
+    expect(await notices(s.t, s.companyId)).toEqual([]);
     expect((await companyRow(s.t, s.companyId))?.billingLockedAt).toBeUndefined();
+  });
+
+  it("never locks a paid account when the failure arrives after the payment", async () => {
+    const s = await setup();
+    await s.t.run((ctx) => ctx.db.patch(s.companyId, { pausedAgents: ["recruiter"] }));
+    // Stripe's events out of order: the invoice was paid on the retry, and its "paid" event got here first.
+    await deliver(s.t, invoiceEvent("invoice.paid", s.companyId, { attempt_count: 2, amount_remaining: 0 }));
+    await deliver(s.t, invoiceEvent("invoice.payment_failed", s.companyId, { attempt_count: 2 }));
+    await deliver(s.t, invoiceEvent("invoice.payment_failed", s.companyId, { attempt_count: 1 }));
+    const after = await companyRow(s.t, s.companyId);
+    expect(after?.billingLockedAt).toBeUndefined();
+    expect(after?.pausedAgents).toEqual(["recruiter"]);
+    expect(await notices(s.t, s.companyId)).toEqual([]);
+    expect(await s.as.query(api.billingLock.status, { companyId: s.companyId })).toMatchObject({ locked: false, warning: null });
+    // Nothing is left to cancel the plan 30 days later.
+    vi.setSystemTime(NOW + CANCEL_AFTER_MS + DAY);
+    await s.t.mutation(internal.billingLock.sweep, {});
+    await settle(s.t);
+    expect(billing.state.calls.some((call) => call.path === "/v1/billing.update")).toBe(false);
+    // The same holds for a voided invoice, and a different invoice still locks as usual.
+    await deliver(s.t, invoiceEvent("invoice.voided", s.companyId, { id: "in_void" }));
+    await deliver(s.t, invoiceEvent("invoice.payment_failed", s.companyId, { id: "in_void", attempt_count: 3 }));
+    expect((await companyRow(s.t, s.companyId))?.billingLockedAt).toBeUndefined();
+    await deliver(s.t, invoiceEvent("invoice.payment_failed", s.companyId, { id: "in_next", attempt_count: 2 }));
+    expect((await companyRow(s.t, s.companyId))?.billingLockedAt).toEqual(expect.any(Number));
+  });
+
+  it("unlocks on “I’ve paid, check again” only when Stripe itself says the invoice is paid", async () => {
+    const s = await setup();
+    const stripe = fakeStripe();
+    process.env.STRIPE_SECRET_KEY = "sk_test_only_key";
+    setStripeTransportForTests(stripe.fetch);
+    stripe.state.invoices.set("in_plan_1", { id: "in_plan_1", status: "open", customer: "cus_plan_1" });
+    await deliver(s.t, invoiceEvent("invoice.payment_failed", s.companyId, { attempt_count: 2 }));
+    expect((await companyRow(s.t, s.companyId))?.billingLockedAt).toEqual(expect.any(Number));
+
+    // Still unpaid in Stripe: asking changes nothing, however often the Owner asks.
+    await s.as.mutation(api.billing.refresh, { companyId: s.companyId });
+    await settle(s.t);
+    expect((await companyRow(s.t, s.companyId))?.billingLockedAt).toEqual(expect.any(Number));
+    // Paid, but the invoice now belongs to another Stripe customer: not this company's payment.
+    stripe.state.invoices.set("in_plan_1", { id: "in_plan_1", status: "paid", customer: "cus_someone_else" });
+    await s.as.mutation(api.billing.refresh, { companyId: s.companyId });
+    await settle(s.t);
+    expect((await companyRow(s.t, s.companyId))?.billingLockedAt).toEqual(expect.any(Number));
+
+    // Paid in Stripe, and the "paid" event never arrived: the Owner's check reads it and the lock lifts.
+    stripe.state.invoices.set("in_plan_1", { id: "in_plan_1", status: "paid", customer: "cus_plan_1" });
+    await s.as.mutation(api.billing.refresh, { companyId: s.companyId });
+    await settle(s.t);
+    expect((await companyRow(s.t, s.companyId))?.billingLockedAt).toBeUndefined();
+    expect(await notices(s.t, s.companyId)).toEqual(["locked", "reinstated"]);
+    const [row] = await s.t.run((ctx) => ctx.db.query("billingDunning").collect());
+    expect(row).toMatchObject({ resolution: "paid" });
+    // A manager cannot ask on the Owner's behalf.
+    const manager = await addMember(s.t, s.as, s.companyId, "mgr", "manager");
+    await expect(manager.mutation(api.billing.refresh, { companyId: s.companyId })).rejects.toThrow();
+  });
+
+  it("does not keep an account locked for an invoice Stripe already shows as paid", async () => {
+    const s = await setup();
+    const stripe = fakeStripe();
+    process.env.STRIPE_SECRET_KEY = "sk_test_only_key";
+    setStripeTransportForTests(stripe.fetch);
+    stripe.state.invoices.set("in_plan_1", { id: "in_plan_1", status: "paid", customer: "cus_plan_1" });
+    // Only the late failure arrives; the "paid" event was lost altogether.
+    await deliver(s.t, invoiceEvent("invoice.payment_failed", s.companyId, { attempt_count: 2 }));
+    expect((await companyRow(s.t, s.companyId))?.billingLockedAt).toBeUndefined();
+    expect((await s.t.run((ctx) => ctx.db.query("billingDunning").collect()))[0]).toMatchObject({ resolution: "paid" });
   });
 
   it("finds the company through the Stripe customer when the invoice doesn't name it, and keeps strangers for staff", async () => {
@@ -162,6 +234,19 @@ describe("an unpaid plan", () => {
     const kept = await s.t.run((ctx) => ctx.db.query("billingWebhooks").collect());
     expect(kept.some((row) => row.type === "stripe.invoice.payment_failed.unmatched" && row.customerId === "cus_unknown")).toBe(true);
     expect(await s.t.run((ctx) => ctx.db.query("billingDunning").collect())).toHaveLength(1);
+    // A failure with no Stripe customer at all is kept too, and a stranger's paid invoice is not.
+    await deliver(s.t, invoiceEvent("invoice.payment_failed", null, { id: "in_nobody", customer: null, attempt_count: 1 }));
+    await deliver(s.t, invoiceEvent("invoice.paid", null, { id: "in_stranger_paid", customer: "cus_unknown" }));
+    expect((await s.t.run((ctx) => ctx.db.query("billingWebhooks").collect())).filter((row) => row.type.endsWith(".unmatched"))).toHaveLength(2);
+    // Staff are told: nobody was warned and nothing locked, so a person has to find the company.
+    await s.t.mutation(internal.operations.runCheck, { check: "ai_billing" });
+    const incidents = await s.t.run((ctx) => ctx.db.query("incidents").collect());
+    expect(incidents).toEqual([expect.objectContaining({ kind: "plan_invoice_unmatched", area: "billing", state: "needs_staff", resolvedAt: 0 })]);
+    expect(incidents[0].impact).toContain("Nobody was warned");
+    // It is shown for a few days, then closes by itself.
+    vi.setSystemTime(NOW + 4 * DAY);
+    await s.t.mutation(internal.operations.runCheck, { check: "ai_billing" });
+    expect((await s.t.run((ctx) => ctx.db.query("incidents").collect()))[0].resolvedAt).toBeGreaterThan(0);
   });
 
   it("reminds the Owner 7 days before, cancels the plan after 30 days locked, and keeps the records", async () => {
@@ -195,6 +280,20 @@ describe("an unpaid plan", () => {
     expect(row).toMatchObject({ resolution: "canceled" });
     const types = await s.t.run(async (ctx) => (await ctx.db.query("events").collect()).map((event) => event.type));
     expect(types).toEqual(expect.arrayContaining(["billing.account_locked", "billing.plan_canceled_unpaid", "billing.account_reinstated"]));
+  });
+
+  it("treats a cancellation Autumn already has as done, not as a failure to retry", async () => {
+    const s = await setup();
+    await deliver(s.t, invoiceEvent("invoice.payment_failed", s.companyId, { attempt_count: 2 }));
+    const [row] = await s.t.run((ctx) => ctx.db.query("billingDunning").collect());
+    // An earlier try reached Autumn and its answer was lost: this one is answered as a replay.
+    billing.state.keys.add(`dunning-cancel:${row._id}`);
+    vi.setSystemTime(NOW + CANCEL_AFTER_MS + HOUR_MS);
+    await s.t.mutation(internal.billingLock.sweep, {});
+    await settle(s.t);
+    expect((await s.t.run((ctx) => ctx.db.get(row._id)))).toMatchObject({ resolution: "canceled" });
+    expect((await companyRow(s.t, s.companyId))?.billingLockedAt).toBeUndefined();
+    expect(await notices(s.t, s.companyId)).toEqual(["locked", "canceled"]);
   });
 
   it("lets staff with billing adjustments lift a lock, with a reason, and nobody else", async () => {

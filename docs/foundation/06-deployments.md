@@ -19,14 +19,44 @@ was lost, but the work had to be redeployed.
 
 1. Merge the pull request to `main`.
 2. Vercel's production build runs `npm run build`, which is `scripts/build.mjs`. With `VERCEL_ENV=production`
-   and `CONVEX_DEPLOY_KEY` set, it runs `npx convex deploy --cmd "next build"`: the functions and schema
-   are type-checked and pushed, then the site is built against that backend. If the backend push fails,
-   the build fails and the previous version stays live.
+   and `CONVEX_DEPLOY_KEY` set, it runs `npx convex deploy --cmd "node scripts/next-build.mjs"`. Convex's
+   order is: **run the command first** (the site build, given the live backend's address), **then** type-check
+   and push the functions and schema (`npx convex deploy --help`, steps 1 to 5; `convex/src/cli/lib/deploy2.ts`).
+   Vercel publishes the built site only after the whole script exits successfully.
+   - The site fails to build: nothing is pushed, the previous site and backend stay live.
+   - The backend fails its type check or schema check: the build fails, the site just built is not published,
+     and the previous site and backend stay live.
+   - Both succeed: the new backend is live at once; the new site follows when Vercel finishes publishing.
 3. Preview builds (pull requests) and local builds only run `next build`. A preview never deploys a
    backend, even if it can see the key.
 
 Without `CONVEX_DEPLOY_KEY` in Vercel's production settings, step 2 builds the site only, as before, and the
 backend has to be deployed by hand from `main`.
+
+### The gap in every release: new backend, old site
+
+The backend goes live before the site does. For the minute or two until Vercel finishes publishing, and for
+as long as anyone keeps a tab open, **the previous site calls the new backend**. If Vercel's own publishing
+step fails after the push, that state lasts until the next successful build. Nothing in the tooling closes
+this gap, so every release has to be safe inside it:
+
+- **Never remove or rename a function, or add a required argument, in the same release as the site change
+  that stops using the old shape.** New arguments are optional; a renamed function keeps its old name
+  working for one release.
+- **Removals take two releases.** First ship the site that no longer calls it; in a later release, remove it.
+- **Schema changes are additive.** New tables and optional fields only. Narrowing a type, removing a field
+  or making one required waits until no deployed code writes the old shape, and is its own release.
+- **Return shapes only grow.** The previous site must still be able to read what a query returns.
+- A change that cannot be made compatible is announced, shipped at a quiet time, and followed by asking
+  open tabs to reload.
+
+The same rule is what makes a rollback possible (`docs/operations/05-recovery-runbook.md`): promoting the
+previous site in Vercel leaves the new backend running, and it only works if that backend still serves the
+previous site.
+
+A Vercel **Redeploy** of an older production commit is not a rollback: it runs this build again, so it
+pushes that commit's **old backend code** to the live backend. Use **Promote** (or Instant Rollback) to go
+back to an earlier site without touching the backend.
 
 ## One-time setup (the Owner, in the dashboards)
 
@@ -55,11 +85,22 @@ any setting, and:
   `TEST_RECIPIENTS` setting (comma-separated emails and phone numbers); everything else is refused before it
   reaches the provider;
 - refuses every Telnyx call that buys or files anything (numbers, brands, campaigns); lookups still work;
+- never writes to a company's Google account: calendar events, Business Profile review replies, Ads
+  campaigns and conversion uploads, Drive and Sheets files, and notification channels are refused at the one
+  place every Google call goes through (`convex/lib/google/http.ts`, `writesToGoogle`). Signing in, refreshing
+  a token and every read still work. A Google job that would write is settled once as "Not run: this is not
+  the production backend", never retried and never counted as failed. There is no opt-in for a test Google
+  account: the call wrapper does not know which account a token belongs to, so none was added;
 - ignores live Stripe (`sk_live_`/`rk_live_`) and Autumn (`am_sk_live_`) keys, so card payments and
   billing are simply unavailable with them: nothing it does can charge a real card.
 
 **Previews never touch the live record.** `scripts/build.mjs` builds a preview whose `NEXT_PUBLIC_CONVEX_URL`
 is the live backend with no backend at all (signed-in and link pages then say Selestial isn't available).
+That covers what is decided at build time. Server actions (the early-access form, booking, the unsubscribe
+link, trust requests) read the address when they run, and Vercel still gives a preview's server the shared
+value, so they apply the same rule again at run time: `serverBackendUrl()` in
+`src/lib/app/server-backend.ts` returns nothing when `VERCEL_ENV` is set to anything but `production` and
+the address is the live backend's (by name or by `api.selestial.io`). The forms then say they are not open.
 Previews today also have no sign-in key (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` is Production only), so no one
 can sign in on one.
 

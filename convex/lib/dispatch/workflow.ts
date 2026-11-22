@@ -287,6 +287,14 @@ export async function coverJob(ctx: MutationCtx, jobId: Id<"jobs">): Promise<Cov
     return "with_person";
   }
 
+  // An offer for this visit ended because the company's texts were not going out, and the task that says so is
+  // still open: asking again would only record another offer nobody is texted about. Wait until a person closes
+  // that task (sending fixed, or the offers made by hand); the next sweep then asks the same cleaners again.
+  if (assignments.some((row) => row.status === "cancelled" && row.endCause === "sending_blocked" && (row.jobStartsAt ?? job.startsAt) === job.startsAt) && (await liveTaskByKey(ctx, job.companyId, `dispatch.sending_blocked:${job.companyId}`))) {
+    await setTaskState(ctx, task, "needs_decision", { openQuestion: "Dispatch's texts to cleaners are not going out, so nobody has been asked about this visit. Fix sending, or reach a cleaner yourself.", dueAt: job.startsAt }, DISPATCH, same);
+    return "with_person";
+  }
+
   const approvals = await jobApprovals(ctx, job);
   const pending = approvals.filter((row) => row.status === "pending" && row.proposal?.kind === "offer_assignment");
   if (pending.length > 0 && offers.length + pending.length >= staff.open) {

@@ -12,6 +12,7 @@ import type { Doc, Id, TableNames } from "../../_generated/dataModel";
 import type { QueryCtx } from "../../_generated/server";
 import { maskAddress } from "../cleaners/portal";
 import type { Area, Check, Kind, OpenState, Severity } from "./catalog";
+import { UNMETERED_WARNING, unmeteredWithoutReason } from "./readiness";
 
 const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
@@ -277,13 +278,47 @@ const ownerNotices: Detector = {
 /** The stuck-send job (every 5 minutes) marks a send unconfirmed 5 minutes after it started. Twenty minutes means it is not running. */
 const SENDING_STUCK = 20 * MINUTE;
 
+/**
+ * A queued message goes within seconds, and a retry within minutes, each on its own timer. One still queued
+ * after this long has lost its timer (a restore does not bring timers back) and will never go by itself.
+ */
+export const QUEUED_STUCK = 2 * HOUR;
+
+/** Messages queued longer than QUEUED_STUCK, oldest first. Queued rows that were never attempted sort first in the index. */
+export async function stuckQueued(ctx: QueryCtx, now: number, limit = 20): Promise<Doc<"messages">[]> {
+  const rows = await ctx.db
+    .query("messages")
+    .withIndex("by_status_attempted", (q) => q.eq("status", "queued"))
+    .take(200);
+  return rows.filter((row) => Math.max(row.queuedAt, row.attemptedAt ?? 0) < now - QUEUED_STUCK).slice(0, limit);
+}
+
 const stuckSends: Detector = {
   check: "stuck_sends",
   everyMinutes: 5,
   async scan() {
-    return [ref("platform", "stuck_sends")];
+    return [ref("platform", "stuck_sends"), ref("platform", "stuck_queued")];
   },
   async evaluate(ctx, source, now) {
+    if (source.table === "platform" && source.id === "stuck_queued") {
+      const waiting = await stuckQueued(ctx, now);
+      if (waiting.length === 0) return null;
+      const oldest = Math.min(...waiting.map((row) => row.queuedAt));
+      return {
+        key: "message_stuck_queued",
+        kind: "message_stuck_queued",
+        area: "platform",
+        severity: "high",
+        state: "needs_staff",
+        title: "Messages are queued and not going",
+        impact: `${many(waiting.length, "message has", "messages have")}${waiting.length === 20 ? " (or more)" : ""} been queued for over two hours. Their send timers are gone, as happens after a restore, so they will not go by themselves. Nothing is sent again automatically.`,
+        nextAction: "List them with `npx convex run restoration:status`. For each, check with the provider that it did not already go, then have the company send it again or stop it. Do not requeue in bulk.",
+        diagnostics: `oldest queued ${new Date(oldest).toISOString()}`,
+        source,
+        since: oldest,
+        attempts: 0,
+      };
+    }
     if (source.table !== "platform" || source.id !== "stuck_sends") return null;
     const stuck = await ctx.db
       .query("messages")
@@ -533,6 +568,10 @@ const connectors: Detector = {
 
 /** The settlement sweeps run every 5 minutes. A settlement due an hour ago means they are not. */
 const SETTLE_OVERDUE = HOUR;
+/** Finished work that was not charged, and a failed plan payment no company was found for, are shown this long. */
+const BILLING_REVIEW_WINDOW = 3 * DAY;
+/** How convex/billingLock.ts keeps a failed plan payment it could not match to a company. */
+const UNMATCHED_PLAN_FAILURE = "stripe.invoice.payment_failed.unmatched";
 
 const aiBilling: Detector = {
   check: "ai_billing",
@@ -551,11 +590,30 @@ const aiBilling: Detector = {
         .take(50);
       out.push(...overdue.map((row) => ref("aiExecutions", row._id)));
     }
+    const unbilled = await ctx.db
+      .query("aiExecutions")
+      .withIndex("by_settlement_next", (q) => q.eq("settlement", "unbilled"))
+      .order("desc")
+      .take(100);
+    out.push(...unbilled.filter((row) => row.updatedAt > now - BILLING_REVIEW_WINDOW).map((row) => ref("aiExecutions", row._id)));
+    const strangers = await ctx.db
+      .query("billingWebhooks")
+      .withIndex("by_type_received", (q) => q.eq("type", UNMATCHED_PLAN_FAILURE).gt("receivedAt", now - BILLING_REVIEW_WINDOW))
+      .take(50);
+    out.push(...strangers.map((row) => ref("billingWebhooks", row._id)));
     return out;
   },
   async evaluate(ctx, source, now) {
+    if (source.table === "billingWebhooks") {
+      const event = await load(ctx, "billingWebhooks", source);
+      if (!event || event.type !== UNMATCHED_PLAN_FAILURE || event.receivedAt <= now - BILLING_REVIEW_WINDOW) return null;
+      return { key: "plan_invoice_unmatched", kind: "plan_invoice_unmatched", area: "billing", provider: "stripe", severity: "high", state: "needs_staff", title: "A failed plan payment matched no company", impact: "Stripe reported a failed Selestial plan payment and no company could be found for it. Nobody was warned and no account was locked.", nextAction: "Find the customer in Stripe, check which company it is, and contact the Owner. Check that Autumn puts its customer id on the Stripe customer.", diagnostics: `Stripe event ${event.deliveryId}${event.customerId ? ` · customer ${event.customerId}` : ""}`, source, since: event.receivedAt, attempts: 0, plural: (n) => ({ title: `${many(n, "failed plan payment", "failed plan payments")} matched no company`, impact: "Stripe reported failed Selestial plan payments and no company could be found for them. Nobody was warned and no account was locked." }) };
+    }
     const row = await load(ctx, "aiExecutions", source);
     if (!row) return null;
+    if (row.settlement === "unbilled" && row.updatedAt > now - BILLING_REVIEW_WINDOW) {
+      return { key: `ai_work_unbilled:${row.companyId}`, kind: "ai_work_unbilled", area: "billing", companyId: row.companyId, provider: "autumn", severity: "low", state: "needs_staff", title: "Finished AI work was not charged", impact: "The work finished and was delivered; Autumn refused its charge, usually because the credit hold had expired. The company was not charged and the work will not run again.", nextAction: "Check why the charge was refused. If holds are expiring before work finishes, the hold time for this kind of work is too short.", diagnostics: `execution ${row._id} (${row.task}, ${row.charged ?? row.credits} credits)${row.settleProblem ? ` · ${row.settleProblem.slice(0, 200)}` : ""}`, source, since: row.updatedAt, attempts: row.settleAttempts, plural: (n) => ({ title: `${many(n, "piece", "pieces")} of finished AI work ${n === 1 ? "was" : "were"} not charged`, impact: "The work finished and was delivered; Autumn refused the charges, usually because the credit holds had expired. The company was not charged and nothing will run again." }) };
+    }
     if (row.settlement === "unverified") {
       return { key: `ai_settlement_unverified:${row.companyId}`, kind: "ai_settlement_unverified", area: "billing", companyId: row.companyId, provider: "autumn", severity: "medium", state: "needs_staff", title: "An AI credit charge is unsettled", impact: "The work finished; only its charge could not be confirmed with Autumn after every retry. The work will not run again.", nextAction: "Compare with Autumn's usage record, then confirm or release the hold.", diagnostics: `execution ${row._id} (${row.task}, ${row.credits} credits)${row.settleProblem ? ` · ${row.settleProblem.slice(0, 200)}` : ""}`, source, since: row.updatedAt, attempts: row.settleAttempts, plural: (n) => ({ title: `${many(n, "AI credit charge is", "AI credit charges are")} unsettled`, impact: "The work finished; only the charges could not be confirmed with Autumn after every retry. Nothing will run again." }) };
     }
@@ -576,6 +634,7 @@ const messagingBilling: Detector = {
       .withIndex("by_settlement_next", (q) => q.eq("settlement", "unverified"))
       .take(200);
     out.push(...unverified.map((row) => ref("messagingCharges", row._id)));
+    out.push(ref("platform", "messaging_unmetered"));
     for (const settlement of ["pending_confirm", "pending_release", "pending_track"] as const) {
       const overdue = await ctx.db
         .query("messagingCharges")
@@ -586,6 +645,25 @@ const messagingBilling: Detector = {
     return out;
   },
   async evaluate(ctx, source, now) {
+    // One incident, raised once, for as long as production sends for free with no reason recorded. It closes
+    // by itself when MESSAGING_BILLING is on or MESSAGING_BILLING_SUBSIDY_NOTE says why (lib/operations/readiness.ts).
+    if (source.table === "platform" && source.id === "messaging_unmetered") {
+      if (!unmeteredWithoutReason()) return null;
+      return {
+        key: "messaging_unmetered",
+        kind: "messaging_unmetered",
+        area: "platform",
+        severity: "high",
+        state: "needs_staff",
+        title: "Messages are not being charged",
+        impact: `${UNMETERED_WARNING} Every company's texts and emails are free while MESSAGING_BILLING is off on the production backend.`,
+        nextAction: "Decide with the owner. To charge: follow the rollout order in docs/billing/03-messaging-billing.md. To keep it free on purpose: set MESSAGING_BILLING_SUBSIDY_NOTE to what was approved, by whom, and until when.",
+        diagnostics: "MESSAGING_BILLING is not \"on\"; MESSAGING_BILLING_SUBSIDY_NOTE is empty.",
+        source,
+        since: now,
+        attempts: 0,
+      };
+    }
     const row = await load(ctx, "messagingCharges", source);
     if (!row) return null;
     if (row.settlement === "unverified") {

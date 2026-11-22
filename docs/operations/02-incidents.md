@@ -118,6 +118,19 @@ and no model, and tells normal waiting apart from failure.
 
 `monitoringHealthy` is false unless every check is ok, so a quiet overview is never mistaken for a healthy one.
 
+That only helps someone who is looking at the overview. For when nobody is, and for when the alert emails
+themselves stop, `GET /health` lets an outside uptime monitor notice: see `06-heartbeat.md`. Staff alerts are
+marked sent only when a person was reached; until then the overview says "Alerts are not being delivered".
+
+Two conditions are found from the platform rather than from one record:
+
+- **Messages queued and never sent** (`message_stuck_queued`, part of the stuck-sends check): a message still
+  `queued` two hours after it was queued or last tried has lost its timer, as happens after a restore. Staff
+  check each with the provider; nothing is sent again automatically (`05-recovery-runbook.md`).
+- **Messages are not being charged** (`messaging_unmetered`, part of the messaging-settlement check): the
+  production backend has `MESSAGING_BILLING` off and no `MESSAGING_BILLING_SUBSIDY_NOTE`. One incident, one
+  alert; it closes when either is set (`docs/billing/03-messaging-billing.md`).
+
 ## What is never stored
 
 No secrets, tokens, message bodies or full addresses. Mailbox and member addresses are masked

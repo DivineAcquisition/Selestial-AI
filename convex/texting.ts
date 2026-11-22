@@ -42,18 +42,22 @@ import {
   CAMPAIGN_REJECTED,
   createBrand,
   createCampaign,
+  deleteCampaign,
   findBrands,
   findCampaigns,
   findOrders,
+  findOwnedNumber,
   getAssignment,
   getBrand,
   getCampaign,
   getNumberOrder,
   orderNumber,
+  releaseNumber as releaseTelnyxNumber,
   revetBrand,
   searchNumbers,
   sendBrandCode,
   stillAvailable,
+  unassignNumber,
   updateBrand,
   updateCampaign,
   verifyBrandCode,
@@ -66,6 +70,7 @@ import { localParts } from "./lib/availability";
 import { billingState } from "./lib/billing/access";
 import { allow } from "./lib/rateLimit";
 import { unseal } from "./lib/recruiter/secrets";
+import { authorizedFor, HAS_NUMBER, isOffboarding, openOffboarding, type OffboardingRoute } from "./lib/texting/offboarding";
 import { coverageOf } from "./lib/texting/plan";
 import { textingByAgent } from "./lib/texting/readiness";
 import { registrationPrices, registrationPricesAt } from "./lib/texting/prices";
@@ -195,7 +200,11 @@ async function chargeMonth(ctx: MutationCtx, row: Doc<"textingRequests">, at: nu
   if (!company) return;
   const month = localParts(at, company.timezone).day.slice(0, 7);
   if (!row.fees) {
-    if (row.feeMonth !== month) await recordEvent(ctx, { companyId: row.companyId, type: "texting.fee_not_authorized", actor: SYSTEM, subject: { table: "companies", id: row.companyId }, data: { month } });
+    // Recorded once per month: the month is kept on the request although nothing was charged for it.
+    if (row.feeMonth !== month) {
+      await recordEvent(ctx, { companyId: row.companyId, type: "texting.fee_not_authorized", actor: SYSTEM, subject: { table: "companies", id: row.companyId }, data: { month } });
+      await ctx.db.patch(row._id, { feeMonth: month });
+    }
     return;
   }
   const patch: Partial<Doc<"textingRequests">> = {};
@@ -275,6 +284,7 @@ const staffView = (row: Doc<"textingRequests">, company: string) => ({
   brandId: row.brandId ?? null,
   campaignId: row.campaignId ?? null,
   feesAuthorized: row.fees !== undefined,
+  offboarding: row.offboarding ? { route: row.offboarding.route, startedAt: row.offboarding.startedAt, unassignedAt: row.offboarding.unassignedAt ?? null, numberRemovedAt: row.offboarding.numberRemovedAt ?? null, campaignRemovedAt: row.offboarding.campaignRemovedAt ?? null, problem: row.offboarding.problem ?? null } : null,
 });
 
 export const queue = staffQuery({
@@ -287,6 +297,18 @@ export const queue = staffQuery({
         .withIndex("by_status_requested", (q) => q.eq("status", status))
         .take(100);
       for (const row of rows) out.push(staffView(row, (await ctx.db.get(row.companyId))?.name ?? "A company"));
+    }
+    // A working number someone asked to give up (or whose plan was cancelled) is staff work too, though its request is active.
+    for (const state of ["waiting_selestial", "waiting_provider", "waiting_owner"] as const) {
+      const items = await ctx.db
+        .query("textingExceptions")
+        .withIndex("by_state_follow", (q) => q.eq("state", state))
+        .take(200);
+      for (const item of items) {
+        if (!isOffboarding(item) || !item.requestId || out.some((row) => row.requestId === item.requestId)) continue;
+        const row = await ctx.db.get(item.requestId);
+        if (row && row.status !== "released") out.push(staffView(row, (await ctx.db.get(row.companyId))?.name ?? "A company"));
+      }
     }
     return out.sort((a, b) => a.requestedAt - b.requestedAt);
   },
@@ -315,6 +337,9 @@ export const reject = staffMutation({
     const row = await ctx.db.get(args.requestId);
     if (!row) notFound();
     if (row.status !== "requested") throw userError("Only a request waiting for Selestial review can be turned down.");
+    // A corrected request already has a brand (and perhaps a campaign) filed and a setup fee charged. Turning it
+    // down would make the owner's next submission a new request: a second brand, campaign and setup fee.
+    if (row.brandId || row.campaignId || (row.submissionVersion ?? 1) > 1) throw userError("This request is already filed with the carriers, so it can't be turned down here: the owner's next submission would be filed and charged again as a new registration. Use Send back to ask for a change instead.");
     const note = text(args.note, "The reason", 500);
     await ctx.db.patch(row._id, { status: "rejected", decidedAt: Date.now(), decidedBy: ctx.staff._id, note, step: "Not approved by Selestial review.", updatedAt: Date.now() });
     await recordEvent(ctx, { companyId: row.companyId, type: "texting.rejected", actor: SYSTEM, subject: { table: "textingRequests", id: row._id }, data: { staffId: ctx.staff._id, note } });
@@ -348,6 +373,193 @@ export const retry = staffMutation({
     await ctx.db.patch(row._id, { status: "provisioning", problem: undefined, step: "Running again from where it stopped.", leaseUntil: undefined, leaseToken: undefined, updatedAt: Date.now() });
     await recordEvent(ctx, { companyId: row.companyId, type: "texting.retried", actor: SYSTEM, subject: { table: "textingRequests", id: row._id }, data: { staffId: ctx.staff._id } });
     await ctx.scheduler.runAfter(0, internal.texting.provision, { requestId: row._id });
+    return null;
+  },
+});
+
+// ── Giving a number up (docs/texting/03-offboarding.md) ──────────────────────────────────────────
+
+/**
+ * Starts (or continues) giving a number up. Refused unless the owner's own acceptance is on record, in the
+ * exact words shown, for exactly this number and exactly this route. A release is refused while the owner's
+ * transfer to another provider is pending, and the other way round. Pressing it again continues from the
+ * last finished step; a request already released answers "released" and does nothing.
+ */
+async function startOffboarding(ctx: MutationCtx & { staff: Doc<"staff"> }, requestId: Id<"textingRequests">, route: OffboardingRoute): Promise<"started" | "running" | "released"> {
+  const row = await ctx.db.get(requestId);
+  if (!row) notFound();
+  if (row.status === "released") return "released";
+  if (!HAS_NUMBER.includes(row.status)) throw userError("Only a request with a connected number has a number to give up.");
+  const open = await openOffboarding(ctx, row.companyId, row.phoneNumber);
+  const other = open.find((item) => item.assisted?.authorization && item.assisted.route !== route);
+  if (other || (row.offboarding && row.offboarding.route !== route)) {
+    throw userError(route === "release" ? "A transfer of this number to another provider is pending, so it can't be released. The owner must cancel the transfer request first." : "The owner asked for this number to be released, not moved. Mark a transfer complete only on the owner's transfer request.");
+  }
+  const authorized = open.find((item) => authorizedFor(item, route, row.phoneNumber));
+  if (!authorized) {
+    throw userError(route === "release" ? `The owner hasn't authorized releasing ${row.phoneNumber}. Only the Owner can, under "Stop using this number" on their texting screen. Nothing was released.` : `The owner hasn't said ${row.phoneNumber} is moving to another provider. Only the Owner can, under "Stop using this number" on their texting screen. Nothing was changed.`);
+  }
+  const now = Date.now();
+  if (row.offboarding?.leaseUntil !== undefined && row.offboarding.leaseUntil > now) return "running";
+  const first = row.offboarding === undefined;
+  await ctx.db.patch(row._id, { offboarding: { ...(row.offboarding ?? { route, exceptionId: authorized._id, startedAt: now, startedBy: ctx.staff._id }), problem: undefined, leaseUntil: undefined, leaseToken: undefined }, updatedAt: now });
+  await ctx.db.patch(authorized._id, { state: "waiting_provider", nextAction: route === "release" ? "Selestial is releasing the number." : "Selestial is confirming the transfer with the provider.", history: [...authorized.history, { at: now, state: "waiting_provider", words: first ? (route === "release" ? "Selestial started the release." : "Selestial started confirming the transfer.") : "Run again from where it stopped.", by: ctx.staff.name || "Staff" }].slice(-100), updatedAt: now });
+  await recordEvent(ctx, { companyId: row.companyId, type: route === "release" ? "texting.release_started" : "texting.transfer_check_started", actor: SYSTEM, subject: { table: "textingRequests", id: row._id }, data: { staffId: ctx.staff._id, phoneNumber: row.phoneNumber, again: !first } });
+  await ctx.scheduler.runAfter(0, internal.texting.offboard, { requestId: row._id });
+  return "started";
+}
+
+/**
+ * Selestial staff release a company's number: it is taken off its campaign, deleted at Telnyx, and the
+ * campaign is deleted. Permanent. An admin with the destructive-actions capability only, and only under the
+ * owner's recorded authorization for this number.
+ */
+export const releaseNumber = staffMutation({
+  adminOnly: true,
+  capability: "records.destroy",
+  args: { requestId: v.id("textingRequests") },
+  handler: async (ctx, args) => startOffboarding(ctx, args.requestId, "release"),
+});
+
+/**
+ * Selestial staff confirm that the owner's transfer to another provider has finished. Checked against Telnyx
+ * first: while the number is still on Selestial's account nothing changes. Once it has left, the campaign is
+ * deleted and the request is closed.
+ */
+export const completeTransfer = staffMutation({
+  adminOnly: true,
+  capability: "records.destroy",
+  args: { requestId: v.id("textingRequests") },
+  handler: async (ctx, args) => startOffboarding(ctx, args.requestId, "port_out"),
+});
+
+/** Takes the request for one offboarding pass, only while the owner's authorization still stands. */
+export const claimOffboarding = internalMutation({
+  args: { requestId: v.id("textingRequests"), token: v.string() },
+  handler: async (ctx, args): Promise<Doc<"textingRequests"> | null> => {
+    const row = await ctx.db.get(args.requestId);
+    if (!row?.offboarding || !HAS_NUMBER.includes(row.status)) return null;
+    const now = Date.now();
+    const o = row.offboarding;
+    if (o.leaseUntil !== undefined && o.leaseUntil > now && o.leaseToken !== args.token) return null;
+    const item = await ctx.db.get(o.exceptionId);
+    if (!item || !authorizedFor(item, o.route, row.phoneNumber)) {
+      await ctx.db.patch(row._id, { offboarding: { ...o, problem: "The owner's authorization for this number is no longer on record, so nothing more was done.", leaseUntil: undefined, leaseToken: undefined } });
+      return null;
+    }
+    await ctx.db.patch(row._id, { offboarding: { ...o, problem: undefined, leaseUntil: now + LEASE, leaseToken: args.token } });
+    return (await ctx.db.get(row._id))!;
+  },
+});
+
+/**
+ * Records finished offboarding steps, or why the pass stopped. From the first finished step the number is no
+ * longer a registered sender, so the sending policy stops texts then; the request itself is "released" only
+ * when every step is done (offboardDone).
+ */
+export const offboardStep = internalMutation({
+  args: { requestId: v.id("textingRequests"), token: v.string(), done: v.optional(v.array(v.union(v.literal("unassigned"), v.literal("number"), v.literal("campaign")))), problem: v.optional(v.string()) },
+  handler: async (ctx, args): Promise<null> => {
+    const row = await ctx.db.get(args.requestId);
+    if (!row?.offboarding || row.offboarding.leaseToken !== args.token) return null;
+    const now = Date.now();
+    const o = { ...row.offboarding };
+    for (const step of args.done ?? []) {
+      if (step === "unassigned") o.unassignedAt ??= now;
+      if (step === "number") o.numberRemovedAt ??= now;
+      if (step === "campaign") o.campaignRemovedAt ??= now;
+    }
+    if (args.problem !== undefined) Object.assign(o, { problem: args.problem.slice(0, 500), leaseUntil: undefined, leaseToken: undefined });
+    else o.leaseUntil = now + LEASE;
+    await ctx.db.patch(row._id, { offboarding: o, updatedAt: now });
+    if (args.done?.length) {
+      const messaging = (await readProfile(ctx, row.companyId)).messaging;
+      if (messaging.registration.status === "approved" || messaging.registration.status === "suspended") {
+        await writeProfile(ctx, row.companyId, { messaging: { ...messaging, registration: { status: "not_started", updatedAt: now, updatedBy: "staff", note: o.route === "release" ? "The texting number is being released." : "The texting number moved to another provider." } } });
+      }
+    }
+    if (args.problem !== undefined) await recordEvent(ctx, { companyId: row.companyId, type: "texting.release_stopped", actor: SYSTEM, subject: { table: "textingRequests", id: row._id }, data: { route: o.route, problem: args.problem.slice(0, 300) } });
+    return null;
+  },
+});
+
+/** Every step is done: the request is released, the company has no texting number, and nothing more is sent or charged for it. */
+export const offboardDone = internalMutation({
+  args: { requestId: v.id("textingRequests"), token: v.string() },
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get(args.requestId);
+    if (!row?.offboarding || row.offboarding.leaseToken !== args.token || !HAS_NUMBER.includes(row.status)) return null;
+    const o = row.offboarding;
+    if (o.unassignedAt === undefined || o.numberRemovedAt === undefined || (row.campaignId !== undefined && o.campaignRemovedAt === undefined)) return null;
+    const now = Date.now();
+    const release = o.route === "release";
+    await ctx.db.patch(row._id, { status: "released", releasedAt: now, step: release ? "This number was released. Texts no longer go out from it." : "This number moved to another provider. Selestial no longer sends texts from it.", problem: undefined, needs: undefined, offboarding: { ...o, problem: undefined, leaseUntil: undefined, leaseToken: undefined }, updatedAt: now });
+    const messaging = (await readProfile(ctx, row.companyId)).messaging;
+    // Only this request's own number is taken off the profile.
+    if (messaging.smsNumber === row.phoneNumber || messaging.smsNumber === undefined) {
+      const { smsNumber, ...rest } = messaging;
+      void smsNumber;
+      await writeProfile(ctx, row.companyId, { messaging: { ...rest, registration: { status: "not_started", updatedAt: now, updatedBy: "staff", note: release ? "The texting number was released." : "The texting number moved to another provider." } } });
+    }
+    const item = await ctx.db.get(o.exceptionId);
+    if (item && item.state !== "resolved") {
+      const resolution = release ? `${row.phoneNumber} was released and its campaign deleted.` : `${row.phoneNumber} moved to another provider and its campaign here was deleted.`;
+      await ctx.db.patch(item._id, { state: "resolved", resolution, nextAction: "Nothing more.", history: [...item.history, { at: now, state: "resolved", words: `Resolved: ${resolution}`, by: "system" }].slice(-100), updatedAt: now });
+    }
+    await recordEvent(ctx, { companyId: row.companyId, type: release ? "texting.released" : "texting.transfer_completed", actor: SYSTEM, subject: { table: "textingRequests", id: row._id }, data: { phoneNumber: row.phoneNumber, staffId: o.startedBy } });
+    return null;
+  },
+});
+
+/**
+ * One offboarding pass. Each step does one thing at Telnyx and is recorded before the next, and a step
+ * already done (or already gone at Telnyx: a 404) is never repeated, so running it again is safe. A step that
+ * fails stops the pass with the reason for staff; the request stays as it was, never "released".
+ *
+ * Release: number off its campaign, number deleted, campaign deleted.
+ * Transfer: nothing is deleted until Telnyx shows the number has left the account; then the campaign is.
+ * The brand is kept in both cases. On a backend that is not production every write is refused
+ * (convex/lib/messaging/telnyxAccount.ts), so the first step stops and nothing changes.
+ */
+export const offboard = internalAction({
+  args: { requestId: v.id("textingRequests") },
+  handler: async (ctx, args): Promise<null> => {
+    const token = crypto.randomUUID();
+    const row: Doc<"textingRequests"> | null = await ctx.runMutation(internal.texting.claimOffboarding, { requestId: args.requestId, token });
+    if (!row?.offboarding) return null;
+    const o = row.offboarding;
+    const stop = async (problem: string): Promise<null> => ctx.runMutation(internal.texting.offboardStep, { requestId: args.requestId, token, problem });
+    const mark = (done: ("unassigned" | "number" | "campaign")[]) => ctx.runMutation(internal.texting.offboardStep, { requestId: args.requestId, token, done });
+    const failed = (answer: Answer<unknown>): answer is Extract<Answer<unknown>, { ok: false }> => !answer.ok && answer.status !== 404;
+    if (o.route === "port_out") {
+      if (o.numberRemovedAt === undefined) {
+        const owned = await findOwnedNumber(fetch, row.phoneNumber);
+        if (!owned.ok) return stop(`Checking whether the number has left Telnyx: ${owned.problem}`);
+        if (owned.value) return stop(`${row.phoneNumber} is still on Selestial's Telnyx account${owned.value.status ? ` (${owned.value.status})` : ""}, so the transfer has not completed. Nothing was changed. Check the port-out in Mission Control and try again once it shows completed.`);
+        await mark(["unassigned", "number"]);
+      }
+    } else {
+      if (o.unassignedAt === undefined) {
+        const unassigned = await unassignNumber(fetch, row.phoneNumber);
+        if (failed(unassigned)) return stop(`Taking the number off its campaign: ${unassigned.problem}`);
+        await mark(["unassigned"]);
+      }
+      if (o.numberRemovedAt === undefined) {
+        const owned = await findOwnedNumber(fetch, row.phoneNumber);
+        if (!owned.ok) return stop(`Looking the number up at Telnyx: ${owned.problem}`);
+        if (owned.value) {
+          const released = await releaseTelnyxNumber(fetch, owned.value.id);
+          if (failed(released)) return stop(`Deleting the number at Telnyx: ${released.problem}`);
+        }
+        await mark(["number"]);
+      }
+    }
+    if (o.campaignRemovedAt === undefined && row.campaignId) {
+      const deleted = await deleteCampaign(fetch, row.campaignId);
+      if (failed(deleted)) return stop(`Deleting campaign ${row.campaignId}: ${deleted.problem}`);
+      await mark(["campaign"]);
+    }
+    await ctx.runMutation(internal.texting.offboardDone, { requestId: args.requestId, token });
     return null;
   },
 });
@@ -565,6 +777,11 @@ export const provision = internalAction({
         // A. A correction: file what changed. What was bought or approved stays.
         if (r.filedVersion !== undefined && (r.submissionVersion ?? 1) > r.filedVersion) {
           let refiled = false;
+          // An approved campaign covers exactly what was filed. Activating with anything else would let texts go
+          // that the carriers never approved, so a change after approval goes to staff instead of being filed quietly.
+          if (r.campaignId && r.campaignApprovedAt !== undefined && r.campaignShape !== undefined && campaignShape(r) !== r.campaignShape) {
+            return void (await save({ status: "failed", problem: `What this company texts changed after the carriers approved campaign ${r.campaignId}. Nothing was filed or activated. Either restore the approved details, or register the change as a new campaign.`, step: "Your details changed after the carriers approved them. Selestial is looking into it. Nothing more is charged." }));
+          }
           if (r.brandId && brandShape(r) !== r.brandShape) {
             const input = await brandInput(r);
             if (!input) return void (await save({ status: "failed", problem: "The tax ID could not be read (MAILBOX_TOKEN_KEY changed?).", step: "Selestial ran into a problem and is looking into it." }));
@@ -580,6 +797,15 @@ export const provision = internalAction({
               // What it covers changed, so it is filed as a new campaign; the turned-down one is left as it is.
               await save({ clear: ["campaignId", "campaignReference", "campaignAttemptAt", "campaignFiledAt"], diagnostics: { campaign: `replaced ${r.campaignId}` } });
             } else {
+              // A campaign turned down in a way Telnyx takes no appeal from (TCR_FAILED, MNO_PROVISIONING_FAILED) stays
+              // turned down however often the same registration is sent. Nothing is filed and no correction fee is
+              // charged for that: staff decide what to register instead.
+              const current = await getCampaign(fetch, r.campaignId);
+              if (!current.ok) return void (await fail(current, "Checking the campaign"));
+              const was = current.value.campaignStatus ?? "";
+              if (CAMPAIGN_REJECTED.has(was) && !CAMPAIGN_APPEALABLE.has(was)) {
+                return void (await save({ status: "failed", problem: `Campaign ${r.campaignId} is ${was}, which can't be appealed, and the correction doesn't change what it covers. Nothing was filed and no correction fee was charged. It needs a new campaign (or a fix at Telnyx, then Retry).`, diagnostics: { campaign: `${was}${current.value.failure ? `: ${current.value.failure}` : ""}`.slice(0, 500) }, step: "The carriers can't review this registration again as it is. Selestial is looking into it. You weren't charged for this correction." }));
+              }
               const updated = await updateCampaign(fetch, r.campaignId, campaignCorrection(r, telnyxWebhookUrl()));
               if (!updated.ok) return void (await fail(updated, "Correcting the campaign"));
               if (CAMPAIGN_APPEALABLE.has(updated.value.campaignStatus ?? "")) {
@@ -726,7 +952,8 @@ export const provision = internalAction({
         const assignment = await getAssignment(fetch, r.phoneNumber);
         if (!assignment.ok) return void (await fail(assignment, "Checking the number connection"));
         const status = assignment.value.assignmentStatus ?? "";
-        if (ASSIGNMENT_FAILED.has(status)) return void (await save({ status: "failed", problem: `The number could not be put on the campaign (${status}). ${assignment.value.failure ?? ""}`.trim(), diagnostics: { assignment: status }, step: "Connecting your number ran into a problem. Selestial is looking into it." }));
+        // The assignment is forgotten, so staff's Retry asks for it again. The number stays bought (numberOrderedAt is kept): Retry never buys another.
+        if (ASSIGNMENT_FAILED.has(status)) return void (await save({ status: "failed", clear: ["assignedAt"], problem: `The number could not be put on the campaign (${status}). ${assignment.value.failure ?? ""}`.trim(), diagnostics: { assignment: status }, step: "Connecting your number ran into a problem. Selestial is looking into it." }));
         if (status !== ASSIGNED) return void (await later(30 * MINUTE, { status: "waiting_on_carriers", diagnostics: { assignment: status }, step: "The carriers are connecting your number. Texts wait until it's done." }));
         await ctx.runMutation(internal.texting.activate, { requestId: args.requestId, token });
         return null;
@@ -886,6 +1113,11 @@ export const activeChecked = internalMutation({
     const row = await ctx.db.get(args.requestId);
     if (!row) return null;
     const now = Date.now();
+    // A number being given up is no longer a sender: a carrier check never switches its texts back on.
+    if (row.offboarding || row.status === "released") {
+      await ctx.db.patch(row._id, { lastCheckedAt: now });
+      return null;
+    }
     const profile = (await readProfile(ctx, row.companyId)).messaging;
     if (args.stopped && row.status === "active") {
       await ctx.db.patch(row._id, { status: "interrupted", step: "The carriers paused texting from your number. Selestial is looking into it and will tell you what's needed.", diagnostics: { ...(row.diagnostics ?? {}), campaign: args.status, at: now }, updatedAt: now, lastCheckedAt: now });

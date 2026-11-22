@@ -994,6 +994,7 @@ const TEXTING_STATUS: Record<string, { label: string; variant: "info" | "warning
   needs_you: { label: "Waiting on the owner", variant: "outline" },
   failed: { label: "Stopped", variant: "error" },
   interrupted: { label: "Suspended by carriers", variant: "error" },
+  active: { label: "Active · number being given up", variant: "warning" },
 };
 
 /**
