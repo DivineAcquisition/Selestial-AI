@@ -14,6 +14,7 @@ import { internalAction, internalMutation, internalQuery, type MutationCtx, type
 import { accountFor, agentVerdict, billingState, BLOCK_WORDS, customerIdFor, featureVerdict, verifiedPlan } from "./lib/billing/access";
 import { attach, attachBody, finalizeLock, openPortal, previewAttach, setupPayment, updateSubscription, type RawInvoice } from "./lib/billing/autumn";
 import { AGENT_CATALOG, AGENT_IDS, agentReleased, AUTUMN, BOTH_PLANS_INCLUDE, lostOnChange, PLAN_FEATURES, PLAN_IDS, planIncludesAgent, planIncludesFeature, planOnSale, PLANS, RETIRED_AGENT_NAMES, type PlanFeature } from "./lib/billing/catalog";
+import { eligibility, offerFor, onAccountSynced, releasePlace, reservePlace } from "./lib/billing/earlyOffer";
 import { HOLD_MS, noteExecution } from "./lib/billing/executions";
 import type { Projection } from "./lib/billing/projection";
 import { TASKS } from "./lib/billing/rateCards";
@@ -227,7 +228,7 @@ export const storeAccount = internalMutation({
     const now = Date.now();
     let account = await accountFor(ctx, args.companyId, args.env);
     const ledger = args.ledger ? (JSON.parse(args.ledger) as Doc<"billingAccounts">["ledger"]) : undefined;
-    const fields = { plan: projection.plan, subscription: projection.subscription, credits: projection.credits, syncedAt: now, syncProblem: undefined, ...(projection.messaging ? { messaging: { ...projection.messaging, at: now } } : {}), ...(invoices.length ? { invoices } : {}), ...(ledger ? { ledger } : {}) };
+    const fields = { plan: projection.plan, autumnPlanId: projection.autumnPlanId ?? null, subscription: projection.subscription, credits: projection.credits, syncedAt: now, syncProblem: undefined, ...(projection.messaging ? { messaging: { ...projection.messaging, at: now } } : {}), ...(invoices.length ? { invoices } : {}), ...(ledger ? { ledger } : {}) };
     if (account) await ctx.db.patch(account._id, fields);
     else {
       const id = await ctx.db.insert("billingAccounts", { companyId: args.companyId, env: args.env, customerId: args.customerId, controls: DEFAULT_CONTROLS, alertsSent: { period: "", percents: [] }, notices: [], invoices, ...fields });
@@ -248,6 +249,11 @@ export const storeAccount = internalMutation({
     if (projection.subscription.pastDue) await notify(ctx, account, "past_due", "The last payment for this plan did not go through. Update the payment method in Plan & Usage to keep the plan.");
     await usageAlerts(ctx, account);
     await closePaidIntents(ctx, args.companyId, args.env, projection, rawInvoices, now);
+    // The early-user offer: a place is claimed only here, once Autumn shows the $199 plan paid and active.
+    if (billingState().connected) {
+      const offer = await onAccountSynced(ctx, { companyId: args.companyId, env: args.env, projection, now });
+      if (offer) await recordEvent(ctx, { companyId: args.companyId, type: `billing.early_offer_${offer}`, actor: { kind: "system" }, subject: { table: "companies", id: args.companyId }, data: { source: "autumn" } });
+    }
     // Funds arrived (a purchase paid on Stripe's page, an automatic top-up): messages that waited are checked again and sent.
     if (projection.messaging && projection.messaging.remaining > 0) await ctx.scheduler.runAfter(0, internal.messagingBilling.releaseHeld, { companyId: args.companyId });
   },
@@ -396,11 +402,11 @@ export function topUpPacks(): number[] {
     .slice(0, 4);
 }
 
-export async function startIntent(ctx: MutationCtx & { companyId: Id<"companies">; member: Doc<"members"> }, fields: { kind: Doc<"billingIntents">["kind"]; planId?: string; quantity?: number; stage: "previewing" | "submitting" }) {
+export async function startIntent(ctx: MutationCtx & { companyId: Id<"companies">; member: Doc<"members"> }, fields: { kind: Doc<"billingIntents">["kind"]; planId?: string; quantity?: number; stage: "previewing" | "submitting"; offer?: "early" }) {
   const state = connectedOrRefuse();
   if (!(await allow(ctx, `billing:${ctx.companyId}`, 20, 10 * MINUTE))) throw userError("That is a lot of billing requests in a few minutes. Wait a moment and try again.", "limit");
   const now = Date.now();
-  const intentId = await ctx.db.insert("billingIntents", { companyId: ctx.companyId, env: state.env, kind: fields.kind, planId: fields.planId, quantity: fields.quantity, memberId: ctx.member._id, stage: fields.stage, createdAt: now, updatedAt: now });
+  const intentId = await ctx.db.insert("billingIntents", { companyId: ctx.companyId, env: state.env, kind: fields.kind, planId: fields.planId, quantity: fields.quantity, memberId: ctx.member._id, stage: fields.stage, createdAt: now, updatedAt: now, ...(fields.offer ? { offer: fields.offer } : {}) });
   await recordEvent(ctx, { companyId: ctx.companyId, type: `billing.${fields.kind}_started`, actor: byMember(ctx), subject: { table: "billingIntents", id: intentId }, data: { planId: fields.planId ?? null, quantity: fields.quantity ?? null } });
   await ctx.scheduler.runAfter(0, internal.billing.runIntent, { intentId });
   return intentId;
@@ -414,7 +420,10 @@ export const startPlanChange = ownerMutation({
     if (account?.plan === args.plan && !account.subscription.scheduledPlan) throw userError(`This company is already on ${PLANS[args.plan].name}.`);
     // A plan that is not on sale can only be kept (undoing a scheduled move away from it), never newly bought.
     if (!planOnSale(args.plan) && account?.plan !== args.plan) throw userError(`${PLANS[args.plan].name} isn't open to new companies yet. Your plan is ${PLANS.operate.name}.`);
-    return startIntent(ctx, { kind: "plan_change", planId: args.plan, stage: "previewing" });
+    // A first Operate purchase is previewed at the early-user price while a place is open (convex/lib/billing/earlyOffer.ts).
+    // Nothing is reserved yet: that happens when the Owner confirms.
+    const early = args.plan === "operate" && !account?.plan && (await eligibility(ctx, ctx.companyId, state.env, account, Date.now())).eligible;
+    return startIntent(ctx, { kind: "plan_change", planId: args.plan, stage: "previewing", ...(early ? { offer: "early" as const } : {}) });
   },
 });
 
@@ -437,6 +446,16 @@ export const confirmIntent = ownerMutation({
     if (!intent || intent.companyId !== ctx.companyId) throw userError("That request was not found.", "not_found");
     if (intent.stage !== "awaiting_confirmation") throw userError(intent.stage === "submitting" || intent.stage === "done" ? "This was already confirmed." : "This is no longer waiting to be confirmed.");
     if (Date.now() - intent.updatedAt > 30 * MINUTE) throw userError("This price is more than 30 minutes old. Start again to see the current one.");
+    if (intent.offer === "early") {
+      // The one point where the last place is decided: this mutation reserves it or finds none left. Without a
+      // place nothing is sent at $199; the purchase is shown again at the full price for the Owner to confirm.
+      const account = await accountFor(ctx, ctx.companyId, intent.env);
+      if (!(await reservePlace(ctx, { companyId: ctx.companyId, env: intent.env, intentId: intent._id, account, now: Date.now() }))) {
+        await ctx.db.patch(intent._id, { offer: undefined, stage: "previewing", preview: undefined, problem: `The last early-user place was just taken, so the price is ${PLANS.operate.name}'s full $${PLANS.operate.monthlyCents / 100} a month. Nothing was charged. Check the new price before you confirm.`, updatedAt: Date.now() });
+        await ctx.scheduler.runAfter(0, internal.billing.runIntent, { intentId: intent._id });
+        return null;
+      }
+    }
     await ctx.db.patch(intent._id, { stage: "submitting", updatedAt: Date.now() });
     await recordEvent(ctx, { companyId: ctx.companyId, type: `billing.${intent.kind}_confirmed`, actor: byMember(ctx), subject: { table: "billingIntents", id: intent._id }, data: { dueNowCents: intent.preview?.dueNowCents ?? null } });
     await ctx.scheduler.runAfter(0, internal.billing.runIntent, { intentId: intent._id });
@@ -451,7 +470,8 @@ export const cancelPlan = ownerMutation({
     const account = await accountFor(ctx, ctx.companyId, state.env);
     if (!account?.plan) throw userError("There is no active plan to cancel.");
     if (account.subscription.endsAt) throw userError("This plan is already set to end.");
-    return startIntent(ctx, { kind: "cancel", planId: account.plan, stage: "submitting" });
+    // Autumn's own plan id: the early-user price is its own plan ("operate_early").
+    return startIntent(ctx, { kind: "cancel", planId: account.autumnPlanId ?? account.plan, stage: "submitting" });
   },
 });
 
@@ -462,7 +482,9 @@ export const resumePlan = ownerMutation({
     const state = connectedOrRefuse();
     const account = await accountFor(ctx, ctx.companyId, state.env);
     if (!account?.plan || (!account.subscription.endsAt && !account.subscription.scheduledPlan)) throw userError("Nothing is scheduled to change.");
-    return startIntent(ctx, { kind: "uncancel", planId: account.plan, stage: "submitting" });
+    // The move to the full price after the early-user year is part of the offer the company accepted; it is not undone here.
+    if (!account.subscription.endsAt && account.autumnPlanId === AUTUMN.earlyPlan && account.subscription.scheduledAutumnPlanId === AUTUMN.plans.operate) throw userError("The move to the full Operate price at the end of your early-user year is part of the offer, so it can't be undone. Nothing else is scheduled to change.");
+    return startIntent(ctx, { kind: "uncancel", planId: account.autumnPlanId ?? account.plan, stage: "submitting" });
   },
 });
 
@@ -542,6 +564,11 @@ export const intentAnswered = internalMutation({
     const intent = await ctx.db.get(args.intentId);
     if (!intent) return;
     await ctx.db.patch(intent._id, { stage: args.stage, preview: args.preview ? JSON.parse(args.preview) : intent.preview, url: args.url, problem: args.problem?.slice(0, 300), updatedAt: Date.now() });
+    // A $199 purchase that was refused or never reached billing gives its reserved place back at once.
+    if (args.stage === "failed" && intent.offer === "early") {
+      const offer = await offerFor(ctx, intent.companyId, intent.env);
+      if (offer?.intentId === intent._id) await releasePlace(ctx, offer, "The purchase did not go through, so the place was given back.", "system", Date.now());
+    }
     if (args.stage === "done" || args.stage === "failed") await recordEvent(ctx, { companyId: intent.companyId, type: `billing.${intent.kind}_${args.stage}`, actor: { kind: "system" }, subject: { table: "billingIntents", id: intent._id }, data: { planId: intent.planId ?? null } });
   },
 });
@@ -584,8 +611,9 @@ export const runIntent = internalAction({
       return failed(answer as never);
     }
 
-    const target = intent.planId!;
-    const downgrade = intent.kind === "plan_change" && plan === "expand" && target === "operate";
+    // The early-user price is Autumn's own plan; the intent still names the app's plan (Operate).
+    const target = intent.offer === "early" ? AUTUMN.earlyPlan : intent.planId!;
+    const downgrade = intent.kind === "plan_change" && plan === "expand" && intent.planId === "operate";
     const topUp = intent.kind === "top_up" || intent.kind === "messaging_top_up";
     const body = attachBody({ customerId, planId: target, successUrl: returnUrl, quantity: topUp ? intent.quantity : undefined, featureId: intent.kind === "messaging_top_up" ? AUTUMN.messaging : undefined, schedule: intent.kind === "plan_change" ? (downgrade ? "end_of_cycle" : "immediate") : undefined });
 
@@ -606,7 +634,8 @@ export const runIntent = internalAction({
         lostAgents: lost.agents,
         lostFeatures: lost.features,
       };
-      return answered("awaiting_confirmation", { preview: JSON.stringify(preview) });
+      // A note made before this preview (the last early-user place was taken) stays in front of the Owner.
+      return answered("awaiting_confirmation", { preview: JSON.stringify(preview), ...(intent.problem ? { problem: intent.problem } : {}) });
     }
     if (intent.stage !== "submitting") return;
     const answer = await attach(body, `intent:${intent._id}`);
@@ -713,7 +742,7 @@ export const intent = ownerQuery({
   handler: async (ctx, args) => {
     const row = await ctx.db.get(args.intentId);
     if (!row || row.companyId !== ctx.companyId) return null;
-    return { id: row._id, kind: row.kind, planId: row.planId ?? null, quantity: row.quantity ?? null, stage: row.stage, preview: row.preview ?? null, url: row.url ?? null, problem: row.problem ?? null };
+    return { id: row._id, kind: row.kind, planId: row.planId ?? null, quantity: row.quantity ?? null, stage: row.stage, preview: row.preview ?? null, url: row.url ?? null, problem: row.problem ?? null, offer: row.offer ?? null };
   },
 });
 

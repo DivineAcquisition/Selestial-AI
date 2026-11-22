@@ -209,6 +209,12 @@ export const PRICING = {
       name: "Operate",
       price: "$299",
       period: "/month",
+      /**
+       * The approved early-user offer (convex/lib/billing/earlyOffer.ts). The page is built ahead of time and
+       * cannot cheaply know the places left, so it says "while places last"; the app shows the live count
+       * and never shows $199 unless it will be honored.
+       */
+      offer: "Early-user offer: the first 15 companies pay $199 a month for their first 12 months, then $299. While places last.",
       summary: "Keep sales, hiring, dispatch, and retention moving from one workspace.",
       today: [
         "Sales: inquiries by text and email, quotes customers accept online, follow-ups and bookings",

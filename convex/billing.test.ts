@@ -6,7 +6,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { addMember, company, NOW, refusal, start, type T } from "../tests/harness";
+import { addMember, company, NOW, person, refusal, start, type T } from "../tests/harness";
 import { flush, indeedApplication, recruiterTestEnv, setup as recruiterSetup } from "../tests/recruiterHarness";
 import { billing } from "../tests/setupBilling";
 import { api, internal } from "./_generated/api";
@@ -311,7 +311,8 @@ describe("billing", () => {
       expect(await refusal(s.as.mutation(api.billing.confirmIntent, { companyId: s.companyId, intentId }))).toMatch(/already confirmed/);
       const attach = billing.state.calls.filter((call) => call.path === "/v1/billing.attach");
       expect(attach).toHaveLength(1);
-      expect(attach[0]).toMatchObject({ key: `intent:${intentId}`, body: { plan_id: "operate" } });
+      // A first Operate purchase while early-user places remain is Autumn's $199 "operate_early" plan, read as Operate.
+      expect(attach[0]).toMatchObject({ key: `intent:${intentId}`, body: { plan_id: "operate_early" } });
       const view = await s.as.query(api.billing.planAndUsage, { companyId: s.companyId });
       expect(view.connected && view.account).toMatchObject({ plan: "operate" });
     });
@@ -756,6 +757,276 @@ describe("billing", () => {
       const view = await s.as.query(api.billingUsage.usage, { companyId: s.companyId });
       expect(view.connected && view.ledger).toEqual([expect.objectContaining({ label: "Credits purchased", change: 500, after: 600 }), expect.objectContaining({ label: "Monthly credits renewed", change: 4997 })]);
       expect(view.connected && view.activity).toEqual([]);
+    });
+  });
+
+  describe("the early-user offer", () => {
+    const DAY = 86_400_000;
+    const offerOf = (t: T, companyId: Id<"companies">) => t.query(internal.earlyOffer.offerOf, { companyId, env: "sandbox" });
+    const sweep = async (t: T) => {
+      await t.mutation(internal.earlyOffer.sweep, {});
+      await settle(t);
+    };
+    const attaches = () => billing.state.calls.filter((call) => call.path === "/v1/billing.attach");
+
+    /** A company with no plan, never billed before. */
+    async function fresh(t: T, subject: string, name: string, fields: { cardOnFile?: boolean } = {}) {
+      const c = await company(t, subject, name);
+      billing.seed(c.companyId, { plan: null, cardOnFile: fields.cardOnFile ?? true });
+      await sync(t, c.companyId);
+      return c;
+    }
+    async function preview(t: T, c: { as: As; companyId: Id<"companies"> }) {
+      const intentId = await c.as.mutation(api.billing.startPlanChange, { companyId: c.companyId, plan: "operate" });
+      await settle(t);
+      return { intentId, intent: (await c.as.query(api.billing.intent, { companyId: c.companyId, intentId }))! };
+    }
+    async function buy(t: T, c: { as: As; companyId: Id<"companies"> }) {
+      const { intentId } = await preview(t, c);
+      await c.as.mutation(api.billing.confirmIntent, { companyId: c.companyId, intentId });
+      await settle(t);
+      return intentId;
+    }
+    /** Places taken by other companies: one filler company stands in for each of them. */
+    async function fillPlaces(t: T, n: number, state: "claimed" | "ended" = "claimed") {
+      const filler = await company(t, "owner-filler", "Filler Cleaning");
+      await t.run(async (ctx) => {
+        for (let i = 0; i < n; i += 1) await ctx.db.insert("earlyOffers", { companyId: filler.companyId, env: "sandbox", state, reservedAt: NOW, reservedUntil: NOW, claimedAt: NOW, startedAt: NOW, offerEndsAt: NOW + 365 * DAY, updatedAt: NOW });
+      });
+    }
+
+    it("gives the first paid purchase $199 and claims its place only once the payment is confirmed, with Operate's entitlements", async () => {
+      const t = start();
+      const a = await fresh(t, "owner-a", "Alpha Cleaning");
+      expect(await a.as.query(api.earlyOffer.mine, { companyId: a.companyId })).toMatchObject({ kind: "available", placesLeft: 15, places: 15, monthlyCents: 199_00, fullCents: 299_00 });
+      const { intentId, intent } = await preview(t, a);
+      expect(intent).toMatchObject({ offer: "early", stage: "awaiting_confirmation", preview: { dueNowCents: 199_00 } });
+      // Previewing reserves nothing.
+      expect(await offerOf(t, a.companyId)).toBeNull();
+      await a.as.mutation(api.billing.confirmIntent, { companyId: a.companyId, intentId });
+      await settle(t);
+      expect(attaches()).toHaveLength(1);
+      expect(attaches()[0].body).toMatchObject({ plan_id: "operate_early" });
+      expect(attaches()[0].body).not.toHaveProperty("free_trial");
+      const row = (await offerOf(t, a.companyId))!;
+      expect(row).toMatchObject({ state: "claimed", startedAt: billing.customerFor(`company_${a.companyId}`).startedAt });
+      // Twelve calendar months after the first paid period began.
+      expect(Math.abs(row.offerEndsAt! - Date.UTC(2028, 2, 1, 12, 0))).toBeLessThan(60_000);
+      // The app reads it as Operate for everything: the same agents, features and blocks.
+      const company = (await t.run(async (ctx) => ctx.db.get(a.companyId)))!;
+      expect(company.plan).toBe("operate");
+      for (const agent of ["dispatch", "recruiter", "sales", "retention", "marketing", "quality"] as const) expect(agentVerdict(company, agent)).toEqual(agentVerdict({ plan: "operate" }, agent));
+      expect(await refusal(a.as.mutation(api.creative.generate, { companyId: a.companyId, kind: "image_generate", prompt: "A tidy kitchen", params: {} }))).toMatch(/isn't part of the Operate plan/);
+      const view = await a.as.query(api.billing.planAndUsage, { companyId: a.companyId });
+      expect(view.connected && view.account).toMatchObject({ plan: "operate" });
+      expect(await a.as.query(api.earlyOffer.mine, { companyId: a.companyId })).toMatchObject({ kind: "active", endsAt: row.offerEndsAt, monthlyCents: 199_00, fullCents: 299_00 });
+    });
+
+    it("offers $299 to the 16th company, and never offers $199 again once the 15 places are used", async () => {
+      const t = start();
+      await fillPlaces(t, 10, "claimed");
+      await fillPlaces(t, 5, "ended");
+      const p = await fresh(t, "owner-p", "Late Cleaning");
+      expect(await p.as.query(api.earlyOffer.mine, { companyId: p.companyId })).toEqual({ kind: "none" });
+      const { intent } = await preview(t, p);
+      expect(intent.offer).toBeNull();
+      expect(intent.preview).toMatchObject({ dueNowCents: 299_00 });
+      await p.as.mutation(api.billing.confirmIntent, { companyId: p.companyId, intentId: intent.id });
+      await settle(t);
+      expect(attaches().map((call) => call.body.plan_id)).toEqual(["operate"]);
+      expect(await offerOf(t, p.companyId)).toBeNull();
+    });
+
+    it("uses no place for a payment that failed or was abandoned", async () => {
+      const t = start();
+      // Declined: the place is given back at once.
+      const d = await fresh(t, "owner-d", "Declined Cleaning");
+      billing.state.refuseOnce.push("/v1/billing.attach");
+      const declined = await buy(t, d);
+      expect(await d.as.query(api.billing.intent, { companyId: d.companyId, intentId: declined })).toMatchObject({ stage: "failed" });
+      expect(await offerOf(t, d.companyId)).toMatchObject({ state: "released" });
+      // Sent to the payment page and never paid: held while the page can be paid, then given back.
+      await fillPlaces(t, 14);
+      const a = await fresh(t, "owner-a", "Abandon Cleaning", { cardOnFile: false });
+      const abandoned = await buy(t, a);
+      expect(await a.as.query(api.billing.intent, { companyId: a.companyId, intentId: abandoned })).toMatchObject({ stage: "payment_needed" });
+      expect(await offerOf(t, a.companyId)).toMatchObject({ state: "reserved" });
+      // The last place is held for it: nobody else is offered $199 meanwhile.
+      const other = await fresh(t, "owner-o", "Other Cleaning");
+      expect(await other.as.query(api.earlyOffer.mine, { companyId: other.companyId })).toEqual({ kind: "none" });
+      vi.setSystemTime(NOW + 25 * 60 * 60_000);
+      await sweep(t);
+      expect(await offerOf(t, a.companyId)).toMatchObject({ state: "released", releasedBy: "system" });
+      expect(await other.as.query(api.earlyOffer.mine, { companyId: other.companyId })).toMatchObject({ kind: "available", placesLeft: 1 });
+      // A payment Autumn reports later anyway is honored: the company pays what it was charged, and holds a place.
+      billing.payCheckout(a.companyId);
+      await sync(t, a.companyId);
+      expect(await offerOf(t, a.companyId)).toMatchObject({ state: "claimed" });
+    });
+
+    it("gives the last place to exactly one of two companies paying at the same moment; the other is shown $299 before anything is charged", async () => {
+      const t = start();
+      await fillPlaces(t, 14);
+      const a = await fresh(t, "owner-a", "Alpha Cleaning");
+      const b = await fresh(t, "owner-b", "Beta Cleaning");
+      const first = await preview(t, a);
+      const second = await preview(t, b);
+      expect([first.intent.offer, second.intent.offer]).toEqual(["early", "early"]);
+      // Both confirm; Convex runs the two confirmations one after the other.
+      await Promise.all([a.as.mutation(api.billing.confirmIntent, { companyId: a.companyId, intentId: first.intentId }), b.as.mutation(api.billing.confirmIntent, { companyId: b.companyId, intentId: second.intentId })]);
+      await settle(t);
+      const intents = [await a.as.query(api.billing.intent, { companyId: a.companyId, intentId: first.intentId }), await b.as.query(api.billing.intent, { companyId: b.companyId, intentId: second.intentId })];
+      const winner = intents.findIndex((row) => row!.offer === "early");
+      const loser = 1 - winner;
+      expect(winner).toBeGreaterThanOrEqual(0);
+      expect(intents[winner]).toMatchObject({ stage: "done" });
+      expect(intents[loser]).toMatchObject({ offer: null, stage: "awaiting_confirmation", preview: { dueNowCents: 299_00 } });
+      expect(intents[loser]!.problem).toMatch(/last early-user place was just taken/);
+      // Only the winner was sent at $199; the other was sent nothing.
+      expect(attaches().map((call) => call.body.plan_id)).toEqual(["operate_early"]);
+      const loserCompany = [a, b][loser];
+      await loserCompany.as.mutation(api.billing.confirmIntent, { companyId: loserCompany.companyId, intentId: intents[loser]!.id });
+      await settle(t);
+      expect(attaches().map((call) => call.body.plan_id)).toEqual(["operate_early", "operate"]);
+      expect(await offerOf(t, loserCompany.companyId)).toBeNull();
+      expect(await offerOf(t, [a, b][winner].companyId)).toMatchObject({ state: "claimed" });
+    });
+
+    it("charges a company that held a place and cancelled $299 when it returns, and keeps its place used", async () => {
+      const t = start();
+      const a = await fresh(t, "owner-a", "Alpha Cleaning");
+      await buy(t, a);
+      await a.as.mutation(api.billing.cancelPlan, { companyId: a.companyId });
+      await settle(t);
+      // The cancellation names Autumn's own plan.
+      expect(billing.state.calls.find((call) => call.path === "/v1/billing.update")!.body).toMatchObject({ plan_id: "operate_early", cancel_action: "cancel_end_of_cycle" });
+      billing.renew(a.companyId);
+      await sync(t, a.companyId);
+      expect(await offerOf(t, a.companyId)).toMatchObject({ state: "ended", endReason: "cancelled" });
+      expect(await a.as.query(api.earlyOffer.mine, { companyId: a.companyId })).toEqual({ kind: "none" });
+      const { intent } = await preview(t, a);
+      expect(intent.offer).toBeNull();
+      expect(intent.preview).toMatchObject({ dueNowCents: 299_00 });
+      // Its place is not handed to anyone else.
+      const b = await fresh(t, "owner-b", "Beta Cleaning");
+      expect(await b.as.query(api.earlyOffer.mine, { companyId: b.companyId })).toMatchObject({ kind: "available", placesLeft: 14 });
+    });
+
+    it("moves the company to $299 at the end of month 12: scheduled once, in the 12th period, and confirmed from Autumn's record", async () => {
+      const t = start();
+      const a = await fresh(t, "owner-a", "Alpha Cleaning");
+      await buy(t, a);
+      const endsAt = (await offerOf(t, a.companyId))!.offerEndsAt!;
+      const customer = billing.customerFor(`company_${a.companyId}`);
+      // Month 11: nothing is asked of Autumn, so $299 is never charged early.
+      vi.setSystemTime(endsAt - 45 * DAY);
+      customer.periodEnd = endsAt - 30 * DAY;
+      await sync(t, a.companyId);
+      await sweep(t);
+      expect(attaches()).toHaveLength(1);
+      // Month 12: the move is asked for, for the end of this period.
+      vi.setSystemTime(endsAt - 20 * DAY);
+      customer.periodEnd = endsAt;
+      await sync(t, a.companyId);
+      await sweep(t);
+      expect(attaches()).toHaveLength(2);
+      expect(attaches()[1]).toMatchObject({ key: expect.stringMatching(/^early-switch:/), body: { plan_id: "operate", plan_schedule: "end_of_cycle" } });
+      expect(customer).toMatchObject({ plan: "operate_early", scheduled: "operate" });
+      expect(await offerOf(t, a.companyId)).toMatchObject({ state: "claimed", switchConfirmedAt: expect.any(Number) });
+      // The Owner cannot undo it, and running the sweep again asks nothing again.
+      expect(await refusal(a.as.mutation(api.billing.resumePlan, { companyId: a.companyId }))).toMatch(/part of the offer/);
+      await sweep(t);
+      vi.setSystemTime(endsAt - 10 * DAY);
+      await sweep(t);
+      expect(attaches()).toHaveLength(2);
+      // Month 13 is invoiced at $299, and the offer has ended; the place stays used.
+      vi.setSystemTime(endsAt + 1000);
+      billing.renew(a.companyId);
+      await sync(t, a.companyId);
+      expect(customer.invoices.at(-1)).toMatchObject({ plan_ids: ["operate"], total: 299 });
+      expect(customer.invoices.filter((row) => row.total === 299)).toHaveLength(1);
+      expect(await offerOf(t, a.companyId)).toMatchObject({ state: "ended", endReason: "moved_to_full_price" });
+      expect((await t.run(async (ctx) => ctx.db.get(a.companyId)))?.plan).toBe("operate");
+    });
+
+    it("retries a refused move and tells staff, instead of leaving the company on $199 silently", async () => {
+      const t = start();
+      const a = await fresh(t, "owner-a", "Alpha Cleaning");
+      await buy(t, a);
+      const endsAt = (await offerOf(t, a.companyId))!.offerEndsAt!;
+      vi.setSystemTime(endsAt - 20 * DAY);
+      billing.customerFor(`company_${a.companyId}`).periodEnd = endsAt;
+      await sync(t, a.companyId);
+      billing.state.refuseOnce.push("/v1/billing.attach");
+      await sweep(t);
+      expect(await offerOf(t, a.companyId)).toMatchObject({ switchAttempts: 1, switchProblem: expect.stringMatching(/declined/) });
+      const { detectorFor } = await import("./lib/operations/detectors");
+      const finding = await t.run(async (ctx) => detectorFor("ai_billing").evaluate(ctx, { table: "earlyOffers", id: (await offerOf(t, a.companyId))!._id }, Date.now()));
+      expect(finding).toMatchObject({ kind: "early_offer_switch", state: "needs_staff", companyId: a.companyId });
+      // An hour later it is asked again, under a new key, and goes through.
+      vi.setSystemTime(endsAt - 20 * DAY + 61 * 60_000);
+      await sweep(t);
+      const id = (await offerOf(t, a.companyId))!._id;
+      expect(attaches().slice(1).map((call) => call.key)).toEqual([`early-switch:${id}:0`, `early-switch:${id}:1`]);
+      expect(await offerOf(t, a.companyId)).toMatchObject({ switchConfirmedAt: expect.any(Number) });
+    });
+
+    it("tells the Owner once, about 30 days before, by email and in the app, with the date and the new price", async () => {
+      const t = start();
+      const a = await fresh(t, "owner-a", "Alpha Cleaning");
+      await buy(t, a);
+      const row = (await offerOf(t, a.companyId))!;
+      const notices = () => t.run(async (ctx) => (await ctx.db.query("messages").collect()).filter((m) => m.companyId === a.companyId && m.notice?.event === "plan_price_change"));
+      vi.setSystemTime(row.offerEndsAt! - 31 * DAY);
+      await sweep(t);
+      expect(await notices()).toHaveLength(0);
+      vi.setSystemTime(row.offerEndsAt! - 29 * DAY);
+      await sweep(t);
+      await sweep(t);
+      vi.setSystemTime(row.offerEndsAt! - 28 * DAY);
+      await sweep(t);
+      const sent = await notices();
+      expect(sent).toHaveLength(1);
+      expect(sent[0]).toMatchObject({ notice: { ref: row._id } });
+      const view = await a.as.query(api.billing.planAndUsage, { companyId: a.companyId });
+      const inApp = (view.connected && view.account?.notices.filter((n) => n.kind === "price_change")) || [];
+      expect(inApp).toHaveLength(1);
+      expect(inApp[0].text).toBe("Your early-user price of $199 a month ends on March 1, 2028. From then, Operate is $299 a month. Nothing else changes, and you don't need to do anything.");
+      // The email itself, as it is written when it goes: the date and the new price, no messaging balance used.
+      const composed = await t.run(async (ctx) => {
+        const { composeNotice } = await import("./lib/notify/compose");
+        return composeNotice(ctx, sent[0], Date.now());
+      });
+      if (composed.ok) {
+        expect(composed.email.subject).toBe("Your Selestial price changes to $299.00 a month on March 1, 2028");
+        expect(composed.email.text).toMatch(/\$199\.00 a month/);
+      } else expect(composed.problem).toMatch(/Email|morning|sender/i);
+    });
+
+    it("lets staff see the places and release only a place that was reserved and never paid", async () => {
+      const t = start();
+      const a = await fresh(t, "owner-a", "Alpha Cleaning");
+      await buy(t, a);
+      const w = await fresh(t, "owner-w", "Waiting Cleaning", { cardOnFile: false });
+      await buy(t, w);
+      const staff = t.withIdentity(person("staff-ops"));
+      await t.run(async (ctx) => {
+        await ctx.db.insert("staff", { email: "staff-ops@example.com", name: "Ops", role: "admin", status: "active", addedAt: NOW, addedBy: "console" });
+      });
+      const view = await staff.query(api.earlyOffer.overview, {});
+      expect(view).toMatchObject({ places: 15, used: 2, claimed: 1 });
+      expect(view.rows.map((row) => [row.company, row.state])).toEqual(expect.arrayContaining([["Alpha Cleaning", "claimed"], ["Waiting Cleaning", "reserved"]]));
+      const paid = view.rows.find((row) => row.state === "claimed")!;
+      const waiting = view.rows.find((row) => row.state === "reserved")!;
+      // Releasing needs the billing.adjust capability, which no role has without a grant.
+      expect(await refusal(staff.mutation(api.earlyOffer.release, { offerId: waiting.id, reason: "Owner said they won't pay" }))).toBe(NOT_ALLOWED);
+      await t.run(async (ctx) => {
+        const row = (await ctx.db.query("staff").collect())[0];
+        await ctx.db.patch(row._id, { capabilities: ["billing.adjust"] });
+      });
+      expect(await refusal(staff.mutation(api.earlyOffer.release, { offerId: paid.id, reason: "Trying to free it" }))).toMatch(/A paid place stays used/);
+      await staff.mutation(api.earlyOffer.release, { offerId: waiting.id, reason: "Owner said they won't pay" });
+      expect((await staff.query(api.earlyOffer.overview, {})).used).toBe(1);
     });
   });
 });

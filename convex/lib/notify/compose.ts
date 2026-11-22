@@ -16,6 +16,7 @@ import { appOrigin } from "../invitations";
 import { quietUntil } from "../messaging/policy";
 import { roleOf } from "../roles";
 import { lockDeadlines } from "../billing/lock";
+import { EARLY_OFFER, PLANS } from "../billing/catalog";
 import { CATEGORY_INFO, EVENT_INFO, NIGHT, type NoticeFacts } from "./catalog";
 import { emailOn, noticeSuppression, preferencesOf, SUPPRESSION_WORDS } from "./preferences";
 import { unsubscribable } from "./route";
@@ -424,6 +425,8 @@ async function build(ctx: MutationCtx, message: Doc<"messages">, company: Doc<"c
     case "texting_progress":
     case "texting_attention":
       return textingNotice(ctx, company, notice.ref, facts, c);
+    case "plan_price_change":
+      return planPriceChange(ctx, company, notice.ref, c);
     case "plan_access":
       return planAccess(ctx, company, notice.ref, facts, c);
     case "activation_result":
@@ -604,6 +607,51 @@ async function planAccess(ctx: MutationCtx, company: Doc<"companies">, ref: stri
       });
   }
   return { problem: "This billing notice is out of date." };
+}
+
+/**
+ * The early-user price is ending (convex/earlyOffer.ts): sent once, about 30 days before. Read again when it
+ * goes: a company that cancelled meanwhile, or whose offer already ended, is not told about a price it won't pay.
+ */
+async function planPriceChange(ctx: MutationCtx, company: Doc<"companies">, ref: string | undefined, c: Context): Promise<Built> {
+  const id = ref ? ctx.db.normalizeId("earlyOffers", ref) : null;
+  const row = id ? await ctx.db.get(id) : null;
+  if (!row || row.companyId !== company._id || row.state !== "claimed" || !row.offerEndsAt) return { problem: "The early-user price is no longer on this plan." };
+  const account = await ctx.db
+    .query("billingAccounts")
+    .withIndex("by_company_env", (q) => q.eq("companyId", company._id).eq("env", row.env))
+    .unique();
+  if (!account?.plan || account.subscription.endsAt !== null) return { problem: "The plan is ending, so its price won't change." };
+  const date = dateOnly(row.offerEndsAt, c.timezone);
+  const full = money(EARLY_OFFER_FULL_CENTS);
+  return alertEmail({
+    ...c,
+    eyebrow: "Billing",
+    tone: "info",
+    essential: true,
+    because: "you're the Owner, and the plan price is part of your account",
+    subject: `Your Selestial price changes to ${full} a month on ${date}`,
+    heading: `Your early-user price ends on ${date}`,
+    body: `Your first 12 months of Operate at ${money(EARLY_OFFER_CENTS)} a month end on ${date}. From that date Operate is ${full} a month, charged on your usual billing day. Nothing else changes: the same agents, features and monthly credits.`,
+    note: "You don't need to do anything. If you'd rather not continue, you can cancel in Plan & Usage before that date and the plan stays active until it.",
+    facts: [
+      { label: "Changes on", value: date },
+      { label: "Price until then", value: `${money(EARLY_OFFER_CENTS)} a month` },
+      { label: "Price from then", value: `${full} a month` },
+    ],
+    button: { label: "Open Plan & Usage", path: "/app/settings/billing" },
+  });
+}
+
+const EARLY_OFFER_CENTS = EARLY_OFFER.monthlyCents;
+const EARLY_OFFER_FULL_CENTS = PLANS[EARLY_OFFER.plan].monthlyCents;
+
+function dateOnly(at: number, timezone: string): string {
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone: timezone, month: "long", day: "numeric", year: "numeric" }).format(new Date(at));
+  } catch {
+    return new Intl.DateTimeFormat("en-US", { timeZone: "UTC", month: "long", day: "numeric", year: "numeric" }).format(new Date(at));
+  }
 }
 
 /** The notice as it should go now, or why it shouldn't. */

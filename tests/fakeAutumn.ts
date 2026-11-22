@@ -3,7 +3,8 @@
  * documentation describes them, and can be told to fail the ways Autumn can: unreachable, 5xx, a 202
  * "allowed fail-open", or an Idempotency-Key replay (409). Nothing reaches the network.
  */
-type PlanId = "operate" | "expand";
+/** Autumn's plan ids: operate_early is the $199 early-user price of Operate, its own plan in the same group. */
+type PlanId = "operate" | "expand" | "operate_early";
 type Lock = { customerId: string; credits: number; expiresAt: number; finalized: "confirm" | "release" | null; properties: Record<string, unknown>; feature?: string };
 type Customer = {
   id: string;
@@ -11,6 +12,8 @@ type Customer = {
   pastDue: boolean;
   canceledAt: number | null;
   periodEnd: number;
+  /** When the active subscription started (Autumn's `started_at`). */
+  startedAt?: number;
   scheduled: PlanId | null;
   /** Included credits this period. */
   grant: number;
@@ -25,8 +28,8 @@ type Customer = {
 
 export type Outage = "none" | "network" | "server" | "degraded";
 
-export const GRANTS: Record<PlanId, number> = { operate: 1000, expand: 2000 };
-const PRICES: Record<PlanId, number> = { operate: 299, expand: 499 };
+export const GRANTS: Record<PlanId, number> = { operate: 1000, expand: 2000, operate_early: 1000 };
+export const PRICES: Record<PlanId, number> = { operate: 299, expand: 499, operate_early: 199 };
 
 export function fakeAutumn() {
   const state = {
@@ -43,6 +46,8 @@ export function fakeAutumn() {
     loseAnswer: [] as string[],
     /** Operations that answer 503 once, before Autumn does anything. One failure per entry. */
     failOnce: [] as string[],
+    /** Operations that answer 400 once (a refusal, for example a declined card), before Autumn does anything. */
+    refuseOnce: [] as string[],
     /** Purchases sent to the payment page and not paid yet, by customer. */
     checkouts: new Map<string, Record<string, unknown>>(),
     calls: [] as { path: string; body: Record<string, unknown>; key: string | null }[],
@@ -105,7 +110,7 @@ export function fakeAutumn() {
     id: customer.id,
     env: "sandbox",
     subscriptions: [
-      ...(customer.plan ? [{ plan_id: customer.plan, status: "active", past_due: customer.pastDue, canceled_at: customer.canceledAt, expires_at: customer.canceledAt ? customer.periodEnd : null, started_at: 1, current_period_start: customer.periodEnd - 30 * 86_400_000, current_period_end: customer.periodEnd }] : []),
+      ...(customer.plan ? [{ plan_id: customer.plan, status: "active", past_due: customer.pastDue, canceled_at: customer.canceledAt, expires_at: customer.canceledAt ? customer.periodEnd : null, started_at: customer.startedAt ?? 1, current_period_start: customer.periodEnd - 30 * 86_400_000, current_period_end: customer.periodEnd }] : []),
       ...(customer.scheduled ? [{ plan_id: customer.scheduled, status: "scheduled", past_due: false, canceled_at: null, expires_at: null, started_at: customer.periodEnd, current_period_start: null, current_period_end: null }] : []),
     ],
     balances: { selestial_credits: customer.plan || customer.purchased ? balance(customer) : null, messaging_balance: messagingBalance(customer) },
@@ -140,6 +145,12 @@ export function fakeAutumn() {
     else {
       // carry_over_usages keeps what was used this cycle; without it the new plan would start from zero.
       const carry = (body.carry_over_usages as { enabled: boolean } | undefined)?.enabled === true;
+      if (!customer.plan) {
+        // A first subscription: its billing period starts now, a month long.
+        customer.startedAt = Date.now();
+        customer.periodEnd = Date.now() + 30 * 86_400_000;
+        customer.canceledAt = null;
+      }
       customer.plan = target;
       customer.grant = GRANTS[target];
       if (!carry) customer.usage = 0;
@@ -182,6 +193,10 @@ export function fakeAutumn() {
     if (state.failOnce.includes(path)) {
       state.failOnce.splice(state.failOnce.indexOf(path), 1);
       return json(503, { code: "service_unavailable", message: "Down" });
+    }
+    if (state.refuseOnce.includes(path)) {
+      state.refuseOnce.splice(state.refuseOnce.indexOf(path), 1);
+      return json(400, { code: "card_declined", message: "The card was declined." });
     }
     if (key) {
       if (state.keys.has(key)) return json(409, { code: "duplicate_request", message: "Duplicate" });
@@ -279,5 +294,28 @@ export function fakeAutumn() {
     }
   };
 
-  return { state, fetch, seed, customerFor, remaining, held, messagingLeft, payCheckout };
+  /**
+   * The billing period ends: a cancellation takes effect, a scheduled plan replaces the active one, and the
+   * next period is invoiced at the price of the plan it is on.
+   */
+  const renew = (companyId: string, periodMs = 30 * 86_400_000) => {
+    const customer = customerFor(`company_${companyId}`);
+    if (customer.canceledAt) {
+      customer.plan = null;
+      customer.canceledAt = null;
+      customer.scheduled = null;
+      return customer;
+    }
+    if (customer.scheduled) {
+      customer.plan = customer.scheduled;
+      customer.grant = GRANTS[customer.scheduled];
+      customer.scheduled = null;
+    }
+    customer.usage = 0;
+    customer.periodEnd += periodMs;
+    if (customer.plan) customer.invoices.push({ id: `inv_${customer.invoices.length + 1}`, plan_ids: [customer.plan], status: "paid", total: PRICES[customer.plan], currency: "usd", created_at: Date.now(), hosted_invoice_url: "https://invoice.stripe.test/renewal" });
+    return customer;
+  };
+
+  return { state, fetch, seed, customerFor, remaining, held, messagingLeft, payCheckout, renew };
 }

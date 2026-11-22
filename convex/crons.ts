@@ -56,6 +56,8 @@ crons.interval("creative studio follows up quiet generations", { minutes: 5 }, i
 // Billing: settlements that failed are retried, holds left behind by stopped work are released, and work that never reported back is closed.
 crons.interval("billing settles and recovers AI work", { minutes: 5 }, internal.billing.sweep, {});
 crons.interval("unpaid plans: reminder before cancel, cancel after 30 days locked", { hours: 1 }, internal.billingLock.sweep, {});
+// The early-user offer: unpaid reservations give their place back, the one reminder 30 days before, and the move to $299 at month 12.
+crons.interval("early-user offer: reservations, reminder and month-12 move", { hours: 1 }, internal.earlyOffer.sweep, {});
 crons.interval("messaging charges settle and recover", { minutes: 5 }, internal.messagingBilling.sweep, {});
 crons.interval("texting number monthly fees", { hours: 6 }, internal.texting.chargeNumbers, {});
 // Telnyx callbacks can be lost: a registration the carriers are working on is checked if it has been quiet for six hours.

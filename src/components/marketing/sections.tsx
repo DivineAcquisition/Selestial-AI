@@ -179,6 +179,7 @@ export function PricingPlans() {
               {plan.price}
               <span className="text-base font-normal text-muted-foreground">{plan.period}</span>
             </p>
+            {plan.offer ? <p className="mt-2 text-sm font-medium text-brand-300">{plan.offer}</p> : null}
             <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">{plan.summary}</p>
             <p className="mt-5 text-xs font-semibold tracking-[0.14em] text-brand-300 uppercase">Today</p>
             <ul className="mt-2 grid gap-1.5 text-[15px] text-strong">

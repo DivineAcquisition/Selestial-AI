@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { AiFeatures } from "@/components/app/billing/ai-features";
+import { EarlyOfferConfirmNote, EarlyOfferNote, EarlyPriceLine } from "@/components/app/billing/early-offer";
 import { MessagingTab, ThreeBalances } from "@/components/app/billing/messaging";
 import { UsageDashboard } from "@/components/app/billing/usage";
 import { AvatarStack, CreditRing, HeroCard, HeroStat, Motion, SegmentedTabs } from "@/components/app/billing/visuals";
@@ -148,9 +149,13 @@ function CurrentPlan({ data, onIntent }: { data: Connected; onIntent: (id: Id<"b
   const change = useMutation(api.billing.startPlanChange);
   const { busy, error, run } = useRun();
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const offer = useQuery(api.earlyOffer.mine, { companyId });
   const account = data.account;
   const plan = account?.plan ?? null;
   const sub = account?.subscription;
+  const early = offer?.kind === "active" ? offer : null;
+  // The move to the full price after the early-user year is part of the offer: shown, never offered to undo.
+  const earlyMove = !!early && sub?.scheduledAutumnPlanId === "operate";
   const name = plan ? data.catalog.plans.find((row) => row.id === plan)! : null;
   const credits = account?.credits ?? null;
   const onPlan = plan ? data.catalog.agents.filter((row) => (plan === "expand" ? row.expand : row.operate)) : [];
@@ -173,13 +178,14 @@ function CurrentPlan({ data, onIntent }: { data: Connected; onIntent: (id: Id<"b
                 {sub?.pastDue ? "Payment overdue" : sub?.endsAt ? "Ending" : "Active plan"}
               </p>
               <h2 className="mt-1 font-heading text-3xl tracking-tight text-strong">
-                {name.name} <span className="text-lg font-normal text-muted-foreground">· {money(name.monthlyCents)} a month</span>
+                {name.name} <span className="text-lg font-normal text-muted-foreground">· {money(early ? early.monthlyCents : name.monthlyCents)} a month</span>
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {sub?.pastDue ? "Update your payment method on the Billing tab to keep agents working. " : ""}
                 {sub?.endsAt ? `Ends ${day(sub.endsAt)} and won't renew.` : `Renews ${day(sub?.periodEnd)}.`}
-                {sub?.scheduledPlan ? ` Changes to ${sub.scheduledPlan === "operate" ? "Operate" : "Expand"} on ${day(sub.scheduledAt ?? sub.periodEnd)}.` : ""}
+                {earlyMove ? ` Operate's full price starts ${day(sub?.scheduledAt ?? sub?.periodEnd)}.` : sub?.scheduledPlan ? ` Changes to ${sub.scheduledPlan === "operate" ? "Operate" : "Expand"} on ${day(sub.scheduledAt ?? sub.periodEnd)}.` : ""}
               </p>
+              <EarlyPriceLine offer={offer} />
             </div>
           )}
           {working.length > 0 ? (
@@ -216,7 +222,7 @@ function CurrentPlan({ data, onIntent }: { data: Connected; onIntent: (id: Id<"b
               Move to Operate at renewal
             </Button>
           ) : null}
-          {sub?.endsAt || sub?.scheduledPlan ? (
+          {sub?.endsAt || (sub?.scheduledPlan && !earlyMove) ? (
             <Button size="sm" variant="outline" loading={busy} onClick={() => void run(async () => onIntent(await resume({ companyId })))}>
               {sub?.endsAt ? "Keep this plan" : "Keep the current plan"}
             </Button>
@@ -319,9 +325,16 @@ function Comparison({ catalog, current, canBuy }: { catalog: Data["catalog"]; cu
   const change = useMutation(api.billing.startPlanChange);
   const { busy, error, run } = useRun();
   const [intentId, setIntentId] = useState<Id<"billingIntents"> | null>(null);
+  // Asked only where a purchase can be made; the server answers "none" unless $199 would be honored.
+  const offer = useQuery(api.earlyOffer.mine, canBuy && !current ? { companyId } : "skip");
   return (
     <Panel title="Plans">
       <p className="mb-3 text-sm text-muted-foreground">{catalog.plans.length > 1 ? "Your plan, and the plan Selestial offers today." : "One plan, with four agents that work today."}</p>
+      {canBuy && !current ? (
+        <div className="mb-4 max-w-xl">
+          <EarlyOfferNote offer={offer} />
+        </div>
+      ) : null}
       {intentId ? <IntentDialog intentId={intentId} onClose={() => setIntentId(null)} /> : null}
       <div className={catalog.plans.length > 1 ? "grid gap-4 md:grid-cols-2" : "grid max-w-xl gap-4"}>
         {catalog.plans.map((plan) => {
@@ -414,6 +427,7 @@ function IntentDialog({ intentId, onClose }: { intentId: Id<"billingIntents">; o
   const intent = useQuery(api.billing.intent, { companyId, intentId });
   const confirm = useMutation(api.billing.confirmIntent);
   const dismiss = useMutation(api.billing.dismissIntent);
+  const offer = useQuery(api.earlyOffer.mine, { companyId });
   const { busy, error, run } = useRun();
   // Closing is remembered, so a purchase that was closed is not put back in front of the Owner on the next visit.
   const close = () => {
@@ -431,6 +445,12 @@ function IntentDialog({ intentId, onClose }: { intentId: Id<"billingIntents">; o
       {(intent.stage === "submitting" || intent.stage === "payment_needed") && intent.problem ? <p role="status" className="mt-1 text-sm text-strong">{intent.problem}</p> : null}
       {intent.stage === "awaiting_confirmation" && preview ? (
         <div className="mt-2 grid gap-1 text-sm">
+          {intent.problem ? (
+            <p role="status" className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-strong">
+              {intent.problem}
+            </p>
+          ) : null}
+          <EarlyOfferConfirmNote early={intent.offer === "early"} offer={offer} />
           <p className="text-strong">
             Charged now: {money(preview.dueNowCents)} {preview.currency.toUpperCase()}
           </p>

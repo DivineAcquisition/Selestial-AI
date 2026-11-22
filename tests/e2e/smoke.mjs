@@ -45,6 +45,8 @@ check("pricing shows $299", home.includes("$299"));
 check("pricing does not sell a $499 plan", !home.includes("$499"));
 check("pricing does not sell Expand", !/\bExpand\b/.test(home.replace(/\bExpand (into|your|the)\b/gi, "")));
 check("no trial is promised", !/free trial|7-day trial|seven-day trial|14-day trial/i.test(home));
+// The early-user offer, if shown, is stated in full: who, how much, for how long, and the price after.
+check("the early-user offer is stated in full", !home.includes("$199") || /first 15 companies pay \$199 a month for their first 12 months, then \$299/.test(home));
 check("the four working agents are named", ["Sales", "Recruiter", "Dispatch", "Retention"].every((name) => home.includes(name)));
 check("Team Coordinator is not sold", !/Team Coordinator/.test(home));
 

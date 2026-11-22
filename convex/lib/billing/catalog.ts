@@ -33,7 +33,16 @@ export const AUTUMN = {
   /** One-off purchase of messaging funds, priced $0.0001 per unit, bought in any validated quantity. */
   messagingTopUpPlan: "messaging_top_up",
   plans: { operate: "operate", expand: "expand" } as Record<PlanId, string>,
+  /**
+   * The early-user Operate price (the Owner's approval of November 22, 2026): its own Autumn plan, $199 a
+   * month, same group and items as Operate. The app reads it as Operate for every entitlement; only the
+   * price differs. A company is moved to `operate` at the end of its 12th month (convex/earlyOffer.ts).
+   */
+  earlyPlan: "operate_early",
 } as const;
+
+/** The early-user offer: the first 15 companies whose first plan payment succeeds pay $199 a month for 12 months. */
+export const EARLY_OFFER = { places: 15, monthlyCents: 199_00, months: 12, plan: "operate" as PlanId } as const;
 
 export const AGENT_IDS = ["sales", "retention", "recruiter", "dispatch", "marketing", "quality", "customer-care"] as const;
 export type AgentId = (typeof AGENT_IDS)[number];
@@ -134,8 +143,17 @@ export function planIncludesFeature(plan: PlanId | null, feature: PlanFeature): 
   return plan !== null && (PLAN_FEATURES[feature].plans as readonly PlanId[]).includes(plan);
 }
 
+/** The app's plan for an Autumn plan id. The early-user price is Operate in every respect but its price. */
 export function planIdFromAutumn(planId: string | null | undefined): PlanId | null {
+  if (planId === AUTUMN.earlyPlan) return EARLY_OFFER.plan;
   return (PLAN_IDS as readonly string[]).includes(planId ?? "") ? (planId as PlanId) : null;
+}
+
+/** What Autumn's plan id charges a month, in cents: $199 for the early-user price, otherwise the plan's price. */
+export function monthlyCentsOf(autumnPlanId: string | null | undefined): number | null {
+  if (autumnPlanId === AUTUMN.earlyPlan) return EARLY_OFFER.monthlyCents;
+  const plan = planIdFromAutumn(autumnPlanId);
+  return plan ? PLANS[plan].monthlyCents : null;
 }
 
 /** What moving from one plan to another removes, for the confirmation before a downgrade. */
