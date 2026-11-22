@@ -142,6 +142,7 @@
   --animate-vistrial-grow: vistrial-grow 2.8s ease-in-out infinite;
   --animate-vistrial-highlight: vistrial-highlight 3.2s ease-in-out infinite;
   --animate-vistrial-glow: vistrial-glow 2.6s ease-in-out infinite;
+  --animate-hub-flow: hub-flow 3.6s linear infinite;
   --color-warning-foreground: var(--warning-foreground);
   --color-success-foreground: var(--success-foreground);
   --color-info-foreground: var(--info-foreground);
@@ -242,6 +243,15 @@
     }
   100% {
     translate: 0 0;
+    }
+  }
+  /* A pulse running along a line into the integrations hub (src/components/marketing/integration-hub.tsx). */
+  @keyframes hub-flow {
+    from {
+      stroke-dashoffset: 64;
+    }
+    to {
+      stroke-dashoffset: 0;
     }
   }
   @keyframes marquee {

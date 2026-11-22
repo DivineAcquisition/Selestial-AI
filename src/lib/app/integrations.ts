@@ -80,6 +80,7 @@ export const INTEGRATIONS: readonly Integration[] = [
 
   // Texting
   { id: "texting-number", name: "Business texting number", category: "communication", does: "Selestial gives your company its own local number and handles the carrier registration. You pick the area code.", can: ["send texts", "receive texts", "register with carriers"], agents: ["sales", "dispatch", "retention", "customer-care", "recruiter"], status: { kind: "available", href: "/app/texting", setUpWhere: "Set up business texting" }, note: "Provided by Selestial through Telnyx. No account of your own needed." },
+  { id: "quo", name: "Quo (formerly OpenPhone)", category: "communication", does: "Keep the business number your customers already know: calls and texts on your Quo number show up in Selestial beside the customer, so agents see the whole conversation.", can: ["see calls and texts", "keep your number", "file conversations"], agents: ["sales", "customer-care", "dispatch"], status: planned(5) },
 
   // Accounting
   { id: "quickbooks-online", name: "QuickBooks Online", category: "accounting", does: "Customers, invoices, payments and processing fees sync to QuickBooks.", can: ["sync customers", "post invoices", "post payments", "post fees"], agents: [], status: planned(5) },

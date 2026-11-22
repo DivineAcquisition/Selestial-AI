@@ -7,6 +7,7 @@ import { BUILT } from "../../../convex/lib/integrations";
 import { logoFile } from "@/components/app/integration-mark";
 import { INTEGRATIONS as CATALOG } from "@/lib/app/integrations";
 import { INTEGRATIONS as HOME } from "./content";
+import { hubNodes, HUB_IDS } from "@/components/marketing/integration-hub";
 import { integrationsByCategory } from "./integrations-page";
 
 const SELESTIAL_OWN = new Set(["texting-number"]);
@@ -36,5 +37,20 @@ describe("the public Integrations page", () => {
 
   it("uses the same logos on the home page's integrations section", () => {
     for (const group of HOME.groups) for (const item of group.items) if (!SELESTIAL_OWN.has(item.mark)) expect(logoExists(item.mark), item.name).toBe(true);
+  });
+
+  it("draws the home page's hub only from real integrations, each with its logo, live exactly when built", () => {
+    const nodes = hubNodes();
+    expect(nodes.map((node) => node.id)).toEqual([...HUB_IDS]);
+    for (const node of nodes) {
+      const item = CATALOG.find((entry) => entry.id === node.id);
+      expect(item, node.id).toBeDefined();
+      expect(node.name).toBe(item!.name);
+      expect(logoExists(node.id), node.id).toBe(true);
+      expect(node.live, node.id).toBe((BUILT as readonly string[]).includes(node.id));
+    }
+    // Quo is on the hub, with Quo's own logo, and says it is coming soon until it is built.
+    expect(nodes.find((node) => node.id === "quo")).toMatchObject({ name: "Quo (formerly OpenPhone)", live: false });
+    expect(logoFile("quo")).toBe("quo.png");
   });
 });

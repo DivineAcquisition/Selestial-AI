@@ -6,6 +6,7 @@ import { AutonomyDial } from "@/components/marketing/autonomy-dial";
 import { EarlyAccessLink, outlineCta } from "@/components/marketing/chrome";
 import { CoordinationMap } from "@/components/marketing/coordination-map";
 import { HomeScreen } from "@/components/marketing/home-screen";
+import { IntegrationHub } from "@/components/marketing/integration-hub";
 import { LiveDemo } from "@/components/marketing/live-demo";
 import { OwnerDecision } from "@/components/marketing/owner-decision";
 import { PlatformBento } from "@/components/marketing/platform-bento";
@@ -92,6 +93,7 @@ export function LandingPage({ trustSection }: { trustSection?: ReactNode }) {
       </Section>
 
       <Section id={INTEGRATIONS.id} headline={INTEGRATIONS.headline} lead={INTEGRATIONS.lead}>
+        <IntegrationHub className="mb-12 sm:mb-16" />
         <IntegrationsGrid />
       </Section>
 
