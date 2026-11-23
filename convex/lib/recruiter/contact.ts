@@ -36,6 +36,6 @@ export const CONTACT_WORDS: Record<ContactStatus, string> = {
 /** What a person should do about an application whose contact is not usable. */
 export function contactNextStep(status: ContactStatus): string {
   if (status === "conflict") return "Choose the applicant's address from the ones found, or enter the right one.";
-  if (status === "relay_unverified") return "Confirm this job board's forwarding address reaches applicants (Playbook), or enter the applicant's own address from the job board.";
+  if (status === "relay_unverified") return "Confirm this job board's forwarding reaches applicants (Hiring setup, Hiring inbox), or enter the applicant's own address from the job board.";
   return "Open the application on the job board and enter the applicant's email address.";
 }

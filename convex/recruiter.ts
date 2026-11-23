@@ -18,7 +18,9 @@ import { messagingProvider } from "./lib/messaging/provider";
 import { calendarProvider } from "./lib/recruiter/calendar";
 import { automate } from "./lib/recruiter/act";
 import { reminderSweep } from "./lib/recruiter/interviews";
-import { followUpSweep } from "./lib/recruiter/invitations";
+import { followUpSweep, routeApplication } from "./lib/recruiter/invitations";
+import { resolveContact } from "./lib/recruiter/contact";
+import { refresh } from "./lib/recruiter/findings";
 import { googleApp } from "./lib/recruiter/gmail";
 import { connectorFor } from "./lib/recruiter/mailbox";
 import { hiringModel } from "./lib/recruiter/model";
@@ -364,5 +366,57 @@ export const summaries = internalMutation({
       await notifyMembers(ctx, { companyId: entry.companyId, event: "recruiter_activity", ref: entry.companyId, key: `summary:${bucket}`, facts: { kind: "summary", applied: entry.applied.size, asked: entry.asked.size, ready: entry.ready.size } });
     }
     return byCompany.size;
+  },
+});
+
+// ── Job boards' forwarding addresses ───────────────────────────────────────────────────────────────
+
+/**
+ * The Owner confirms (or withdraws) that a job board's per-applicant forwarding address reaches applicants.
+ * Applications already on file from that board are looked at again, a page at a time: a confirmed relay
+ * becomes an address Recruiter can prepare messages to; a withdrawn one goes back to needing a contact.
+ * Nothing is sent by this: messages are prepared, and go only by a person's choice or an automatic switch.
+ */
+export const setVerifiedRelays = ownerMutation({
+  args: { sources: v.array(v.union(v.literal("indeed"), v.literal("ziprecruiter"))) },
+  handler: async (ctx, args) => {
+    const before = recruiterSettings(ctx.company).verifiedRelays;
+    const after = [...new Set(args.sources)];
+    await ctx.db.patch(ctx.companyId, { recruiter: { ...(ctx.company.recruiter ?? {}), verifiedRelays: after } });
+    await recordEvent(ctx, { companyId: ctx.companyId, type: "recruiter.relays_confirmed", actor: byMember(ctx), subject: { table: "companies", id: ctx.companyId }, data: { sources: after.join(",") } });
+    for (const source of ["indeed", "ziprecruiter"] as const) {
+      if (before.includes(source) !== after.includes(source)) await ctx.scheduler.runAfter(0, internal.recruiter.recheckRelays, { companyId: ctx.companyId, source, cursor: null });
+    }
+    return null;
+  },
+});
+
+export const recheckRelays = internalMutation({
+  args: { companyId: v.id("companies"), source: v.union(v.literal("indeed"), v.literal("ziprecruiter")), cursor: v.union(v.string(), v.null()) },
+  handler: async (ctx, args) => {
+    const company = await ctx.db.get(args.companyId);
+    if (!company) return 0;
+    const verified = recruiterSettings(company).verifiedRelays;
+    const page = await ctx.db
+      .query("applications")
+      .withIndex("by_company_source", (q) => q.eq("companyId", args.companyId).eq("source", args.source))
+      .paginate({ numItems: 50, cursor: args.cursor });
+    let changed = 0;
+    for (const row of page.page) {
+      if (row.redactedAt || row.contact.resolvedBy || row.stage === "closed" || row.stage === "withdrawn") continue;
+      if (row.contact.status !== "relay" && row.contact.status !== "relay_unverified") continue;
+      const contact = { ...resolveContact(row.contact.evidence, row.source, verified), bouncedAt: row.contact.bouncedAt };
+      if (contact.status === row.contact.status) continue;
+      await ctx.db.patch(row._id, { contact });
+      if (contact.status === "relay") {
+        const applicant = await ctx.db.get(row.applicantId);
+        if (applicant && !applicant.email && contact.address) await ctx.db.patch(applicant._id, { email: contact.address });
+      }
+      await routeApplication(ctx, row._id);
+      await refresh(ctx, row._id);
+      changed += 1;
+    }
+    if (!page.isDone) await ctx.scheduler.runAfter(0, internal.recruiter.recheckRelays, { ...args, cursor: page.continueCursor });
+    return changed;
   },
 });

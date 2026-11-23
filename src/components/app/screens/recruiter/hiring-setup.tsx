@@ -56,6 +56,7 @@ export function HiringSetupScreen() {
           </h2>
           <Discovery />
           <HiringInboxPanel />
+          <Forwarding />
           <RecentReads />
         </section>
         <section id="communication" aria-labelledby="communication-title" className="scroll-mt-20">
@@ -146,6 +147,46 @@ function Discovery() {
         })}
       </div>
       <p className="mt-4 text-xs text-muted-foreground">Gmail&apos;s read permission covers your whole mailbox: Google can&apos;t limit it to hiring mail. Selestial keeps to the boundary you choose here, and keeps nothing from mail outside it except an id that stops it being looked at twice.</p>
+    </Panel>
+  );
+}
+
+/**
+ * Whether a job board's per-applicant forwarding address reaches applicants. Until the Owner confirms it,
+ * Recruiter prepares nothing to such an address.
+ */
+function Forwarding() {
+  const { companyId, role } = useCompany();
+  const playbook = useQuery(api.recruiter.playbook, { companyId });
+  const set = useMutation(api.recruiter.setVerifiedRelays);
+  const { busy, error, run } = useRun();
+  if (!playbook) return null;
+  const confirmed = playbook.settings.verifiedRelays as string[];
+  const boards = [
+    { id: "indeed" as const, label: "Indeed" },
+    { id: "ziprecruiter" as const, label: "ZipRecruiter" },
+  ];
+  return (
+    <Panel title="Job-board forwarding addresses">
+      <p className="mb-3 text-sm text-muted-foreground">Indeed and ZipRecruiter often give each applicant a forwarding address instead of their own. Recruiter writes to one only after you confirm that board&apos;s forwarding reaches applicants, for example by replying to one applicant through it and getting their answer. Selestial can&apos;t check this for you.</p>
+      <ul className="grid gap-2">
+        {boards.map((board) => {
+          const on = confirmed.includes(board.id);
+          return (
+            <li key={board.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border px-3 py-2 text-sm">
+              <span className="text-strong" id={`relay-${board.id}`}>
+                {board.label} forwarding {on ? "is confirmed" : "is not confirmed"}
+              </span>
+              <label className="flex items-center gap-2">
+                <Switch labelledBy={`relay-${board.id}`} checked={on} disabled={role !== "owner" || busy} onChange={(next) => void run(() => set({ companyId, sources: (next ? [...confirmed, board.id] : confirmed.filter((id) => id !== board.id)) as ("indeed" | "ziprecruiter")[] }))} />
+                {on ? "Confirmed" : "Not confirmed"}
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="mt-3 text-xs text-muted-foreground">Changing this looks again at the applications you already have from that board. Messages are prepared, not sent: they go when you send them, or by themselves only where you switched that on.</p>
+      <FormError message={error} />
     </Panel>
   );
 }
