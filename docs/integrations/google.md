@@ -45,6 +45,8 @@ Convex (per deployment, `npx convex env set NAME value`; never commit values):
 | `GOOGLE_SERVICE_ACCOUNT_JSON`, `GOOGLE_CLOUD_PROJECT` | Day-plan proposals (Route Optimization API) |
 | `GOOGLE_PUBSUB_TOPIC`, `GOOGLE_PUBSUB_PUSH_SERVICE_ACCOUNT` | Push notifications for Gmail and Business Profile (timers work without them) |
 | `GEMINI_API_KEY` | Gemini through the shared AI layer |
+| `GOOGLE_OAUTH_REDIRECT_URI` (optional) | Google's return on Selestial's own domain: `https://app.selestial.io/oauth/google/callback`. Needed for Google's app verification. Set it only after that exact address is registered on the OAuth client |
+| `PUBLIC_API_ORIGIN` (optional) | The address shown for webhooks and review-copy links. Unset, it is the deployment's own `CONVEX_SITE_URL`. Set `https://api.selestial.io` only once that domain answers `/health` with 200 |
 
 Vercel (public, browser):
 
@@ -55,7 +57,7 @@ Vercel (public, browser):
 
 Addresses the deployment computes from `CONVEX_SITE_URL` (also printed by `npx convex run googleChecks:platform`):
 
-- OAuth redirect URI: `<CONVEX_SITE_URL>/oauth/google/callback` — register on the OAuth client.
+- OAuth redirect URI: `GOOGLE_OAUTH_REDIRECT_URI` when set (the site passes `/oauth/google/callback` straight through to the backend, `next.config.ts`), else `<CONVEX_SITE_URL>/oauth/google/callback` — register on the OAuth client.
 - Calendar push: `<CONVEX_SITE_URL>/webhooks/google/calendar` — the domain must be verified for the project.
 - Pub/Sub push subscription endpoint: `<CONVEX_SITE_URL>/webhooks/google/pubsub` — push with OIDC auth as `GOOGLE_PUBSUB_PUSH_SERVICE_ACCOUNT`, audience = that URL. Grant `gmail-api-push@system.gserviceaccount.com` and `mybusiness-api-pubsub@system.gserviceaccount.com` publish rights on the topic.
 - Lead form webhook: `<CONVEX_SITE_URL>/webhooks/google/leads`, with the key the Owner makes on the page.
@@ -64,3 +66,52 @@ Approvals Google requires before these work for customers: OAuth consent screen 
 sensitive scopes (Calendar, Gmail) and restricted scope review / security assessment for `gmail.readonly`;
 Business Profile API access approval; a Google Ads developer token with Basic or Standard access;
 Local Services Ads API access for the account; Data Manager API access.
+
+## "Google hasn't verified this app"
+
+Google shows that warning, after the account is chosen, to anyone connecting an app that asks for sensitive or
+restricted access before Google has reviewed it. Nothing in Selestial's code can remove it; verification does.
+Until then an Owner can continue with **Advanced › Go to Selestial (unsafe)** (at most 100 Google accounts in
+the app's lifetime), and only if the app's publishing status is **In production**. In **Testing**, only listed
+test users get through and their access ends after 7 days.
+
+What Selestial asks for, by connection (`convex/lib/google/features.ts`, `convex/lib/recruiter/gmail.ts`):
+
+| Connection | Scope | Google's class | Why Selestial needs it |
+| --- | --- | --- | --- |
+| Every connection | `openid`, `email` | Not sensitive | To know which Google account was connected and show it to the Owner to confirm |
+| Drive | `drive.file` | Not sensitive | Read only the files the Owner picks, and save photos, agreements and reports to the folder they pick |
+| Calendar | `calendar.calendarlist.readonly` | Sensitive | List calendars so the Owner chooses which one Selestial uses |
+| Calendar | `calendar.events` | Sensitive | Put visits and interviews on the chosen calendar and keep them up to date |
+| Calendar | `calendar.freebusy` | Sensitive | Avoid busy times when scheduling; only busy/free is read, never event details |
+| Business Profile | `business.manage` | Sensitive | Read reviews for the chosen locations and post replies the Owner approves |
+| Google Ads | `adwords` | Sensitive | Read results and Local Services leads, and create paused campaigns the Owner approves |
+| Booked-job reporting | `datamanager` | Check the console | Tell Google Ads which ad clicks became booked visits, with the Owner's consent |
+| Gmail hiring inbox | `gmail.readonly` | **Restricted** | Read applications that arrive in the hiring inbox |
+| Gmail hiring inbox | `gmail.send` | Sensitive | Reply to applicants, only when the Owner allows sending |
+
+Steps, in Google Cloud for the project that owns `GOOGLE_CLIENT_ID` (Owner):
+
+1. **Prove the domain.** Google Search Console › add `selestial.io` as a Domain property (DNS TXT record), signed
+   in as an Owner or Editor of the Cloud project.
+2. **Branding** (Google Auth Platform › Branding): app name **Selestial**, the Selestial logo, a selestial.io
+   support email, home page `https://www.selestial.io`, privacy policy `https://www.selestial.io/privacy`,
+   terms `https://www.selestial.io/terms`, authorized domain `selestial.io`. The developer contact shown on the
+   warning is the address set here.
+3. **Return address.** Clients › the web client › Authorized redirect URIs: **add**
+   `https://app.selestial.io/oauth/google/callback` (keep the convex.site one until step 4 is done). Then on
+   the production backend set `GOOGLE_OAUTH_REDIRECT_URI` to that exact address. The return goes through the
+   site to the backend unchanged; `*.convex.site` cannot be verified as yours, so verification needs this.
+4. **Audience:** publishing status **In production**.
+5. **Data Access:** list exactly the scopes above, each with its reason (the table's last column), and a short
+   unlisted video: sign in to Selestial, connect each Google tool, show the consent screen with the app name,
+   then show where each permission is used in the app.
+6. **Privacy policy:** it must say that use of information received from Google APIs follows the Google API
+   Services User Data Policy, including the Limited Use requirements. Draft wording waits for the Owner's
+   approval (it changes the published notice).
+7. **Submit for verification.** Sensitive scopes usually take days to a few weeks. `gmail.readonly` is
+   restricted: it also needs a yearly independent security assessment (CASA) before Google approves it.
+
+Consider a **second Google Cloud project and OAuth client for the Gmail hiring inbox** only, so Calendar,
+Drive, Business Profile and Ads can be verified quickly without waiting on Gmail's security assessment. The
+code uses one client today (`GOOGLE_CLIENT_ID`); splitting needs a small change to `convex/lib/recruiter/gmail.ts`.

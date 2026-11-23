@@ -77,6 +77,9 @@ describe("which host a path belongs to", () => {
   it("sorts the routes that exist", () => {
     expect(roleOfPath("/")).toBe("public");
     expect(roleOfPath("/sitemap.xml")).toBe("public");
+    // Google's return is passed through to the backend on whichever Selestial host it is registered on.
+    expect(roleOfPath("/oauth/google/callback")).toBe("shared");
+    expect(roleOfPath("/oauth/google/other")).toBe("public");
     expect(roleOfPath("/legal/privacy")).toBe("public");
     for (const path of ["/staff", "/staff/requests", "/staff/operations/billing"]) expect(roleOfPath(path)).toBe("admin");
     expect(roleOfPath("/staffing")).toBe("public");

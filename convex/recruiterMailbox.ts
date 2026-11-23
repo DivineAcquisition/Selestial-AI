@@ -25,6 +25,7 @@ import { companyQuery, ownerMutation } from "./lib/builders";
 import { userError } from "./lib/errors";
 import { appOrigin, returnOrigin } from "./lib/invitations";
 import { byMember, recordEvent } from "./lib/events";
+import { redirectUri } from "./lib/google/oauth";
 import { authorizationUrl, googleApp, revokeToken } from "./lib/recruiter/gmail";
 import { sourceValidator, type InboxPurpose, type Source } from "./lib/recruiter/schema";
 import { inboxBroke, resumeWaiting } from "./lib/inbox/events";
@@ -43,9 +44,9 @@ export function pendingBinding(stateId: Id<"oauthStates">): string {
   return `pending:${stateId}`;
 }
 
+/** The same address the company's Google tools use (convex/lib/google/oauth.ts): one OAuth client, one return. */
 export function googleRedirectUri(): string | null {
-  const site = process.env.CONVEX_SITE_URL?.trim().replace(/\/+$/, "");
-  return site ? `${site}/oauth/google/callback` : null;
+  return redirectUri();
 }
 
 /**

@@ -233,8 +233,10 @@ describe("custom domains", () => {
     expect(environment({ CONVEX_CLOUD_URL: "https://terrific-avocet-835.convex.cloud" })).toBe("non_production");
   });
 
-  test("people see api.selestial.io for the live backend's HTTP routes, and each other backend's own site address", () => {
-    expect(publicApiOrigin({ CONVEX_CLOUD_URL: "https://stoic-gazelle-731.convex.cloud", CONVEX_SITE_URL: "https://stoic-gazelle-731.convex.site" })).toBe("https://api.selestial.io");
+  test("people see each backend's own site address for its HTTP routes unless PUBLIC_API_ORIGIN names another", () => {
+    // api.selestial.io is not assumed: on November 23, 2026 it served the client API and every HTTP route there was 404.
+    expect(publicApiOrigin({ CONVEX_CLOUD_URL: "https://stoic-gazelle-731.convex.cloud", CONVEX_SITE_URL: "https://stoic-gazelle-731.convex.site" })).toBe("https://stoic-gazelle-731.convex.site");
+    expect(publicApiOrigin({ CONVEX_CLOUD_URL: "https://stoic-gazelle-731.convex.cloud", CONVEX_SITE_URL: "https://stoic-gazelle-731.convex.site", PUBLIC_API_ORIGIN: "https://api.selestial.io" })).toBe("https://api.selestial.io");
     expect(publicApiOrigin({ CONVEX_CLOUD_URL: "https://terrific-avocet-835.convex.cloud", CONVEX_SITE_URL: "https://terrific-avocet-835.convex.site" })).toBe("https://terrific-avocet-835.convex.site");
     expect(publicApiOrigin({ CONVEX_CLOUD_URL: "https://terrific-avocet-835.convex.cloud", PUBLIC_API_ORIGIN: "https://hooks.example.com/" })).toBe("https://hooks.example.com");
     expect(publicApiOrigin({})).toBeNull();

@@ -41,16 +41,15 @@ export function deploymentName(env: Record<string, string | undefined> = process
 
 /**
  * The address people see for this backend's HTTP routes: integration webhooks today, the public API and MCP
- * later. On the live backend it is its custom domain (api.selestial.io, served by HTTP actions). OAuth returns
- * and provider webhooks stay registered on the deployment's own CONVEX_SITE_URL, which keeps working.
- * PUBLIC_API_ORIGIN overrides it; elsewhere it is the deployment's own site address.
+ * later. It is the deployment's own site address unless PUBLIC_API_ORIGIN names another.
+ *
+ * It is never assumed to be a custom domain. On November 23, 2026 api.selestial.io was found serving the
+ * client API, not HTTP actions, so every webhook and review-copy link built on it answered 404. Set
+ * PUBLIC_API_ORIGIN=https://api.selestial.io only once that domain answers /health with 200.
  */
 export function publicApiOrigin(env: Record<string, string | undefined> = process.env): string | null {
   const set = env.PUBLIC_API_ORIGIN?.trim().replace(/\/+$/, "");
   if (set && /^https:\/\/[a-z0-9.-]+$/i.test(set)) return set;
-  const name = deploymentName(env);
-  const domain = Object.entries(DEPLOYMENT_DOMAINS).find(([, owner]) => owner === name)?.[0];
-  if (domain && PRODUCTION_DEPLOYMENTS.includes(name!)) return `https://${domain}`;
   const site = env.CONVEX_SITE_URL?.trim().replace(/\/+$/, "");
   return site && /^https?:\/\//.test(site) ? site : null;
 }

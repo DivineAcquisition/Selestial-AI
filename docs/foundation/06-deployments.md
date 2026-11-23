@@ -170,7 +170,7 @@ links, the future public API and MCP).
 | Address | Serves | Used for |
 |---|---|---|
 | `https://stoic-gazelle-731.convex.cloud` | Client API | The app's own connection. Production builds always use the deployment's own address (`scripts/convex-address.mjs`, run by `scripts/next-build.mjs`), whatever custom domain Convex names. The build log says when it replaced one. |
-| `https://api.selestial.io` | HTTP actions | What people see: integration webhooks (Google Ads lead forms), public review-copy links, and later the API and MCP (`publicApiOrigin()` in `convex/lib/environment.ts`; `PUBLIC_API_ORIGIN` overrides it). |
+| `https://api.selestial.io` | **Client API since at least November 23, 2026** (answers `/version`, not `/health`) | Was meant for the HTTP routes people see. Because it serves the client API, nothing is built on it unless `PUBLIC_API_ORIGIN` is set: webhooks and review-copy links use `<name>.convex.site` (`publicApiOrigin()` in `convex/lib/environment.ts`). To use it for HTTP routes again, point the custom domain at HTTP actions in the Convex dashboard, check `https://api.selestial.io/health` answers 200, then set `PUBLIC_API_ORIGIN`. |
 | `https://stoic-gazelle-731.convex.site` | HTTP actions | What providers are registered with (OAuth returns, Stripe, Telnyx, Resend, Google Pub/Sub). Unchanged. |
 
 On November 22 the build was handed `api.selestial.io` as the app's address while that domain served HTTP
