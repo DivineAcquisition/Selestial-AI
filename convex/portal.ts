@@ -18,7 +18,9 @@ import { acknowledgmentHolds } from "./lib/cleaners/readiness";
 import { cleanerReadiness } from "./lib/cleaners/records";
 import { cleanerTime, commitmentsBetween, currentClashes } from "./lib/cleaners/schedule";
 import { queueCleanerMessage, channelsFor } from "./lib/cleaners/outbox";
-import { CODE_ATTEMPTS, CODE_LIFETIME, CODE_WINDOW, CODES_PER_WINDOW, codeHash, isVerified, maskAddress, newCode, VERIFIED_FOR } from "./lib/cleaners/portal";
+import { CODE_ATTEMPTS, CODE_LIFETIME, CODE_WINDOW, CODES_PER_WINDOW, codeHash, isVerified, linkAllows, maskAddress, newCode, PORTAL_ACTIONS, VERIFIED_FOR } from "./lib/cleaners/portal";
+import { askOfficeToReview } from "./lib/cleaners/guided";
+import { sendablePhone } from "./lib/messaging/provider";
 import { setPermission } from "./lib/compliance/permissions";
 import { requiredCrew, staffing } from "./lib/dispatch/crew";
 import { jobAssignments } from "./lib/dispatch/facts";
@@ -175,7 +177,7 @@ export const view = portalQuery({
       firstName: first(cleaner.name),
       purpose: ctx.link.purpose,
       focus: ctx.link.requirementKey ?? null,
-      allowed: ctx.link.allowed,
+      allowed: PORTAL_ACTIONS.filter((action) => linkAllows(ctx.link, action)),
       expiresAt: ctx.link.expiresAt,
       engagement: cleaner.status === "onboarding" ? "onboarding" : cleaner.status === "ready" ? "active" : "paused",
       readiness: { state: readiness.state, eligible: readiness.eligible, summary: readiness.summary, progress: readiness.progress },
@@ -219,8 +221,9 @@ async function requirementRow(ctx: MutationCtx & PortalAccess, key: string): Pro
 }
 
 /**
- * Confirms the phone and email the company uses. Unchanged details are confirmed by the person holding the
- * link; a change waits for the office. Agreeing to work texts is the person's own act, recorded with its words.
+ * Confirms the phone and email the company uses without a code, for when a code cannot be texted. Only a
+ * code proves the phone (cleanerOnboarding.verifyPhone), so unless the phone on file was already verified
+ * this goes to the office to check. Agreeing to work texts is the person's own act, recorded with its words.
  */
 export const confirmContact = portalMutation({
   action: "confirm_contact",
@@ -255,8 +258,15 @@ export const confirmContact = portalMutation({
       await recordEvent(ctx, { companyId: ctx.companyId, type: "cleaner.requirement_submitted", actor: actorOf(ctx), subject: { table: "cleaners", id: cleaner._id }, data: { key: "contact" } });
       return { status: "awaiting_review" as const };
     }
-    // The link reached them at these details, and they say they are right: that is the confirmation.
-    await ctx.db.patch(row._id, { status: "accepted", submittedAt: now, submittedBy: { kind: "cleaner", linkId: ctx.link._id }, acceptedAt: now, reviewNote: "Confirmed by the cleaner through their own link.", updatedAt: now });
+    // Without a verified phone, "these are right" is a statement for the office to check, not a verification.
+    const verifiedPhone = cleaner.phoneVerified && sendablePhone(cleaner.phone) === cleaner.phoneVerified.phone;
+    if (!verifiedPhone) {
+      await ctx.db.patch(row._id, { status: "awaiting_review", evidence: { text: "Confirmed by the cleaner without a code." }, submittedAt: now, submittedBy: { kind: "cleaner", linkId: ctx.link._id }, updatedAt: now });
+      await recordEvent(ctx, { companyId: ctx.companyId, type: "cleaner.requirement_submitted", actor: actorOf(ctx), subject: { table: "cleaners", id: cleaner._id }, data: { key: "contact" } });
+      await askOfficeToReview(ctx, ctx.company, cleaner, { key: "contact", label: "Contact details", where: "They confirmed their details without a code. Check the phone number with them." }, actorOf(ctx));
+      return { status: "awaiting_review" as const };
+    }
+    await ctx.db.patch(row._id, { status: "accepted", submittedAt: now, submittedBy: { kind: "cleaner", linkId: ctx.link._id }, acceptedAt: now, reviewNote: "Confirmed by the cleaner; their phone was verified by code.", updatedAt: now });
     await recordEvent(ctx, { companyId: ctx.companyId, type: "cleaner.requirement_accepted", actor: actorOf(ctx), subject: { table: "cleaners", id: cleaner._id }, data: { key: "contact" } });
     await syncHandoffRequirement(ctx, cleaner, "contact", true, actorOf(ctx), "Confirmed by the cleaner.");
     return { status: "accepted" as const };
@@ -278,7 +288,9 @@ export const submitRequirement = portalMutation({
     const definitions = (await cleanerReadiness(ctx, ctx.company, cleanerOf(ctx), Date.now())).definitions;
     const def = definitions.find((item) => item.key === args.key);
     if (!def?.cleanerCompletes) throw userError("The office records this step.");
-    if (def.kind === "acknowledgment" || def.kind === "contact" || def.kind === "availability" || def.kind === "service_areas" || def.kind === "agreement") throw userError("This step is done a different way.");
+    // Files and notes are only for a document the company genuinely needs. Pay details, tax, supplies and
+    // training each have their own step, and bank or tax numbers are never typed into a note.
+    if (!["document", "custom", "skills"].includes(def.kind)) throw userError("This step is done a different way.");
     await recordSubmission(ctx, row, { text: args.text, storageIds: args.storageIds }, { kind: "cleaner", linkId: ctx.link._id }, actorOf(ctx));
     return { status: "awaiting_review" as const };
   },
@@ -293,6 +305,7 @@ export const acknowledge = portalMutation({
     const row = await requirementRow(ctx, args.key);
     const def = (await cleanerReadiness(ctx, ctx.company, cleanerOf(ctx), Date.now())).definitions.find((item) => item.key === args.key);
     if (def?.kind !== "acknowledgment") throw userError("This step is not an acknowledgment.");
+    if (def.guide) throw userError("Open this guide in your onboarding to agree to it.");
     const current = (def.description ?? "").trim();
     if (args.words.trim() !== current) throw userError("What you are agreeing to changed since this page opened. Read it again, then agree.");
     const now = Date.now();
@@ -455,7 +468,7 @@ export const requestCode = portalMutation({
     const channel = channelsFor(cleaner, cleanersSettings(ctx.company).followUpChannels)[0];
     if (!channel) throw userError("There is no phone or email on file to send a code to. Ask the office.");
     const code = newCode();
-    const codeId = await ctx.db.insert("portalCodes", { companyId: ctx.companyId, linkId: ctx.link._id, codeHash: await codeHash(ctx.link._id, code), channel, expiresAt: now + CODE_LIFETIME, attempts: 0, createdAt: now });
+    const codeId = await ctx.db.insert("portalCodes", { companyId: ctx.companyId, linkId: ctx.link._id, purpose: "unlock", codeHash: await codeHash(ctx.link._id, code), channel, expiresAt: now + CODE_LIFETIME, attempts: 0, createdAt: now });
     const message = await queueCleanerMessage(
       ctx,
       {
@@ -481,11 +494,14 @@ export const verifyCode = portalMutation({
   args: { code: v.string() },
   handler: async (ctx, args) => {
     const now = Date.now();
-    const latest = await ctx.db
-      .query("portalCodes")
-      .withIndex("by_link", (q) => q.eq("linkId", ctx.link._id))
-      .order("desc")
-      .first();
+    // A code sent to prove a phone number unlocks nothing here: only an unlock code does.
+    const latest = (
+      await ctx.db
+        .query("portalCodes")
+        .withIndex("by_link", (q) => q.eq("linkId", ctx.link._id))
+        .order("desc")
+        .take(10)
+    ).find((row) => row.purpose !== "phone");
     if (!latest || latest.usedAt !== undefined || latest.expiresAt <= now) throw userError("That code has expired. Ask for a new one.");
     if (latest.attempts >= CODE_ATTEMPTS) throw userError("Too many tries. Ask for a new code.", "limit");
     await ctx.db.patch(latest._id, { attempts: latest.attempts + 1 });

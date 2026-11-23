@@ -124,11 +124,11 @@ describe("Cleaners: crews, availability and Dispatch", () => {
     const jobId = await heldJob(s);
     expect(await asked(s, jobId)).toEqual(["Lena", "Rosa"]);
 
-    // Rosa is given an identity check she has not done: Dispatch leaves her out with that reason.
-    await s.as.mutation(api.workforce.applyTemplateTo, { companyId: s.companyId, cleanerIds: [s.cleaners.Rosa], keys: ["documents"] });
+    // Rosa is given a step she has not done: Dispatch leaves her out with that reason.
+    await s.as.mutation(api.workforce.applyTemplateTo, { companyId: s.companyId, cleanerIds: [s.cleaners.Rosa], keys: ["job_day"] });
     expect(await excluded(s, jobId)).toEqual([{ name: "Rosa", code: "requirements" }]);
-    expect(await refusal(s.as.mutation(api.assignments.offer, { companyId: s.companyId, jobId, cleanerId: s.cleaners.Rosa, respondBy: NOW + 4 * HOUR, payCents: 8000 }))).toMatch(/identity documents/i);
-    await s.as.mutation(api.requirements.review, { companyId: s.companyId, cleanerId: s.cleaners.Rosa, key: "documents", decision: "waive", note: "Checked in person at the office." });
+    expect(await refusal(s.as.mutation(api.assignments.offer, { companyId: s.companyId, jobId, cleanerId: s.cleaners.Rosa, respondBy: NOW + 4 * HOUR, payCents: 8000 }))).toMatch(/how your jobs work/i);
+    await s.as.mutation(api.requirements.review, { companyId: s.companyId, cleanerId: s.cleaners.Rosa, key: "job_day", decision: "waive", note: "Checked in person at the office." });
     expect(await asked(s, jobId)).toEqual(["Lena", "Rosa"]);
 
     // Lena cannot work that day: a date exception outside her weekly pattern.
@@ -438,12 +438,12 @@ describe("Cleaners: crews, availability and Dispatch", () => {
     const s = await setup(["Lena"]);
     const jobId = await heldJob(s);
     const offer = await s.as.mutation(api.assignments.offer, { companyId: s.companyId, jobId, cleanerId: s.cleaners.Lena, respondBy: NOW + 4 * HOUR, payCents: 8000 });
-    // The Owner gives Lena an identity check after the offer was made.
-    await s.as.mutation(api.workforce.applyTemplateTo, { companyId: s.companyId, cleanerIds: [s.cleaners.Lena], keys: ["documents"] });
-    expect(await refusal(s.as.mutation(api.assignments.recordAnswer, { companyId: s.companyId, assignmentId: offer, answer: "accepted" }))).toMatch(/has not met what is needed before work: identity documents/i);
+    // The Owner gives Lena a step after the offer was made.
+    await s.as.mutation(api.workforce.applyTemplateTo, { companyId: s.companyId, cleanerIds: [s.cleaners.Lena], keys: ["job_day"] });
+    expect(await refusal(s.as.mutation(api.assignments.recordAnswer, { companyId: s.companyId, assignmentId: offer, answer: "accepted" }))).toMatch(/has not met what is needed before work: how your jobs work/i);
     expect((await s.job(jobId)).assignments[0].status).toBe("offered");
     // Once a person sets it aside with a reason, she can accept.
-    await s.as.mutation(api.requirements.review, { companyId: s.companyId, cleanerId: s.cleaners.Lena, key: "documents", decision: "waive", note: "Checked in person at the office." });
+    await s.as.mutation(api.requirements.review, { companyId: s.companyId, cleanerId: s.cleaners.Lena, key: "job_day", decision: "waive", note: "Checked in person at the office." });
     await s.as.mutation(api.assignments.recordAnswer, { companyId: s.companyId, assignmentId: offer, answer: "accepted" });
     expect((await s.job(jobId)).assignments[0].status).toBe("accepted");
   });

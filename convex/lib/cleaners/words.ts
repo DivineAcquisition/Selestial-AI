@@ -101,6 +101,28 @@ export function eventText(event: Doc<"events">, labels: Map<string, string>): { 
       return { text: `had a disputed record ${data.decision === "corrected" ? "corrected" : "upheld"}`, tone: "decision" };
     case "cleaner.checked_in":
       return { text: `answered a check-in: ${data.answer === "available" ? "still available" : data.answer === "fewer" ? "available for fewer jobs" : data.answer === "break" ? "taking a break" : "wants to stop"}`, tone: "record" };
+    case "cleaner.phone_verified":
+      return { text: data.changed ? "verified a new mobile number with a code" : "verified their mobile number with a code", tone: "requirement" };
+    case "cleaner.agreement_signed":
+      return { text: data.complete ? "signed their agreement; every signer has signed" : "signed their agreement; the company's signature is outstanding", tone: "requirement" };
+    case "cleaner.supplies_updated":
+      return { text: `updated their supplies checklist (${data.missing ?? 0} missing)`, tone: "record" };
+    case "cleaner.payout_preference_recorded":
+      return { text: "chose how they would like to be paid", tone: "requirement" };
+    case "cleaner.payout_preference_confirmed":
+      return { text: "had their pay preference confirmed by Finance", tone: "decision" };
+    case "cleaner.tax_details_given":
+      return { text: "gave the details for their tax document", tone: "requirement" };
+    case "cleaner.tax_certified":
+      return { text: "certified their tax document", tone: "requirement" };
+    case "cleaner.tax_document_completed":
+      return { text: "had their tax document prepared and stored", tone: "record" };
+    case "cleaner.tax_document_failed":
+      return { text: "had their tax document fail to prepare", tone: "record" };
+    case "cleaner.tax_document_downloaded":
+      return { text: "had their tax document downloaded", tone: "record" };
+    case "cleaner.training_module_completed":
+      return { text: `completed a training module (${data.how === "video_watched" ? "video watched to the end" : "guide read, questions answered"})`, tone: "requirement" };
     case "cleaner.follow_up":
       return { text: str(data.words) ?? "had a routine follow-up", tone: "agent" };
     default:

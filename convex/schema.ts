@@ -469,6 +469,11 @@ export default defineSchema({
     maxTravelMinutes: v.optional(v.number()),
     /** When the cleaner (or a person for them) last confirmed the weekly availability is still right. */
     availabilityConfirmedAt: v.optional(v.number()),
+    /**
+     * The mobile number the cleaner proved they hold, by entering a code sent to it, and when. Possession
+     * only: agreeing to receive work texts is a separate permission (compliance), never inferred from this.
+     */
+    phoneVerified: v.optional(v.object({ phone: v.string(), at: v.number() })),
     /** The application this worker was hired from, when Recruiter handed them over. */
     hiredFrom: v.optional(v.id("applications")),
     /** When the engagement status last changed. */

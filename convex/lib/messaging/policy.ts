@@ -54,6 +54,13 @@ export type PolicyInput = {
   messageId?: Id<"messages">;
   /** A direct answer to a STOP, HELP or START the person just texted. See checkSend. */
   reply?: ReplyKind;
+  /**
+   * A one-time code the person asked for themselves, from their own link, sent to the number they gave to
+   * prove they hold it. Like a reply, it answers their own request: it needs no standing permission for
+   * work texts (holding a phone is not agreeing to texts) and is not held for quiet hours. A STOP, the
+   * registration and every other check still apply.
+   */
+  requestedCode?: boolean;
 };
 
 export type PolicyAnswer = { ok: true } | { ok: false; code: PolicyCode; words: string; retryAt?: number };
@@ -165,12 +172,12 @@ export async function checkSend(ctx: Ctx, input: PolicyInput): Promise<PolicyAns
       );
     }
 
-    const permission = await permissionAnswer(ctx, input, address);
+    const permission = input.requestedCode ? null : await permissionAnswer(ctx, input, address);
     if (permission) return permission;
   }
 
   const quiet = profile.messaging.quietHours;
-  if (!input.reply && quiet && (input.category !== "operational" || quiet.appliesToOperational)) {
+  if (!input.reply && !input.requestedCode && quiet && (input.category !== "operational" || quiet.appliesToOperational)) {
     // The recipient's own time zone is not known, so quiet hours are kept on the company's clock.
     const until = quietUntil(input.now, company.timezone, quiet);
     if (until !== null) return no("quiet_hours", `It is within quiet hours (${quiet.start} to ${quiet.end} company time). It can go at ${clock(until, company.timezone)}.`, until);

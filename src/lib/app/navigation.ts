@@ -301,6 +301,7 @@ export const CLEANER_PAGES: readonly { path: string; label: string; purpose: str
   { path: `${APP_ROOT}/cleaners/[id]/[[...section]]`, label: "Cleaner", purpose: "One person's profile, each section at its own address: overview, availability and jobs, onboarding and documents, skills and equipment, performance and coaching, pay, and activity." },
   { path: `${APP_ROOT}/cleaners/import`, label: "Import cleaners", purpose: "Bring in a list, with every row reviewed for duplicates before anything is written." },
   { path: `${APP_ROOT}/cleaners/onboarding`, label: "Onboarding checklist", purpose: "What each kind of worker needs, what an unmet item holds up, who reviews it and how long it stays valid." },
+  { path: `${APP_ROOT}/cleaners/onboarding/setup`, label: "Guided onboarding", purpose: "What a new cleaner sees from their link: agreement, supplies, how jobs work, expectations, pay methods and training, versioned, with a cleaner-view preview." },
   { path: `${APP_ROOT}/cleaners/crews`, label: "Crews", purpose: "Permanent crews with a lead, the team for each upcoming job, and a crew builder that checks each person for one job." },
   { path: `${APP_ROOT}/cleaners/subcontractors`, label: "Subcontractor companies", purpose: "Companies that supply their own cleaners: their contact, their workers, and the contact's access to their own workers." },
 ];

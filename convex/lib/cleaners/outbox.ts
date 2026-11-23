@@ -81,7 +81,9 @@ export async function queueCleanerMessage(ctx: MutationCtx, planned: PlannedClea
   let code: PolicyCode | null = null;
   let retryAt: number | undefined;
   if (!problem && to) {
-    const answer = await checkSend(ctx, { companyId: planned.company._id, channel: planned.channel, to, now, ...intent });
+    // A code is sent only because the person asked for it on their own link.
+    const requestedCode = planned.purpose === "verification_code" && planned.actor.kind === "cleaner_portal";
+    const answer = await checkSend(ctx, { companyId: planned.company._id, channel: planned.channel, to, now, ...intent, requestedCode });
     if (!answer.ok) {
       problem = answer.words;
       code = answer.code;

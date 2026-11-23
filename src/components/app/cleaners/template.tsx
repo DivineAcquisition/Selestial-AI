@@ -41,7 +41,8 @@ const KIND_WORDS: Record<Definition["kind"], string> = {
   skills: "Skills",
   equipment: "Equipment",
   training: "Training",
-  acknowledgment: "Acknowledgment",
+  acknowledgment: "Guide or acknowledgment",
+  tax: "Tax document (background)",
   custom: "Other",
 };
 const EFFECT_TONE = { blocks_assignments: "error", blocks_payment: "warning", informational: "outline" } as const;
@@ -61,6 +62,13 @@ export function TemplateScreen() {
       <Link href={CLEANERS_PATH} className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-strong">
         <ArrowLeft className="size-4" aria-hidden />
         Cleaners
+      </Link>
+      <Link href={`${CLEANERS_PATH}/onboarding/setup`} className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-brand-500/30 bg-brand-500/5 px-4 py-3 text-sm hover:border-brand-500/60">
+        <span>
+          <span className="font-semibold text-strong">Guided onboarding setup</span>
+          <span className="block text-muted-foreground">Agreement, supplies, job-day guide, expectations, pay methods and training, with a cleaner-view preview.</span>
+        </span>
+        <span aria-hidden>→</span>
       </Link>
       <PageHeader
         title="Onboarding checklist"

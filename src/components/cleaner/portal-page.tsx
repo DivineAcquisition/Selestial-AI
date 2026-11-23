@@ -18,6 +18,7 @@ import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { cleanerTextWording } from "../../../convex/lib/texting/wording";
 import { ContactPortal } from "./contact-portal";
+import { GuidedOnboarding } from "./guided-onboarding";
 import { Action, Card, Loading, Notice, Page, Problem, problemWords, Row } from "./shell";
 import { fmt, useMinute, zoned } from "./time";
 import { Checkbox, RadioButtonGroup } from "@/components/ui/selection";
@@ -44,7 +45,9 @@ const toMinute = (t: string) => {
 export function PortalPage({ token }: { token: string }) {
   const now = useMinute();
   const view = useStableQuery(api.portal.view, now ? { token, asOf: now } : "skip");
+  const guided = useStableQuery(api.cleanerOnboarding.view, now ? { token, asOf: now } : "skip");
   const [tab, setTab] = useState<Tab>("home");
+  const [fullPortal, setFullPortal] = useState(false);
   if (view === undefined) return <Loading what="your portal" />;
   if (view.state === "subcontractor") return <ContactPortal token={token} />;
   if (view.state !== "active") {
@@ -55,13 +58,18 @@ export function PortalPage({ token }: { token: string }) {
     }[view.state];
     return <Closed company={view.company} title={copy.title} body={copy.body} />;
   }
+  // An onboarding invitation lands on the guided setup, not on a portal to explore. Someone already working
+  // sees it only while a step is theirs to do; the full portal is always one tap away.
+  const onboarding = guided && (view.engagement === "onboarding" || guided.journey.state === "in_progress" || guided.focus !== null);
+  if (!fullPortal && guided && onboarding) return <GuidedOnboarding view={guided} token={token} onOpenPortal={guided.focus ? undefined : () => setFullPortal(true)} />;
+  if (!fullPortal && guided === undefined && view.engagement === "onboarding") return <Loading what="your setup" />;
   return (
     <>
       <Page company={view.company} title={tab === "home" ? `Hi ${view.firstName}` : TABS.find((row) => row.id === tab)!.label}>
         {tab === "home" ? <Home view={view} token={token} onTab={setTab} /> : null}
         {tab === "jobs" ? <Jobs view={view} token={token} /> : null}
         {tab === "hours" ? <Hours view={view} token={token} /> : null}
-        {tab === "steps" ? <Steps view={view} token={token} onTab={setTab} /> : null}
+        {tab === "steps" && guided ? <GuidedOnboarding view={guided} token={token} onOpenPortal={() => setTab("home")} /> : tab === "steps" ? <Steps view={view} token={token} onTab={setTab} /> : null}
         {tab === "pay" ? <Pay view={view} token={token} /> : null}
       </Page>
       <nav aria-label="Portal" className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">

@@ -45,6 +45,19 @@ export async function company(t: T, subject: string, name: string) {
 }
 
 /**
+ * A company made before the guided cleaner onboarding: it keeps the earlier starting template (identity
+ * documents, office-recorded training), which is what every company that already had cleaners still uses.
+ */
+export async function legacyCompany(t: T, subject: string, name: string) {
+  const made = await company(t, subject, name);
+  await t.run(async (ctx) => {
+    const row = (await ctx.db.get(made.companyId))!;
+    await ctx.db.patch(made.companyId, { cleaners: { ...(row.cleaners ?? {}), startingTemplate: "v1" } });
+  });
+  return made;
+}
+
+/**
  * A messaging setup that can text: a sender name, a texting number and an approved registration. In the
  * product only Selestial staff can mark a registration approved, so tests write it directly. Each
  * company gets its own number, since inbound texts find the company by it.
