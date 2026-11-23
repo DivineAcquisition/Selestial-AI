@@ -11,6 +11,7 @@ import { LAYER_LABEL } from "@/lib/app/calendar";
 import { cn } from "@/lib/utils";
 
 import { LAYER_LOOK, timeLabel, TIMING_WORDS, type Item } from "./look";
+import { RecordActions } from "./record-actions";
 
 /** The address keeps the open item, as `?item=<source>:<id>`, so it can be shared and Back closes it. */
 export const ITEM_PARAM = "item";
@@ -27,7 +28,8 @@ const OPEN_LABEL: Partial<Record<Item["kind"], string>> = {
 
 /**
  * One item that is not a visit or a task (those open in the shared record panel). It shows what the
- * record says and where to act on it. Nothing here edits a copy: changes are made on the record's page.
+ * record says and what can be done with it. Every action goes through the record's own workflow
+ * (record-actions.tsx); nothing here edits a copy.
  */
 export function ItemPanel({ item, missing, timezone, onClose }: { item: Item | null; missing: boolean; timezone: string; onClose: () => void }) {
   const open = item !== null || missing;
@@ -105,6 +107,7 @@ export function ItemPanel({ item, missing, timezone, onClose }: { item: Item | n
                   </Button>
                 </div>
               ) : null}
+              <RecordActions item={item} timezone={timezone} />
             </div>
           ) : (
             <div className="grid gap-3 p-6">

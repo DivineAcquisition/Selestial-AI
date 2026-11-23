@@ -112,6 +112,8 @@ export const schedule = companyMutation({
     if (args.scheduledAt < Date.now()) throw userError("Choose a time in the future.");
     if (args.assessorMemberId) await owned(ctx, args.assessorMemberId);
     await ctx.db.patch(row._id, { status: "scheduled", scheduledAt: args.scheduledAt, ...(args.assessorMemberId ? { assessorMemberId: args.assessorMemberId } : {}), updatedAt: Date.now() });
+    // Who set or moved the time, and from when to when, is kept with the walkthrough.
+    await recordEvent(ctx, { companyId: ctx.companyId, type: "assessment.scheduled", actor: byMember(ctx), subject: { table: "assessments", id: row._id }, data: { from: row.scheduledAt ?? null, to: args.scheduledAt, assessorMemberId: args.assessorMemberId ?? row.assessorMemberId ?? null } });
     return null;
   },
 });

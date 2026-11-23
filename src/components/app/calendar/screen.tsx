@@ -17,11 +17,13 @@ import { Select } from "@/components/ui/selection";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useNow } from "@/components/app/use-now";
 import { DEFAULT_LAYERS, EMPTY_STATE, LAYER_IDS, LAYER_LABEL, parsePreferences, parseState, preferencesKey, rangeFor, stepDate, VIEW_LABEL, VIEWS, writeState, type CalendarState, type LayerId, type View } from "@/lib/app/calendar";
-import { whenLabel } from "@/lib/app/format";
+import { localDate, whenLabel } from "@/lib/app/format";
 import { linkTo } from "@/lib/app/navigation-helpers";
 import { cn } from "@/lib/utils";
 
 import { api } from "../../../../convex/_generated/api";
+import { InterviewForm, MemberHoursForm, TaskForm } from "./create-forms";
+import { EVENT_KIND_LABEL, EventForm, type EventKind } from "./event-form";
 import { ItemPanel, ITEM_PARAM } from "./item-panel";
 import { itemLabel, LAYER_LOOK, timeLabel, TimingMark, type CalendarData, type Item } from "./look";
 import { Agenda, MonthGrid, TeamLanes, TimeGrid } from "./views";
@@ -107,12 +109,30 @@ function FilterSelect({ label, value, options, onChange }: { label: string; valu
 
 // ── Create ──────────────────────────────────────────────────────────────────────────────────────────
 
-function CreateMenu({ manager, onVisit }: { manager: boolean; onVisit: () => void }) {
+type Creating = "visit" | "interview" | "task" | "hours" | EventKind;
+
+const MENU_GROUP = "px-3 pt-2 pb-1 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase";
+
+/**
+ * Everything Calendar can create, each through its own workflow: a booking through Sales, a visit
+ * through Dispatch, an interview through Recruiter, a walkthrough from a Sales proposal, and Calendar's
+ * own events. Office creates visits, bookings and Dispatch's dated tasks.
+ */
+function CreateMenu({ manager, onCreate }: { manager: boolean; onCreate: (what: Creating) => void }) {
   const [open, setOpen] = useState(false);
   const shell = useRef<HTMLDivElement>(null);
   const menu = useId();
-  const interviews = linkTo("recruiter.interviews");
-  const item = "flex w-full flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left hover:bg-muted focus-visible:outline-2 focus-visible:outline-brand-500";
+  const item = "flex w-full flex-col items-start gap-0.5 rounded-lg px-3 py-1.5 text-left hover:bg-muted focus-visible:outline-2 focus-visible:outline-brand-500";
+  const choose = (what: Creating) => {
+    setOpen(false);
+    onCreate(what);
+  };
+  const entry = (what: Creating, title: string, description: string) => (
+    <button role="menuitem" type="button" className={item} onClick={() => choose(what)}>
+      <span className="text-sm font-medium text-strong">{title}</span>
+      <span className="text-xs text-muted-foreground">{description}</span>
+    </button>
+  );
   return (
     <div
       ref={shell}
@@ -130,21 +150,31 @@ function CreateMenu({ manager, onVisit }: { manager: boolean; onVisit: () => voi
         <ChevronDown className="size-3.5" aria-hidden />
       </Button>
       {open ? (
-        <div id={menu} role="menu" aria-label="Create" className="absolute right-0 z-popover mt-1 grid w-72 gap-0.5 rounded-xl border border-border bg-card p-1 shadow-lg">
+        <div id={menu} role="menu" aria-label="Create" className="absolute right-0 z-popover mt-1 grid max-h-[min(36rem,80dvh)] w-80 gap-0.5 overflow-y-auto rounded-xl border border-border bg-card p-1 shadow-lg">
+          <p className={MENU_GROUP} role="presentation">Cleaning</p>
           <Link role="menuitem" href="/app/agents/sales/new?mode=booking&from=calendar" className={item} onClick={() => setOpen(false)}>
             <span className="text-sm font-medium text-strong">Cleaning booking</span>
             <span className="text-xs text-muted-foreground">Service, price, property and recurrence, through Sales.</span>
           </Link>
-          <button role="menuitem" type="button" className={item} onClick={() => { setOpen(false); onVisit(); }}>
-            <span className="text-sm font-medium text-strong">One visit</span>
-            <span className="text-xs text-muted-foreground">A single visit at a set time, staffed by Dispatch.</span>
-          </button>
-          {manager && interviews ? (
-            <Link role="menuitem" href={interviews} className={item} onClick={() => setOpen(false)}>
-              <span className="text-sm font-medium text-strong">Interview</span>
-              <span className="text-xs text-muted-foreground">Set a time for an applicant, in Recruiter › Interviews.</span>
-            </Link>
+          {entry("visit", "One visit", "A single visit at a set time, staffed by Dispatch.")}
+          {manager ? (
+            <>
+              <Link role="menuitem" href="/app/agents/sales/new?mode=proposal&from=calendar" className={item} onClick={() => setOpen(false)}>
+                <span className="text-sm font-medium text-strong">Estimate or walkthrough</span>
+                <span className="text-xs text-muted-foreground">Starts a proposal in Sales, where the site walkthrough is booked.</span>
+              </Link>
+              {entry("inspection", "Inspection", "A quality inspection at a property, by a member or lead cleaner.")}
+              <p className={MENU_GROUP} role="presentation">Team</p>
+              {entry("interview", "Interview", "For an applicant Recruiter is waiting to interview.")}
+              {entry("training", "Training session", "For new hires and cleaners, linked to their onboarding.")}
+              {entry("unavailable", "Unavailable time", "An Owner or Manager away. Blocks only them.")}
+              <p className={MENU_GROUP} role="presentation">Business</p>
+              {entry("meeting", "Business event", "An internal meeting.")}
+              {entry("appointment", "Appointment", "A manual appointment, such as a supplier call.")}
+            </>
           ) : null}
+          {entry("task", "Dated task", "A due date in an agent's queue. It reserves no time.")}
+          {manager ? entry("hours", "Working hours", "When an Owner or Manager usually works, for conflict checks.") : null}
         </div>
       ) : null}
     </div>
@@ -212,8 +242,10 @@ export function CalendarScreen() {
   const layers: LayerId[] = state.layers ?? saved.layers ?? [...DEFAULT_LAYERS];
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [railOpen, setRailOpen] = useState(true);
-  const [adding, setAdding] = useState(false);
+  const [creating, setCreating] = useState<Creating | null>(null);
 
+  // New things start on the day being looked at, or today.
+  const createDay = state.date ?? (now ? localDate(now, timezone) : null);
   const range = useMemo(() => (now ? rangeFor(state.view, state.date, now, timezone) : null), [now, state.view, state.date, timezone]);
   const data = useQuery(api.calendar.range, range ? { companyId, from: range.from, to: range.to, layers } : "skip");
 
@@ -307,7 +339,7 @@ export function CalendarScreen() {
           <Button variant="ghost" size="icon-sm" className="hidden xl:inline-flex" aria-label={railOpen ? "Hide Needs attention" : "Show Needs attention"} aria-pressed={railOpen} onClick={() => setRailOpen((before) => !before)}>
             <PanelLeftIcon className="rotate-180" aria-hidden />
           </Button>
-          <CreateMenu manager={manager} onVisit={() => setAdding(true)} />
+          <CreateMenu manager={manager} onCreate={setCreating} />
         </div>
       </header>
 
@@ -430,9 +462,23 @@ export function CalendarScreen() {
 
       <ItemPanel item={selected} missing={Boolean(selectedKey) && data !== undefined && selected === null} timezone={timezone} onClose={closeItem} />
 
-      <Modal open={adding} onClose={() => setAdding(false)} title="Add a visit" description="A visit is a promise to the customer. It is staffed only when every cleaner it needs has accepted.">
-        <NewVisitForm onDone={() => setAdding(false)} />
+      <Modal open={creating === "visit"} onClose={() => setCreating(null)} title="Add a visit" description="A visit is a promise to the customer. It is staffed only when every cleaner it needs has accepted.">
+        <NewVisitForm onDone={() => setCreating(null)} />
       </Modal>
+      <Modal open={creating === "interview"} onClose={() => setCreating(null)} title="Book an interview">
+        <InterviewForm day={createDay} onDone={() => setCreating(null)} />
+      </Modal>
+      <Modal open={creating === "task"} onClose={() => setCreating(null)} title="Add a dated task">
+        <TaskForm day={createDay} onDone={() => setCreating(null)} />
+      </Modal>
+      <Modal open={creating === "hours"} onClose={() => setCreating(null)} title="Working hours">
+        <MemberHoursForm onDone={() => setCreating(null)} />
+      </Modal>
+      {(["meeting", "appointment", "unavailable", "training", "inspection"] as const).map((kind) => (
+        <Modal key={kind} open={creating === kind} onClose={() => setCreating(null)} title={EVENT_KIND_LABEL[kind].title}>
+          <EventForm kind={kind} day={createDay} onDone={() => setCreating(null)} />
+        </Modal>
+      ))}
     </div>
   );
 }

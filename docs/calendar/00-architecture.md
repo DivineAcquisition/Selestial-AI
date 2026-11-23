@@ -119,8 +119,36 @@ record panel; other items open a read-only panel that links to their own page. R
 Team reuses Dispatch › Schedule's lanes. Create offers what exists today: a cleaning booking through
 Sales, one visit, and an interview through Recruiter.
 
-Not yet: creating business events, members' time, training and inspections (phase 3); moving anything
-from Calendar (phase 4); Ask Selestial and notifications (phase 5).
+**Phase 3 (built).** Calendar's own records, `calendarEvents` (meeting, appointment, unavailable,
+training, inspection) and `memberHours`, in `convex/lib/calendar/schema.ts`, written only through
+`convex/calendarEvents.ts` (Owner and Manager):
+
+- `preview` shows what saving would run into, from `convex/lib/calendar/rules.ts`: a cleaner's visits,
+  offers, time off, unavailable days and other events are hard conflicts; a member's own unavailable time
+  is a hard conflict for them alone; their other events, interviews, walkthroughs, working hours and the
+  connected calendar's busy time are warnings. A private appointment never blocks a cleaner. Travel is not
+  looked up, and the form says so.
+- `create` and `update` run the same check again inside the save. A hard conflict is refused unless the
+  person gives a reason, which is kept on the event with their name. `update` and `cancel` take the
+  revision the person was looking at. Cancelling keeps the record and the reason; nothing is deleted.
+- Training links new hires' open onboarding. `recordAttendance` counts toward onboarding only when the
+  person names the requirement, and then records it through Recruiter's own `recordRequirement`.
+- Inspections are by an Owner, a Manager or a cleaner who leads a permanent crew, at the property of a
+  visit or quality case. A restricted case is the Owner's alone. `recordInspection` keeps the inspector's
+  words; it is not a quality decision.
+- A private event shows as "Busy" to anyone not on it who did not make it.
+- Every change is in the event log (`calendar_event.*`), with the old and new times; Sales' walkthrough
+  time changes are now logged too (`assessment.scheduled`).
+
+Panels: Calendar's events show details, attendance, the inspection result, overrides and changes, with
+Edit or move and Cancel. Interviews can be moved or their time cancelled through Recruiter's
+`interviews.schedule` and `interviews.cancelTime`; walkthroughs moved through `assessments.schedule`.
+Create offers a cleaning booking, one visit, an estimate or walkthrough (a Sales proposal), an inspection,
+an interview for an applicant Recruiter is waiting to interview, a training session, unavailable time, a
+business event, an appointment, a dated task and working hours.
+
+Not yet: drag, resize and the reschedule preview with notifications for visits (phase 4); Ask Selestial,
+Needs attention actions, Google mirroring of Calendar's events and the sync gaps (phase 5).
 
 ## Open questions
 

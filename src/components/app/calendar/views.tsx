@@ -364,11 +364,23 @@ export function TeamLanes({ data, range, items, timezone, onOpen, cleanerIds }: 
         })}
         {members.map((member) => {
           const mine = timed.filter((item) => item.resources.some((row) => row.kind === "member" && row.id === member.id));
-          const { rows, rowOf } = rowsFor(mine);
+          const work = mine.filter((item) => item.timing !== "availability");
+          const away = mine.filter((item) => item.timing === "availability");
+          const windows = member.windows.filter((row) => row.weekday === weekday);
+          const { rows, rowOf } = rowsFor(work);
+          const role = member.role === "owner" ? "Owner" : member.role === "manager" ? "Manager" : "Office";
           return (
             <Fragment key={member.id}>
-              <Lane lines={lines} rows={rows} name={member.name} note={member.role === "owner" ? "Owner" : member.role === "manager" ? "Manager" : "Office"}>
-                {mine.map((item) => block(item, rowOf.get(item.key)))}
+              <Lane lines={lines} rows={rows} name={member.name} note={`${role}${windows.length ? ` · ${windows.map((row) => `${HOUR_LABEL(row.startMinute)}–${HOUR_LABEL(row.endMinute)}`).join(", ")}` : ""}${away.length ? " · away" : ""}`}>
+                {windows.map((row) => (
+                  <Block key={`w-${row.startMinute}`} left={pos(row.startMinute)} width={pos(row.endMinute) - pos(row.startMinute)} title="Their working hours" className="bg-success/8" />
+                ))}
+                {away.map((item) => (
+                  <Block key={item.key} {...place(item)} onClick={() => onOpen(item)} title={itemLabel(item, timezone)} className={cn(HATCH, "border-border/60 text-muted-foreground")}>
+                    <span className="block truncate">{item.title}</span>
+                  </Block>
+                ))}
+                {work.map((item) => block(item, rowOf.get(item.key)))}
               </Lane>
             </Fragment>
           );
