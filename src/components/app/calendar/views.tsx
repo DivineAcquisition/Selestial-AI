@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, useId, useRef, useState } from "react";
 
 import { Block, Lane } from "@/components/app/screens/dispatch/schedule";
 import { Flag, TriangleAlert } from "@/components/icons";
@@ -40,7 +40,25 @@ function StripChip({ item, timezone, onOpen }: { item: Item; timezone: string; o
  * overlapping items share the width. Availability (time off, busy) is drawn behind as hatching, so it
  * never squeezes a visit.
  */
-export function TimeGrid({ range, items, timezone, now, onOpen, dense }: { range: Range; items: Item[]; timezone: string; now: number; onOpen: Open; dense: boolean }) {
+export type Move = (item: Item, to: { startsAt: number; endsAt: number }) => void;
+
+const SNAP = 15;
+const MINUTE_MS = 60_000;
+
+/**
+ * Days as columns and the hours down the side. Booked and proposed time is placed by its start and end;
+ * overlapping items share the width. Availability (time off, busy) is drawn behind as hatching, so it
+ * never squeezes a visit.
+ *
+ * An item the person may move can be dragged to another time or day, or its bottom edge dragged to change
+ * its length, in 15-minute steps. With the keyboard: Alt+Up/Down moves it 15 minutes, Alt+Left/Right a day,
+ * Alt+Shift+Up/Down changes its length. Nothing is saved by dragging: it opens the move, which shows
+ * what the change does first.
+ */
+export function TimeGrid({ range, items, timezone, now, onOpen, dense, canMove, onMove }: { range: Range; items: Item[]; timezone: string; now: number; onOpen: Open; dense: boolean; canMove?: (item: Item) => boolean; onMove?: Move }) {
+  const [drag, setDrag] = useState<{ key: string; mode: "move" | "resize"; startX: number; startY: number; columnWidth: number; minutes: number; days: number; moved: boolean } | null>(null);
+  const suppressClick = useRef(false);
+  const moveHint = useId();
   const days = range.days.map((from, index) => ({ from, to: range.days[index + 1] ?? range.to }));
   const strip = items.filter(isStrip);
   const timed = items.filter((item) => !isStrip(item));
@@ -58,6 +76,9 @@ export function TimeGrid({ range, items, timezone, now, onOpen, dense }: { range
 
   return (
     <div className="overflow-x-auto">
+      <p id={moveHint} className="sr-only">
+        Drag, or press Alt with the arrow keys, to move it. Alt with Shift and the up or down arrow changes its length. Nothing is saved until you confirm.
+      </p>
       <div className={cn(days.length > 1 && "min-w-[52rem]")}>
         <div className={cn("sticky top-0 z-10 grid border-b border-border bg-card", cols)}>
           <div className="border-r border-border px-1 py-2 text-[10px] leading-tight text-muted-foreground" title="Times are shown on the company's clock">
@@ -119,18 +140,82 @@ export function TimeGrid({ range, items, timezone, now, onOpen, dense }: { range
                   </button>
                 ))}
                 {placedByDay[index].front.map((row) => {
-                  const top = y(row.top);
-                  const tall = y(row.bottom) - top;
-                  const width = 100 / row.columns;
                   const item = row.item;
+                  const movable = Boolean(onMove && canMove?.(item)) && !row.continuesBefore;
+                  const dragging = drag?.key === item.key ? drag : null;
+                  const top = y(row.top);
+                  const tall = y(row.bottom) - top + (dragging?.mode === "resize" ? (dragging.minutes / 60) * perHour : 0);
+                  const width = 100 / row.columns;
+                  const finish = (mode: "move" | "resize", minutes: number, dayShift: number) => {
+                    const target = Math.min(Math.max(index + dayShift, 0), days.length - 1);
+                    const shift = days[target].from - days[index].from;
+                    if (mode === "resize") onMove?.(item, { startsAt: item.startsAt, endsAt: Math.max(item.startsAt + SNAP * MINUTE_MS, item.endsAt + minutes * MINUTE_MS) });
+                    else onMove?.(item, { startsAt: item.startsAt + shift + minutes * MINUTE_MS, endsAt: item.endsAt + shift + minutes * MINUTE_MS });
+                  };
                   return (
                     <button
                       key={item.key}
                       type="button"
-                      onClick={() => onOpen(item)}
+                      onClick={() => {
+                        if (suppressClick.current) {
+                          suppressClick.current = false;
+                          return;
+                        }
+                        onOpen(item);
+                      }}
+                      onPointerDown={(event) => {
+                        if (!movable || event.button !== 0) return;
+                        const column = (event.currentTarget.parentElement as HTMLElement).getBoundingClientRect().width;
+                        const rect = event.currentTarget.getBoundingClientRect();
+                        const mode = event.clientY > rect.bottom - 8 ? "resize" : "move";
+                        event.currentTarget.setPointerCapture(event.pointerId);
+                        setDrag({ key: item.key, mode, startX: event.clientX, startY: event.clientY, columnWidth: column, minutes: 0, days: 0, moved: false });
+                      }}
+                      onPointerMove={(event) => {
+                        if (!dragging) return;
+                        const minutes = Math.round(((event.clientY - dragging.startY) / perHour) * 60 / SNAP) * SNAP;
+                        const dayShift = dragging.mode === "move" ? Math.round((event.clientX - dragging.startX) / dragging.columnWidth) : 0;
+                        const moved = dragging.moved || Math.abs(event.clientY - dragging.startY) > 4 || Math.abs(event.clientX - dragging.startX) > 4;
+                        if (minutes !== dragging.minutes || dayShift !== dragging.days || moved !== dragging.moved) setDrag({ ...dragging, minutes, days: dayShift, moved });
+                      }}
+                      onPointerUp={() => {
+                        if (!dragging) return;
+                        setDrag(null);
+                        if (!dragging.moved) return;
+                        suppressClick.current = true;
+                        if (dragging.minutes !== 0 || dragging.days !== 0) finish(dragging.mode, dragging.minutes, dragging.days);
+                      }}
+                      onPointerCancel={() => setDrag(null)}
+                      onKeyDown={(event) => {
+                        if (!movable || !event.altKey) return;
+                        const step = { ArrowUp: -SNAP, ArrowDown: SNAP } as Record<string, number>;
+                        if (event.key in step) {
+                          event.preventDefault();
+                          finish(event.shiftKey ? "resize" : "move", step[event.key], 0);
+                        } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+                          event.preventDefault();
+                          finish("move", 0, event.key === "ArrowLeft" ? -1 : 1);
+                        }
+                      }}
                       aria-label={itemLabel(item, timezone)}
-                      className={cn("absolute flex flex-col items-stretch justify-start overflow-hidden rounded-md px-1.5 py-1 text-left text-[11px] leading-tight shadow-[0_1px_0_rgba(0,0,0,0.04)] focus-visible:z-20 focus-visible:outline-2 focus-visible:outline-brand-500", blockClass(item), item.problems.length > 0 && "ring-1 ring-destructive/50", row.continuesBefore && "rounded-t-none", row.continuesAfter && "rounded-b-none")}
-                      style={{ top: top + 1, height: Math.max(tall - 2, 18), left: `calc(${row.column * width}% + 2px)`, width: `calc(${width}% - 4px)` }}
+                      aria-keyshortcuts={movable ? "Alt+ArrowUp Alt+ArrowDown Alt+ArrowLeft Alt+ArrowRight Alt+Shift+ArrowUp Alt+Shift+ArrowDown" : undefined}
+                      aria-describedby={movable ? moveHint : undefined}
+                      className={cn(
+                        "absolute flex flex-col items-stretch justify-start overflow-hidden rounded-md px-1.5 py-1 text-left text-[11px] leading-tight shadow-[0_1px_0_rgba(0,0,0,0.04)] focus-visible:z-20 focus-visible:outline-2 focus-visible:outline-brand-500",
+                        blockClass(item),
+                        item.problems.length > 0 && "ring-1 ring-destructive/50",
+                        row.continuesBefore && "rounded-t-none",
+                        row.continuesAfter && "rounded-b-none",
+                        movable && "cursor-grab touch-none after:absolute after:inset-x-2 after:bottom-0.5 after:h-1 after:cursor-ns-resize after:rounded-full hover:after:bg-foreground/15",
+                        dragging?.moved && "z-30 cursor-grabbing opacity-90 shadow-lg ring-2 ring-brand-500",
+                      )}
+                      style={{
+                        top: top + 1,
+                        height: Math.max(tall - 2, 18),
+                        left: `calc(${row.column * width}% + 2px)`,
+                        width: `calc(${width}% - 4px)`,
+                        ...(dragging?.mode === "move" && dragging.moved ? { transform: `translate(${dragging.days * dragging.columnWidth}px, ${(dragging.minutes / 60) * perHour}px)` } : {}),
+                      }}
                     >
                       <span className="flex min-w-0 items-center gap-1 font-semibold">
                         <TimingMark item={item} />
@@ -364,11 +449,23 @@ export function TeamLanes({ data, range, items, timezone, onOpen, cleanerIds }: 
         })}
         {members.map((member) => {
           const mine = timed.filter((item) => item.resources.some((row) => row.kind === "member" && row.id === member.id));
-          const { rows, rowOf } = rowsFor(mine);
+          const work = mine.filter((item) => item.timing !== "availability");
+          const away = mine.filter((item) => item.timing === "availability");
+          const windows = member.windows.filter((row) => row.weekday === weekday);
+          const { rows, rowOf } = rowsFor(work);
+          const role = member.role === "owner" ? "Owner" : member.role === "manager" ? "Manager" : "Office";
           return (
             <Fragment key={member.id}>
-              <Lane lines={lines} rows={rows} name={member.name} note={member.role === "owner" ? "Owner" : member.role === "manager" ? "Manager" : "Office"}>
-                {mine.map((item) => block(item, rowOf.get(item.key)))}
+              <Lane lines={lines} rows={rows} name={member.name} note={`${role}${windows.length ? ` · ${windows.map((row) => `${HOUR_LABEL(row.startMinute)}–${HOUR_LABEL(row.endMinute)}`).join(", ")}` : ""}${away.length ? " · away" : ""}`}>
+                {windows.map((row) => (
+                  <Block key={`w-${row.startMinute}`} left={pos(row.startMinute)} width={pos(row.endMinute) - pos(row.startMinute)} title="Their working hours" className="bg-success/8" />
+                ))}
+                {away.map((item) => (
+                  <Block key={item.key} {...place(item)} onClick={() => onOpen(item)} title={itemLabel(item, timezone)} className={cn(HATCH, "border-border/60 text-muted-foreground")}>
+                    <span className="block truncate">{item.title}</span>
+                  </Block>
+                ))}
+                {work.map((item) => block(item, rowOf.get(item.key)))}
               </Lane>
             </Fragment>
           );

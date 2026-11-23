@@ -119,8 +119,66 @@ record panel; other items open a read-only panel that links to their own page. R
 Team reuses Dispatch › Schedule's lanes. Create offers what exists today: a cleaning booking through
 Sales, one visit, and an interview through Recruiter.
 
-Not yet: creating business events, members' time, training and inspections (phase 3); moving anything
-from Calendar (phase 4); Ask Selestial and notifications (phase 5).
+**Phase 3 (built).** Calendar's own records, `calendarEvents` (meeting, appointment, unavailable,
+training, inspection) and `memberHours`, in `convex/lib/calendar/schema.ts`, written only through
+`convex/calendarEvents.ts` (Owner and Manager):
+
+- `preview` shows what saving would run into, from `convex/lib/calendar/rules.ts`: a cleaner's visits,
+  offers, time off, unavailable days and other events are hard conflicts; a member's own unavailable time
+  is a hard conflict for them alone; their other events, interviews, walkthroughs, working hours and the
+  connected calendar's busy time are warnings. A private appointment never blocks a cleaner. Travel is not
+  looked up, and the form says so.
+- `create` and `update` run the same check again inside the save. A hard conflict is refused unless the
+  person gives a reason, which is kept on the event with their name. `update` and `cancel` take the
+  revision the person was looking at. Cancelling keeps the record and the reason; nothing is deleted.
+- Training links new hires' open onboarding. `recordAttendance` counts toward onboarding only when the
+  person names the requirement, and then records it through Recruiter's own `recordRequirement`.
+- Inspections are by an Owner, a Manager or a cleaner who leads a permanent crew, at the property of a
+  visit or quality case. A restricted case is the Owner's alone. `recordInspection` keeps the inspector's
+  words; it is not a quality decision.
+- A private event shows as "Busy" to anyone not on it who did not make it.
+- Every change is in the event log (`calendar_event.*`), with the old and new times; Sales' walkthrough
+  time changes are now logged too (`assessment.scheduled`).
+
+Panels: Calendar's events show details, attendance, the inspection result, overrides and changes, with
+Edit or move and Cancel. Interviews can be moved or their time cancelled through Recruiter's
+`interviews.schedule` and `interviews.cancelTime`; walkthroughs moved through `assessments.schedule`.
+Create offers a cleaning booking, one visit, an estimate or walkthrough (a Sales proposal), an inspection,
+an interview for an applicant Recruiter is waiting to interview, a training session, unavailable time, a
+business event, an appointment, a dated task and working hours.
+
+**Phase 4 (built).** Moving things from Calendar.
+
+- Week and Day: an Owner or Manager drags a visit that has not started, or one of Calendar's own events,
+  to another time or day, or drags its bottom edge to change its length, in 15-minute steps. With the
+  keyboard, Alt with the arrows does the same. Dragging saves nothing: it opens the move.
+- A visit's move (`convex/calendarMoves.ts`) is Dispatch's own `planMove`/`commitMove`, with the company's
+  area and hours, what the client was promised (arrival window, finish-by time, the time they were told),
+  each cleaner and what happens to them, the client notice, the travel caveat and the plan the visit
+  belongs to, all shown first. The day, time and length can be typed in the same dialog.
+- Notices: a cleaner asked again always gets the new offer (it is how they accept). A cleaner whose offer
+  is withdrawn or whose place reopens is texted unless the person turns it off and tells them
+  themselves; `commitMove` takes the skipped ones and records how many. The client notice goes through
+  the client-message path (`convex/lib/calendar/customerNotice.ts`): the client's own phone, else
+  email, under the sending policy (permission, quiet hours, a ready sender), once per move. The move is
+  saved first; a notice that cannot go is reported separately and recorded
+  (`job.move_notice_not_sent`), never undoing the move.
+- Recurring visits: "this visit only" is the move above. "This and following" and "every upcoming visit"
+  go through the plan's own change: `servicePlans.affected` then `changeSeries` (Clients' plans), or
+  `plans.changePreview` then `changeFuture` (Sales' plans), with the visits they replace listed first.
+  From Calendar the series can change its time of day, not its weekday (`changeSeries` restarts the series
+  on the day of the change); a weekday change is made on the plan itself. Completed visits and their
+  prices are untouched.
+- Calendar's own events move through their edit form, opened at the new time, with the same conflict
+  check (`calendarEvents.update`).
+- Concurrency: a visit's move is refused if the visit changed since the preview (Dispatch's version); a
+  plan change is refused if the plan or its booked visits changed (its revision and the shown visits); an
+  event's change is refused on a stale revision.
+
+Team view is read-only: reassigning a cleaner stays in the visit's record panel (Dispatch's offers).
+
+Not yet: Ask Selestial, Needs attention actions, Google mirroring of Calendar's events and the sync gaps
+(phase 5).
 
 ## Open questions
 

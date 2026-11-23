@@ -6,6 +6,7 @@ import { defineSchema, defineTable } from "convex/server";
 
 import { agentAccessTables } from "./lib/agentAccess/schema";
 import { agreementTables } from "./lib/agreements/schema";
+import { calendarTables } from "./lib/calendar/schema";
 import { cleanersSettingsValidator, cleanersTables, engagementValidator } from "./lib/cleaners/schema";
 import { googleTables } from "./lib/google/schema";
 import { aiTables } from "./lib/ai/schema";
@@ -1064,6 +1065,7 @@ export default defineSchema({
 
   // ── Recruiter: hiring needs, applicants, applications and everything that hangs off them ───────
   ...recruiterTables,
+  ...calendarTables,
 
   // ── Company Chat: conversations, runs, action receipts, drafts and confirmed knowledge ─────────
   ...chatTables,

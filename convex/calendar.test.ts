@@ -146,6 +146,18 @@ describe("Calendar", () => {
     expect(projected[0]).toMatchObject({ kind: "projected_visit", status: "projected", statusLabel: "Projected · books automatically nearer the day", resources: [] });
     expect(projected.every((item) => item.startsAt % DAY === 15 * HOUR)).toBe(true);
     expect(booked.length).toBeGreaterThan(0);
+
+    // Moving one of its visits from Calendar knows the plan, so "this and following" can be offered.
+    const second = jobs.find((job) => job.planDate === "2027-03-09")!;
+    const preview = await as.query(api.calendarMoves.previewVisit, { companyId, jobId: second._id, startsAt: second.startsAt + 2 * HOUR, endsAt: second.endsAt + 2 * HOUR });
+    expect(preview.series).toMatchObject({ system: "service", planId, date: "2027-03-09", startTime: "12:00", sameWeekday: true, running: true });
+    // "This and following" goes through the plan's own change: the visits it replaces are listed first, and earlier ones keep their time.
+    const { visits, revision } = await as.query(api.servicePlans.affected, { companyId, planId, from: "2027-03-09" });
+    await as.mutation(api.servicePlans.changeSeries, { companyId, planId, expectedRevision: revision, from: "2027-03-09", shown: visits.map((row) => row.id), startTime: "12:00" });
+    const after = (await t.run(async (ctx) => ctx.db.query("jobs").collect())).filter((job) => job.planId === planId && job.status === "scheduled").sort((a, b) => a.startsAt - b.startsAt);
+    expect(after.find((job) => job.planDate === "2027-03-02")?.startsAt).toBe(Date.UTC(2027, 2, 2, 16, 0));
+    expect(after.find((job) => job.planDate === "2027-03-09")?.startsAt).toBe(Date.UTC(2027, 2, 9, 18, 0));
+    expect(after.find((job) => job.planDate === "2027-03-16")?.startsAt).toBe(Date.UTC(2027, 2, 16, 17, 0));
   });
 });
 

@@ -16,7 +16,7 @@ import { companyQuery, type MemberAccess } from "./lib/builders";
 import { mayRead } from "./lib/agreements/access";
 import { localParts } from "./lib/availability";
 import { cleanerConflicts, type Away, type Commitment } from "./lib/calendar/conflicts";
-import { byStart, DEFAULT_LAYERS, INTERVIEW_LABEL, interviewTiming, KIND_LAYER, LAYERS, layersFor, MAX_RANGE_DAYS, overlaps, SOURCE_LIMIT, VISIT_STATE_LABEL, visitCategory, visitState, WALKTHROUGH_LABEL, type Item, type Kind, type Layer, type Resource } from "./lib/calendar/model";
+import { byStart, DEFAULT_LAYERS, EVENT_ITEM_KIND, EVENT_STATUS_LABEL, INTERVIEW_LABEL, interviewTiming, KIND_LAYER, LAYERS, layersFor, MAX_RANGE_DAYS, overlaps, SOURCE_LIMIT, VISIT_STATE_LABEL, visitCategory, visitState, WALKTHROUGH_LABEL, type Item, type Kind, type Layer, type Resource } from "./lib/calendar/model";
 import { projectSalesPlan, projectServicePlan } from "./lib/calendar/projections";
 import { exceptionSpan } from "./lib/cleaners/schedule";
 import { staffing } from "./lib/dispatch/crew";
@@ -503,6 +503,67 @@ async function deadlines(ctx: Ctx, from: number, to: number, limits: Limit[], ma
 /** Midnight at the start of a company-calendar date. */
 const dayStartOf = (date: string, timezone: string) => localInstant(date, 0, timezone);
 
+// ── Calendar's own events ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Meetings, appointments, members' time away, training and inspections. A private event shows as "Busy"
+ * to anyone who is not on it and did not make it: its title, notes and place are not returned.
+ * Cleaners' time in these events counts against them, so a visit that overlaps a training is flagged.
+ */
+async function ownEvents(ctx: Ctx, from: number, to: number, limits: Limit[], member: (id: Id<"members">) => Promise<string>, cleaner: (id: Id<"cleaners">) => Promise<string>) {
+  const rows = (
+    await bounded(
+      ctx.db.query("calendarEvents").withIndex("by_company_start", (q) => q.eq("companyId", ctx.companyId).gte("startsAt", from - 32 * DAY).lt("startsAt", to)),
+      "calendar events",
+      limits,
+    )
+  ).filter((row) => overlaps(row, from, to));
+  const items: Item[] = [];
+  const cleanerTime = new Map<string, Away[]>();
+  for (const row of rows) {
+    if (row.status !== "cancelled") {
+      for (const id of [...row.cleanerIds, ...(row.leadCleanerId ? [row.leadCleanerId] : [])]) {
+        cleanerTime.set(id, [...(cleanerTime.get(id) ?? []), { startsAt: row.startsAt, endsAt: row.endsAt, label: row.kind === "training" ? "a training session" : row.kind === "inspection" ? "an inspection" : "another event" }]);
+      }
+    }
+    const mine = row.memberIds.includes(ctx.member._id) || (row.createdBy.kind === "member" && row.createdBy.memberId === ctx.member._id);
+    const hidden = row.private && !mine;
+    const resources: Resource[] = [];
+    for (const id of row.memberIds) resources.push({ kind: "member", id, name: await member(id), state: row.kind === "unavailable" ? "away" : "assigned" });
+    if (row.leadMemberId && !row.memberIds.includes(row.leadMemberId)) resources.push({ kind: "member", id: row.leadMemberId, name: await member(row.leadMemberId), state: "assigned" });
+    if (!hidden) for (const id of [...(row.leadCleanerId ? [row.leadCleanerId] : []), ...row.cleanerIds]) resources.push({ kind: "cleaner", id, name: await cleaner(id), state: "assigned" });
+    const kind = EVENT_ITEM_KIND[row.kind];
+    const problems: string[] = [];
+    if (row.status === "scheduled" && row.kind === "inspection" && row.endsAt < Date.now() && !row.inspection) problems.push("No result recorded yet");
+    if (row.status === "scheduled" && row.kind === "training" && row.endsAt < Date.now() && (row.attendance ?? []).length < row.cleanerIds.length) problems.push("Attendance not recorded yet");
+    if (row.override && row.status === "scheduled") problems.push(`Saved over a conflict: ${row.override.reason}`);
+    items.push({
+      key: `calendarEvents:${row._id}`,
+      source: { table: "calendarEvents", id: row._id },
+      kind,
+      layer: KIND_LAYER[kind],
+      timing: row.kind === "unavailable" ? "availability" : "appointment",
+      title: hidden ? "Busy" : row.kind === "unavailable" ? `${resources[0]?.name ?? "Someone"} · ${row.title === "Unavailable" ? "unavailable" : row.title}` : row.title,
+      detail: hidden ? null : (row.location ?? null),
+      startsAt: row.startsAt,
+      endsAt: row.endsAt,
+      allDay: row.allDay && row.allDay.from === row.allDay.through ? row.allDay.from : null,
+      arrivalEndsAt: null,
+      timezone: row.timezone,
+      status: row.status === "scheduled" ? row.kind : row.status,
+      statusLabel: hidden ? "Busy · private" : row.kind === "inspection" && row.inspection ? (row.inspection.result === "no_issues" ? "Inspected · no issues" : row.inspection.result === "issues_found" ? "Inspected · issues found" : "Not done") : EVENT_STATUS_LABEL[row.status],
+      resources,
+      customerId: hidden ? null : (row.customerId ?? null),
+      propertyId: hidden ? null : (row.propertyId ?? null),
+      agent: row.kind === "training" ? "recruiter" : row.kind === "inspection" ? "quality" : null,
+      problems: hidden ? [] : problems,
+      href: null,
+      version: row.revision,
+    });
+  }
+  return { items, cleanerTime };
+}
+
 // ── External busy time ──────────────────────────────────────────────────────────────────────────────
 
 async function external(ctx: Ctx, from: number, to: number) {
@@ -560,6 +621,8 @@ export const range = companyQuery({
     const member = cache(async (id: Id<"members">) => (await ctx.db.get(id))?.name ?? "A member");
 
     let items: Item[] = [];
+    // Calendar's own events are for Owners and Managers; a cleaner's time in them still counts in their conflicts for everyone.
+    const own = await ownEvents(ctx, args.from, args.to, limits, member, cleaner);
     // Visits are read whenever availability is shown too: a cleaner's conflicts need both.
     const jobs = wanted.has("jobs") || wanted.has("availability") ? await visits(ctx, args.from, args.to, limits, { cleaner }) : null;
     const absent = wanted.has("jobs") || wanted.has("availability") ? await away(ctx, args.from, args.to, limits, cleaner, manager) : null;
@@ -572,7 +635,7 @@ export const range = companyQuery({
         if (!windows.has(cleanerId)) {
           windows.set(cleanerId, await ctx.db.query("availabilityWindows").withIndex("by_company_cleaner", (q) => q.eq("companyId", ctx.companyId).eq("cleanerId", cleanerId as Id<"cleaners">)).take(100));
         }
-        const found = cleanerConflicts({ commitments: list, windows: windows.get(cleanerId)!, away: absent.byCleaner.get(cleanerId) ?? [], bufferMinutes: buffer, timezone: ctx.company.timezone });
+        const found = cleanerConflicts({ commitments: list, windows: windows.get(cleanerId)!, away: [...(absent.byCleaner.get(cleanerId) ?? []), ...(own.cleanerTime.get(cleanerId) ?? [])], bufferMinutes: buffer, timezone: ctx.company.timezone });
         const name = await cleaner(cleanerId as Id<"cleaners">);
         for (const [key, problems] of found) {
           const item = byKey.get(key);
@@ -585,6 +648,7 @@ export const range = companyQuery({
     if (wanted.has("hiring")) items.push(...(await hiring(ctx, args.from, args.to, limits, member)));
     if (wanted.has("sales")) items.push(...(await walkthroughs(ctx, args.from, args.to, limits, member)));
     if (wanted.has("deadlines")) items.push(...(await deadlines(ctx, args.from, args.to, limits, manager)));
+    if (manager) items.push(...own.items);
     const outside = allowed.includes("external") ? await external(ctx, args.from, wanted.has("external") ? args.to : args.from) : null;
     if (outside && wanted.has("external")) items.push(...outside.items);
 
@@ -608,10 +672,18 @@ export const range = companyQuery({
       ),
       cleanersLimited: cleaners.length === SOURCE_LIMIT,
       crews: await crews(ctx),
+      // Members and their weekly hours, for Owners and Managers. Hours none have set are an empty list, not "never".
       members: manager
-        ? (await ctx.db.query("members").withIndex("by_company", (q) => q.eq("companyId", ctx.companyId)).take(200))
-            .filter((row) => row.status === "active")
-            .map((row) => ({ id: row._id, name: row.name, role: row.role }))
+        ? await Promise.all(
+            (await ctx.db.query("members").withIndex("by_company", (q) => q.eq("companyId", ctx.companyId)).take(200))
+              .filter((row) => row.status === "active")
+              .map(async (row) => ({
+                id: row._id,
+                name: row.name,
+                role: row.role,
+                windows: (await ctx.db.query("memberHours").withIndex("by_company_member", (q) => q.eq("companyId", ctx.companyId).eq("memberId", row._id)).take(50)).map((window) => ({ weekday: window.weekday, startMinute: window.startMinute, endMinute: window.endMinute })),
+              })),
+          )
         : [],
     };
 

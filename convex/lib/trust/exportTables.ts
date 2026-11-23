@@ -94,6 +94,9 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   { table: "interviews", index: "by_company_application" },
   { table: "hiringOffers", index: "by_company_application" },
   { table: "onboardingHandoffs", index: "by_company_status" },
+  // Calendar's own records (convex/lib/calendar/schema.ts).
+  { table: "calendarEvents", index: "by_company_start" },
+  { table: "memberHours", index: "by_company_member" },
   { table: "integrationRequests", index: "by_company_integration" },
   // Company setup and the shared company context (convex/lib/setup/schema.ts).
   { table: "companySetups", index: "by_company" },

@@ -64,6 +64,11 @@ export const KINDS = [
   "unavailable",
   "task_due",
   "renewal_due",
+  "meeting",
+  "appointment",
+  "member_unavailable",
+  "training",
+  "inspection",
   "external_busy",
 ] as const;
 export type Kind = (typeof KINDS)[number];
@@ -78,6 +83,11 @@ export const KIND_LAYER: Record<Kind, Layer> = {
   time_off: "availability",
   unavailable: "availability",
   task_due: "deadlines",
+  meeting: "business",
+  appointment: "business",
+  member_unavailable: "business",
+  training: "hiring",
+  inspection: "quality",
   renewal_due: "deadlines",
   external_busy: "external",
 };
@@ -94,7 +104,8 @@ export type SourceRef =
   | { table: "availabilityExceptions"; id: string }
   | { table: "tasks"; id: string }
   | { table: "agreements"; id: string }
-  | { table: "googleBusy"; id: string };
+  | { table: "googleBusy"; id: string }
+  | { table: "calendarEvents"; id: string };
 
 export type Resource = { kind: "cleaner" | "member"; id: string; name: string; state: "accepted" | "offered" | "assigned" | "away" };
 
@@ -217,3 +228,8 @@ export const SOURCE_LIMIT = 400;
 export function byStart(a: Pick<Item, "startsAt" | "endsAt" | "key">, b: Pick<Item, "startsAt" | "endsAt" | "key">): number {
   return a.startsAt - b.startsAt || b.endsAt - a.endsAt || a.key.localeCompare(b.key);
 }
+
+/** Calendar's own events by kind: which Item kind each becomes. */
+export const EVENT_ITEM_KIND = { meeting: "meeting", appointment: "appointment", unavailable: "member_unavailable", training: "training", inspection: "inspection" } as const satisfies Record<string, Kind>;
+
+export const EVENT_STATUS_LABEL: Record<"scheduled" | "completed" | "cancelled", string> = { scheduled: "Scheduled", completed: "Done", cancelled: "Cancelled" };

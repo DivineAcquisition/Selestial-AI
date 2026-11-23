@@ -63,6 +63,8 @@ export const subjectValidator = v.union(
   v.object({ table: v.literal("interviews"), id: v.id("interviews") }),
   v.object({ table: v.literal("hiringOffers"), id: v.id("hiringOffers") }),
   v.object({ table: v.literal("onboardingHandoffs"), id: v.id("onboardingHandoffs") }),
+  // Calendar's own records (convex/lib/calendar/schema.ts).
+  v.object({ table: v.literal("calendarEvents"), id: v.id("calendarEvents") }),
   // Company agreements (convex/lib/agreements/schema.ts).
   v.object({ table: v.literal("agreements"), id: v.id("agreements") }),
   v.object({ table: v.literal("agreementTemplates"), id: v.id("agreementTemplates") }),

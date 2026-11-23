@@ -236,6 +236,8 @@ export const DELETION_PLAN: readonly TablePlan[] = [
   del("interviews", "Interviews."),
   del("hiringOffers", "Offers to applicants."),
   del("onboardingHandoffs", "New-hire handoffs."),
+  del("calendarEvents", "Calendar meetings, appointments, time away, training sessions and inspections."),
+  del("memberHours", "Members' weekly working hours."),
   del("conversations", "Company Chat conversations."),
   del("chatMessages", "Company Chat messages, with attachments."),
   del("chatRuns", "Company Chat responses."),
