@@ -28,6 +28,7 @@ import { applicationMessages } from "./outbox";
 import { AWAITING_FORM, OPEN_FINDING, USABLE_CONTACT, type FindingKind, type FindingStatus, type PreparedKind } from "./schema";
 import { DAY, HOUR, recruiterSettings } from "./settings";
 import { followUpEmail, inquiryReplyEmail, interviewInvitationEmail, interviewReminderEmail, invitationEmail, partsFor, payReplyEmail } from "./words";
+import { notifyMembers } from "../notify/route";
 
 export type Prepared = NonNullable<Doc<"recruiterFindings">["prepared"]>;
 
@@ -360,7 +361,11 @@ export async function afterFindingMessage(ctx: MutationCtx, message: Doc<"messag
     .first();
   if (!finding) return;
   const now = Date.now();
-  if (event === "failed") await ctx.db.patch(finding._id, { status: "needs_attention", outcome: message.problem ?? (message.status === "unconfirmed" ? "It is not known whether it went. It was not sent again." : "It could not be sent."), updatedAt: now });
+  if (event === "failed") {
+    const problem = message.problem ?? (message.status === "unconfirmed" ? "It is not known whether it went. It was not sent again." : "It could not be sent.");
+    await ctx.db.patch(finding._id, { status: "needs_attention", outcome: problem, updatedAt: now });
+    await notifyMembers(ctx, { companyId: finding.companyId, event: "recruiter_attention", ref: finding.applicationId, key: `failed:${message._id}`, facts: { kind: "failed", problem } });
+  }
   else await ctx.db.patch(finding._id, { status: "sent", outcome: event === "delivered" ? "Delivered, as the email service reports." : "Accepted by the email service. Delivery is not confirmed yet.", updatedAt: now });
 }
 

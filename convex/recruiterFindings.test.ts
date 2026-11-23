@@ -312,3 +312,51 @@ describe("moving an existing company onto findings", () => {
     expect((await s.ready()).map((row) => row.kind)).toEqual(["new_application"]);
   });
 });
+
+describe("Recruiter's background work and notices", () => {
+  let undo: () => void;
+  beforeEach(() => {
+    undo = recruiterTestEnv();
+  });
+  afterEach(() => undo());
+  const notices = (s: Setup) => s.t.run(async (ctx) => (await ctx.db.query("messages").collect()).filter((m) => m.purpose === "member_notice" && m.notice?.event.startsWith("recruiter_")));
+
+  it("records each inbox read as it really went: read, and failed with the reason", async () => {
+    const s = await setup();
+    await s.receive(indeedApplication(), mail({ id: "maybe", from: "Indeed <indeedapply@indeed.com>", subject: "Maria is interested", text: "x" }));
+    let [inbox] = await s.as.query(api.recruiter.inboxRuns, { companyId: s.companyId });
+    expect(inbox.runs[0]).toMatchObject({ outcome: "read", filed: 2, opened: 1, possible: 1, problem: null, finishedAt: expect.any(Number) });
+    s.inbox.fail = "provider";
+    await s.sync();
+    [inbox] = await s.as.query(api.recruiter.inboxRuns, { companyId: s.companyId });
+    expect(inbox.runs[0]).toMatchObject({ outcome: "failed", problem: expect.stringContaining("did not answer") });
+  });
+
+  it("tells a person once when a reply needs them, linking to the applicant, and not when it was answered by itself", async () => {
+    const s = await setup();
+    const { applicationId } = await invited(s);
+    await s.receive(mail({ from: `Maria Lopez <${MARIA}>`, subject: "Re: Next step", text: "Do I need my own vacuum?" }));
+    const planned = await notices(s);
+    expect(planned.map((m) => [m.notice?.event, m.notice?.ref])).toEqual([["recruiter_attention", applicationId]]);
+    // A pay question answered by itself under the switch needs nobody.
+    await s.as.mutation(api.hiringNeeds.setCompensation, { companyId: s.companyId, needId: s.needId, pay: { kind: "share", shareBps: 4000 } });
+    await s.as.mutation(api.recruiterAutomation.set, { companyId: s.companyId, key: "routine_answers", on: true });
+    await s.receive(indeedApplication({ id: "lee", text: "Lee Wong applied to House Cleaner.\nEmail: lee.wong@example.test\nApplication ID: IND-2" }));
+    await s.approveAll();
+    await s.receive(mail({ from: "Lee Wong <lee.wong@example.test>", subject: "Re: Next step", text: "What does the job pay per hour?" }));
+    expect(emailsTo("lee.wong@example.test").at(-1)!.text).toContain("40% of each job's price");
+    expect((await notices(s)).filter((m) => m.notice?.event === "recruiter_attention")).toHaveLength(1);
+  });
+
+  it("summarizes the hour's new applicants once, instead of a notice per email", async () => {
+    const s = await setup();
+    await s.receive(indeedApplication({ id: "a" }), indeedApplication({ id: "b", text: "Lee Wong applied to House Cleaner.\nEmail: lee.wong@example.test\nApplication ID: IND-2" }), inquiry());
+    expect(await notices(s)).toEqual([]);
+    await later(s.t, HOUR);
+    await s.t.mutation(internal.recruiter.summaries, {});
+    await s.t.mutation(internal.recruiter.summaries, {});
+    const summary = (await notices(s)).filter((m) => m.notice?.event === "recruiter_activity");
+    expect(summary).toHaveLength(1);
+    expect(summary[0].notice?.facts).toMatchObject({ kind: "summary", applied: 2, asked: 1, ready: 3 });
+  });
+});

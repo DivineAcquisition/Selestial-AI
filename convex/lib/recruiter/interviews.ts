@@ -24,6 +24,7 @@ import { issueApplicantLink, liveApplicantLink } from "./links";
 import { queueApplicantMessage } from "./outbox";
 import { DAY, HOUR, recruiterSettings } from "./settings";
 import { interviewConfirmationEmail, interviewInvitationEmail, interviewReminderEmail, interviewReminderText, partsFor } from "./words";
+import { notifyMembers } from "../notify/route";
 
 export const RUN_INTERVIEW = "recruiter.run_interview";
 const MAX_RESCHEDULES = 3;
@@ -151,6 +152,7 @@ async function confirm(ctx: MutationCtx, interviewId: Id<"interviews">, actor: A
   await send(ctx, loaded, "interview_confirmation", interviewConfirmationEmail({ ...partsFor(company, settings.fromName, applicant, need.title), when: `${at} (${company.timezone})`, how: interview.how }), `interview-confirm:${interview._id}:${interview.startsAt}`, actor, true);
   await settleTask(ctx, application, "interview", "An interview time is reserved.");
   await setNextAction(ctx, application, { what: `Interview ${at}. Record how it went afterwards.`, by: "owner", dueAt: interview.endsAt });
+  await notifyMembers(ctx, { companyId: company._id, event: "recruiter_activity", ref: application._id, key: `interview:${interview._id}:${interview.startsAt}`, facts: { kind: "interview", startsAt: interview.startsAt! } });
 }
 
 /**

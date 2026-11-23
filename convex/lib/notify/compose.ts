@@ -186,6 +186,54 @@ async function agentActed(ctx: MutationCtx, company: Doc<"companies">, facts: No
 
 const CASE_PAGE = { follow_through: "needs-attention", recovery: "recovery", continuity: "continuity-renewals", renewal: "continuity-renewals", reactivation: "re-engagement" } as const;
 /** Where a case opens: its own page once closed or underway, Needs attention while it waits on a person. */
+/**
+ * Recruiter's notices. Each opens the applicant it is about, or the overview for a summary. Read again now:
+ * a reply someone already answered, or a failure already dealt with, is not sent.
+ */
+async function recruiterNotice(ctx: MutationCtx, company: Doc<"companies">, event: "recruiter_attention" | "recruiter_activity", ref: string | undefined, facts: NoticeFacts | undefined, c: Context): Promise<Built> {
+  const kind = str(facts, "kind");
+  if (kind === "summary") {
+    const applied = num(facts, "applied") ?? 0;
+    const asked = num(facts, "asked") ?? 0;
+    const ready = num(facts, "ready") ?? 0;
+    const parts = [applied ? `${applied} new ${applied === 1 ? "applicant" : "applicants"}` : null, asked ? `${asked} asking about work` : null].filter(Boolean).join(" and ");
+    if (!parts) return { problem: "Nothing new to report." };
+    return alertEmail({
+      ...c,
+      eyebrow: "Recruiter",
+      subject: `Recruiter found ${parts}`,
+      heading: `Recruiter found ${parts}`,
+      body: ready ? `${ready} ${ready === 1 ? "message is" : "messages are"} prepared and ready for you to send.` : "Nothing is waiting for you to send.",
+      tone: "info",
+      button: { label: "Open Recruiter", path: "/app/agents/recruiter" },
+      because: "notices about what your agents did are on",
+    });
+  }
+  const id = ref ? ctx.db.normalizeId("applications", ref) : null;
+  const application = id ? await ctx.db.get(id) : null;
+  if (!application || application.companyId !== company._id || application.redactedAt) return { problem: "The application no longer exists." };
+  const applicant = await ctx.db.get(application.applicantId);
+  const need = application.needId ? await ctx.db.get(application.needId) : null;
+  const who = applicant?.name ?? "An applicant";
+  const button = { label: "Open the applicant", path: `/app/agents/recruiter/applicants?open=${application._id}` };
+  const about = [
+    { label: "Applicant", value: applicant?.name ?? null },
+    { label: "Role", value: need?.title ?? application.roleSeen ?? null },
+  ];
+  if (kind === "reply") {
+    if (!application.questionSince) return { problem: "The reply was answered before this notice went." };
+    return alertEmail({ ...c, eyebrow: "Recruiter", subject: `${who} replied and needs an answer`, heading: `${who} replied`, body: "Recruiter can't answer this one by itself. Reminders to them are paused until it's answered.", tone: "warning", facts: about, button, because: "notices about things that need a person are on" });
+  }
+  if (kind === "failed") {
+    return alertEmail({ ...c, eyebrow: "Recruiter", subject: `A message to ${who} didn't go through`, heading: "A message didn't go through", body: str(facts, "problem") ?? "The email service could not deliver it.", tone: "warning", note: "Nothing was sent again by itself.", facts: about, button, because: "notices about things that need a person are on" });
+  }
+  if (kind === "interview") {
+    const startsAt = num(facts, "startsAt");
+    return alertEmail({ ...c, eyebrow: "Recruiter", subject: `${who} booked an interview`, heading: `${who} booked an interview`, body: startsAt ? `For ${when(startsAt, c.timezone)}.` : "An interview time is reserved.", tone: "info", facts: about, button, because: "notices about what your agents did are on" });
+  }
+  return { problem: "Unknown Recruiter notice." };
+}
+
 function casePath(row: Doc<"retentionCases">): string {
   const page = row.status === "needs_attention" || row.status === "needs_context" ? "needs-attention" : CASE_PAGE[row.kind];
   return `/app/agents/retention/${page}?case=${encodeURIComponent(row._id)}`;
@@ -523,6 +571,9 @@ async function build(ctx: MutationCtx, message: Doc<"messages">, company: Doc<"c
         because: "Selestial tells the Owner when something stops working and needs them, once per problem.",
       });
     }
+    case "recruiter_attention":
+    case "recruiter_activity":
+      return recruiterNotice(ctx, company, notice.event, notice.ref, facts, c);
     case "migration_complete": {
       const id = notice.ref ? ctx.db.normalizeId("migrations", notice.ref) : null;
       const migration = id ? await ctx.db.get(id) : null;

@@ -28,7 +28,8 @@ import { discoveryOf } from "./lib/recruiter/boundary";
 import { recruiterSettingsValidator, sourceValidator, type Stage } from "./lib/recruiter/schema";
 
 const discoveryValidator = v.union(v.literal("hiring_inbox"), v.literal("label"), v.literal("search"));
-import { DAY, recruiterSettings } from "./lib/recruiter/settings";
+import { DAY, HOUR, recruiterSettings } from "./lib/recruiter/settings";
+import { notifyMembers } from "./lib/notify/route";
 import { signatureProvider } from "./lib/recruiter/signature";
 import { proposeUrgentOutreach, urgentCandidates } from "./lib/recruiter/urgent";
 import { email, optionalText } from "./lib/text";
@@ -315,3 +316,53 @@ export const interviewReminders = internalMutation({
     }),
 });
 export const retention = internalMutation({ args: {}, handler: async (ctx) => redactDue(ctx, Date.now()) });
+
+// ── Background work: runs and summaries ─────────────────────────────────────────────────────────────
+
+/** The latest reads of each hiring inbox, as they really happened. */
+export const inboxRuns = managerQuery({
+  args: {},
+  handler: async (ctx) => {
+    const connections = await ctx.db
+      .query("mailboxConnections")
+      .withIndex("by_company", (q) => q.eq("companyId", ctx.companyId))
+      .take(20);
+    const out = [];
+    for (const connection of connections.filter((row) => row.status !== "disconnected")) {
+      const runs = await ctx.db
+        .query("inboxRuns")
+        .withIndex("by_connection_started", (q) => q.eq("connectionId", connection._id))
+        .order("desc")
+        .take(8);
+      out.push({ connectionId: connection._id, address: connection.address, status: connection.status, problem: connection.problem ?? null, lastSyncAt: connection.lastSyncAt ?? null, runs: runs.map((run) => ({ startedAt: run.startedAt, finishedAt: run.finishedAt ?? null, outcome: run.outcome ?? null, filed: run.filed, opened: run.opened, possible: run.possible, problem: run.problem ?? null })) });
+    }
+    return out;
+  },
+});
+
+/**
+ * Run hourly: one summary per company of the new applicants and inquiries Recruiter found in the hour
+ * before, instead of a notice per email. Each hour is summarized once.
+ */
+export const summaries = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const bucket = Math.floor(Date.now() / HOUR) * HOUR;
+    const rows = await ctx.db
+      .query("recruiterFindings")
+      .withIndex("by_discovered", (q) => q.gte("discoveredAt", bucket - HOUR).lt("discoveredAt", bucket))
+      .take(2000);
+    const byCompany = new Map<string, { companyId: (typeof rows)[number]["companyId"]; applied: Set<string>; asked: Set<string>; ready: Set<string> }>();
+    for (const row of rows) {
+      if (row.kind !== "new_application" && row.kind !== "employment_inquiry" && row.kind !== "contact_needed") continue;
+      const entry = byCompany.get(row.companyId) ?? { companyId: row.companyId, applied: new Set(), asked: new Set(), ready: new Set() };
+      (row.kind === "employment_inquiry" ? entry.asked : entry.applied).add(row.applicationId);
+      if (row.status === "ready") entry.ready.add(row.applicationId);
+      byCompany.set(row.companyId, entry);
+    }
+    for (const entry of byCompany.values()) {
+      await notifyMembers(ctx, { companyId: entry.companyId, event: "recruiter_activity", ref: entry.companyId, key: `summary:${bucket}`, facts: { kind: "summary", applied: entry.applied.size, asked: entry.asked.size, ready: entry.ready.size } });
+    }
+    return byCompany.size;
+  },
+});

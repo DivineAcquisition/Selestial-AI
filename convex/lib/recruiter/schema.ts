@@ -277,6 +277,26 @@ export const preparedValidator = v.object({
 
 export const recruiterTables = {
   /**
+   * One read of one hiring inbox: when it started and finished, what it filed and opened, and how it ended.
+   * partial: it stopped at its page limit with mail still waiting; the next run carries on from there.
+   * Kept 30 days.
+   */
+  inboxRuns: defineTable({
+    companyId: v.id("companies"),
+    connectionId: v.id("mailboxConnections"),
+    startedAt: v.number(),
+    finishedAt: v.optional(v.number()),
+    outcome: v.optional(v.union(v.literal("read"), v.literal("partial"), v.literal("failed"))),
+    filed: v.number(),
+    opened: v.number(),
+    possible: v.number(),
+    problem: v.optional(v.string()),
+  })
+    .index("by_connection_started", ["connectionId", "startedAt"])
+    .index("by_company_started", ["companyId", "startedAt"])
+    .index("by_started", ["startedAt"]),
+
+  /**
    * One thing Recruiter found and the next step it prepared, for one application. At most one is open per
    * application; each is kept afterwards as what was done. Source facts (`reported`: what the applicant or
    * a board said) are kept apart from Recruiter's reading (`explanation`, `next`).
@@ -310,7 +330,8 @@ export const recruiterTables = {
     .index("by_company_status", ["companyId", "status", "updatedAt"])
     .index("by_company_updated", ["companyId", "updatedAt"])
     .index("by_application", ["applicationId", "updatedAt"])
-    .index("by_message", ["messageId"]),
+    .index("by_message", ["messageId"])
+    .index("by_discovered", ["discoveredAt"]),
 
   /** A role the Owner is hiring for. Only the Owner opens one or sets its pay. */
   hiringNeeds: defineTable({

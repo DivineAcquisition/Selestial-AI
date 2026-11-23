@@ -210,15 +210,51 @@ export const failed = internalMutation({
   },
 });
 
+export const startRun = internalMutation({
+  args: { connectionId: v.id("mailboxConnections") },
+  handler: async (ctx, args) => {
+    const connection = await ctx.db.get(args.connectionId);
+    if (!connection) return null;
+    return ctx.db.insert("inboxRuns", { companyId: connection.companyId, connectionId: connection._id, startedAt: Date.now(), filed: 0, opened: 0, possible: 0 });
+  },
+});
+
+export const finishRun = internalMutation({
+  args: { runId: v.id("inboxRuns"), outcome: v.union(v.literal("read"), v.literal("partial"), v.literal("failed")), filed: v.number(), opened: v.number(), possible: v.number(), problem: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (!run || run.finishedAt) return null;
+    await ctx.db.patch(run._id, { finishedAt: Date.now(), outcome: args.outcome, filed: args.filed, opened: args.opened, possible: args.possible, problem: args.problem });
+    return null;
+  },
+});
+
+/** Run on a schedule: drops run records older than 30 days. */
+export const pruneRuns = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const old = await ctx.db
+      .query("inboxRuns")
+      .withIndex("by_started", (q) => q.lt("startedAt", Date.now() - 30 * DAY))
+      .take(500);
+    for (const row of old) await ctx.db.delete(row._id);
+    return old.length;
+  },
+});
+
 export const sync = internalAction({
   args: { connectionId: v.id("mailboxConnections") },
   handler: async (ctx, args): Promise<{ filed: number; opened: number } | null> => {
     const start = await ctx.runQuery(internal.recruiterInbox.begin, { connectionId: args.connectionId });
     if (!start) return null;
     if (!(await ctx.runMutation(internal.recruiterInbox.lease, { connectionId: args.connectionId }))) return null;
+    // What this run did, recorded whatever happens: the screens show real runs, never a guess.
+    const runId = await ctx.runMutation(internal.recruiterInbox.startRun, { connectionId: args.connectionId });
+    const report = { outcome: "failed" as "read" | "partial" | "failed", filed: 0, opened: 0, possible: 0, problem: undefined as string | undefined };
     try {
       const opened = await openConnector(ctx, args.connectionId, start.provider);
       if ("failure" in opened) {
+        report.problem = opened.failure === "auth" ? "The mailbox's authorization has ended." : opened.failure === "not_built" ? "This mailbox provider is not connected." : "The mailbox provider did not answer.";
         await ctx.runMutation(internal.recruiterInbox.failed, { connectionId: args.connectionId, kind: opened.failure });
         return null;
       }
@@ -241,12 +277,22 @@ export const sync = internalAction({
             const input = await decide(header, gate({ header, mode: start.scope.mode, own: start.scope.address, sources: start.sources, known }));
             await ctx.runMutation(internal.recruiterInbox.ingest, { connectionId: args.connectionId, ...input });
             filed += 1;
+            if (input.verdict.classification === "possibly_hiring") report.possible += 1;
           }
           cursor = listed.cursor;
           await ctx.runMutation(internal.recruiterInbox.commit, { connectionId: args.connectionId, cursor });
-          if (!listed.more) break;
+          report.filed = filed;
+          report.opened = bodies;
+          if (!listed.more) {
+            report.outcome = "read";
+            break;
+          }
+          // The page limit with mail still waiting: the next run carries on from the saved cursor.
+          report.outcome = "partial";
         }
       } catch (error) {
+        report.problem = error instanceof MailboxAuthError ? "The mailbox's authorization has ended." : "The mailbox provider did not answer.";
+        report.outcome = "failed";
         await ctx.runMutation(internal.recruiterInbox.failed, { connectionId: args.connectionId, kind: error instanceof MailboxAuthError ? "auth" : "provider" });
         return null;
       }
@@ -262,6 +308,7 @@ export const sync = internalAction({
         return readMessage(ctx, args.connectionId, aiModel, header, message, decided, start!.ours);
       }
     } finally {
+      if (runId) await ctx.runMutation(internal.recruiterInbox.finishRun, { runId, ...report, filed: report.filed, opened: report.opened });
       await ctx.runMutation(internal.recruiterInbox.release, { connectionId: args.connectionId });
     }
   },

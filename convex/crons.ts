@@ -27,6 +27,9 @@ crons.interval("finance works out team earnings", { minutes: 15 }, internal.team
 crons.interval("find sends that never finished", { minutes: 5 }, internal.messaging.sweepStuck, {});
 // Possibly hiring-related mail nobody decided on keeps its sender and subject for 14 days, then only its id.
 crons.interval("recruiter clears undecided possibly-hiring mail", { hours: 1 }, internal.recruiterPossible.expire, {});
+// One summary an hour of what Recruiter found, never a notice per email; and its run records kept 30 days.
+crons.interval("recruiter summarizes new applicants", { hours: 1 }, internal.recruiter.summaries, {});
+crons.interval("recruiter drops old inbox run records", { hours: 24 }, internal.recruiterInbox.pruneRuns, {});
 // The Monday summary at 7 AM company time, and reminders two hours before a proposal's deadline.
 crons.interval("notices: weekly summary and approval reminders", { hours: 1 }, internal.notifications.hourly, {});
 

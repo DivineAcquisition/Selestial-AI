@@ -18,6 +18,7 @@ import { addressOf, boardFor, isAutomatedSender, isRelayAddress, oneLine, unsupp
 import type { Classification, ContactEvidence, Fact, Source } from "./schema";
 import { DAY, recruiterSettings } from "./settings";
 import { automate, draftAutomatically } from "./act";
+import { notifyMembers } from "../notify/route";
 
 export type Verdict = { classification: Classification; classifiedBy: "rule" | "model"; reason: string; source?: Source; /** possibly_hiring: when its sender and subject are cleared. */ expiresAt?: number };
 export type IngestInput = {
@@ -206,7 +207,10 @@ async function handleReply(ctx: MutationCtx, connection: Doc<"mailboxConnections
   // The answer is prepared as a finding; a routine one goes by itself only where the Owner allowed it.
   await automate(ctx, application._id);
   // A question only words can answer: under "Answer routine questions", Recruiter drafts it from approved information.
-  await draftAutomatically(ctx, application._id);
+  const drafting = await draftAutomatically(ctx, application._id);
+  // Still waiting for a person: they are told once, with a link to the applicant.
+  const stillWaiting = (await ctx.db.get(application._id))?.questionSince !== undefined;
+  if (!drafting && stillWaiting) await notifyMembers(ctx, { companyId: connection.companyId, event: "recruiter_attention", ref: application._id, key: `reply:${sourceMessageId}`, facts: { kind: "reply" } });
   return "question";
 }
 
