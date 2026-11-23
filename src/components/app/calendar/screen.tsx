@@ -328,9 +328,9 @@ export function CalendarScreen() {
    * Owners and Managers. Projected visits, other records and anything private to someone else cannot.
    */
   const canMove = (item: Item) =>
-    manager &&
-    ((item.source.table === "jobs" && item.timing === "appointment" && ["booked", "offer_sent", "partly_staffed", "fully_staffed"].includes(item.status)) ||
-      (item.source.table === "calendarEvents" && item.title !== "Busy" && !["completed", "cancelled"].includes(item.status)));
+    // Every role moves visits, as in Dispatch (the owner's decision); Calendar's own events are Owners' and Managers'.
+    (item.source.table === "jobs" && item.timing === "appointment" && ["booked", "offer_sent", "partly_staffed", "fully_staffed"].includes(item.status)) ||
+    (manager && item.source.table === "calendarEvents" && item.title !== "Busy" && !["completed", "cancelled"].includes(item.status));
 
   // New things start on the day being looked at, or today.
   const createDay = state.date ?? (now ? localDate(now, timezone) : null);

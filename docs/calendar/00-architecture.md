@@ -14,7 +14,7 @@ does, traced on November 23, 2026, where that differs from comments and older do
 |---|---|
 | Delivery | Phase by phase. Pause for review after phase 2 and after phase 4. |
 | New records | Business events (meetings, manual appointments, members' unavailable time), onboarding and training sessions, scheduled quality inspections. Consultations are walkthroughs (assessments), not a new record. |
-| Access | Every role opens Calendar. Office sees visits, crews and cleaners' availability, and Dispatch's own due dates; not interviews, walkthroughs, inspections, private events, members' time or applicant details. Office cannot reschedule from Calendar. Owners and Managers see and change what they can already change elsewhere. |
+| Access | Every role opens Calendar. Office sees visits, crews and cleaners' availability, and Dispatch's own due dates; not interviews, walkthroughs, inspections, private events, members' time or applicant details. Office reschedules visits, as in Dispatch (decided November 23, 2026, superseding "Office cannot reschedule"); a recurring series and Calendar's own events stay with Owners and Managers. Owners and Managers see and change what they can already change elsewhere. |
 | Notifications on a reschedule | The confirmation lists who would be told under existing rules (customer, crew), all on by default; the person may turn a recipient off before saving. |
 | Members' availability | Owners and Managers get optional weekly working hours and unavailable blocks, used for conflicts on business events, walkthroughs, interviews, training and inspections. Interview slots stay as they are. |
 | Google Calendar | Business events are mirrored through the existing `googleCalendarLinks` mapping, Selestial being the source of truth, outside edits flagged. |
@@ -61,8 +61,8 @@ training sessions, inspections, members' weekly hours.
 3. **Rescheduling is `jobs.reschedule`** (any role, version-checked when crew is affected). It re-checks
    each accepted cleaner and reopens a place rather than double-booking, texts cleaners, records
    `job.rescheduled`, and never tells the customer. Calendar uses the same `planMove`/`commitMove`; the
-   customer notice and the per-recipient choice are added in phase 4. Calendar's own entry point is
-   Manager+, by the owner's decision; Dispatch keeps its current rule (open question below).
+   customer notice and the per-recipient choice are added in phase 4. Calendar's own entry point was
+   Manager+ at first; since November 23, 2026 Office reschedules from Calendar too, as in Dispatch.
 4. **Moving one occurrence of a Sales plan** moves the job only; `planVisits.state = "moved"` is never
    set. Calendar must read a moved Sales visit as its job's time, not the plan's.
 5. **Google Calendar sync is a sweep, not a reaction.** No job or interview mutation queues a sync; the
@@ -212,7 +212,7 @@ and browser checks of each view, form and panel with fixture data. Not yet done:
 keyboard-only walk-through of the whole page, a phone-width pass over every dialog, and a signed-in
 session against a live backend.
 
-## Open questions
+## Decided after the first build
 
-- Dispatch lets any role reschedule a visit (`jobs.reschedule` is a `companyMutation`). Calendar's
-  reschedule is Manager+ by the owner's decision. Should Dispatch be tightened to match?
+- Office can reschedule (November 23, 2026). Calendar's visit move (`calendarMoves`) is open to every
+  role, as Dispatch's `jobs.reschedule` already was; series changes and Calendar's own events are not.
