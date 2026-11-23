@@ -311,6 +311,23 @@ describe("moving an existing company onto findings", () => {
     await s.t.mutation(internal.recruiterMigration.start, {});
     expect((await s.ready()).map((row) => row.kind)).toEqual(["new_application"]);
   });
+
+  it("reaches every company, however many batches it takes", async () => {
+    const s = await setup();
+    for (let i = 0; i < 24; i += 1) await company(s.t, `owner-batch-${i}`, `Batch Cleaning ${i}`);
+    // As an earlier build left them: no interview-reminder choice recorded anywhere.
+    await s.t.run(async (ctx) => {
+      for (const row of await ctx.db.query("permissions").collect()) if (row.action === "recruiter.interview_reminder") await ctx.db.delete(row._id);
+    });
+    await s.t.mutation(internal.recruiterMigration.start, {});
+    await flush(s.t);
+    const { companies, decided } = await s.t.run(async (ctx) => ({
+      companies: (await ctx.db.query("companies").collect()).map((row) => row._id),
+      decided: (await ctx.db.query("permissions").collect()).filter((row) => row.action === "recruiter.interview_reminder").map((row) => row.companyId),
+    }));
+    expect(companies).toHaveLength(25);
+    expect(companies.filter((id) => !decided.includes(id))).toEqual([]);
+  });
 });
 
 describe("Recruiter's background work and notices", () => {
