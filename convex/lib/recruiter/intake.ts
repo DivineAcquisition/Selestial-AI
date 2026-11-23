@@ -17,7 +17,6 @@ import { routeApplication } from "./invitations";
 import { addressOf, boardFor, isAutomatedSender, isRelayAddress, oneLine, unsupportedBoardFor, type MessageHeader } from "./mail";
 import type { Classification, ContactEvidence, Fact, Source } from "./schema";
 import { DAY, recruiterSettings } from "./settings";
-import { liveTaskByKey, openTask, setTaskState } from "../taskState";
 
 export type Verdict = { classification: Classification; classifiedBy: "rule" | "model"; reason: string; source?: Source; /** possibly_hiring: when its sender and subject are cleared. */ expiresAt?: number };
 export type IngestInput = {

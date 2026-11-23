@@ -68,7 +68,7 @@ export const mockConnector: MailboxConnector = {
     const message = inbox.messages.find((row) => row.id === id) ?? null;
     if (!message) return null;
     if (options?.attachments) inbox.attachmentsRead.push(id);
-    return options?.attachments ? message : { ...message, attachments: message.attachments.map(({ text: _text, ...file }) => file) };
+    return options?.attachments ? message : { ...message, attachments: message.attachments.map((file) => ({ name: file.name, contentType: file.contentType, size: file.size })) };
   },
 };
 
