@@ -7,13 +7,14 @@
 import { v } from "convex/values";
 
 import type { Doc, Id } from "./_generated/dataModel";
-import { internalMutation, internalQuery, type MutationCtx } from "./_generated/server";
+import { internalMutation, internalQuery, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { companyMutation, companyQuery, managerMutation, ownerMutation } from "./lib/builders";
 import { notFound, userError } from "./lib/errors";
 import { byMember, recordEvent } from "./lib/events";
 import { can } from "./lib/agreements/access";
 import { load as loadAgreement, versionRow } from "./lib/agreements/store";
-import { requireFeature } from "./lib/google/connection";
+import { activeConnection, requireFeature } from "./lib/google/connection";
+import { enabledFeatures } from "./lib/google/features";
 import { enqueue } from "./lib/google/jobs";
 import { localParts } from "./lib/availability";
 import type { Role } from "./lib/roles";
@@ -28,6 +29,8 @@ async function outputFolder(ctx: Parameters<typeof requireFeature>[0], companyId
   return folder;
 }
 
+const readKey = (resourceId: Id<"googleResources">) => `knowledge_import:${resourceId}:${Math.floor(Date.now() / 600_000)}`;
+
 /** Reads the chosen knowledge sources again. The text is kept for Chat and proposed as company knowledge for the Owner to confirm. */
 export const importKnowledge = ownerMutation({
   args: { resourceId: v.id("googleResources") },
@@ -35,7 +38,20 @@ export const importKnowledge = ownerMutation({
     const connection = await requireFeature(ctx, ctx.companyId, "drive");
     const resource = await ctx.db.get(args.resourceId);
     if (!resource || resource.companyId !== ctx.companyId || resource.kind !== "drive_source") notFound();
-    return enqueue(ctx, { companyId: ctx.companyId, connectionId: connection._id, kind: "knowledge_import", key: `knowledge_import:${resource._id}:${Math.floor(Date.now() / 600_000)}`, payload: { resourceId: resource._id }, requestedBy: ctx.member._id });
+    return enqueue(ctx, { companyId: ctx.companyId, connectionId: connection._id, kind: "knowledge_import", key: readKey(resource._id), payload: { resourceId: resource._id }, requestedBy: ctx.member._id });
+  },
+});
+
+/** A knowledge source Selestial just confirmed it can reach is read straight away, as if the Owner who added it asked. */
+export const readAfterCheck = internalMutation({
+  args: { resourceId: v.id("googleResources") },
+  handler: async (ctx, args) => {
+    const resource = await ctx.db.get(args.resourceId);
+    if (!resource || resource.kind !== "drive_source" || resource.access !== "verified") return null;
+    const connection = await ctx.db.get(resource.connectionId);
+    if (!connection || connection.status !== "connected") return null;
+    await enqueue(ctx, { companyId: resource.companyId, connectionId: connection._id, kind: "knowledge_import", key: readKey(resource._id), payload: { resourceId: resource._id }, requestedBy: resource.addedBy });
+    return null;
   },
 });
 
@@ -52,7 +68,8 @@ export async function queueAgreementExport(ctx: Asker, agreementId: string, vers
   const connection = await requireFeature(ctx, companyId, "drive");
   const folder = await outputFolder(ctx, companyId, "agreements");
   const row = await versionRow(ctx, agreement, version ?? agreement.signedVersion ?? agreement.currentVersion);
-  const queued = await enqueue(ctx, { companyId, connectionId: connection._id, kind: "doc_export", key: `doc_export:${agreement._id}:v${row.version}`, payload: { agreementId: agreement._id, version: row.version, resourceId: folder._id }, requestedBy: ctx.member._id });
+  // Asked again after an export failed, it is tried again; one that worked is never made twice.
+  const queued = await enqueue(ctx, { companyId, connectionId: connection._id, kind: "doc_export", key: `doc_export:${agreement._id}:v${row.version}`, payload: { agreementId: agreement._id, version: row.version, resourceId: folder._id }, requestedBy: ctx.member._id, again: true });
   await recordEvent(ctx, { companyId, type: "agreement.google_doc_requested", actor: byMember(ctx), subject: { table: "agreements", id: agreement._id }, data: { version: row.version } });
   return { ...queued, agreementId: agreement._id, version: row.version, workflow: agreement.workflow };
 }
@@ -64,6 +81,17 @@ export async function queueAgreementExport(ctx: Asker, agreementId: string, vers
 export const exportAgreement = companyMutation({
   args: { agreementId: v.string(), version: v.optional(v.number()) },
   handler: async (ctx, args) => queueAgreementExport({ ...ctx, company: ctx.company }, args.agreementId, args.version),
+});
+
+/** Whether an agreement can be saved as a Google Doc now: Drive connected and granted, and a folder chosen for agreements. */
+export const docExportReady = companyQuery({
+  args: {},
+  handler: async (ctx) => {
+    const connection = await activeConnection(ctx, ctx.companyId, "drive");
+    const connected = connection?.status === "connected" && enabledFeatures(connection.grantedScopes).includes("drive");
+    const folder = connected ? await chosenFolder(ctx, ctx.companyId, "agreements") : null;
+    return { connected, folder: folder?.label ?? null };
+  },
 });
 
 /** Where each export of an agreement stands, with its Google link once it exists. */
@@ -79,6 +107,38 @@ export const exportsFor = companyQuery({
     return rows;
   },
 });
+
+/** The folder chosen for this purpose (or a general one), or null. Never throws: for saving on Selestial's own initiative. */
+async function chosenFolder(ctx: QueryCtx | MutationCtx, companyId: Id<"companies">, purpose: (typeof PURPOSES)[number]): Promise<Doc<"googleResources"> | null> {
+  const rows = await ctx.db.query("googleResources").withIndex("by_company_kind", (q) => q.eq("companyId", companyId).eq("kind", "drive_output")).take(50);
+  return rows.find((r) => r.purpose === purpose && r.access !== "lost") ?? rows.find((r) => !r.purpose && r.access !== "lost") ?? null;
+}
+
+/**
+ * Saves a finished record (a visit's photos, a signed agreement) to the Drive folder the Owner chose for it,
+ * when Drive is connected and granted and a folder is chosen; otherwise does nothing. Each file is one job with
+ * its own key, so asking twice saves it once, and a lost answer is looked up by that key before any retry
+ * (googleExecutors.driveUpload). A backend that is not production never writes it (convex/lib/google/http.ts).
+ */
+export async function copyToDrive(ctx: MutationCtx, companyId: Id<"companies">, input: { record: string; storageId: Id<"_storage">; name: string; mimeType: string; purpose: (typeof PURPOSES)[number] }): Promise<boolean> {
+  const connection = await activeConnection(ctx, companyId, "drive");
+  if (!connection || connection.status !== "connected" || !enabledFeatures(connection.grantedScopes).includes("drive")) return false;
+  const folder = await chosenFolder(ctx, companyId, input.purpose);
+  if (!folder) return false;
+  await enqueue(ctx, { companyId, connectionId: connection._id, kind: "drive_upload", key: `drive_upload:${input.record}:${folder.externalId}`, payload: { resourceId: folder._id, storageId: input.storageId, name: input.name, mimeType: input.mimeType } });
+  return true;
+}
+
+/** A completed visit's photos go to the photos folder. */
+export async function copyVisitPhotos(ctx: MutationCtx, job: Doc<"jobs">): Promise<number> {
+  const photos = await ctx.db.query("evidence").withIndex("by_company_job", (q) => q.eq("companyId", job.companyId).eq("jobId", job._id)).take(200);
+  let queued = 0;
+  for (const photo of photos) {
+    if (await copyToDrive(ctx, job.companyId, { record: `evidence:${photo._id}`, storageId: photo.storageId, name: `visit-${job._id}-${photo.kind}-${photo.uploadedAt}.jpg`, mimeType: "image/jpeg", purpose: "photos" })) queued += 1;
+    else break;
+  }
+  return queued;
+}
 
 /** Saves an agreement's original file or a visit's photo to the folder chosen for it. */
 export const saveRecordFile = companyMutation({
@@ -107,7 +167,7 @@ export const saveRecordFile = companyMutation({
       purpose = "photos";
     }
     const folder = await outputFolder(ctx, ctx.companyId, purpose);
-    return enqueue(ctx, { companyId: ctx.companyId, connectionId: connection._id, kind: "drive_upload", key: `drive_upload:${args.record.table}:${args.record.id}:${folder.externalId}`, payload: { resourceId: folder._id, storageId, name, mimeType }, requestedBy: ctx.member._id });
+    return enqueue(ctx, { companyId: ctx.companyId, connectionId: connection._id, kind: "drive_upload", key: `drive_upload:${args.record.table === "evidence" ? "evidence" : "agreementFiles"}:${args.record.id}:${folder.externalId}`, payload: { resourceId: folder._id, storageId, name, mimeType }, requestedBy: ctx.member._id });
   },
 });
 
@@ -136,10 +196,17 @@ export const sources = companyQuery({
   args: {},
   handler: async (ctx) => {
     const rows = await ctx.db.query("googleResources").withIndex("by_company_kind", (q) => q.eq("companyId", ctx.companyId).eq("kind", "drive_source")).take(100);
+    // Reads still to happen or under way, so the page says "being read" only while that is true.
+    const reading = new Set<string>();
+    for (const status of ["queued", "running", "uncertain"] as const) {
+      for (const job of await ctx.db.query("googleJobs").withIndex("by_company_status", (q) => q.eq("companyId", ctx.companyId).eq("status", status)).take(200)) {
+        if (job.kind === "knowledge_import") reading.add(String((JSON.parse(job.payload) as { resourceId?: string }).resourceId));
+      }
+    }
     const out = [];
     for (const resource of rows) {
       const texts = await ctx.db.query("googleDriveTexts").withIndex("by_company_resource", (q) => q.eq("companyId", ctx.companyId).eq("resourceId", resource._id)).take(50);
-      out.push({ resourceId: resource._id, label: resource.label, access: resource.access, files: texts.map((t) => ({ name: t.name, chars: t.text.length, fetchedAt: t.fetchedAt })) });
+      out.push({ resourceId: resource._id, label: resource.label, access: resource.access, note: resource.accessNote ?? null, reading: resource.access === "unverified" || reading.has(resource._id), files: texts.map((t) => ({ name: t.name, chars: t.text.length, fetchedAt: t.fetchedAt })) });
     }
     return out;
   },

@@ -171,6 +171,8 @@ export const verifyResource = internalAction({
           const note = resource.kind === "drive_source" ? (children.length ? `Ready. Selestial can read ${children.length} file${children.length === 1 ? "" : "s"} here.` : "Ready. To let Selestial read files already in this folder, pick them too.") : "Ready. Selestial can save files here.";
           await ctx.runMutation(internal.google.setResourceAccess, { resourceId: args.resourceId, access: "verified", note, detail: file.mimeType });
         } else await ctx.runMutation(internal.google.setResourceAccess, { resourceId: args.resourceId, access: "verified", note: file.capabilities?.canDownload === false ? "Its owner doesn’t allow downloads, so Selestial can’t read it." : "Ready.", detail: file.mimeType });
+        // A knowledge source is read as soon as it is confirmed, not only when the Owner presses Refresh.
+        if (resource.kind === "drive_source") await ctx.runMutation(internal.googleDrive.readAfterCheck, { resourceId: args.resourceId });
       } else if (resource.kind === "calendar_sync" || resource.kind === "calendar_busy") {
         const calendars = await listCalendars(access.token);
         const found = calendars.find((c) => c.id === resource.externalId);

@@ -200,26 +200,40 @@ function ChooseDrive({ companyId, email }: { companyId: Id<"companies">; email?:
     run(async () => {
       for (const item of items) await add({ companyId, kind: purpose === "knowledge" ? "drive_source" : "drive_output", externalId: item.id, label: item.name, purpose: purpose === "knowledge" ? undefined : purpose, detail: item.mimeType });
     });
+  // Google lets Selestial use only files picked in Google's own chooser (the drive.file scope). Without the
+  // chooser a pasted link could only end as "can't reach it", so nothing is offered until it is set up.
+  if (!picker)
+    return (
+      <div className="grid gap-1 rounded-lg border border-border p-3">
+        <span className="text-sm font-medium text-strong">Add files or folders</span>
+        <p className="text-xs text-muted-foreground">Choosing files and folders from Google Drive is still being set up by Selestial’s team. Google only lets Selestial use files you pick in Google’s own chooser, so pasting a link can’t work until then. Nothing else is needed from you.</p>
+      </div>
+    );
+  const pick = (fileIds?: string[]) =>
+    void pickFromDrive({ folders: purpose !== "knowledge", loginHint: email, fileIds })
+      .then(async (items) => {
+        if (items.length) await save(items);
+        if (fileIds) setLink("");
+      })
+      .catch((e: Error) => setError(e.message));
   return (
     <div className="grid gap-2 rounded-lg border border-border p-3">
       <span className="text-sm font-medium text-strong">Add files or folders</span>
-      <p className="text-xs text-muted-foreground">Selestial only sees what you add here. Adding a folder doesn’t include the files already in it, so add those files too.</p>
+      <p className="text-xs text-muted-foreground">Selestial only sees what you pick in Google’s chooser. Picking a folder doesn’t include the files already in it, so pick those files too.</p>
       <div className="flex flex-wrap items-end gap-2">
         <Field label="Add" className="min-w-48">
           <Select value={purpose} onValueChange={(next) => setPurpose(next ?? "")} options={[{ value: "knowledge", label: "Information your team can ask about" }, ...PURPOSES.map((p) => ({ value: p, label: `A folder to save ${p} in` }))]} searchable="auto" />
         </Field>
-        {picker ? (
-          <Button type="button" variant="outline" disabled={busy} onClick={() => void pickFromDrive({ folders: purpose !== "knowledge", loginHint: email }).then((items) => (items.length ? save(items) : undefined)).catch((e: Error) => setError(e.message))}>
-            Pick from Google Drive
-          </Button>
-        ) : null}
+        <Button type="button" variant="outline" disabled={busy} onClick={() => pick()}>
+          Pick from Google Drive
+        </Button>
       </div>
       <div className="flex flex-wrap items-end gap-2">
-        <Field label={picker ? "Or paste a Google Drive link" : "Paste a Google Drive link"} className="min-w-64 flex-1">
+        <Field label="Or paste a Google Drive link" hint="Google’s chooser opens on that file or folder. Pick it there to let Selestial use it." className="min-w-64 flex-1">
           <TextInput value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://drive.google.com/drive/folders/…" />
         </Field>
-        <Button type="button" variant="outline" disabled={busy || !driveIdFrom(link)} onClick={() => void save([{ id: driveIdFrom(link)!, name: "From Google Drive" }]).then(() => setLink(""))}>
-          Add
+        <Button type="button" variant="outline" disabled={busy || !driveIdFrom(link)} onClick={() => pick([driveIdFrom(link)!])}>
+          Find it in Google Drive
         </Button>
       </div>
       <FormError message={error} />
@@ -286,7 +300,7 @@ function DrivePanel({ companyId, manager }: { companyId: Id<"companies">; manage
             <li key={s.resourceId} className="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-border px-3 py-2">
               <span className="grid gap-0.5">
                 <span className="text-sm font-medium text-strong">{s.label}</span>
-                <span className="text-xs text-muted-foreground">{s.files.length ? s.files.map((f) => f.name).join(", ") : "Being read…"}</span>
+                <span className="text-xs text-muted-foreground">{s.files.length ? s.files.map((f) => f.name).join(", ") : s.reading ? "Being read…" : (s.note ?? "Nothing readable here yet.")}</span>
               </span>
               {role === "owner" ? (
                 <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => { await read({ companyId, resourceId: s.resourceId }); setNote("Reading it again now."); })}>
@@ -303,7 +317,7 @@ function DrivePanel({ companyId, manager }: { companyId: Id<"companies">; manage
             </Button>
           </div>
         ) : null}
-        <p className="text-xs text-muted-foreground">Agreements are exported as Google Docs from each agreement’s page. An export is a copy for reading: it never signs or changes the agreement.</p>
+        <p className="text-xs text-muted-foreground">Visit photos and signed agreements are saved to the folders you chose once they are final. Save an agreement as a Google Doc from its page (“Save as a Google Doc”); it is a copy for reading and never signs or changes the agreement.</p>
         {note ? <p role="status" className="text-sm text-strong">{note}</p> : null}
         <FormError message={error} />
       </div>

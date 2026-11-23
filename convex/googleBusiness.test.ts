@@ -118,7 +118,7 @@ describe("Google Business Profile", () => {
     expect(rows.every((r) => r.approvedText === undefined)).toBe(true);
     expect(calls).toEqual([]);
     const tasks = await t.run((ctx) => ctx.db.query("tasks").collect());
-    expect(tasks.filter((task) => task.nextAction.includes("Retention drafted a reply"))).toHaveLength(2);
+    expect(tasks.filter((task) => task.nextAction?.includes("Retention drafted a reply"))).toHaveLength(2);
   });
 
   it("drafts nothing while Retention's permission to draft review replies is off", async () => {

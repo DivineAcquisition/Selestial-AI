@@ -5,7 +5,10 @@
  * authorization never reaches the browser.
  *
  * Needs NEXT_PUBLIC_GOOGLE_CLIENT_ID, NEXT_PUBLIC_GOOGLE_PICKER_API_KEY and
- * NEXT_PUBLIC_GOOGLE_CLOUD_PROJECT_NUMBER. Without them the page offers pasting a Drive link instead.
+ * NEXT_PUBLIC_GOOGLE_CLOUD_PROJECT_NUMBER at build time. Without them nothing can be added: with the
+ * drive.file scope Google lets Selestial use only files picked here (or files it made), so a pasted link
+ * alone can never work. The page says the chooser is being set up instead of offering that path. A pasted
+ * link is still useful with the chooser: it opens the chooser on that file, for the Owner to confirm.
  */
 export type Picked = { id: string; name: string; mimeType: string };
 
@@ -39,9 +42,9 @@ function load(src: string): Promise<void> {
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-export async function pickFromDrive(options: { folders: boolean; loginHint?: string }): Promise<Picked[]> {
+export async function pickFromDrive(options: { folders: boolean; loginHint?: string; fileIds?: string[] }): Promise<Picked[]> {
   const config = pickerConfig();
-  if (!config) throw new Error("Picking from Google Drive isn’t available right now. You can paste a link instead.");
+  if (!config) throw new Error("Choosing files from Google Drive is still being set up by Selestial’s team.");
   await Promise.all([load("https://accounts.google.com/gsi/client"), load("https://apis.google.com/js/api.js")]);
   const w = window as any;
   await new Promise<void>((resolve) => w.gapi.load("picker", { callback: resolve }));
@@ -57,6 +60,8 @@ export async function pickFromDrive(options: { folders: boolean; loginHint?: str
   return new Promise((resolve) => {
     const picker = w.google.picker;
     const view = new picker.DocsView(options.folders ? picker.ViewId.FOLDERS : picker.ViewId.DOCS).setIncludeFolders(true).setSelectFolderEnabled(options.folders).setMode(picker.DocsViewMode.LIST);
+    // A pasted link: the chooser opens on that file, so picking it grants Selestial access to it.
+    if (options.fileIds?.length) view.setFileIds(options.fileIds.join(","));
     new picker.PickerBuilder()
       .setAppId(config.appId)
       .setDeveloperKey(config.apiKey)
