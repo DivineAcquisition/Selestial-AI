@@ -71,7 +71,7 @@ function conflictsFor(cleaner: Cleaner, day: { from: number; to: number }, buffe
   return out;
 }
 
-function Block({ left, width, row, className, title, onClick, children }: { left: number; width: number; row?: number; className: string; title: string; onClick?: () => void; children?: React.ReactNode }) {
+export function Block({ left, width, row, className, title, onClick, children }: { left: number; width: number; row?: number; className: string; title: string; onClick?: () => void; children?: React.ReactNode }) {
   // Visits at the same time in one lane sit under each other, never on top of each other.
   const style = { left: `${left}%`, width: `${Math.max(width, 1.5)}%`, ...(row === undefined ? {} : { top: `${0.375 + row * 3.25}rem`, height: "2.75rem", bottom: "auto" }) };
   if (!onClick) return <span aria-hidden title={title} style={style} className={cn("absolute inset-y-1 rounded-md", className)} />;
@@ -82,7 +82,7 @@ function Block({ left, width, row, className, title, onClick, children }: { left
   );
 }
 
-function Lane({ name, note, lines, rows = 1, children }: { name: string; note?: React.ReactNode; lines: number[]; rows?: number; children: React.ReactNode }) {
+export function Lane({ name, note, lines, rows = 1, children }: { name: string; note?: React.ReactNode; lines: number[]; rows?: number; children: React.ReactNode }) {
   return (
     <div className="grid grid-cols-[9rem_1fr] border-t border-border first:border-t-0 sm:grid-cols-[11rem_1fr]">
       <div className="min-w-0 border-r border-border px-3 py-2">

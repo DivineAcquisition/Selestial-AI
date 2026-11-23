@@ -6,6 +6,7 @@ import { defineSchema, defineTable } from "convex/server";
 
 import { agentAccessTables } from "./lib/agentAccess/schema";
 import { agreementTables } from "./lib/agreements/schema";
+import { calendarTables } from "./lib/calendar/schema";
 import { cleanersSettingsValidator, cleanersTables, engagementValidator } from "./lib/cleaners/schema";
 import { googleTables } from "./lib/google/schema";
 import { aiTables } from "./lib/ai/schema";
@@ -469,6 +470,11 @@ export default defineSchema({
     maxTravelMinutes: v.optional(v.number()),
     /** When the cleaner (or a person for them) last confirmed the weekly availability is still right. */
     availabilityConfirmedAt: v.optional(v.number()),
+    /**
+     * The mobile number the cleaner proved they hold, by entering a code sent to it, and when. Possession
+     * only: agreeing to receive work texts is a separate permission (compliance), never inferred from this.
+     */
+    phoneVerified: v.optional(v.object({ phone: v.string(), at: v.number() })),
     /** The application this worker was hired from, when Recruiter handed them over. */
     hiredFrom: v.optional(v.id("applications")),
     /** When the engagement status last changed. */
@@ -502,7 +508,10 @@ export default defineSchema({
     /** Who recorded it: a person, the cleaner from their portal, or their subcontractor company. Absent on older rows (a person). */
     source: v.optional(v.union(v.literal("member"), v.literal("cleaner"), v.literal("subcontractor"))),
     createdAt: v.optional(v.number()),
-  }).index("by_company_cleaner_end", ["companyId", "cleanerId", "endsAt"]),
+  })
+    .index("by_company_cleaner_end", ["companyId", "cleanerId", "endsAt"])
+    /** Calendar reads everyone's time off in a range through this. */
+    .index("by_company_end", ["companyId", "endsAt"]),
 
   // ── Jobs and assignments. Payments are not here and are never inferred from these. ─────────────
   jobs: defineTable({
@@ -1058,6 +1067,7 @@ export default defineSchema({
 
   // ── Recruiter: hiring needs, applicants, applications and everything that hangs off them ───────
   ...recruiterTables,
+  ...calendarTables,
 
   // ── Company Chat: conversations, runs, action receipts, drafts and confirmed knowledge ─────────
   ...chatTables,

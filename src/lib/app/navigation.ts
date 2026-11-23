@@ -93,7 +93,7 @@ export const DEPARTMENTS: readonly Department[] = [
 
 // ── Company-wide items ──────────────────────────────────────────────────────────────────────────────
 
-export type NavItemId = "home" | "approvals" | "inbox" | "search" | "chat" | "services" | "customers" | "cleaners" | "agreements" | "finance" | "reports" | "settings";
+export type NavItemId = "home" | "approvals" | "calendar" | "inbox" | "search" | "chat" | "services" | "customers" | "cleaners" | "agreements" | "finance" | "reports" | "settings";
 
 export type NavItem = Destination & {
   id: NavItemId;
@@ -117,6 +117,18 @@ export const PERSISTENT_ITEMS: readonly NavItem[] = [
     availability: LIVE,
     minimumRole: "office",
     accessNote: "Owners and Managers decide approvals. Office sees only the tasks handed to a person.",
+  },
+  {
+    // Directly under Approvals, by the owner's decision of November 23, 2026 (docs/calendar/00-architecture.md).
+    id: "calendar",
+    label: "Calendar",
+    section: "persistent",
+    purpose: "The company's whole schedule in one place: visits and who is on them, interviews, walkthroughs, inspections, training, meetings, time off and due dates.",
+    path: `${APP_ROOT}/calendar`,
+    availability: LIVE,
+    minimumRole: "office",
+    accessNote:
+      "Everyone sees visits and their crews. Interviews, walkthroughs, inspections, training, meetings and members' time are for Owners and Managers. Calendar shows the same records as Dispatch › Schedule, Recruiter › Interviews and the rest; it keeps no copy of its own.",
   },
   {
     id: "inbox",
@@ -289,6 +301,7 @@ export const CLEANER_PAGES: readonly { path: string; label: string; purpose: str
   { path: `${APP_ROOT}/cleaners/[id]/[[...section]]`, label: "Cleaner", purpose: "One person's profile, each section at its own address: overview, availability and jobs, onboarding and documents, skills and equipment, performance and coaching, pay, and activity." },
   { path: `${APP_ROOT}/cleaners/import`, label: "Import cleaners", purpose: "Bring in a list, with every row reviewed for duplicates before anything is written." },
   { path: `${APP_ROOT}/cleaners/onboarding`, label: "Onboarding checklist", purpose: "What each kind of worker needs, what an unmet item holds up, who reviews it and how long it stays valid." },
+  { path: `${APP_ROOT}/cleaners/onboarding/setup`, label: "Guided onboarding", purpose: "What a new cleaner sees from their link: agreement, supplies, how jobs work, expectations, pay methods and training, versioned, with a cleaner-view preview." },
   { path: `${APP_ROOT}/cleaners/crews`, label: "Crews", purpose: "Permanent crews with a lead, the team for each upcoming job, and a crew builder that checks each person for one job." },
   { path: `${APP_ROOT}/cleaners/subcontractors`, label: "Subcontractor companies", purpose: "Companies that supply their own cleaners: their contact, their workers, and the contact's access to their own workers." },
 ];

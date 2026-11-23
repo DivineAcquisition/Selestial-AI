@@ -50,6 +50,8 @@ export const create = signedInMutation({
       name: text(args.name, "Company name", 160),
       timezone: timezone(args.timezone),
       pausedAgents: [],
+      // A new company starts on the guided cleaner onboarding (lib/cleaners/settings.ts).
+      cleaners: { startingTemplate: "guided" },
       createdBy: ctx.userId,
       ...(key !== undefined ? { setupKey: key } : {}),
       createdAt: now,

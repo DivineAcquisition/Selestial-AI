@@ -5,6 +5,7 @@
  */
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
+import { publishedOf, type PublishedOnboarding } from "./onboarding";
 import { readiness, type ReadinessFacts, type RequirementRow } from "./readiness";
 import { cleanersSettings, definitionsOf, type Definition } from "./settings";
 
@@ -16,12 +17,34 @@ export const DIRECTORY_CAP = 1000;
 /** Agreement types that count as a worker's working agreement when a requirement names no type. */
 export const WORKING_AGREEMENT_TYPES = ["contractor_agreement", "employee_offer", "employment_agreement", "subcontractor_agreement"];
 
+/** The company's onboarding content in force (lib/cleaners/onboarding.ts): its latest published version, or the starting content. */
+export async function companyOnboarding(ctx: Ctx, companyId: Id<"companies">): Promise<PublishedOnboarding> {
+  const rows = await ctx.db
+    .query("onboardingConfigs")
+    .withIndex("by_company_version", (q) => q.eq("companyId", companyId))
+    .order("desc")
+    .take(5);
+  return publishedOf(rows);
+}
+
+/**
+ * The template, with what the published onboarding says about each versioned step: a completion from before
+ * the version the Owner asked for again no longer counts. One function, so every reader agrees.
+ */
+export function withOnboarding(definitions: Definition[], onboarding: PublishedOnboarding): Definition[] {
+  return definitions.map((def) => {
+    const floor = onboarding.reack[def.key];
+    const versioned = def.guide !== undefined || def.kind === "training" || def.kind === "equipment";
+    return versioned ? { ...def, versionFloor: floor ?? 0 } : def;
+  });
+}
+
 export async function companyDefinitions(ctx: Ctx, company: Doc<"companies">): Promise<Definition[]> {
   const rows = await ctx.db
     .query("requirementDefinitions")
     .withIndex("by_company_key", (q) => q.eq("companyId", company._id))
     .take(200);
-  return definitionsOf(company, rows);
+  return withOnboarding(definitionsOf(company, rows), await companyOnboarding(ctx, company._id));
 }
 
 /** Every cleaner in the company except the ended ones, unless asked. */
@@ -61,6 +84,8 @@ export type CompanyFacts = {
   agreements: Map<string, ReadinessFacts["agreements"]>;
   /** Subcontractor companies whose working relationship has ended, by id, with their names. */
   endedSuppliers: Map<string, string>;
+  /** The onboarding content in force: which agreement each relationship signs, the supplies catalog. */
+  onboarding: PublishedOnboarding;
 };
 
 /** The names of the company's subcontractors whose working relationship has ended. */
@@ -74,6 +99,7 @@ async function endedSuppliersOf(ctx: Ctx, companyId: Id<"companies">): Promise<M
 
 /** The requirement rows, weekly windows and linked agreements of every cleaner in the company. */
 export async function companyFacts(ctx: Ctx, company: Doc<"companies">): Promise<CompanyFacts> {
+  const onboarding = await companyOnboarding(ctx, company._id);
   const definitions = await companyDefinitions(ctx, company);
   const requirementRows = await ctx.db
     .query("workerRequirements")
@@ -98,7 +124,7 @@ export async function companyFacts(ctx: Ctx, company: Doc<"companies">): Promise
     list.push({ docType: agreement.docType, state });
     agreements.set(link.recordId, list);
   }
-  return { definitions, requirements: await grouped(requirementRows), windows: await grouped(windowRows), agreements, endedSuppliers: await endedSuppliersOf(ctx, company._id) };
+  return { definitions, requirements: await grouped(requirementRows), windows: await grouped(windowRows), agreements, endedSuppliers: await endedSuppliersOf(ctx, company._id), onboarding };
 }
 
 /** The facts readiness needs about one cleaner. */
@@ -115,14 +141,23 @@ export function readinessFacts(cleaner: Doc<"cleaners">, facts: CompanyFacts): R
   };
 }
 
-/** The definitions with no document type match any working agreement. */
-function withWildcard(definitions: Definition[]): Definition[] {
-  return definitions.map((def) => (def.kind === "agreement" && !def.agreementDocType ? { ...def, agreementDocType: "*" } : def));
+/**
+ * An agreement requirement with no document type is met by the agreement the company's onboarding names for
+ * this worker's relationship (an employee does not sign a contractor agreement), or else by any working agreement.
+ */
+export function agreementTypeFor(def: Pick<Definition, "kind" | "agreementDocType">, engagement: Doc<"cleaners">["engagement"], onboarding: PublishedOnboarding): string | undefined {
+  if (def.kind !== "agreement") return def.agreementDocType;
+  if (def.agreementDocType) return def.agreementDocType;
+  return (engagement === "employee" || engagement === "contractor" ? onboarding.content.agreementTypes[engagement] : undefined) ?? "*";
+}
+
+function forWorker(definitions: Definition[], engagement: Doc<"cleaners">["engagement"], onboarding: PublishedOnboarding): Definition[] {
+  return definitions.map((def) => (def.kind === "agreement" ? { ...def, agreementDocType: agreementTypeFor(def, engagement, onboarding) } : def));
 }
 
 export function readinessOf(cleaner: Doc<"cleaners">, facts: CompanyFacts, company: Doc<"companies">, now: number, service: { name: string; skills: string[] } | null = null) {
   return readiness({
-    definitions: withWildcard(facts.definitions),
+    definitions: forWorker(facts.definitions, cleaner.engagement, facts.onboarding),
     rows: (facts.requirements.get(cleaner._id) ?? []).map(toRow),
     facts: readinessFacts(cleaner, facts),
     now,
@@ -133,6 +168,7 @@ export function readinessOf(cleaner: Doc<"cleaners">, facts: CompanyFacts, compa
 
 /** The same, for one cleaner, reading only that cleaner's rows. Used by Dispatch, the portal and mutations. */
 export async function cleanerReadiness(ctx: Ctx, company: Doc<"companies">, cleaner: Doc<"cleaners">, now: number, service: { name: string; skills: string[] } | null = null) {
+  const onboarding = await companyOnboarding(ctx, company._id);
   const definitions = await companyDefinitions(ctx, company);
   const rows = await ctx.db
     .query("workerRequirements")
@@ -160,10 +196,11 @@ export async function cleanerReadiness(ctx: Ctx, company: Doc<"companies">, clea
     windows: new Map([[cleaner._id, windows]]),
     agreements: new Map([[cleaner._id, agreements]]),
     endedSuppliers: new Map(),
+    onboarding,
   };
   const supplier = cleaner.subcontractorId ? await ctx.db.get(cleaner.subcontractorId) : null;
   if (supplier && supplier.companyId === company._id && supplier.status === "ended") facts.endedSuppliers.set(supplier._id, supplier.name);
-  return { readiness: readinessOf(cleaner, facts, company, now, service), rows, windows, definitions };
+  return { readiness: readinessOf(cleaner, facts, company, now, service), rows, windows, definitions, onboarding };
 }
 
 export function initialsOf(name: string): string {

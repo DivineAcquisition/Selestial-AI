@@ -3,7 +3,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { addMember, company, HOUR, NOW, readyMessaging, refusal, start, withLinkSecret, workTextsAllowed, type T } from "../tests/harness";
+import { addMember, legacyCompany, HOUR, NOW, readyMessaging, refusal, start, withLinkSecret, workTextsAllowed, type T } from "../tests/harness";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { mockOutbox } from "./lib/messaging/provider";
@@ -15,7 +15,7 @@ const tokenOf = (url: string) => url.split("/c/portal/")[1];
 
 async function setup(phone = "+15125550101") {
   const t = start();
-  const { as, companyId } = await company(t, "owner-a", "Alpha Cleaning");
+  const { as, companyId } = await legacyCompany(t, "owner-a", "Alpha Cleaning");
   const { cleanerId } = await as.mutation(api.workforce.add, { companyId, person: { name: "Rosa Diaz", engagement: "contractor", phone, email: "rosa@example.com", serviceAreas: ["78701"] } });
   return { t, as, companyId, cleanerId };
 }
@@ -135,14 +135,18 @@ describe("the cleaner portal", () => {
         expect((await s.t.run((ctx) => ctx.db.get(second.linkId)))!.lastActionAt).toBeUndefined();
 
         // The cleaner does their part.
-        expect(await s.t.mutation(api.portal.confirmContact, { token, phone: "+1 512 555 0101", email: "rosa@example.com", workTexts: true })).toEqual({ status: "accepted" });
+        // Without a code, "these are right" is for the office to check: only a code proves the phone.
+        expect(await s.t.mutation(api.portal.confirmContact, { token, phone: "+1 512 555 0101", email: "rosa@example.com", workTexts: true })).toEqual({ status: "awaiting_review" });
+        await s.as.mutation(api.requirements.review, { companyId: s.companyId, cleanerId: s.cleanerId, key: "contact", decision: "accept", note: "Called her on this number." });
         await s.t.mutation(api.portal.acknowledge, { token, key: "policies", words: "Read and acknowledge how the company works." });
         await s.t.mutation(api.portal.setAvailability, { token, windows: [{ weekday: 2, startMinute: 480, endMinute: 1020 }] });
         const upload = await file(s.t, "image/jpeg");
         expect(await s.t.mutation(api.portal.submitRequirement, { token, key: "documents", storageIds: [upload] })).toEqual({ status: "awaiting_review" });
         expect(await refusal(s.t.mutation(api.portal.submitRequirement, { token, key: "agreement", storageIds: [] }))).toBe("The office records this step.");
         const bad = await s.t.run((ctx) => ctx.storage.store(new Blob(["x"], { type: "application/zip" })));
-        expect(await refusal(s.t.mutation(api.portal.submitRequirement, { token, key: "tax_form", storageIds: [bad] }))).toContain("PDF or a photo");
+        // A tax form is never an upload any more: it is prepared in the background from the pay step.
+        expect(await refusal(s.t.mutation(api.portal.submitRequirement, { token, key: "tax_form", storageIds: [bad] }))).toBe("This step is done a different way.");
+        expect(await refusal(s.t.mutation(api.portal.submitRequirement, { token, key: "documents", storageIds: [bad] }))).toContain("PDF or a photo");
 
         // Nothing they uploaded counts until a person reviews it.
         let profile = await s.as.query(api.cleanerProfile.profile, { companyId: s.companyId, cleanerId: s.cleanerId, asOf: Date.now() });
@@ -304,7 +308,8 @@ describe("routine onboarding reminders", () => {
         await s.t.mutation(internal.cleanerFollowUps.sweep, {});
         let rows = await s.as.query(api.cleanerFollowUps.forCleaner, { companyId: s.companyId, cleanerId: s.cleanerId });
         expect(rows).toMatchObject([{ status: "scheduled", agent: "Recruiter" }]);
-        expect(rows[0].summary).toContain("contact details");
+        // It names the steps exactly as the cleaner's page shows them.
+        expect(rows[0].summary).toContain("verify your phone and confirm your details");
         vi.setSystemTime(NOW + DAY + HOUR);
         await s.t.mutation(internal.cleanerFollowUps.sweep, {});
         await s.t.mutation(internal.cleanerFollowUps.sweep, {});

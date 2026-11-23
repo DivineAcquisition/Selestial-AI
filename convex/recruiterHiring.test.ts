@@ -267,7 +267,8 @@ describe("Recruiter: screening, interviews, offers and the handoff to onboarding
     const [handoff] = await s.as.query(api.onboarding.queue, { companyId: s.companyId });
     expect(handoff).toMatchObject({ applicant: "Maria Lopez", role: "House Cleaner", responsible: "owner-a", status: "open", workerStatus: "onboarding", dispatchReady: false, approvedTerms: { payWords: "45% of each job's price", engagement: "contractor" } });
     // The checklist is the company's onboarding template, the same list the cleaner's profile shows (weekly hours and areas stay on the record).
-    expect(handoff.requirements.map((row) => [row.key, row.status])).toEqual([["contact", "outstanding"], ["agreement", "outstanding"], ["documents", "outstanding"], ["policies", "outstanding"], ["training", "outstanding"], ["equipment", "outstanding"], ["tax_form", "outstanding"], ["payment_setup", "outstanding"]]);
+    // A new company uses the guided onboarding: no upload step, and the tax document is handled in the background.
+    expect(handoff.requirements.map((row) => [row.key, row.status])).toEqual([["agreement", "outstanding"], ["contact", "outstanding"], ["equipment", "outstanding"], ["job_day", "outstanding"], ["policies", "outstanding"], ["payment_setup", "outstanding"], ["tax_form", "outstanding"], ["training", "outstanding"]]);
     expect(handoff.information.every((fact) => fact.from === "form")).toBe(true);
     expect((await s.tasks()).some((task) => task.title === "Onboard Maria Lopez (House Cleaner)" && task.agent === "recruiter" && task.handoffTo === undefined)).toBe(true);
 
@@ -281,7 +282,7 @@ describe("Recruiter: screening, interviews, offers and the handoff to onboarding
 
     // Requirements are recorded one by one, by a named person. The handoff cannot be closed early, and only the Owner closes it.
     const manager = await s.manager();
-    expect(await refusal(s.as.mutation(api.onboarding.complete, { companyId: s.companyId, handoffId: handoff.handoffId }))).toContain("Still outstanding: contact details");
+    expect(await refusal(s.as.mutation(api.onboarding.complete, { companyId: s.companyId, handoffId: handoff.handoffId }))).toContain("Still outstanding: working agreement, phone and details");
     // The template names who reviews each step: the Owner records the agreement, tax form and payment details.
     expect(await refusal(manager.mutation(api.onboarding.record, { companyId: s.companyId, handoffId: handoff.handoffId, requirement: "tax_form", done: true }))).toBe("Not allowed.");
     for (const row of handoff.requirements) await (["agreement", "tax_form", "payment_setup"].includes(row.key) ? s.as : manager).mutation(api.onboarding.record, { companyId: s.companyId, handoffId: handoff.handoffId, requirement: row.key, done: true });

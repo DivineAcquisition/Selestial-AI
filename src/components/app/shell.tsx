@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 /**
  * The frame every signed-in page sits in. The sidebar is drawn from the navigation definition
  * (src/components/app/sidebar.tsx): fixed on a desk, a drawer on a phone that closes once a
- * destination is chosen. Approvals and the schedule are one click away from anywhere.
+ * destination is chosen. Approvals and the Calendar are one click away from anywhere.
  */
 export function AppShell({
   company,
@@ -44,7 +44,8 @@ export function AppShell({
 }) {
   const [menu, setMenu] = useState(false);
   const approvals = linkTo("approvals");
-  const schedule = linkTo("dispatch.schedule");
+  // The company-wide Calendar. Dispatch › Schedule stays the staffing view, reached from Calendar and Dispatch.
+  const schedule = linkTo("calendar");
   const chrome = useRef<HTMLDivElement>(null);
   // Sticky toolbars, inspectors and the Settings menu start below the header and any banner under it.
   useLayoutVariable("--app-chrome-height", chrome);
@@ -75,9 +76,9 @@ export function AppShell({
               {assistant}
               {notices}
               {schedule ? (
-                <Link href={schedule} aria-label="Schedule" className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 text-sm font-medium text-strong hover:border-brand-500/50 focus-visible:outline-2 focus-visible:outline-brand-500">
+                <Link href={schedule} aria-label="Calendar" className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 text-sm font-medium text-strong hover:border-brand-500/50 focus-visible:outline-2 focus-visible:outline-brand-500">
                   <ScheduleIcon className="size-4" aria-hidden />
-                  <span className="hidden sm:inline">Schedule</span>
+                  <span className="hidden sm:inline">Calendar</span>
                 </Link>
               ) : null}
               {approvals ? (

@@ -3,17 +3,17 @@ import { describe, expect, it } from "vitest";
 import { conflictsOf, weekSummary } from "./attention";
 import { matchesFor } from "./duplicates";
 import { readiness, type ReadinessFacts, type RequirementRow } from "./readiness";
-import { DEFAULT_DEFINITIONS, definitionsOf, type Definition } from "./settings";
+import { V1_DEFINITIONS, definitionsOf, type Definition } from "./settings";
 
 const NOW = Date.UTC(2027, 2, 1, 12);
 const DAY = 24 * 60 * 60 * 1000;
 const facts = (over: Partial<ReadinessFacts> = {}): ReadinessFacts => ({ status: "ready", engagement: "contractor", weeklyWindows: 3, serviceAreas: 2, agreements: [], ...over });
-const all = (status: RequirementRow["status"]): RequirementRow[] => DEFAULT_DEFINITIONS.map((def) => ({ key: def.key, status }));
+const all = (status: RequirementRow["status"]): RequirementRow[] => V1_DEFINITIONS.map((def) => ({ key: def.key, status }));
 
 describe("readiness", () => {
   it("is ready only when active and every assignment-blocking requirement is met", () => {
     const rows = all("accepted").map((row) => (row.key === "agreement" ? { key: "agreement", status: "not_started" as const } : row));
-    const answer = readiness({ definitions: DEFAULT_DEFINITIONS, rows, facts: facts(), now: NOW });
+    const answer = readiness({ definitions: V1_DEFINITIONS, rows, facts: facts(), now: NOW });
     expect(answer.state).toBe("blocked");
     expect(answer.eligible).toBe(false);
     expect(answer.blockers.map((view) => view.key)).toEqual(["agreement"]);
@@ -22,13 +22,13 @@ describe("readiness", () => {
 
   it("never counts a submission as met: an upload is not a verification", () => {
     const rows = all("accepted").map((row) => (row.key === "documents" ? { key: "documents", status: "submitted" as const } : row));
-    const answer = readiness({ definitions: DEFAULT_DEFINITIONS, rows, facts: facts({ agreements: [{ docType: "*", state: "signed" }] }), now: NOW });
+    const answer = readiness({ definitions: V1_DEFINITIONS, rows, facts: facts({ agreements: [{ docType: "*", state: "signed" }] }), now: NOW });
     expect(answer.blockers.map((view) => view.key)).toEqual(["documents"]);
   });
 
   it("reads availability, areas and signed agreements from the record, and a sent agreement is not signed", () => {
     const rows = all("not_started").map((row) => (["contact", "documents", "policies"].includes(row.key) ? { ...row, status: "accepted" as const } : row));
-    const withWildcard = DEFAULT_DEFINITIONS.map((def) => (def.kind === "agreement" ? { ...def, agreementDocType: "*" } : def));
+    const withWildcard = V1_DEFINITIONS.map((def) => (def.kind === "agreement" ? { ...def, agreementDocType: "*" } : def));
     const sent = readiness({ definitions: withWildcard, rows, facts: facts({ agreements: [{ docType: "*", state: "sent" }] }), now: NOW });
     expect(sent.blockers.map((view) => view.key)).toEqual(["agreement"]);
     expect(sent.requirements.find((view) => view.key === "agreement")?.state).toBe("submitted");
@@ -39,7 +39,7 @@ describe("readiness", () => {
   });
 
   it("treats an accepted requirement past its expiry as expired, and warns before", () => {
-    const definitions: Definition[] = [{ ...DEFAULT_DEFINITIONS[2], validForDays: 365 }];
+    const definitions: Definition[] = [{ ...V1_DEFINITIONS[2], validForDays: 365 }];
     const expired = readiness({ definitions, rows: [{ key: "documents", status: "accepted", expiresAt: NOW - 1 }], facts: facts(), now: NOW });
     expect(expired.blockers[0].state).toBe("expired");
     const soon = readiness({ definitions, rows: [{ key: "documents", status: "accepted", expiresAt: NOW + 5 * DAY }], facts: facts(), now: NOW, warningDays: 30 });
@@ -48,21 +48,21 @@ describe("readiness", () => {
   });
 
   it("does not block people who were never given a requirement", () => {
-    const answer = readiness({ definitions: DEFAULT_DEFINITIONS, rows: [], facts: facts(), now: NOW });
+    const answer = readiness({ definitions: V1_DEFINITIONS, rows: [], facts: facts(), now: NOW });
     expect(answer.state).toBe("ready");
     expect(answer.progress).toEqual({ met: 0, total: 0 });
   });
 
   it("keeps engagement status apart from readiness", () => {
-    for (const status of ["paused", "suspended", "ended"] as const) expect(readiness({ definitions: DEFAULT_DEFINITIONS, rows: all("accepted"), facts: facts({ status }), now: NOW }).state).toBe("not_active");
-    const onboarding = readiness({ definitions: DEFAULT_DEFINITIONS, rows: all("accepted"), facts: facts({ status: "onboarding", agreements: [{ docType: "agreement", state: "signed" }] }), now: NOW });
+    for (const status of ["paused", "suspended", "ended"] as const) expect(readiness({ definitions: V1_DEFINITIONS, rows: all("accepted"), facts: facts({ status }), now: NOW }).state).toBe("not_active");
+    const onboarding = readiness({ definitions: V1_DEFINITIONS, rows: all("accepted"), facts: facts({ status: "onboarding", agreements: [{ docType: "agreement", state: "signed" }] }), now: NOW });
     expect(onboarding.state).toBe("onboarding");
     expect(onboarding.eligible).toBe(false);
   });
 
   it("holds a service-specific requirement against that service only, and crew equipment against no one", () => {
     const definitions: Definition[] = [
-      { ...DEFAULT_DEFINITIONS[0] },
+      { ...V1_DEFINITIONS[0] },
       { key: "floor_machine", label: "Floor machine training", kind: "training", effect: "blocks_assignments", appliesTo: ["contractor"], reviewer: "manager", forServices: ["commercial"], cleanerCompletes: false, order: 1, isDefault: false },
       { key: "van_kit", label: "Crew van kit", kind: "equipment", effect: "blocks_assignments", appliesTo: ["contractor"], reviewer: "manager", providedBy: "crew", forServices: [], cleanerCompletes: false, order: 2, isDefault: false },
     ];

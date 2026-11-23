@@ -21,8 +21,8 @@ export type RequirementRow = {
   submittedAt?: number;
   reviewNote?: string;
   waiver?: { reason: string; at: number };
-  /** For an acknowledgment: the words the cleaner agreed to. */
-  acknowledged?: { words: string; at: number };
+  /** For an acknowledgment, guide, training or checklist: what the cleaner agreed to or completed, and its version. */
+  acknowledged?: { words: string; at: number; version?: number; hash?: string };
 };
 
 /** What the record says, outside the requirement rows, for requirements that are read from data. */
@@ -107,7 +107,11 @@ function fromRecord(def: Definition, facts: ReadinessFacts): RequirementState | 
  * Whether an accepted acknowledgment covers the words in force now: the words stored with it, or, for one
  * made before words were stored, no change to them since it was made.
  */
-export function acknowledgmentHolds(def: Pick<Definition, "description" | "wordsChangedAt">, row: Pick<RequirementRow, "acknowledged" | "acceptedAt">): boolean {
+export function acknowledgmentHolds(def: Pick<Definition, "description" | "wordsChangedAt" | "versionFloor" | "guide">, row: Pick<RequirementRow, "acknowledged" | "acceptedAt">): boolean {
+  // A guide's words are the company's versioned onboarding content: it holds unless the Owner, publishing a
+  // newer version, decided earlier agreements no longer count (versionFloor). An agreement from before
+  // versions were kept counts as version 0.
+  if (def.guide) return (row.acknowledged?.version ?? 0) >= (def.versionFloor ?? 0);
   if (row.acknowledged) return row.acknowledged.words.trim() === (def.description ?? "").trim();
   return def.wordsChangedAt === undefined || (row.acceptedAt ?? 0) >= def.wordsChangedAt;
 }
@@ -121,6 +125,9 @@ export function viewOf(def: Definition, row: RequirementRow, facts: ReadinessFac
   else if (row.status !== "waived" && recorded !== null && (recorded === "accepted" || row.status === "not_started")) state = recorded;
   // An acknowledgment is of the words it was given to. When the company changes them, it is asked again.
   if (def.kind === "acknowledgment" && state === "accepted" && !acknowledgmentHolds(def, row)) state = "not_started";
+  // Training and the supplies checklist are completed against a version of the content. A person's own record
+  // (no version kept) counts as version 0, so it holds until the Owner asks for it again.
+  if ((def.kind === "training" || def.kind === "equipment") && state === "accepted" && (row.acknowledged?.version ?? 0) < (def.versionFloor ?? 0)) state = "not_started";
   if (state === "accepted" && row.expiresAt !== undefined && row.expiresAt <= now) state = "expired";
   const met = MET.includes(state);
   return {

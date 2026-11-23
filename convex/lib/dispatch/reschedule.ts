@@ -97,8 +97,15 @@ export async function planMove(ctx: QueryCtx | MutationCtx, company: Doc<"compan
   };
 }
 
-/** Carries the plan out in one transaction: all of it happens, or none of it does. */
-export async function commitMove(ctx: MutationCtx, company: Doc<"companies">, job: Doc<"jobs">, move: Move, expectedVersion: string, actor: Actor): Promise<MovePlan> {
+/**
+ * Carries the plan out in one transaction: all of it happens, or none of it does.
+ *
+ * `quiet` names cleaners whose withdrawn offer or ended place the person will tell them about themselves
+ * (Calendar's confirmation lets them turn those texts off). A cleaner asked again always gets the new
+ * offer: it is how they accept, not a notice. Which texts were not sent is kept with the move.
+ */
+export async function commitMove(ctx: MutationCtx, company: Doc<"companies">, job: Doc<"jobs">, move: Move, expectedVersion: string, actor: Actor, options: { quiet?: ReadonlySet<string> } = {}): Promise<MovePlan> {
+  const quiet = options.quiet ?? new Set<string>();
   const { plan, requests } = await planMove(ctx, company, job, move);
   if (plan.problems.length > 0) throw userError(plan.problems[0]);
   if (plan.version !== expectedVersion) throw userError("This visit changed since you looked at the move. Review what the move does again, then confirm it.");
@@ -109,7 +116,7 @@ export async function commitMove(ctx: MutationCtx, company: Doc<"companies">, jo
     const row = byId.get(offer.assignmentId)!;
     await endAssignment(ctx, row, "cancelled", actor, { endReason: "The visit was moved to another time.", endCause: "job_moved", data: { cause: "job_moved" } });
     const cleaner = await ctx.db.get(row.cleanerId);
-    if (cleaner?.phone) await queueMessage(ctx, { companyId: job.companyId, purpose: "offer_withdrawn", cleaner, jobId: job._id, assignmentId: row._id, body: withdrawnSms({ company, job }), dedupeKey: `withdrawn:${row._id}`, actor });
+    if (cleaner?.phone && !quiet.has(row._id)) await queueMessage(ctx, { companyId: job.companyId, purpose: "offer_withdrawn", cleaner, jobId: job._id, assignmentId: row._id, body: withdrawnSms({ company, job }), dedupeKey: `withdrawn:${row._id}`, actor });
   }
   for (const member of plan.crew) {
     const row = byId.get(member.assignmentId)!;
@@ -117,7 +124,7 @@ export async function commitMove(ctx: MutationCtx, company: Doc<"companies">, jo
     // Someone who can be asked again gets one text, the new offer. Only a cleaner who cannot is told they are off the job.
     if (member.outcome === "place_reopens") {
       const cleaner = await ctx.db.get(row.cleanerId);
-      if (cleaner?.phone) await queueMessage(ctx, { companyId: job.companyId, purpose: "assignment_ended", cleaner, jobId: job._id, assignmentId: row._id, body: endedSms({ company, job }), dedupeKey: `ended:${row._id}`, actor });
+      if (cleaner?.phone && !quiet.has(row._id)) await queueMessage(ctx, { companyId: job.companyId, purpose: "assignment_ended", cleaner, jobId: job._id, assignmentId: row._id, body: endedSms({ company, job }), dedupeKey: `ended:${row._id}`, actor });
     }
   }
 
@@ -128,7 +135,7 @@ export async function commitMove(ctx: MutationCtx, company: Doc<"companies">, jo
     type: "job.rescheduled",
     actor,
     subject: { table: "jobs", id: job._id },
-    data: { from: job.startsAt, to: move.startsAt, offersWithdrawn: plan.offersWithdrawn.length, askedAgain: plan.crew.filter((row) => row.outcome === "asked_again").length, placesReopened: plan.crew.filter((row) => row.outcome === "place_reopens").length },
+    data: { from: job.startsAt, to: move.startsAt, offersWithdrawn: plan.offersWithdrawn.length, askedAgain: plan.crew.filter((row) => row.outcome === "asked_again").length, placesReopened: plan.crew.filter((row) => row.outcome === "place_reopens").length, noticesNotSent: [...plan.offersWithdrawn.map((row) => row.assignmentId), ...plan.crew.filter((row) => row.outcome === "place_reopens").map((row) => row.assignmentId)].filter((id) => quiet.has(id)).length },
   });
 
   for (const member of plan.crew) {
