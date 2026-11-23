@@ -24,24 +24,31 @@ import type { Id } from "../../../../convex/_generated/dataModel";
 import { Checkbox, Select } from "@/components/ui/selection";
 import { NumberField } from "@/components/ui/fields";
 
-function RecruitingInner() {
+function RecruitingInner({ inbox }: { inbox: boolean }) {
   const { companyId, role } = useCompany();
   const playbook = useQuery(api.recruiter.playbook, { companyId });
   if (!playbook) return <Skeleton className="h-96 rounded-2xl" />;
   return (
     <div className="grid gap-5">
-      <HiringInbox canEdit={role === "owner"} companyId={companyId} />
+      {inbox ? <HiringInbox canEdit={role === "owner"} companyId={companyId} /> : null}
       <RecruitingFormView saved={playbook.settings as RecruitingSettings} timezone={playbook.timezone} canEdit={role === "owner"} companyId={companyId} />
     </div>
   );
 }
 
-export function RecruitingRules() {
+/** Recruiting settings. `inbox: false` leaves the hiring inbox out, for a page that shows it on its own. */
+export function RecruitingRules({ inbox = true }: { inbox?: boolean } = {}) {
   return (
     <Guard>
-      <RecruitingInner />
+      <RecruitingInner inbox={inbox} />
     </Guard>
   );
+}
+
+/** The hiring inbox on its own: connect, reconnect, disconnect. */
+export function HiringInboxPanel() {
+  const { companyId, role } = useCompany();
+  return <HiringInbox canEdit={role === "owner"} companyId={companyId} />;
 }
 
 /** What Google sent the Owner back with, in words. */
@@ -137,7 +144,7 @@ function HiringInbox({ canEdit, companyId }: { canEdit: boolean; companyId: Id<"
               <IntegrationMark id="gmail" size="sm" />
               {hasGmail ? "Reconnect Gmail" : "Connect a Gmail inbox"}
             </p>
-            <Field label="Gmail label to read (optional)" hint="Leave empty to read the whole inbox. Recruiter only opens mail that looks like it's about hiring.">
+            <Field label="Gmail label to read (optional)" hint="If you file hiring mail under a label, name it: Recruiter then reads only that label. Leave it empty for an inbox kept for hiring, or choose how Recruiter searches a shared inbox once it is connected.">
               <TextInput value={label} onChange={(event) => setLabel(event.target.value)} placeholder="Hiring" />
             </Field>
             <label className="flex items-center gap-2 text-sm text-strong">
@@ -216,13 +223,9 @@ function RecruitingFormView({ saved, timezone, canEdit, companyId }: { saved: Re
 
   return (
     <div className="grid gap-5">
-      <Panel title="Application invitations">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Inviting applicants" hint="Automatic invitations only go out when every check in Recruiter's rules passes.">
-            <Select value={form.invitationMode} onValueChange={(next) => set("invitationMode", (next ?? "") as "review" | "auto")} options={[{ value: "review", label: "Ask me first" }, { value: "auto", label: "Act automatically" }]} disabled={!canEdit} />
-          </Field>
-          {text("linkTtlDays", "Application link works for (days)", "After this, the applicant needs a new invitation.")}
-        </div>
+      <Panel title="Application links">
+        <p className="mb-3 text-sm text-muted-foreground">Whether links go out by themselves is set under &ldquo;What Recruiter sends by itself&rdquo; in Recruiter&apos;s Hiring setup.</p>
+        <div className="grid gap-4 sm:grid-cols-2">{text("linkTtlDays", "Application link works for (days)", "After this, the applicant needs a new link.")}</div>
       </Panel>
 
       <Panel title="Follow-ups">

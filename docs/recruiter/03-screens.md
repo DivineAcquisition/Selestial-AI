@@ -1,5 +1,13 @@
 # Recruiter: navigation and screen data contracts
 
+**Since November 23, 2026 Recruiter has four tabs** (docs/recruiter/08-rework.md): **Overview** (a brief
+from the records, new findings, messages ready to send, scheduled follow-ups, recent outcomes, a compact
+pipeline), **Applicants** (filters by stage, role, source and who acts next; views for decisions, offers
+and onboarding; the applicant panel leads with the prepared step), **Interviews**, and **Hiring setup**
+(roles, the inbox boundary, the five automatic-send switches, the Hiring FAQ, the application and message
+rules). Hiring Needs, Screening, Offers & Agreements, Onboarding & Readiness and Playbook redirect there.
+The contracts below still describe the underlying queries.
+
 The owner-facing pages are built in `src/components/app/screens/recruiter/` (pages under
 `src/app/(product)/app/agents/recruiter/`). This is what each reads and which actions it calls.
 

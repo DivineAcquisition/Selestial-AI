@@ -1,9 +1,6 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { OnboardingScreen } from "@/components/app/screens/recruiter/onboarding";
-
-export const metadata: Metadata = { title: "Onboarding & Readiness" };
-
+/** Onboarding is a view of Applicants now (Recruiter's four tabs, November 23, 2026). Old links land there. */
 export default function Page() {
-  return <OnboardingScreen />;
+  redirect("/app/agents/recruiter/applicants?view=onboarding");
 }

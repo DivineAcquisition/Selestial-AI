@@ -63,7 +63,7 @@ const SPEC: Record<string, Record<string, string[]>> = {
     "Care": ["Conversations", "Customer Setup", "Service Requests", "Rescheduling & Cancellations", "Playbook"],
   },
   Team: {
-    Recruiter: ["Hiring Needs", "Applicants", "Screening", "Interviews", "Offers & Agreements", "Onboarding & Readiness", "Playbook"],
+    Recruiter: ["Applicants", "Interviews", "Hiring setup"],
   },
 };
 
@@ -123,16 +123,14 @@ describe("the navigation definition", () => {
 
   it("keeps the rules every agent's tabs follow", () => {
     for (const agent of AGENTS) {
-      // Playbook is last, and conversation with the agent is never a sidebar tab.
-      expect(agent.tabs.at(-1), agent.id).toMatchObject({ id: "playbook", label: "Playbook" });
+      // The agent's setup is last (Recruiter's Playbook is its Hiring setup), and conversation with the agent is never a sidebar tab.
+      expect(agent.tabs.at(-1), agent.id).toMatchObject(agent.id === "recruiter" ? { id: "hiring-setup", label: "Hiring setup" } : { id: "playbook", label: "Playbook" });
       expect(agent.tabs.filter((tab) => /chat|ask/i.test(tab.label)), agent.id).toEqual([]);
       expect(agent.responsibility.length, agent.id).toBeGreaterThan(10);
     }
     // The two pairs of similar names stay with their owners.
     const owner = (label: string) => AGENTS.filter((agent) => agent.tabs.some((tab) => tab.label === label)).map((agent) => agent.id);
     expect(owner("Customer Setup")).toEqual(["customer-care"]);
-    expect(owner("Onboarding & Readiness")).toEqual(["recruiter"]);
-    expect(owner("Offers & Agreements")).toEqual(["recruiter"]);
     expect(owner("Offers & Coverage")).toEqual(["dispatch"]);
     // Availability is the shared Cleaners record, not any agent's tab.
     expect(owner("Availability")).toEqual([]);
@@ -278,13 +276,13 @@ describe("navigation behavior", () => {
 
   it("opens the right department, agent and tab for a deep link", () => {
     const start = { department: "growth" as const, expanded: ["sales" as const] };
-    expect(activeFor("/app/agents/recruiter/onboarding-readiness")).toEqual({ item: null, agent: "recruiter", tab: "onboarding-readiness", department: "team" });
-    expect(syncToPath(start, "/app/agents/recruiter/onboarding-readiness")).toEqual({ department: "team", expanded: ["sales", "recruiter"] });
+    expect(activeFor("/app/agents/recruiter/hiring-setup")).toEqual({ item: null, agent: "recruiter", tab: "hiring-setup", department: "team" });
+    expect(syncToPath(start, "/app/agents/recruiter/hiring-setup")).toEqual({ department: "team", expanded: ["sales", "recruiter"] });
     // A record beneath a tab still highlights that tab; the overview highlights the agent alone.
     expect(activeFor("/app/agents/dispatch/live-jobs/j123?panel=1")).toMatchObject({ agent: "dispatch", tab: "live-jobs" });
     expect(activeFor("/app/agents/dispatch/")).toMatchObject({ agent: "dispatch", tab: null, department: "operations" });
     // Two tabs with the same name under different agents are told apart by the agent.
-    expect(activeFor("/app/agents/recruiter/playbook")).toMatchObject({ agent: "recruiter", tab: "playbook", department: "team" });
+    expect(activeFor("/app/agents/dispatch/playbook")).toMatchObject({ agent: "dispatch", tab: "playbook", department: "operations" });
     // A company-wide page leaves the sidebar exactly as the person left it.
     for (const path of ["/app", "/app/approvals", "/app/inbox", "/app/customers", "/app/settings", "/app/somewhere-unknown"]) expect(syncToPath(start, path)).toBe(start);
     expect(activeFor("/app")).toMatchObject({ item: "home", agent: null });

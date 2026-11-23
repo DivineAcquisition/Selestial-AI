@@ -36,21 +36,22 @@ const STATE: Record<Item["state"], { label: string; variant: "success" | "info" 
 const LEAD = "From an accepted offer to a cleaner ready to be considered for work. Dispatch still checks every visit on its own.";
 
 /** Recruiter › Onboarding & Readiness: each new worker's checklist, who confirmed what, and the readiness approval. */
-export function OnboardingScreen() {
+/** `embedded`: shown inside another tab (Applicants, Hiring setup), without its own page heading. */
+export function OnboardingScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const { companyId } = useCompany();
   const open = useQuery(api.onboarding.queue, { companyId, status: "open" });
   const complete = useQuery(api.onboarding.queue, { companyId, status: "complete" });
   if (!open || !complete) {
     return (
       <>
-        <PageHeader title="Onboarding & Readiness" lead={LEAD} />
+        {embedded ? null : <PageHeader title="Onboarding & Readiness" lead={LEAD} />}
         <Skeleton className="h-96 rounded-2xl" />
       </>
     );
   }
   return (
     <>
-      <PageHeader title="Onboarding & Readiness" lead={LEAD} />
+      {embedded ? null : <PageHeader title="Onboarding & Readiness" lead={LEAD} />}
       <div className="grid gap-5">
         <p className="rounded-xl bg-muted/60 px-3 py-2.5 text-xs text-muted-foreground">
           <span className="font-medium text-strong">Recruiter</span> handles applications, hiring, onboarding and readiness. Once you approve readiness,{" "}

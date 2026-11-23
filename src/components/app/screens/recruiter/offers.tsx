@@ -33,21 +33,22 @@ const OFFER_STEPS: { id: Offer["status"]; label: string }[] = [
 const ENDED: Partial<Record<Offer["status"], string>> = { declined: "Declined", expired: "Expired", withdrawn: "Withdrawn" };
 
 /** Offers & Agreements: each offer's path to acceptance and its agreement. Onboarding is its own tab. */
-export function OffersScreen() {
+/** `embedded`: shown inside another tab (Applicants, Hiring setup), without its own page heading. */
+export function OffersScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const { companyId } = useCompany();
   const board = useQuery(api.hiringOffers.board, { companyId });
   const queue = useQuery(api.onboarding.queue, { companyId, status: "open" });
   if (!board || !queue) {
     return (
       <>
-        <PageHeader title="Offers & Agreements" lead="Offers you approve and the agreement each needs. Onboarding continues in its own tab." />
+        {embedded ? null : <PageHeader title="Offers & Agreements" lead="Offers you approve and the agreement each needs. Onboarding continues in its own tab." />}
         <Skeleton className="h-96 rounded-2xl" />
       </>
     );
   }
   return (
     <>
-      <PageHeader title="Offers & Agreements" lead="Offers you approve and the agreement each needs. Onboarding continues in its own tab." />
+      {embedded ? null : <PageHeader title="Offers & Agreements" lead="Offers you approve and the agreement each needs. Onboarding continues in its own tab." />}
       <div className="grid gap-5">
         <Badge variant={board.signing ? "success" : "outline"} size="sm" className="justify-self-start">
           <FileText aria-hidden /> {board.signing ? `Signing: ${board.signing}` : "No signing service connected: a person records each signed agreement"}
@@ -65,7 +66,7 @@ export function OffersScreen() {
         </Panel>
         <p className="text-sm text-muted-foreground">
           {queue.length === 0 ? "Nobody is onboarding." : `${queue.length} new ${queue.length === 1 ? "worker is" : "workers are"} onboarding.`} Accepted offers continue in{" "}
-          <Link href="/app/agents/recruiter/onboarding-readiness" className="font-medium text-strong underline-offset-2 hover:underline">
+          <Link href="/app/agents/recruiter/applicants?view=onboarding" className="font-medium text-strong underline-offset-2 hover:underline">
             Onboarding &amp; Readiness
           </Link>
           , through to your readiness approval.

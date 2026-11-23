@@ -1,9 +1,6 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { ScreeningScreen } from "@/components/app/screens/recruiter/screening";
-
-export const metadata: Metadata = { title: "Screening" };
-
+/** Screening decisions are a view of Applicants now (Recruiter's four tabs, November 23, 2026). Old links land there. */
 export default function Page() {
-  return <ScreeningScreen />;
+  redirect("/app/agents/recruiter/applicants?view=decisions");
 }

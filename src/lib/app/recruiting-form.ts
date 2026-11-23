@@ -82,7 +82,7 @@ const number = (value: string) => (value.trim() === "" ? Number.NaN : Number(val
 /** The settings the server validates. Anything not a number is NaN, which the server refuses in words. */
 export function settingsFrom(form: RecruitingForm) {
   return {
-    invitationMode: form.invitationMode,
+    // Not saved from this form: the "Send application links" switch in Hiring setup owns it.
     followUpHours: form.followUpHours.map((value) => value.trim()).filter(Boolean).map(Number),
     maxFollowUps: number(form.maxFollowUps),
     sendFromMinute: minuteOf(form.sendFrom),

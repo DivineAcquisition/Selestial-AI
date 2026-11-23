@@ -27,14 +27,15 @@ const payWords = (need: Need) => {
 };
 
 /** Hiring Needs: each open role, how far it is filled, and the pipeline behind it. */
-export function HiringNeedsScreen() {
+/** `embedded`: shown inside another tab (Applicants, Hiring setup), without its own page heading. */
+export function HiringNeedsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const { companyId, role } = useCompany();
   const needs = useQuery(api.hiringNeeds.list, { companyId });
   const [creating, setCreating] = useState(false);
   if (!needs) {
     return (
       <>
-        <PageHeader title="Hiring Needs" lead="The roles you are hiring for, and what each one needs." />
+        {embedded ? null : <PageHeader title="Hiring Needs" lead="The roles you are hiring for, and what each one needs." />}
         <Skeleton className="h-80 rounded-2xl" />
       </>
     );
@@ -42,17 +43,27 @@ export function HiringNeedsScreen() {
   const order = { draft: 0, open: 1, paused: 2, closed: 3 } as const;
   return (
     <>
-      <PageHeader
-        title="Hiring Needs"
-        lead="The roles you are hiring for, and what each one needs."
-        actions={
-          role === "owner" && !creating ? (
+      {embedded ? (
+        role === "owner" && !creating ? (
+          <div className="mb-3 flex justify-end">
             <Button size="sm" variant="primary" onClick={() => setCreating(true)}>
               New role
             </Button>
-          ) : null
-        }
-      />
+          </div>
+        ) : null
+      ) : (
+        <PageHeader
+          title="Hiring Needs"
+          lead="The roles you are hiring for, and what each one needs."
+          actions={
+            role === "owner" && !creating ? (
+              <Button size="sm" variant="primary" onClick={() => setCreating(true)}>
+                New role
+              </Button>
+            ) : null
+          }
+        />
+      )}
       {creating ? <NewRole onDone={() => setCreating(false)} /> : null}
       {needs.length === 0 && !creating ? (
         <Panel>

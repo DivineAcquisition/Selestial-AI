@@ -332,7 +332,7 @@ async function roleDraft(env: Env): Promise<Result> {
         state: open ? "completed" : "ready_for_review",
         statusLine: open ? `Your open role “${need.title}” already has an application form.` : `Your role “${need.title}” is ready for review.`,
         steps: [step(now, `Found your role “${need.title}” (${words}) and left it exactly as it is.`)],
-        outputs: [{ kind: "hiring_role", ref: { table: "hiringNeeds", id: need._id, label: `${need.title}: role and application form`, href: "/app/agents/recruiter/hiring-needs" }, state: words, created: false }],
+        outputs: [{ kind: "hiring_role", ref: { table: "hiringNeeds", id: need._id, label: `${need.title}: role and application form`, href: "/app/agents/recruiter/hiring-setup#roles" }, state: words, created: false }],
       };
     }
   }
@@ -348,7 +348,7 @@ async function roleDraft(env: Env): Promise<Result> {
       step(now, `Built its application form with ${plural(draft.questions.length, "screening question")} and ${plural(draft.criteria.length, "requirement")} a person reviews.`),
       step(now, "Left pay unset: you approve pay for the role yourself.", "info"),
     ],
-    outputs: [{ kind: "hiring_role", ref: { table: "hiringNeeds", id: needId, label: `${draft.title}: role and application form`, href: "/app/agents/recruiter/hiring-needs" }, state: "draft, not published", created: true, flags: ["Draft: applicants can't apply and nobody is invited until you open the role.", "Pay is not set."] }],
+    outputs: [{ kind: "hiring_role", ref: { table: "hiringNeeds", id: needId, label: `${draft.title}: role and application form`, href: "/app/agents/recruiter/hiring-setup#roles" }, state: "draft, not published", created: true, flags: ["Draft: applicants can't apply and nobody is invited until you open the role.", "Pay is not set."] }],
   };
 }
 

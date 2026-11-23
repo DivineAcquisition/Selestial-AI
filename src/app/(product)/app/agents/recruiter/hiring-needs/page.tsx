@@ -1,9 +1,6 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { HiringNeedsScreen } from "@/components/app/screens/recruiter/hiring-needs";
-
-export const metadata: Metadata = { title: "Hiring Needs" };
-
+/** Roles are part of Hiring setup now (Recruiter's four tabs, November 23, 2026). Old links land there. */
 export default function Page() {
-  return <HiringNeedsScreen />;
+  redirect("/app/agents/recruiter/hiring-setup#roles");
 }

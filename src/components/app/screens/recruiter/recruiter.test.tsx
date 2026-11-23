@@ -21,6 +21,7 @@ const { InterviewsScreen } = await import("./interviews");
 const { OffersScreen } = await import("./offers");
 const { OnboardingScreen } = await import("./onboarding");
 const { HiringNeedsScreen } = await import("./hiring-needs");
+const { HiringSetupScreen } = await import("./hiring-setup");
 
 const DAY = 86_400_000;
 const T = Date.UTC(2026, 10, 16, 15);
@@ -84,7 +85,7 @@ function fill() {
     offersOut: 1,
     awaitingOnboardingHandoff: 0,
     inOnboarding: 1,
-    inbox: [{ connectionId: "m1", address: "hiring@alpha-cleaning.test", provider: "gmail", status: "connected", problem: null, lastSyncAt: T - 600_000, connectorBuilt: true, sendsApplicantEmail: true }],
+    inbox: [{ connectionId: "m1", address: "hiring@alpha-cleaning.test", provider: "gmail", status: "connected", problem: null, lastSyncAt: T - 600_000, connectorBuilt: true, sendsApplicantEmail: true, discovery: "label", label: "Hiring" }],
     inboxConnected: true,
     failures: { messages: 0, flaggedMessages: 0, mailboxes: 0 },
     connections: { applicantLinks: true, email: "resend", texting: null, calendar: null, signing: null, reader: "claude" },
@@ -92,6 +93,50 @@ function fill() {
     gmailAvailable: true,
   };
   data["applications:list"] = rows;
+  const finding = (id: string, applicationId: string, name: string, kind: string, status: string, extra: Record<string, unknown> = {}) => ({
+    findingId: id,
+    applicationId,
+    kind,
+    status,
+    name,
+    role: "House Cleaner",
+    source: "ZipRecruiter",
+    stage: "received",
+    headline: `${name} applied for House Cleaner`,
+    explanation: "ZipRecruiter. Not provided yet: availability.",
+    reported: [`${name.split(" ")[0]} reports: "two years of cleaning experience".`],
+    missing: ["Availability"],
+    next: "Send your application link to collect their availability, experience and service area.",
+    prepared: { kind: "application_link", channel: "email", to: `${name.split(" ")[0].toLowerCase()}@example.test`, toKind: "direct", subject: "Next step for your House Cleaner application at Alpha Cleaning", body: "Hi,\n\nPlease complete our application:\n{link}", preview: "Hi,\n\nPlease complete our application:\n[your application link]", link: "apply", reason: "Collects what you need.", limitation: null, writtenBy: "template" },
+    scheduledFor: null,
+    draft: null,
+    outcome: null,
+    automatic: false,
+    delivery: null,
+    discoveredAt: T - 3_600_000,
+    updatedAt: T - 3_600_000,
+    ...extra,
+  });
+  data["recruiterFindings:list"] = {
+    open: [
+      finding("f1", "a7", "Maria Ruiz", "new_application", "ready"),
+      finding("f2", "a8", "Jo Park", "new_application", "ready"),
+      finding("f3", "a4", "Sam Ortiz", "contact_needed", "needs_attention", { headline: "Sam Ortiz applied for House Cleaner, with no address to write to", next: "Open the application on the job board and enter the applicant's email address.", prepared: null }),
+      finding("f4", "a1", "Maria Lopez", "incomplete_application", "scheduled", { headline: "Maria Lopez has not finished the House Cleaner application", scheduledFor: T + DAY, prepared: null }),
+    ],
+    outcomes: [finding("f5", "a5", "Ava Chen", "new_application", "sent", { outcome: "Accepted by the email service. Delivery is not confirmed yet.", delivery: { status: "sent", deliveredAt: null, bouncedAt: null } })],
+  };
+  data["recruiterFindings:forApplication"] = [finding("f9", "a2", "Dana Cole", "decision_needed", "needs_attention", { headline: "Dana Cole finished the House Cleaner application", next: "Review it and decide: interview, hold, offer or decline.", prepared: null })];
+  data["recruiter:inboxRuns"] = [{ connectionId: "m1", address: "hiring@alpha-cleaning.test", status: "connected", problem: null, lastSyncAt: T - 600_000, runs: [{ startedAt: T - 600_000, finishedAt: T - 590_000, outcome: "read", filed: 4, opened: 2, possible: 1, problem: null }] }];
+  data["recruiterPossible:list"] = [{ sourceMessageId: "sm1", from: "pat@example.test", subject: "Quick question about a job", why: "The subject might be about work.", receivedAt: T - 7_200_000, expiresAt: T + 13 * DAY, mailbox: "hiring@alpha-cleaning.test", openUrl: "https://mail.google.com/mail/u/?authuser=hiring%40alpha-cleaning.test#all/abc" }];
+  data["recruiterAutomation:list"] = {
+    paused: false,
+    items: [
+      { key: "application_links", action: "recruiter.send_invitation", title: "Send application links to new applicants", trigger: "A new application arrives.", message: "Your application invitation.", stops: "Not sent when the address is unclear.", on: false, level: "Ask me first", limitation: null },
+      { key: "routine_answers", action: "recruiter.answer_questions", title: "Answer routine questions", trigger: "An applicant asks something.", message: "A drafted reply (1 credit).", stops: "Never answers what isn't approved.", on: true, level: "Act automatically", limitation: null },
+    ],
+  };
+  data["recruiter:playbook"] = { settings: { invitationMode: "review", followUpHours: [48, 120], maxFollowUps: 2, sendFromMinute: 540, sendUntilMinute: 1080, sendDays: [1, 2, 3, 4, 5], fromName: "Alpha Cleaning Hiring Team", replyTo: "hiring@alpha-cleaning.test", verifiedRelays: [], linkTtlDays: 14, offerTtlDays: 7, retentionDays: 365, interviewMinutes: 30, interviewReminderHours: 24, decideWithinHours: 48, onboardingRequirements: [{ key: "agreement", label: "Agreement completed" }], recruitingRules: null, communicationPolicy: null, escalationRules: null, hiringFaq: "Supplies: we provide all supplies." }, timezone: "America/Chicago", connections: {} };
   data["recruiter:staffingRequests"] = [{ taskId: "t1", kind: "urgent_hire", title: "Two cleaners needed for Saturday", what: "Coverage gap on three visits", dueAt: T + DAY, about: null }];
   data["permissions:list"] = { pausedAgents: [] };
   data["approvals:pending"] = [];
@@ -167,11 +212,32 @@ function keep(name: string, markup: string) {
 }
 
 describe("Recruiter's screens", () => {
-  it("the overview shows the pipeline, who acts next, the inbox and Dispatch's requests", () => {
+  it("the overview leads with a brief from the records, then findings, messages ready to send, follow-ups and outcomes", () => {
     fill();
     const page = html(<RecruiterOverviewScreen />);
     keep("overview", page);
-    for (const text of ["Hiring pipeline", "Inbox", "Screening", "Onboarding", "Needs you · 1", "Recruiter is on it", "Waiting on applicants · 1", "Watching hiring@alpha-cleaning.test", "Two cleaners needed for Saturday", "1 applicant is waiting for your decision."]) expect(page, text).toContain(text);
+    for (const text of [
+      "Recruiter found three new applicants. Two are ready for an application link, one needs a contact method, and one is due a reminder.",
+      "New findings",
+      "Ready to send",
+      "Send application link",
+      "Edit message",
+      "View source",
+      "Dismiss",
+      "To <span class=\"font-medium text-strong\">maria@example.test</span>",
+      "Review and send all (2)",
+      "Possibly hiring-related · 1",
+      "Include in recruiting",
+      "Open in Gmail",
+      "Scheduled follow-ups · 1",
+      "Recent outcomes",
+      "Sent · delivery not confirmed",
+      "Hiring pipeline",
+      "Two cleaners needed for Saturday",
+    ])
+      expect(page, text).toContain(text);
+    // No generic decisions queue, and no technical service names on the overview.
+    for (const text of ["Waiting on a decision", "Reader:", "resend", "claude"]) expect(page, text).not.toContain(text);
   });
 
   it("an applicant opens with the journey and how Recruiter read them, with sources", () => {
@@ -180,7 +246,8 @@ describe("Recruiter's screens", () => {
     const page = html(<ApplicantsScreen />);
     keep("applicants", page);
     search = "";
-    for (const text of ["Dana Cole", "How Recruiter got here", "Found in the hiring inbox (Indeed)", "Read by the AI reader", "Recruiter suggests an interview", "Dana-Cole-resume.pdf", "not verified", "Hand back to Recruiter", "A person decides every decline."]) expect(page, text).toContain(text);
+    for (const text of ["Dana Cole", "Dana Cole finished the House Cleaner application", "How Recruiter got here", "Found in the hiring inbox (Indeed)", "Application: “New application for House Cleaner”", "Recruiter suggests an interview", "Dana-Cole-resume.pdf", "not verified", "Application link · delivered", "Hand back to Recruiter", "A person decides every decline.", "Needs a decision", "Any role"]) expect(page, text).toContain(text);
+    for (const text of ["Read by the AI reader", "by rule", "application_invitation"]) expect(page, text).not.toContain(text);
   });
 
   it("screening shows each criterion with the applicant's words, and a person decides", () => {
@@ -207,5 +274,13 @@ describe("Recruiter's screens", () => {
     for (const text of ["Noah Kim", "Not ready yet", "Background check recorded", "Received", "Approved", "Confirmed by Owner A", "On their record", "Add it on their record in Cleaners", "Still needed before work: Background check recorded (received), Service areas (missing)."]) expect(onboarding, text).toContain(text);
     expect(onboarding).not.toContain("Approve readiness</button>");
     for (const text of ["House Cleaner", "1/3", "$22 an hour", "Deep-Clean Specialist", "Paused", "Required: "]) expect(needs, text).toContain(text);
+  });
+
+  it("hiring setup holds the roles, the inbox boundary, the five switches with their rules, the FAQ and the services in plain words", () => {
+    fill();
+    const page = html(<HiringSetupScreen />);
+    keep("hiring-setup", page);
+    for (const text of ["Open roles", "Where Recruiter looks for hiring mail", "A hiring inbox", "A Gmail label", "Find hiring emails in my business inbox", "It may miss an inquiry", "Recruiter doesn&#x27;t create labels", "Recent reads", "4 looked at · 2 opened · 1 possibly hiring-related", "Send application links to new applicants", "When: ", "Sends: ", "Stops: ", "Hiring FAQ", "Supplies: we provide all supplies.", "Services Recruiter uses"]) expect(page, text).toContain(text);
+    expect(page).toContain("Gmail&#x27;s read permission covers your whole mailbox");
   });
 });

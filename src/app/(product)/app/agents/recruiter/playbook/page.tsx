@@ -1,9 +1,6 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { RecruiterPlaybookScreen } from "@/components/app/screens/recruiter/playbook";
-
-export const metadata: Metadata = { title: "Playbook" };
-
+/** The Playbook is Hiring setup now (Recruiter's four tabs, November 23, 2026). Old links land there. */
 export default function Page() {
-  return <RecruiterPlaybookScreen />;
+  redirect("/app/agents/recruiter/hiring-setup");
 }

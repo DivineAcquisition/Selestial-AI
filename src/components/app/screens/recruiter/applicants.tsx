@@ -19,26 +19,60 @@ import { cn } from "@/lib/utils";
 
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
+import { FindingCard } from "./findings";
+import { OffersScreen } from "./offers";
+import { OnboardingScreen } from "./onboarding";
+import { ScreeningScreen } from "./screening";
 import { CLOSURE_WORDS, CriteriaList, EvidenceTrace, JourneyTimeline, PipelineFlow, RECOMMENDATION, SOURCE_WORDS, STAGE_WORDS, STEPS, stepOf, WhoActs, type ApplicationDetail, type ApplicationRow, type TraceStep } from "./shared";
 import { EmailInput } from "@/components/ui/fields";
 
-/** Applicants: everyone in the pipeline, by step, with one opened beside the list. */
+const VIEWS = [
+  { id: "all", label: "Everyone" },
+  { id: "decisions", label: "Needs a decision" },
+  { id: "offers", label: "Offers" },
+  { id: "onboarding", label: "Onboarding" },
+] as const;
+type View = (typeof VIEWS)[number]["id"];
+
+const WHO: { value: string; label: string }[] = [
+  { value: "you", label: "Needs you" },
+  { value: "recruiter", label: "Recruiter is on it" },
+  { value: "applicant", label: "Waiting on applicant" },
+];
+
+function whoActs(row: ApplicationRow): "you" | "recruiter" | "applicant" {
+  if (row.withPerson || row.nextAction?.by === "owner") return "you";
+  if (row.waitingOnReply || row.nextAction?.by === "applicant") return "applicant";
+  return "recruiter";
+}
+
+/**
+ * Applicants: everyone Recruiter is working with, searchable and filtered by stage, role, source and who
+ * acts next, with one opened beside the list. Decisions, offers and onboarding are views of the same people.
+ */
 export function ApplicantsScreen() {
   const { companyId, timezone } = useCompany();
   const now = useNow();
   const params = useSearchParams();
   const router = useRouter();
   const rows = useQuery(api.applications.list, { companyId });
-  const [step, setStep] = useState<number | null>(null);
+  const initialStep = params.get("step");
+  const [step, setStep] = useState<number | null>(initialStep !== null && Number.isInteger(Number(initialStep)) ? Number(initialStep) : null);
   const [search, setSearch] = useState("");
   const [showClosed, setShowClosed] = useState(false);
+  const [roleFilter, setRoleFilter] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("");
+  const [whoFilter, setWhoFilter] = useState("");
   const openId = params.get("open") as Id<"applications"> | null;
+  const view: View = (VIEWS.find((entry) => entry.id === params.get("view"))?.id ?? "all") as View;
   const setOpen = (id: Id<"applications"> | null) => router.replace(id ? `/app/agents/recruiter/applicants?open=${id}` : "/app/agents/recruiter/applicants", { scroll: false });
+  const setView = (next: View) => router.replace(next === "all" ? "/app/agents/recruiter/applicants" : `/app/agents/recruiter/applicants?view=${next}`, { scroll: false });
+  const lead = "Everyone Recruiter is working with, from the first email to onboarding.";
 
   if (!rows) {
     return (
       <>
-        <PageHeader title="Applicants" lead="Everyone Recruiter is working with, from the first email to onboarding." />
+        <PageHeader title="Applicants" lead={lead} />
         <Skeleton className="h-96 rounded-2xl" />
       </>
     );
@@ -47,31 +81,61 @@ export function ApplicantsScreen() {
   const live = rows.filter((row) => !closed(row));
   const counts = STEPS.map((_, index) => live.filter((row) => stepOf(row.stage) === index).length);
   const needle = search.trim().toLowerCase();
+  const roles = [...new Set(rows.map((row) => row.role ?? row.roleSeen).filter((value): value is string => Boolean(value)))].sort();
+  const sources = [...new Set(rows.map((row) => row.source))];
   const list = rows
     .filter((row) => (showClosed ? closed(row) : !closed(row)))
     .filter((row) => step === null || stepOf(row.stage) === step)
+    .filter((row) => !roleFilter || (row.role ?? row.roleSeen) === roleFilter)
+    .filter((row) => !sourceFilter || row.source === sourceFilter)
+    .filter((row) => !whoFilter || whoActs(row) === whoFilter)
     .filter((row) => !needle || `${row.name ?? ""} ${row.role ?? ""} ${row.roleSeen ?? ""} ${row.contact.address ?? ""}`.toLowerCase().includes(needle))
     .sort((a, b) => b.appliedAt - a.appliedAt);
 
+  const tabs = (
+    <div role="tablist" aria-label="Applicant views" className="mb-4 flex flex-wrap gap-1.5">
+      {VIEWS.map((entry) => (
+        <button key={entry.id} type="button" role="tab" aria-selected={view === entry.id} onClick={() => setView(entry.id)} className={cn("rounded-full border px-3 py-1 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-brand-500", view === entry.id ? "border-brand-500 bg-brand-500/10 font-medium text-strong" : "border-border text-muted-foreground hover:text-strong")}>
+          {entry.label}
+        </button>
+      ))}
+    </div>
+  );
+  if (view !== "all") {
+    return (
+      <>
+        <PageHeader title="Applicants" lead={lead} actions={<AddApplicant />} />
+        {tabs}
+        {view === "decisions" ? <ScreeningScreen embedded /> : view === "offers" ? <OffersScreen embedded /> : <OnboardingScreen embedded />}
+      </>
+    );
+  }
+
   return (
     <>
-      <PageHeader title="Applicants" lead="Everyone Recruiter is working with, from the first email to onboarding." actions={<AddApplicant />} />
+      <PageHeader title="Applicants" lead={lead} actions={<AddApplicant />} />
+      {tabs}
       <Panel className="mb-5">
         <PipelineFlow counts={counts} selected={step} onSelect={(index) => setStep(step === index ? null : index)} />
       </Panel>
-      <div className={cn("grid items-start gap-5", openId ? "@4xl/main:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]" : "")}>
+      <div className={cn("grid grid-cols-[minmax(0,1fr)] items-start gap-5", openId ? "@4xl/main:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]" : "")}>
         <Panel
           title={`${showClosed ? "Closed" : step === null ? "In the pipeline" : STEPS[step].label} · ${list.length}`}
           flush
           action={
-            <div className="flex items-center gap-2">
-              <TextInput aria-label="Search applicants" placeholder="Search" value={search} onChange={(event) => setSearch(event.target.value)} className="h-8 w-40" />
+            <div className="flex flex-wrap items-center gap-2">
+              <TextInput aria-label="Search applicants" placeholder="Search" value={search} onChange={(event) => setSearch(event.target.value)} className="h-8 w-36" />
               <Button size="xs" variant="ghost" onClick={() => setShowClosed(!showClosed)}>
                 {showClosed ? "Show open" : "Show closed"}
               </Button>
             </div>
           }
         >
+          <div className="flex flex-wrap gap-2 border-b border-border px-4 py-2.5 sm:px-5">
+            <Select value={roleFilter} onValueChange={(next) => setRoleFilter(next ?? "")} options={roles.map((value) => ({ value, label: value }))} emptyLabel="Any role" placeholder="Any role" aria-label="Filter by role" />
+            <Select value={sourceFilter} onValueChange={(next) => setSourceFilter(next ?? "")} options={sources.map((value) => ({ value, label: SOURCE_WORDS[value] }))} emptyLabel="Any source" placeholder="Any source" aria-label="Filter by source" />
+            <Select value={whoFilter} onValueChange={(next) => setWhoFilter(next ?? "")} options={WHO} emptyLabel="Any next step" placeholder="Any next step" aria-label="Filter by who acts next" />
+          </div>
           {list.length === 0 ? (
             <p className="px-5 py-10 text-center text-sm text-muted-foreground">{rows.length === 0 ? "No applications yet. Recruiter files them from the hiring inbox, or add one by hand." : "Nobody matches."}</p>
           ) : (
@@ -155,7 +219,7 @@ function traceFor(detail: ApplicationDetail): TraceStep[] {
     id: "found",
     title: firstIn ? `Found in the hiring inbox${firstIn.direction === "in" && firstIn.source ? ` (${SOURCE_WORDS[firstIn.source]})` : ""}` : detail.source === "manual" ? "Added by hand" : "Filed",
     status: "done",
-    summary: firstIn && firstIn.direction === "in" ? `Read ${firstIn.classifiedBy === "model" ? "by the AI reader" : "by rule"} as ${firstIn.classification.replace(/_/g, " ")}${firstIn.subject ? `: “${firstIn.subject}”` : ""}.` : undefined,
+    summary: firstIn && firstIn.direction === "in" ? `${MESSAGE_KIND[firstIn.classification] ?? "An email"}${firstIn.subject ? `: “${firstIn.subject}”` : ""}.` : undefined,
     detail: firstIn && firstIn.direction === "in" && firstIn.excerpt ? <p className="whitespace-pre-line text-muted-foreground">{firstIn.excerpt}</p> : undefined,
   });
   steps.push({
@@ -167,7 +231,7 @@ function traceFor(detail: ApplicationDetail): TraceStep[] {
       <ul className="grid gap-1">
         {detail.contactEvidence.map((row) => (
           <li key={`${row.address}${row.where}`}>
-            <span className="font-medium text-strong">{row.address}</span> <span className="text-muted-foreground">· {row.kind} · found in {row.where}</span>
+            <span className="font-medium text-strong">{row.address}</span> <span className="text-muted-foreground">· {EVIDENCE_WORDS[row.kind] ?? row.kind} · found in {row.where.replace(/^header: /, "the email's ").replace(/^body: /, "the email text, ").replace(/^model: /, "")}</span>
           </li>
         ))}
       </ul>
@@ -183,9 +247,9 @@ function traceFor(detail: ApplicationDetail): TraceStep[] {
         <dl className="grid gap-1">
           {detail.facts.map((fact) => (
             <div key={`${fact.field}${fact.where}`} className="grid grid-cols-[8rem_1fr] gap-2">
-              <dt className="text-muted-foreground">{fact.field}</dt>
+              <dt className="text-muted-foreground">{FACT_WORDS[fact.field] ?? fact.field.replace(/_/g, " ")}</dt>
               <dd className="text-strong">
-                {fact.value} <span className="text-xs text-muted-foreground">({fact.from}, {fact.where})</span>
+                {fact.value} <span className="text-xs text-muted-foreground">(they reported it in {fact.from === "resume" ? "a resume" : fact.from === "form" ? "the application form" : fact.from === "owner" ? "a note from you" : "the email"})</span>
               </dd>
             </div>
           ))}
@@ -258,13 +322,7 @@ function ApplicantDetail({ applicationId, now, timezone, onClose }: { applicatio
             {detail.role ?? detail.roleSeen ?? "No role yet"} · {SOURCE_WORDS[detail.source]} · applied {whenLabel(detail.appliedAt, now, timezone)}
           </span>
         </div>
-        {detail.nextAction ? (
-          <div className="rounded-xl border border-brand-500/30 bg-brand-500/5 px-3 py-2.5">
-            <p className="text-[11px] font-semibold tracking-[0.14em] text-brand-300 uppercase">Next · {detail.nextAction.by === "owner" ? "you" : detail.nextAction.by}</p>
-            <p className="mt-1 text-sm font-medium text-strong">{detail.nextAction.what}</p>
-            {detail.nextAction.dueAt ? <p className="text-xs text-muted-foreground">{until(detail.nextAction.dueAt, now).text}</p> : null}
-          </div>
-        ) : null}
+        <PreparedStep applicationId={applicationId} fallback={detail.nextAction ? `${detail.nextAction.what}${detail.nextAction.dueAt ? ` · ${until(detail.nextAction.dueAt, now).text}` : ""}` : null} />
         <JourneyTimeline stage={detail.stage} times={detail.completion} />
 
         <section>
@@ -306,7 +364,7 @@ function ApplicantDetail({ applicationId, now, timezone, onClose }: { applicatio
                 <li key={index} className={cn("max-w-[85%] rounded-2xl px-3 py-2 text-sm", row.direction === "out" ? "ml-auto bg-brand-500/10" : "bg-muted")}>
                   <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     {row.direction === "out" ? (row.channel === "sms" ? <MessageSquareText className="size-3.5" aria-hidden /> : <Mail className="size-3.5" aria-hidden />) : <Mail className="size-3.5" aria-hidden />}
-                    {row.direction === "out" ? `Recruiter · ${row.purpose.replace(/_/g, " ")} · ${row.status}` : `Applicant · ${row.classification.replace(/_/g, " ")}`} · {whenLabel(row.at, now, timezone)}
+                    {row.direction === "out" ? `${PURPOSE_WORDS[row.purpose] ?? "Message"} · ${STATUS_WORDS[row.status] ?? row.status}` : `${MESSAGE_KIND[row.classification] ?? "Email"}`} · {whenLabel(row.at, now, timezone)}
                   </p>
                   {row.subject ? <p className="font-medium text-strong">{row.subject}</p> : null}
                   {row.direction === "in" && row.excerpt ? <p className="mt-0.5 line-clamp-4 whitespace-pre-line text-strong">{row.excerpt}</p> : null}
@@ -335,14 +393,16 @@ function ApplicantDetail({ applicationId, now, timezone, onClose }: { applicatio
                   Invite again
                 </Button>
               ) : null}
-              {detail.waitingOnReply ? null : detail.conversation.some((row) => row.direction === "in" && row.classification === "applicant_reply") ? (
+              {detail.waitingOnReply ? (
                 <Button size="sm" variant="ghost" loading={busy} onClick={() => void run(() => answered({ companyId, applicationId }))}>
                   Mark reply answered
                 </Button>
               ) : null}
-              <Button size="sm" variant="ghost" render={<Link href="/app/agents/recruiter/screening" />}>
-                Screening
-              </Button>
+              {detail.screening ? (
+                <Button size="sm" variant="ghost" render={<Link href="/app/agents/recruiter/applicants?view=decisions" />}>
+                  Screening and decision
+                </Button>
+              ) : null}
             </div>
             <form
               className="flex flex-wrap gap-2"
@@ -373,5 +433,62 @@ function ApplicantDetail({ applicationId, now, timezone, onClose }: { applicatio
         <FormError message={error} />
       </div>
     </Panel>
+  );
+}
+
+/** What an incoming email was, in the owner's words. */
+const MESSAGE_KIND: Record<string, string> = {
+  new_application: "Application",
+  employment_inquiry: "Asked about work",
+  applicant_reply: "Their reply",
+  duplicate_notification: "Another notice about the same application",
+  status_update: "Status update from the job board",
+  possibly_hiring: "Possibly about hiring",
+};
+const EVIDENCE_WORDS: Record<string, string> = { direct: "their own address", relay: "job board forwarding address", notification: "a notice-only address", unknown: "not confirmed as theirs" };
+const FACT_WORDS: Record<string, string> = { name: "Name", role: "Role", phone: "Phone", location: "Location", experience: "Experience", availability: "Availability", resume: "Resume", applied_at: "Applied" };
+const PURPOSE_WORDS: Record<string, string> = {
+  application_invitation: "Application link",
+  application_follow_up: "Reminder",
+  information_request: "Question to them",
+  interview_invitation: "Interview times",
+  interview_confirmation: "Interview confirmed",
+  interview_reminder: "Interview reminder",
+  hiring_offer: "Offer",
+  application_decline: "Decline",
+  urgent_outreach: "Staffing outreach",
+  applicant_reply: "Reply",
+};
+const STATUS_WORDS: Record<string, string> = { queued: "waiting to send", held: "waiting for sending hours", sending: "sending", sent: "sent, delivery not confirmed", delivered: "delivered", failed: "didn't go through", not_sent: "not sent", unconfirmed: "not known whether it went" };
+
+/** The application's prepared next step, as a finding card; what was done before, below it. */
+function PreparedStep({ applicationId, fallback }: { applicationId: Id<"applications">; fallback: string | null }) {
+  const { companyId } = useCompany();
+  const rows = useQuery(api.recruiterFindings.forApplication, { companyId, applicationId });
+  if (rows === undefined) return <Skeleton className="h-24 rounded-2xl" />;
+  const current = rows.find((row) => row.status === "ready" || row.status === "needs_attention" || row.status === "scheduled") ?? null;
+  const earlier = rows.filter((row) => row !== current).slice(0, 5);
+  return (
+    <section aria-label="Next step" className="grid gap-2">
+      {current ? (
+        <FindingCard finding={current} />
+      ) : fallback ? (
+        <div className="rounded-xl border border-border bg-muted/30 px-3 py-2.5 text-sm">
+          <span className="font-medium text-strong">Next:</span> <span className="text-strong">{fallback}</span>
+        </div>
+      ) : null}
+      {earlier.length ? (
+        <details className="text-sm">
+          <summary className="cursor-pointer text-xs font-semibold tracking-wide text-muted-foreground uppercase">Done before · {earlier.length}</summary>
+          <ul className="mt-2 grid gap-1.5">
+            {earlier.map((row) => (
+              <li key={row.findingId} className="rounded-lg bg-muted/40 px-3 py-1.5">
+                <span className="text-strong">{row.headline}</span> <span className="text-xs text-muted-foreground">· {row.outcome ?? row.next}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+    </section>
   );
 }

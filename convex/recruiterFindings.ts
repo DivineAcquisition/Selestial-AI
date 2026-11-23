@@ -45,6 +45,7 @@ async function shape(ctx: QueryCtx, row: Doc<"recruiterFindings">) {
     next: row.next,
     prepared: row.prepared ? { kind: row.prepared.kind, channel: row.prepared.channel, to: row.prepared.to, toKind: row.prepared.toKind, subject: row.prepared.subject, body: row.prepared.body, preview: preview(row.prepared.body), link: row.prepared.link, reason: row.prepared.reason, limitation: row.prepared.limitation ?? null, writtenBy: row.prepared.writtenBy } : null,
     scheduledFor: row.scheduledFor ?? null,
+    draft: row.draft ?? null,
     outcome: row.outcome ?? null,
     automatic: row.automatic ?? false,
     // What the email service said, kept apart from what was planned: accepted is not delivered.

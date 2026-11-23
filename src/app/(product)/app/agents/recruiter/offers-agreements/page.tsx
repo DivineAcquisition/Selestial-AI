@@ -1,9 +1,6 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { OffersScreen } from "@/components/app/screens/recruiter/offers";
-
-export const metadata: Metadata = { title: "Offers & Agreements" };
-
+/** Offers are a view of Applicants now (Recruiter's four tabs, November 23, 2026). Old links land there. */
 export default function Page() {
-  return <OffersScreen />;
+  redirect("/app/agents/recruiter/applicants?view=offers");
 }

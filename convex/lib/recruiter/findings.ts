@@ -233,7 +233,7 @@ export async function derive(ctx: QueryCtx | MutationCtx, application: Doc<"appl
       ...base,
       kind: "new_application",
       headline: `${name} applied for ${need.title}`,
-      explanation: `${source}. ${base.missing.length ? `Not provided yet: ${base.missing.join(", ").toLowerCase()}.` : "Nothing essential is missing."}`,
+      explanation: application.source === "direct" ? "They wrote in by email." : application.source === "manual" ? "Added by hand." : `Applied through ${source}.`,
       next: "Send your application link to collect their availability, experience and service area.",
       prepared: { kind: "application_link", channel: "email", ...to, subject: email.subject, body: email.body, link: "apply", reason: "Collects what you need to review them, through your application form.", writtenBy: "template" },
       status: "ready",

@@ -472,14 +472,12 @@ export const AGENTS: readonly AgentNav[] = [
     backendAgent: "recruiter",
     workflow: "built",
     overview: LIVE,
+    // Four tabs (November 23, 2026): Overview, Applicants, Interviews, Hiring setup. Screening, offers and
+    // onboarding are views of Applicants; roles and the Playbook are in Hiring setup. Old addresses redirect.
     tabs: [
-      ["hiring-needs", "Hiring Needs", LIVE],
       ["applicants", "Applicants", LIVE],
-      ["screening", "Screening", LIVE],
       ["interviews", "Interviews", LIVE],
-      ["offers-agreements", "Offers & Agreements", LIVE],
-      ["onboarding-readiness", "Onboarding & Readiness", LIVE],
-      ["playbook", "Playbook", LIVE],
+      ["hiring-setup", "Hiring setup", LIVE],
     ],
   }),
 ];
@@ -498,6 +496,11 @@ export const EXISTING_ROUTES: readonly { pattern: string; today: string; becomes
   { pattern: `${APP_ROOT}/schedule`, today: "Redirects to Dispatch › Schedule.", becomes: "Removed once old links have had time to move." },
   { pattern: `${APP_ROOT}/settings/services`, today: "Redirects to Services & Pricing (moved out of Settings on November 16, 2026).", becomes: "Removed once old links have had time to move." },
   { pattern: `${APP_ROOT}/integrations`, today: "Redirects to Settings › Integrations (moved November 16, 2026).", becomes: "Removed once old links have had time to move." },
+  { pattern: `${APP_ROOT}/agents/recruiter/hiring-needs`, today: "Redirects to Recruiter › Hiring setup, roles (November 23, 2026).", becomes: "Removed once old links have had time to move." },
+  { pattern: `${APP_ROOT}/agents/recruiter/playbook`, today: "Redirects to Recruiter › Hiring setup (November 23, 2026).", becomes: "Removed once old links have had time to move." },
+  { pattern: `${APP_ROOT}/agents/recruiter/screening`, today: "Redirects to Recruiter › Applicants, the decisions view (November 23, 2026).", becomes: "Removed once old links have had time to move." },
+  { pattern: `${APP_ROOT}/agents/recruiter/offers-agreements`, today: "Redirects to Recruiter › Applicants, the offers view (November 23, 2026).", becomes: "Removed once old links have had time to move." },
+  { pattern: `${APP_ROOT}/agents/recruiter/onboarding-readiness`, today: "Redirects to Recruiter › Applicants, the onboarding view (November 23, 2026).", becomes: "Removed once old links have had time to move." },
   { pattern: `${APP_ROOT}/settings/connections`, today: "Redirects to Settings › Integrations (Connections was folded in on November 16, 2026).", becomes: "Removed once old links have had time to move." },
   { pattern: `${APP_ROOT}/insights`, today: "The week's measures.", becomes: "Reports, at /app/reports, with a redirect from here." },
   {

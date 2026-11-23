@@ -225,7 +225,7 @@ async function preparedView(ctx: QueryCtx, companyId: Id<"companies">, prepared:
     service: service ? { id: service._id, name: service.name, status: service.status, href: `/app/services/${service._id}` } : null,
     agreement: agreement ? { id: agreement._id, title: agreement.title, workflow: agreement.workflow, href: `/app/agreements/${agreement._id}` } : null,
     booking: booking ? { id: booking._id, name: booking.name, status: booking.status, href: `/app/agents/sales/booking-forms/${booking._id}`, canTakeBookings: live.length > 0 } : null,
-    hiringBrief: need ? { id: need._id, title: need.title, status: need.status, href: "/app/agents/recruiter/hiring-needs" } : null,
+    hiringBrief: need ? { id: need._id, title: need.title, status: need.status, href: "/app/agents/recruiter/hiring-setup#roles" } : null,
   };
 }
 

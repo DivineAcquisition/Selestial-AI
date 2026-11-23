@@ -22,20 +22,21 @@ import { CriteriaList, RECOMMENDATION, STAGE_WORDS, type Screening } from "./sha
  * Screening: each submitted application with Recruiter's reading against the role's criteria. Recruiter
  * suggests; a person decides. There is no score, and no protected characteristic is ever a criterion.
  */
-export function ScreeningScreen() {
+/** `embedded`: shown inside another tab (Applicants, Hiring setup), without its own page heading. */
+export function ScreeningScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const { companyId } = useCompany();
   const queue = useQuery(api.applications.screeningQueue, { companyId });
   if (!queue) {
     return (
       <>
-        <PageHeader title="Screening" lead="Recruiter reads each submitted application against the role. A person decides." />
+        {embedded ? null : <PageHeader title="Screening" lead="Recruiter reads each submitted application against the role. A person decides." />}
         <Skeleton className="h-96 rounded-2xl" />
       </>
     );
   }
   return (
     <>
-      <PageHeader title="Screening" lead="Recruiter reads each submitted application against the role. A person decides." />
+      {embedded ? null : <PageHeader title="Screening" lead="Recruiter reads each submitted application against the role. A person decides." />}
       {queue.length === 0 ? (
         <Panel>
           <p className="py-8 text-center text-sm text-muted-foreground">No submitted applications are waiting. They appear here as applicants finish the form.</p>

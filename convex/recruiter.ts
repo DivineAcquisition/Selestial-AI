@@ -94,7 +94,7 @@ export const overview = companyQuery({
       offersOut: stages.offer_sent.length,
       awaitingOnboardingHandoff: stages.accepted.length,
       inOnboarding: stages.onboarding_handoff.length,
-      inbox: mailboxes.map((row) => ({ connectionId: row._id, address: row.address, provider: row.provider, status: row.status, problem: row.problem ?? null, lastSyncAt: row.lastSyncAt ?? null, connectorBuilt: row.provider === "gmail" || connectorFor(row.provider) !== null, sendsApplicantEmail: row.provider === "gmail" && row.status === "connected" && row.canSend === true })),
+      inbox: mailboxes.map((row) => ({ connectionId: row._id, address: row.address, provider: row.provider, status: row.status, problem: row.problem ?? null, lastSyncAt: row.lastSyncAt ?? null, connectorBuilt: row.provider === "gmail" || connectorFor(row.provider) !== null, sendsApplicantEmail: row.provider === "gmail" && row.status === "connected" && row.canSend === true, discovery: discoveryOf(row), label: row.folder ?? null })),
       /** Whether this deployment can connect a Gmail inbox: a Google app and a key to seal its authorization. */
       gmailAvailable: googleApp() !== null && (await secretsConfigured()),
       inboxConnected: mailboxes.some((row) => row.status === "connected"),
