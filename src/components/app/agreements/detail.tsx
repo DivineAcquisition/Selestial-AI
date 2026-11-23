@@ -7,6 +7,7 @@ import { useState } from "react";
 
 import { useCompany } from "@/components/app/company";
 import { DocumentPane, GuidePanel } from "@/components/app/agreements/document";
+import { GoogleDocExport } from "@/components/app/agreements/google-doc";
 import { Activity, Versions } from "@/components/app/agreements/history";
 import { ReviewAndSignatures } from "@/components/app/agreements/review";
 import { AccessBadge, LifecycleBadge, Notice, ToneBadge, WorkflowBadge } from "@/components/app/agreements/shared";
@@ -102,6 +103,7 @@ export function AgreementDetail({ agreementId }: { agreementId: string }) {
               Download PDF
             </Button>
           ) : null}
+          {detail.capabilities.archiveExport ? <GoogleDocExport agreementId={agreementId} version={viewing ?? detail.currentVersion} /> : null}
           {detail.conversation?.id ? (
             <Link href={`/app/chat/${detail.conversation.id}`} className="inline-flex h-8 items-center rounded-lg border border-border bg-card px-2.5 text-sm font-medium text-strong hover:bg-muted">
               Open the chat

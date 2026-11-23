@@ -7,6 +7,7 @@ import { v } from "convex/values";
 
 import { internal } from "./_generated/api";
 import { internalAction, internalMutation, internalQuery } from "./_generated/server";
+import { isNonProduction } from "./lib/environment";
 import { pubsubTopic } from "./lib/google/platform";
 import { accessToken, googleApp, watchMailbox } from "./lib/recruiter/gmail";
 import { unseal } from "./lib/recruiter/secrets";
@@ -39,7 +40,8 @@ export const ensure = internalAction({
     const topic = pubsubTopic();
     const app = googleApp();
     const found = await ctx.runQuery(internal.recruiterGmailWatch.target, args);
-    if (!topic || !app || !found || found.expiresAt > Date.now() + 2 * DAY) return null;
+    // A backend that is not production opens no Gmail watch on a company's mailbox (convex/lib/google/http.ts).
+    if (!topic || !app || !found || found.expiresAt > Date.now() + 2 * DAY || isNonProduction()) return null;
     const refreshToken = await unseal(found.sealed, args.connectionId);
     if (!refreshToken) return null;
     // Labels are named by the Owner; Gmail's watch wants ids, so a labelled inbox is watched whole and the read still filters.

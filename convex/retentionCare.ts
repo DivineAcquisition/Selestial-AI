@@ -19,6 +19,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { localParts } from "./lib/availability";
 import { salesLinkMutation, salesLinkQuery } from "./lib/builders";
 import { readProfile } from "./lib/compliance/profile";
+import { reviewLinkFor } from "./lib/google/reviewLink";
 import { allow } from "./lib/rateLimit";
 import { ACTION_WORDS, actionsOf, PAY_NOT_SET, submitAction, whenWords } from "./lib/retention/actions";
 import { addEntry, areasIn, cleanAreas, moveCase, openCase, propertyName, RETENTION, SYSTEM } from "./lib/retention/cases";
@@ -27,7 +28,6 @@ import { careLinkByPublicId, careLinkState, customerActor, noteCareAction } from
 import { CHANGE_WORDS, loadPlan, previewPlanChange, upcomingVisits } from "./lib/retention/planChanges";
 import { assess, customerAnswered, openRecovery, planRecovery, recordFeedback } from "./lib/retention/recovery";
 import { PLAN_CHANGES } from "./lib/retention/schema";
-import { retentionSettings } from "./lib/retention/settings";
 import { literals } from "./lib/statuses";
 
 type Link = { link: Doc<"retentionLinks">; company: Doc<"companies"> };
@@ -75,7 +75,6 @@ export const view = salesLinkQuery({
     const customer = await ctx.db.get(link.customerId);
     if (!customer) return null;
     const tz = company.timezone;
-    const settings = retentionSettings(company);
     const property = link.propertyId ? await ctx.db.get(link.propertyId) : null;
     const job = link.jobId ? await ctx.db.get(link.jobId) : null;
     const row = link.caseId ? await ctx.db.get(link.caseId) : null;
@@ -90,7 +89,7 @@ export const view = salesLinkQuery({
       expiresAt: link.expiresAt,
       allowed: link.allowed,
       // Everyone is shown the same public review page, whatever they answered.
-      reviewUrl: settings.reviewUrl,
+      reviewUrl: await reviewLinkFor(ctx, company),
     };
     type Feedback = { submitted: boolean; describedIssue: boolean; crewKnown: boolean };
     type Remedy = { what: string; about: string; when: string | null; minutes: number | null; charge: string | null; open: boolean; answered: "accepted" | "declined" | "asked" | null; booked: boolean };

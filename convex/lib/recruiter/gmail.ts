@@ -26,7 +26,8 @@
  * Indeed and ZipRecruiter senders and subjects this mail is judged by (mail.ts) are invented from general
  * knowledge and not yet checked against real notifications (docs/recruiter/07-real-samples.md).
  */
-import { sendBlocked } from "../environment";
+import { isNonProduction, sendBlocked } from "../environment";
+import { NOT_RUN_ON_TEST } from "../google/http";
 import { MailboxAuthError, MailboxProviderError, type ListResult, type MailboxConnector, type MailboxScope } from "./mailbox";
 import type { MessageAttachment, MessageBody, MessageHeader } from "./mail";
 
@@ -429,8 +430,12 @@ export async function revokeToken(token: string, fetcher: Fetch = fetch): Promis
 /**
  * Asks Gmail to tell Selestial's Pub/Sub topic when the mailbox changes. A notification only says
  * "look again": the regular read still decides what is new, so a missed one is caught by the timer.
+ *
+ * It changes the mailbox's settings at Google, so a backend that is not production never asks: the same rule
+ * as every other Google write (convex/lib/google/http.ts, convex/lib/environment.ts).
  */
 export async function watchMailbox(input: { token: string; topic: string; label?: string; fetch?: Fetch }): Promise<{ historyId: string; expiration: number }> {
+  if (isNonProduction()) throw new Error(NOT_RUN_ON_TEST);
   const response = await (input.fetch ?? fetch)("https://gmail.googleapis.com/gmail/v1/users/me/watch", {
     method: "POST",
     headers: { Authorization: `Bearer ${input.token}`, "Content-Type": "application/json" },

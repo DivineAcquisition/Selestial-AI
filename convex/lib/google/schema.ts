@@ -59,7 +59,18 @@ export const googleTables = {
     returnOrigin: v.optional(v.string()),
     expiresAt: v.number(),
     usedAt: v.optional(v.number()),
-  }).index("by_stateHash", ["stateHash"]),
+    /**
+     * Google answered, and the tool's authorization waits for the member who started to confirm the Google
+     * account while signed in (convex/google.ts, confirmConnect). Until then nothing can use it: no connection
+     * is made, the token is sealed to this record, and it is deleted (and the grant ended unless the account is
+     * in use) when `until` passes.
+     */
+    pending: v.optional(v.object({ googleSub: v.string(), email: v.string(), scopes: v.array(v.string()), sealedRefreshToken: v.string(), until: v.number() })),
+    /** The hash of the one-time value Google's answer was sent on to the app with. Only that browser has the value. */
+    confirmHash: v.optional(v.string()),
+  })
+    .index("by_stateHash", ["stateHash"])
+    .index("by_confirmHash", ["confirmHash"]),
 
   /** What the Owner authorized Selestial to use: specific files, folders, calendars, locations and accounts. */
   googleResources: defineTable({
@@ -78,6 +89,8 @@ export const googleTables = {
     verifiedAt: v.optional(v.number()),
     /** For an ad account: the creation time of the newest Local Services lead read ("YYYY-MM-DD HH:MM:SS", the account's time zone). */
     cursor: v.optional(v.string()),
+    /** For a Business Profile location: Google's page where a customer leaves a review (metadata.newReviewUri). */
+    reviewUri: v.optional(v.string()),
     addedBy: v.id("members"),
     createdAt: v.number(),
   })
@@ -120,6 +133,10 @@ export const googleTables = {
     writtenHash: v.string(),
     /** When the event was changed or deleted in Google by someone else. */
     externalChange: v.optional(v.union(v.literal("moved"), v.literal("deleted"), v.literal("edited"))),
+    /** The time the event had in Google when the change was noticed, so a person can see what was moved. */
+    externalTimes: v.optional(v.object({ startsAt: v.number(), endsAt: v.number() })),
+    /** The task opened for that change, closed when the change is resolved. */
+    externalTaskId: v.optional(v.id("tasks")),
     updatedAt: v.number(),
   })
     .index("by_company_subject", ["companyId", "subjectId"])

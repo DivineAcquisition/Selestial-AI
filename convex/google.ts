@@ -7,10 +7,15 @@
  * Connecting a tool:
  *  1. `startConnect` makes a one-time state (only its hash is kept, for ten minutes) and returns Google's
  *     consent address for that tool's scopes only.
- *  2. Google returns to /oauth/google/callback (shared with the Gmail inbox). `completeConnect` checks the
- *     state, that the person is still the Owner, and, when reconnecting, that it is the same Google account
- *     unless the Owner chose a different one. The refresh token is sealed before it is stored.
- *  3. The tool is on only if Google granted all of its scopes. Partial consent is recorded as partial.
+ *  2. Google returns to /oauth/google/callback (shared with the Gmail inbox). The state is used once and the
+ *     code exchanged, but NOTHING IS CONNECTED YET: that request carries no session, so it cannot know the
+ *     browser belongs to the Owner who started (an Owner's link could otherwise attach someone else's Google
+ *     account to the company). The authorization is sealed onto the state record as pending (`holdPending`).
+ *  3. The browser goes on to the app with a one-time value only it has. There the signed-in Owner who
+ *     started sees the Google account and confirms it (`confirmConnect`) within fifteen minutes; otherwise it
+ *     is deleted and Google's grant ended unless that account is already in use. A reconnect must be the
+ *     same Google account unless the Owner chose a different one.
+ *  4. The tool is on only if Google granted all of its scopes. Partial consent is recorded as partial.
  *
  * Disconnecting a tool stops that tool's Google steps at once, cancels its queued work, removes what was
  * chosen for it and deletes its token. Google's grant is revoked only when no other connected tool uses
@@ -20,7 +25,7 @@ import { v } from "convex/values";
 
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { internalAction, internalMutation, internalQuery, type ActionCtx, type MutationCtx } from "./_generated/server";
+import { internalAction, internalMutation, internalQuery, type ActionCtx, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { companyQuery, ownerMutation } from "./lib/builders";
 import { notFound, userError } from "./lib/errors";
 import { byMember, recordEvent } from "./lib/events";
@@ -31,12 +36,14 @@ import { gmailInboxOn } from "./lib/inbox/mailboxes";
 import { consentUrl, googleApp, redirectUri, refresh, revoke } from "./lib/google/oauth";
 import { featureValidator, resourceKindValidator } from "./lib/google/schema";
 import { appOrigin, returnOrigin } from "./lib/invitations";
-import { hashToken, randomToken, secretsConfigured, unseal } from "./lib/recruiter/secrets";
+import { hashToken, randomToken, seal, secretsConfigured, unseal } from "./lib/recruiter/secrets";
 
 const STATE_LIFE = 10 * 60 * 1000;
 
-export function afterGoogle(outcome: string, origin?: string | null, feature?: string | null): string {
-  return `${returnOrigin(origin) ?? appOrigin() ?? ""}/app/settings/integrations?${feature ? `tool=${encodeURIComponent(feature)}&` : ""}result=${encodeURIComponent(outcome)}`;
+export function afterGoogle(outcome: string, origin?: string | null, feature?: string | null, confirm?: string): string {
+  // "confirm" carries the one-time value the app page needs to show the Google account and finish.
+  const pending = outcome === "confirm" && confirm ? `&pending=${encodeURIComponent(confirm)}` : "";
+  return `${returnOrigin(origin) ?? appOrigin() ?? ""}/app/settings/integrations?${feature ? `tool=${encodeURIComponent(feature)}&` : ""}result=${encodeURIComponent(outcome)}${pending}`;
 }
 
 // ── Reading ─────────────────────────────────────────────────────────────────────────────────────
@@ -102,45 +109,185 @@ export const takeState = internalMutation({
     await ctx.db.patch(row._id, { usedAt: Date.now() });
     const member = await ctx.db.get(row.memberId);
     if (!member || member.companyId !== row.companyId || member.status !== "active" || member.role !== "owner") return { kind: "expired" as const, returnOrigin: row.returnOrigin ?? null, feature: row.features[0] ?? null };
-    return { kind: "ok" as const, companyId: row.companyId, memberId: row.memberId, features: row.features, connectionId: row.connectionId ?? null, returnOrigin: row.returnOrigin ?? null };
+    return { kind: "ok" as const, stateId: row._id, companyId: row.companyId, memberId: row.memberId, features: row.features, connectionId: row.connectionId ?? null, returnOrigin: row.returnOrigin ?? null };
   },
 });
+
+/** How long a Google tool authorization waits to be confirmed in the app before it is thrown away. */
+export const PENDING_LIFE = 15 * 60 * 1000;
+
+/** What a pending tool authorization is sealed to: its state record, so it opens nowhere else. */
+export function pendingBinding(stateId: Id<"googleOAuthStates">): string {
+  return `google-pending:${stateId}`;
+}
+
+type ConnectInput = { companyId: Id<"companies">; memberId: Id<"members">; feature: Feature; connectionId: Id<"googleConnections"> | null; googleSub: string; email: string; scopes: string[] };
+
+/** Why connecting this account for this tool cannot go ahead, before anything is recorded. Null when it can. */
+async function connectRefusal(ctx: MutationCtx, args: Pick<ConnectInput, "companyId" | "feature" | "connectionId" | "googleSub">): Promise<string | null> {
+  if (!args.connectionId) return null;
+  const target = await ctx.db.get(args.connectionId);
+  if (!target || target.companyId !== args.companyId || target.status === "disconnected" || target.feature !== args.feature) return "expired";
+  if (target.googleSub !== args.googleSub) return "different_account";
+  return null;
+}
 
 /**
  * Records what Google granted for one tool. Reconnecting must be the same Google account; a different
  * account replaces the tool's connection only when the Owner chose "use a different account", and the old
- * connection's resources and work stop. Other tools are not touched.
+ * connection's resources and work stop. Other tools are not touched. Reached only through `confirmConnect`.
  */
-export const completeConnect = internalMutation({
-  args: { companyId: v.id("companies"), memberId: v.id("members"), feature: featureValidator, connectionId: v.union(v.id("googleConnections"), v.null()), googleSub: v.string(), email: v.string(), scopes: v.array(v.string()), hasRefreshToken: v.boolean() },
-  handler: async (ctx, args): Promise<{ ok: true; connectionId: Id<"googleConnections">; enabled: Feature[] } | { ok: false; reason: string }> => {
-    const now = Date.now();
-    const enabled = missingScopes(args.feature, args.scopes).length === 0 ? [args.feature] : [];
-    const current = await activeConnection(ctx, args.companyId, args.feature);
-    if (args.connectionId) {
-      const target = await ctx.db.get(args.connectionId);
-      if (!target || target.companyId !== args.companyId || target.status === "disconnected" || target.feature !== args.feature) return { ok: false, reason: "expired" };
-      if (target.googleSub !== args.googleSub) return { ok: false, reason: "different_account" };
-      if (!args.hasRefreshToken) return { ok: false, reason: "no_refresh_token" };
-      await ctx.db.patch(target._id, { grantedScopes: args.scopes, status: "connected", problem: undefined, lastRefreshAt: now });
-      await recordEvent(ctx, { companyId: args.companyId, type: "google.reconnected", actor: { kind: "member", memberId: args.memberId }, subject: { table: "companies", id: args.companyId }, data: { feature: args.feature, granted: enabled.length > 0 } });
-      return { ok: true, connectionId: target._id, enabled };
+async function recordConnect(ctx: MutationCtx, args: ConnectInput): Promise<{ ok: true; connectionId: Id<"googleConnections">; enabled: Feature[] } | { ok: false; reason: string }> {
+  const now = Date.now();
+  const enabled = missingScopes(args.feature, args.scopes).length === 0 ? [args.feature] : [];
+  const refused = await connectRefusal(ctx, args);
+  if (refused) return { ok: false, reason: refused };
+  if (args.connectionId) {
+    await ctx.db.patch(args.connectionId, { grantedScopes: args.scopes, status: "connected", problem: undefined, lastRefreshAt: now });
+    await recordEvent(ctx, { companyId: args.companyId, type: "google.reconnected", actor: { kind: "member", memberId: args.memberId }, subject: { table: "companies", id: args.companyId }, data: { feature: args.feature, granted: enabled.length > 0 } });
+    return { ok: true, connectionId: args.connectionId, enabled };
+  }
+  const current = await activeConnection(ctx, args.companyId, args.feature);
+  if (current) await stopConnection(ctx, current, "Replaced by a connection to a different Google account.");
+  const connectionId = await ctx.db.insert("googleConnections", { companyId: args.companyId, feature: args.feature, googleSub: args.googleSub, email: args.email.toLowerCase(), status: "connected", grantedScopes: args.scopes, connectedBy: args.memberId, connectedAt: now, lastRefreshAt: now });
+  await recordEvent(ctx, { companyId: args.companyId, type: "google.connected", actor: { kind: "member", memberId: args.memberId }, subject: { table: "companies", id: args.companyId }, data: { feature: args.feature, partial: enabled.length === 0 } });
+  return { ok: true, connectionId, enabled };
+}
+
+async function storeSealed(ctx: MutationCtx, connectionId: Id<"googleConnections">, sealedRefreshToken: string) {
+  const connection = await ctx.db.get(connectionId);
+  if (!connection || connection.status === "disconnected") return;
+  for (const row of await ctx.db.query("googleCredentials").withIndex("by_connection", (q) => q.eq("connectionId", connectionId)).take(10)) await ctx.db.delete(row._id);
+  await ctx.db.insert("googleCredentials", { companyId: connection.companyId, connectionId: connection._id, sealedRefreshToken, createdAt: Date.now() });
+}
+
+/** Whether ending Google's grant for this account would also end something in use: a tool connection or a Gmail inbox. */
+async function accountInUse(ctx: MutationCtx, googleSub: string, email: string): Promise<boolean> {
+  return (await ctx.db.query("googleConnections").withIndex("by_sub", (q) => q.eq("googleSub", googleSub)).take(100)).some((row) => row.status !== "disconnected") || (await gmailInboxOn(ctx, email));
+}
+
+/**
+ * Google answered for this state. The callback carries no session: the state proves who STARTED, not whose
+ * browser came back from Google. So nothing is connected here. The authorization waits, sealed to the state
+ * record, for the member who started to see the Google account and confirm it in the app (`confirmConnect`).
+ * Says why not when the answer cannot be used at all (another account on a reconnect, no lasting access).
+ */
+export const holdPending = internalMutation({
+  args: { stateId: v.id("googleOAuthStates"), googleSub: v.string(), email: v.string(), scopes: v.array(v.string()), sealedRefreshToken: v.union(v.string(), v.null()), confirmHash: v.string() },
+  handler: async (ctx, args): Promise<{ ok: true } | { ok: false; reason: string }> => {
+    const row = await ctx.db.get(args.stateId);
+    if (!row || row.usedAt === undefined || row.pending) return { ok: false, reason: "expired" };
+    const feature = row.features[0];
+    const refused = (await connectRefusal(ctx, { companyId: row.companyId, feature, connectionId: row.connectionId ?? null, googleSub: args.googleSub })) ?? (args.sealedRefreshToken ? null : "no_refresh_token");
+    if (refused || !args.sealedRefreshToken) {
+      // Unusable: the access Google gave is ended at once, unless that account is already in use here.
+      if (args.sealedRefreshToken && !(await accountInUse(ctx, args.googleSub, args.email))) await ctx.scheduler.runAfter(0, internal.google.revokePending, { sealed: args.sealedRefreshToken, boundTo: pendingBinding(row._id) });
+      return { ok: false, reason: refused ?? "no_refresh_token" };
     }
-    if (!args.hasRefreshToken) return { ok: false, reason: "no_refresh_token" };
-    if (current) await stopConnection(ctx, current, "Replaced by a connection to a different Google account.");
-    const connectionId = await ctx.db.insert("googleConnections", { companyId: args.companyId, feature: args.feature, googleSub: args.googleSub, email: args.email.toLowerCase(), status: "connected", grantedScopes: args.scopes, connectedBy: args.memberId, connectedAt: now, lastRefreshAt: now });
-    await recordEvent(ctx, { companyId: args.companyId, type: "google.connected", actor: { kind: "member", memberId: args.memberId }, subject: { table: "companies", id: args.companyId }, data: { feature: args.feature, partial: enabled.length === 0 } });
-    return { ok: true, connectionId, enabled };
+    await ctx.db.patch(row._id, { pending: { googleSub: args.googleSub, email: args.email.trim().toLowerCase(), scopes: args.scopes, sealedRefreshToken: args.sealedRefreshToken, until: Date.now() + PENDING_LIFE }, confirmHash: args.confirmHash });
+    await ctx.scheduler.runAfter(PENDING_LIFE, internal.google.expirePending, { stateId: row._id });
+    return { ok: true };
   },
 });
 
-export const storeCredential = internalMutation({
-  args: { connectionId: v.id("googleConnections"), sealedRefreshToken: v.string() },
+type PendingRow = Doc<"googleOAuthStates"> & { pending: NonNullable<Doc<"googleOAuthStates">["pending"]> };
+
+async function pendingFor(ctx: QueryCtx | MutationCtx, token: string): Promise<PendingRow | null> {
+  if (!token || token.length > 200) return null;
+  const confirmHash = await hashToken(token);
+  const row = await ctx.db.query("googleOAuthStates").withIndex("by_confirmHash", (q) => q.eq("confirmHash", confirmHash)).unique();
+  return row?.pending ? { ...row, pending: row.pending } : null;
+}
+
+/**
+ * The Google account waiting to be confirmed for a tool, for the page Google's answer lands on. Only for the
+ * member who started it; to anyone else it does not exist.
+ */
+export const pendingConnect = companyQuery({
+  args: { token: v.string() },
   handler: async (ctx, args) => {
-    const connection = await ctx.db.get(args.connectionId);
-    if (!connection || connection.status === "disconnected") return null;
-    for (const row of await ctx.db.query("googleCredentials").withIndex("by_connection", (q) => q.eq("connectionId", args.connectionId)).take(10)) await ctx.db.delete(row._id);
-    await ctx.db.insert("googleCredentials", { companyId: connection.companyId, connectionId: connection._id, sealedRefreshToken: args.sealedRefreshToken, createdAt: Date.now() });
+    const row = await pendingFor(ctx, args.token);
+    if (!row || ctx.support || ctx.role !== "owner" || row.companyId !== ctx.companyId || row.memberId !== ctx.member._id || row.pending.until <= Date.now()) return null;
+    const feature = row.features[0];
+    const current = row.connectionId ? null : await activeConnection(ctx, row.companyId, feature);
+    return {
+      feature,
+      label: FEATURE_INFO[feature].label,
+      email: row.pending.email,
+      does: FEATURE_INFO[feature].does,
+      complete: missingScopes(feature, row.pending.scopes).length === 0,
+      replaces: current && current.googleSub !== row.pending.googleSub ? current.email : null,
+      until: row.pending.until,
+    };
+  },
+});
+
+/**
+ * The signed-in member confirms the Google account Google answered for. Only the member who started the
+ * sign-in, still an active Owner of this company (ownerMutation checks that now, again), can. Anyone else, in
+ * any company, is refused and nothing is connected.
+ */
+export const confirmConnect = ownerMutation({
+  args: { token: v.string() },
+  handler: async (ctx, args): Promise<{ connected: boolean; feature: Feature; email: string; result: string }> => {
+    const row = await pendingFor(ctx, args.token);
+    if (!row || row.companyId !== ctx.companyId) throw userError("That Google sign-in isn’t waiting any more, so nothing was connected. Please start again.");
+    if (ctx.support || ctx.role !== "owner" || row.memberId !== ctx.member._id) throw userError("Only the person who started connecting this Google tool can finish it. Nothing was connected.");
+    const feature = row.features[0];
+    if (row.pending.until <= Date.now()) {
+      await discardPending(ctx, row);
+      return { connected: false, feature, email: row.pending.email, result: "expired" };
+    }
+    const refreshToken = await unseal(row.pending.sealedRefreshToken, pendingBinding(row._id));
+    if (!refreshToken) throw userError("Connecting Google isn’t available right now. Please try again a little later.");
+    const done = await recordConnect(ctx, { companyId: row.companyId, memberId: row.memberId, feature, connectionId: row.connectionId ?? null, googleSub: row.pending.googleSub, email: row.pending.email, scopes: row.pending.scopes });
+    if (!done.ok) {
+      await discardPending(ctx, row);
+      return { connected: false, feature, email: row.pending.email, result: done.reason };
+    }
+    // Sealed again, this time to the connection it now belongs to.
+    const sealed = await seal(refreshToken, done.connectionId);
+    if (!sealed) throw userError("Connecting Google isn’t available right now. Please try again a little later.");
+    await storeSealed(ctx, done.connectionId, sealed);
+    await ctx.db.patch(row._id, { pending: undefined, confirmHash: undefined });
+    // Partial consent is kept as it is: only what Google actually granted is switched on.
+    return { connected: true, feature, email: row.pending.email, result: done.enabled.includes(feature) ? "connected" : `partial:${feature}` };
+  },
+});
+
+/** "Not this account": the member who started throws the pending authorization away now rather than in fifteen minutes. */
+export const cancelConnect = ownerMutation({
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    const row = await pendingFor(ctx, args.token);
+    if (!row || ctx.support || row.companyId !== ctx.companyId || row.memberId !== ctx.member._id) return null;
+    await discardPending(ctx, row);
+    return null;
+  },
+});
+
+/** Nobody confirmed in time. The authorization is deleted and, unless that Google account is in use here, the grant is ended. */
+export const expirePending = internalMutation({
+  args: { stateId: v.id("googleOAuthStates") },
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get(args.stateId);
+    if (row?.pending) await discardPending(ctx, { ...row, pending: row.pending });
+    return null;
+  },
+});
+
+async function discardPending(ctx: MutationCtx, row: PendingRow): Promise<void> {
+  await ctx.db.patch(row._id, { pending: undefined, confirmHash: undefined });
+  const inUse = await accountInUse(ctx, row.pending.googleSub, row.pending.email);
+  if (!inUse) await ctx.scheduler.runAfter(0, internal.google.revokePending, { sealed: row.pending.sealedRefreshToken, boundTo: pendingBinding(row._id) });
+  await recordEvent(ctx, { companyId: row.companyId, type: "google.connect_abandoned", actor: { kind: "system" }, subject: { table: "companies", id: row.companyId }, data: { feature: row.features[0], grantKept: inUse } });
+}
+
+export const revokePending = internalAction({
+  args: { sealed: v.string(), boundTo: v.string() },
+  handler: async (_ctx, args) => {
+    const token = await unseal(args.sealed, args.boundTo);
+    if (token) await revoke(token).catch(() => undefined);
     return null;
   },
 });
@@ -327,11 +474,13 @@ export const resourceFor = internalQuery({
 });
 
 export const setResourceAccess = internalMutation({
-  args: { resourceId: v.id("googleResources"), access: v.union(v.literal("verified"), v.literal("lost")), note: v.optional(v.string()), detail: v.optional(v.string()) },
+  args: { resourceId: v.id("googleResources"), access: v.union(v.literal("verified"), v.literal("lost")), note: v.optional(v.string()), detail: v.optional(v.string()), reviewUri: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const row = await ctx.db.get(args.resourceId);
     if (!row) return null;
-    await ctx.db.patch(row._id, { access: args.access, accessNote: args.note?.slice(0, 300), verifiedAt: Date.now(), ...(args.detail ? { detail: args.detail.slice(0, 200) } : {}) });
+    // Only Google's own https review page is kept as a review link.
+    const reviewUri = args.reviewUri && /^https:\/\/(search\.google\.com|g\.page|www\.google\.com)\//.test(args.reviewUri) ? args.reviewUri.slice(0, 500) : undefined;
+    await ctx.db.patch(row._id, { access: args.access, accessNote: args.note?.slice(0, 300), verifiedAt: Date.now(), ...(args.detail ? { detail: args.detail.slice(0, 200) } : {}), ...(reviewUri ? { reviewUri } : {}) });
     return null;
   },
 });

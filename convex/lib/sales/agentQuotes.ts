@@ -365,7 +365,8 @@ export async function openTimes(ctx: QueryCtx | MutationCtx, company: Doc<"compa
         if (startsAt <= now) continue;
         const span = { startsAt, endsAt: startsAt + minutes * 60_000 };
         const answer = await checkCapacity(ctx, company, span, crew);
-        if (answer.state === "fits" || answer.state === "tight") out.push(span);
+        // A time on a busy block of the Owner's Google Calendar is not offered (convex/lib/google/busy.ts).
+        if ((answer.state === "fits" || answer.state === "tight") && !answer.calendarBusy) out.push(span);
       }
     }
   }

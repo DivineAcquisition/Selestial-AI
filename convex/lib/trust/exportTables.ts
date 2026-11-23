@@ -278,7 +278,7 @@ export const NOT_EXPORTED: Readonly<Record<string, string>> = {
   chatUploads: "Internal file references for chat attachments; the files themselves are private to the member who uploaded them.",
   chatMessages: "The words of private chats, for the same reason as conversations.",
   googleCredentials: "A sealed authorization to the company's Google account; it opens the account, so a copy must never leave. The connection itself is exported.",
-  googleOAuthStates: "Ten-minute, single-use records of a Google sign-in in progress; nothing in them is about the business.",
+  googleOAuthStates: "Short-lived, single-use records of a Google sign-in in progress; while one waits to be confirmed it holds a sealed authorization (deleted within fifteen minutes), so a copy must never leave.",
   googleLeadKeys: "The hash of the lead-form key; it proves Google's deliveries and is useless outside Selestial.",
   googleWatches: "Notification channels with Google, renewed automatically; their secrets must not leave.",
   googleChoices: "A short-lived copy of what Google listed for the Owner to choose from.",

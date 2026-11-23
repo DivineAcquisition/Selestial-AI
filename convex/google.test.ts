@@ -46,7 +46,12 @@ async function connect(t: T, as: ReturnType<T["withIdentity"]>, companyId: Id<"c
     "oauth2.googleapis.com/token": () => ({ body: { access_token: "access-1", ...(input.refresh === null ? {} : { refresh_token: input.refresh ?? "refresh-secret-1" }), scope: [SCOPE.openid, SCOPE.email, ...input.grant].join(" "), expires_in: 3600, id_token: idToken(input.sub ?? "google-sub-1", input.email ?? "owner@alpha.test") } }),
   });
   const response = await t.fetch(`/oauth/google/callback?state=${encodeURIComponent(state)}&code=auth-code`, { method: "GET" });
-  return { url, state, response, location: response.headers.get("location") ?? "" };
+  const location = response.headers.get("location") ?? "";
+  // Google's answer only waits; the signed-in Owner who started confirms the account in the app.
+  const pending = new URL(location, "https://app.test").searchParams.get("pending");
+  if (!pending) return { url, state, response, location };
+  const done = await as.mutation(api.google.confirmConnect, { companyId, token: pending });
+  return { url, state, response, location: location.replace(/result=confirm&pending=[^&]+/, `result=${encodeURIComponent(done.result)}`) };
 }
 
 describe("connecting Google", () => {

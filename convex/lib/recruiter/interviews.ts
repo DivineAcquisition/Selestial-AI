@@ -15,6 +15,7 @@ import { requestApproval } from "../approvalQueue";
 import { authorityFor } from "../authority";
 import type { CarriedOut } from "../dispatch/workflow";
 import { userError } from "../errors";
+import { calendarBusy, isBusy } from "../google/busy";
 import { recordEvent, type Actor } from "../events";
 import { when } from "../time";
 import { askPerson, isActive, RECRUITER, setNextAction, setStage, settleTask, SYSTEM } from "./applications";
@@ -55,7 +56,10 @@ export async function openSlots(ctx: QueryCtx | MutationCtx, companyId: Id<"comp
     .withIndex("by_company_start", (q) => q.eq("companyId", companyId).gt("startsAt", now + NOTICE))
     .take(300);
   const booked = rows.filter((row) => row.status === "booked");
-  return rows.filter((row) => row.status === "open" && !booked.some((other) => other.interviewerId === row.interviewerId && other.startsAt < row.endsAt && row.startsAt < other.endsAt)).slice(0, 40);
+  const open = rows.filter((row) => row.status === "open" && !booked.some((other) => other.interviewerId === row.interviewerId && other.startsAt < row.endsAt && row.startsAt < other.endsAt));
+  // A time on a busy block of the Owner's Google Calendar is not offered to applicants (convex/lib/google/busy.ts).
+  const busy = open.length ? await calendarBusy(ctx, companyId, Math.min(...open.map((row) => row.startsAt)), Math.max(...open.map((row) => row.endsAt))) : [];
+  return open.filter((row) => !isBusy(busy, row)).slice(0, 40);
 }
 
 async function send(ctx: MutationCtx, loaded: Loaded, purpose: "interview_invitation" | "interview_confirmation" | "interview_reminder", email: { subject: string; body: string }, dedupeKey: string, actor: Actor, immediate: boolean) {
@@ -166,6 +170,8 @@ export async function bookSlot(ctx: MutationCtx, interviewId: Id<"interviews">, 
     .withIndex("by_company_interviewer", (q) => q.eq("companyId", company._id).eq("interviewerId", slot.interviewerId).gt("startsAt", slot.startsAt - DAY))
     .take(200);
   if (others.some((row) => row._id !== slot._id && row.status === "booked" && row.interviewId !== interview._id && row.startsAt < slot.endsAt && slot.startsAt < row.endsAt)) throw userError("That time is no longer available. Please choose another.");
+  // An applicant (or an agent) cannot take a time that became busy on the Owner's Google Calendar; a person may.
+  if (actor.kind !== "member" && isBusy(await calendarBusy(ctx, company._id, slot.startsAt, slot.endsAt), slot)) throw userError("That time is no longer available. Please choose another.");
   const moving = interview.slotId !== undefined && interview.slotId !== slot._id;
   if (moving && interview.reschedules >= MAX_RESCHEDULES) throw userError("This interview has been moved as often as it can be. Reply to the email to arrange another time.");
   if (moving) await releaseSlot(ctx, interview);

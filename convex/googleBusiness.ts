@@ -14,6 +14,7 @@ import type { Id } from "./_generated/dataModel";
 import { internalAction, internalMutation, internalQuery, type MutationCtx } from "./_generated/server";
 import { accessTokenFor } from "./google";
 import { companyQuery, managerMutation } from "./lib/builders";
+import { authorityFor } from "./lib/authority";
 import { notFound, userError } from "./lib/errors";
 import { isNonProduction } from "./lib/environment";
 import { byMember, recordEvent } from "./lib/events";
@@ -21,6 +22,7 @@ import { setNotifications } from "./lib/google/business";
 import { activeConnection, requireFeature } from "./lib/google/connection";
 import { enqueue } from "./lib/google/jobs";
 import { pubsubTopic } from "./lib/google/platform";
+import { reviewLinkFor } from "./lib/google/reviewLink";
 import { hashToken } from "./lib/recruiter/secrets";
 import { openTask } from "./lib/taskState";
 import { text } from "./lib/text";
@@ -95,8 +97,7 @@ export const requestEligibility = companyQuery({
     const customer = await ctx.db.get(args.customerId);
     if (!customer || customer.companyId !== ctx.companyId) notFound();
     const reasons: string[] = [];
-    const locations = await ctx.db.query("googleResources").withIndex("by_company_kind", (q) => q.eq("companyId", ctx.companyId).eq("kind", "business_location")).take(5);
-    if (!locations.some((l) => l.access === "verified")) reasons.push("No Business Profile location is connected and verified.");
+    if (!(await reviewLinkFor(ctx, ctx.company))) reasons.push("There is no review link yet: connect and verify a Business Profile location, or add a review link in the Retention Playbook.");
     const jobs = await ctx.db.query("jobs").withIndex("by_company_customer", (q) => q.eq("companyId", ctx.companyId).eq("customerId", customer._id)).order("desc").take(50);
     const recent = jobs.find((j) => j.status === "completed" && j.endsAt > Date.now() - REQUEST_WINDOW_DAYS * DAY);
     if (!recent) reasons.push(`No visit finished in the last ${REQUEST_WINDOW_DAYS} days.`);
@@ -149,10 +150,29 @@ export const locationsFor = internalQuery({
   },
 });
 
+/** The permission Retention drafts review replies under (Agent permissions). */
+const DRAFT_PERMISSION = "retention.draft_review_reply";
+
+/**
+ * Retention's starting draft for a new review: short, courteous, and about the business, never about the
+ * reviewer's details. A person reads it, edits it if they like, and approves the exact text before anything is
+ * posted (`approveReply`). Nothing here posts.
+ */
+export function draftFor(review: { reviewer: string; stars: number; comment?: string }, businessName: string): string {
+  const name = review.reviewer && review.reviewer !== "A Google user" ? ` ${review.reviewer.split(/\s+/)[0]!.slice(0, 40)}` : "";
+  if (review.stars >= 4) return `Thank you${name} for taking the time to leave a review. We're glad you're happy with the service, and we look forward to seeing you again. — ${businessName}`;
+  if (review.stars === 3) return `Thank you${name} for your review. We're glad some of it went well, and we'd like to hear what we could do better. Please get in touch with us directly. — ${businessName}`;
+  return `Thank you${name} for telling us about this, and we're sorry the service fell short. We'd like to make it right: please get in touch with us directly so we can follow up. — ${businessName}`;
+}
+
 export const storeReviews = internalMutation({
   args: { companyId: v.id("companies"), location: v.string(), reviews: v.array(v.object({ reviewName: v.string(), reviewer: v.string(), stars: v.number(), comment: v.optional(v.string()), createdAt: v.number(), existingReply: v.optional(v.string()) })) },
   handler: async (ctx, args) => {
     let added = 0;
+    const company = await ctx.db.get(args.companyId);
+    // Retention drafts only while its permission to draft review replies is on and it is not paused.
+    const authority = await authorityFor(ctx, args.companyId, DRAFT_PERMISSION);
+    const mayDraft = company !== null && authority.kind === "level" && authority.level !== "off";
     for (const review of args.reviews) {
       const existing = await ctx.db.query("googleReviews").withIndex("by_company_review", (q) => q.eq("companyId", args.companyId).eq("reviewName", review.reviewName)).unique();
       if (existing) {
@@ -160,14 +180,18 @@ export const storeReviews = internalMutation({
         await ctx.db.patch(existing._id, { stars: review.stars, comment: review.comment, existingReply: review.existingReply, seenAt: Date.now() });
         continue;
       }
-      await ctx.db.insert("googleReviews", { companyId: args.companyId, location: args.location, ...review, state: review.existingReply ? "published" : "new", seenAt: Date.now() });
+      const draft = !review.existingReply && mayDraft ? draftFor(review, company!.name) : undefined;
+      const reviewId = await ctx.db.insert("googleReviews", { companyId: args.companyId, location: args.location, ...review, state: review.existingReply ? "published" : draft ? "drafted" : "new", ...(draft ? { draft, draftBy: "assistant" as const } : {}), seenAt: Date.now() });
       added += 1;
+      if (draft) await recordEvent(ctx, { companyId: args.companyId, type: "google.review_reply_drafted", actor: { kind: "agent", agent: "retention" }, subject: { table: "companies", id: args.companyId }, data: { stars: review.stars, review: reviewId } });
       if (!review.existingReply) {
         await openTask(ctx, {
           companyId: args.companyId,
           agent: "retention",
           title: `New ${review.stars}-star Google review from ${review.reviewer.slice(0, 60)}`,
-          nextAction: "Read the review and draft a reply for approval. Nothing is posted until an Owner or Manager approves the exact text.",
+          nextAction: draft
+            ? "Retention drafted a reply. Read it under Integrations › Google Business Profile, edit it if you like, and approve the exact text. Nothing is posted until an Owner or Manager approves it."
+            : "Read the review and draft a reply for approval. Nothing is posted until an Owner or Manager approves the exact text.",
           dueAt: Date.now() + (review.stars <= 3 ? 1 : 3) * DAY,
           completionCondition: "A reply is approved and published, or a person decided not to reply.",
           key: `google-review:${review.reviewName}`,
@@ -245,6 +269,8 @@ export const sweep = internalMutation({
       const connection = await activeConnection(ctx, companyId, "business_profile");
       if (!connection || connection.status !== "connected") continue;
       await enqueue(ctx, { companyId, connectionId: connection._id, kind: "reviews_sync", key: `reviews_sync:auto:${hour}`, payload: {} });
+      // Once a day, a location checked before its review page was kept is checked again, so the review invitation can use it.
+      if (hour % 24 === 0) for (const row of rows) if (row.companyId === companyId && row.kind === "business_location" && row.access === "verified" && !row.reviewUri) await ctx.scheduler.runAfter(0, internal.googleWork.verifyResource, { resourceId: row._id });
       await enqueue(ctx, { companyId, connectionId: connection._id, kind: "business_watch", key: `business_watch:${Math.floor(hour / 24)}`, payload: {} });
     }
     await settleFailed(ctx);

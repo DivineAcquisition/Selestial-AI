@@ -57,7 +57,10 @@ async function connect(t: T, as: ReturnType<T["withIdentity"]>, companyId: Id<"c
   const { url } = await as.mutation(api.google.startConnect, { companyId, feature });
   const state = new URL(url).searchParams.get("state")!;
   fakeGoogle([[(c) => c.url.includes("oauth2.googleapis.com/token"), () => ({ body: { access_token: "a", refresh_token: refresh, scope: [SCOPE.openid, SCOPE.email, ...grant].join(" "), expires_in: 3600, id_token: idToken("google-sub-1", "owner@alpha.test") } })]]);
-  await t.fetch(`/oauth/google/callback?state=${encodeURIComponent(state)}&code=auth-code`, { method: "GET" });
+  const response = await t.fetch(`/oauth/google/callback?state=${encodeURIComponent(state)}&code=auth-code`, { method: "GET" });
+  // Google's answer only waits; the signed-in Owner who started confirms the account in the app.
+  const pending = new URL(response.headers.get("location") ?? "", "https://app.test").searchParams.get("pending");
+  if (pending) await as.mutation(api.google.confirmConnect, { companyId, token: pending });
 }
 
 const DRAFT = { name: "Spring", dailyBudgetCents: 2500, keywords: ["house cleaning", "maid service"], postalCodes: ["78701"], cities: ["Austin, TX"], headline: "Spotless homes", description: "Trusted cleaners near you.", headlines: ["Book in 60 seconds", "Insured local cleaners"], descriptions: ["Same team every visit."], finalUrl: "https://alpha.test/book" };

@@ -141,7 +141,7 @@ Each gate: customer outcome · what exists (files) · what this work changed · 
 - **Evidence:** Implemented; automated tests passed (`convex/recruiterGmail.test.ts`, `inboxes.test.ts`).
 - **Remaining:**
   - **Google verification is not shown to be complete, and is not claimed.** `gmail.readonly` is a restricted scope: an app used by external users needs Google's verification and a security assessment, and an app left in "Testing" loses refresh tokens after 7 days. **Owner: check the consent screen status in Google Cloud (owner action 7).** Until verified, connect only pilot mailboxes you have added as test users, and expect weekly reconnects.
-  - The Google **tools** connection (Calendar, Drive, Business Profile, Ads) has the same state-only weakness on a separate code path. **Not fixed. Engineer; do before self-service.**
+  - ~~The Google **tools** connection (Calendar, Drive, Business Profile, Ads) has the same state-only weakness on a separate code path.~~ **Fixed:** the tools connection now holds Google's answer pending, sealed to the sign-in record, until the signed-in Owner who started confirms the Google account shown in Settings › Integrations within 15 minutes; otherwise it is deleted and revoked unless that account is already in use (`convex/google.ts` `holdPending`/`confirmConnect`, tests in `convex/googleConnect.test.ts`).
   - The Pub/Sub push subscription must point at `stoic-gazelle-731.convex.site`; pushes forwarded from the old backend fail their audience check (timers cover the gap). **Owner: confirm in Google Cloud.**
   - `gmail.readonly` is requested even for a send-only mailbox.
 
@@ -326,7 +326,7 @@ In priority order. The first six are required before the first pilot company.
 
 | Issue | Impact | Owner | Next action |
 |---|---|---|---|
-| Google tools connection trusts the state alone | A crafted link could attach another person's Google account to a company | Engineer | Apply the mailbox confirmation step to `convex/google.ts` |
+| ~~Google tools connection trusts the state alone~~ | Fixed: the signed-in Owner who started must confirm the Google account within 15 minutes (`convex/google.ts`) | Engineer | Done |
 | Rules-based agent work ignores the plan | A company with no plan keeps getting agent work while messaging charges are off | Engineer | Check the plan in each agent's sweep |
 | Two recurring-plan systems | One client scheduled twice | Engineer | Make each check the other, then merge |
 | Manual top-up refund not matched | Customer keeps refunded funds | Engineer | Confirm Autumn's invoice id in sandbox |

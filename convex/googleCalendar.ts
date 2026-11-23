@@ -9,17 +9,19 @@ import { v } from "convex/values";
 
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { internalAction, internalMutation, internalQuery } from "./_generated/server";
+import { internalAction, internalMutation, internalQuery, type MutationCtx } from "./_generated/server";
 import { accessTokenFor } from "./google";
 import { companyQuery, managerMutation } from "./lib/builders";
-import { recordEvent } from "./lib/events";
+import { notFound } from "./lib/errors";
+import { byMember, recordEvent, type Actor } from "./lib/events";
 import { isNonProduction } from "./lib/environment";
-import { changes, eventIdFor, freeBusy, stopChannel, watch, type EventDraft } from "./lib/google/calendar";
+import { changes, draftHash, eventIdFor, freeBusy, stopChannel, watch, type EventDraft } from "./lib/google/calendar";
+import { calendarBusy, isBusy } from "./lib/google/busy";
 import { activeConnection, requireFeature } from "./lib/google/connection";
 import { enquire } from "./lib/google/enquire";
 import { endpoints } from "./lib/google/platform";
 import { hashToken, randomToken } from "./lib/recruiter/secrets";
-import { openTask } from "./lib/taskState";
+import { openTask, setTaskState } from "./lib/taskState";
 
 const DAY = 86_400_000;
 const HORIZON = 60 * DAY;
@@ -81,7 +83,9 @@ export const saveLink = internalMutation({
   args: { companyId: v.id("companies"), calendarId: v.string(), subject: v.union(v.object({ table: v.literal("jobs"), id: v.id("jobs") }), v.object({ table: v.literal("interviews"), id: v.id("interviews") })), eventId: v.string(), writtenHash: v.string() },
   handler: async (ctx, args) => {
     const existing = (await ctx.db.query("googleCalendarLinks").withIndex("by_company_subject", (q) => q.eq("companyId", args.companyId).eq("subjectId", args.subject.id)).take(5)).find((l) => l.calendarId === args.calendarId);
-    if (existing) await ctx.db.patch(existing._id, { eventId: args.eventId, writtenHash: args.writtenHash, externalChange: undefined, updatedAt: Date.now() });
+    // Writing Selestial's version again settles a change someone made in Google: it was changed in Selestial since.
+    if (existing?.externalChange) await settleChange(ctx, existing, "It was changed in Selestial; the calendar now shows Selestial's version.", { kind: "system" });
+    if (existing) await ctx.db.patch(existing._id, { eventId: args.eventId, writtenHash: args.writtenHash, externalChange: undefined, externalTimes: undefined, externalTaskId: undefined, updatedAt: Date.now() });
     else await ctx.db.insert("googleCalendarLinks", { companyId: args.companyId, calendarId: args.calendarId, subject: args.subject, subjectId: args.subject.id, eventId: args.eventId, writtenHash: args.writtenHash, updatedAt: Date.now() });
     return null;
   },
@@ -95,30 +99,104 @@ export const dropLink = internalMutation({
   },
 });
 
+/** Closes the task a change in Google opened, saying how it was settled. */
+async function settleChange(ctx: MutationCtx, link: Doc<"googleCalendarLinks">, outcome: string, actor: Actor) {
+  const task = link.externalTaskId ? await ctx.db.get(link.externalTaskId) : null;
+  if (task && task.status !== "done" && task.status !== "cancelled") await setTaskState(ctx, task, "done", { outcome, closedAt: Date.now(), withPersonSince: null }, actor);
+  await recordEvent(ctx, { companyId: link.companyId, type: "google.calendar_change_settled", actor, subject: link.subject.table === "jobs" ? { table: "jobs", id: link.subject.id } : { table: "companies", id: link.companyId }, data: { change: link.externalChange ?? "none" } });
+}
+
 /**
  * An event Selestial made was changed in Google by someone else. The visit is not changed: a person is
- * asked to decide, once per change.
+ * asked to decide, once per change. It stays held (the sync does not overwrite it) until the visit is
+ * changed again in Selestial, or a person chooses to put Selestial's version back (`keepSelestial`).
  */
 export const externalChange = internalMutation({
-  args: { companyId: v.id("companies"), eventId: v.string(), change: v.union(v.literal("moved"), v.literal("deleted"), v.literal("edited")) },
+  args: { companyId: v.id("companies"), eventId: v.string(), change: v.union(v.literal("moved"), v.literal("deleted"), v.literal("edited")), startsAt: v.optional(v.number()), endsAt: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const link = (await ctx.db.query("googleCalendarLinks").withIndex("by_company_event", (q) => q.eq("companyId", args.companyId).eq("eventId", args.eventId)).take(1))[0];
-    if (!link || link.externalChange === args.change) return null;
-    await ctx.db.patch(link._id, { externalChange: args.change, updatedAt: Date.now() });
+    const times = args.startsAt !== undefined && args.endsAt !== undefined ? { startsAt: args.startsAt, endsAt: args.endsAt } : undefined;
+    if (!link) return null;
+    if (link.externalChange === args.change) {
+      // Moved again in Google: the time shown is kept current, without a second task.
+      if (times && (link.externalTimes?.startsAt !== times.startsAt || link.externalTimes?.endsAt !== times.endsAt)) await ctx.db.patch(link._id, { externalTimes: times, updatedAt: Date.now() });
+      return null;
+    }
     const what = link.subject.table === "jobs" ? "visit" : "interview";
-    await openTask(ctx, {
+    const taskId = await openTask(ctx, {
       companyId: args.companyId,
       agent: link.subject.table === "jobs" ? "dispatch" : "recruiter",
       title: `A ${what}'s Google Calendar event was ${args.change} outside Selestial`,
-      nextAction: `Check the ${what} in Selestial. Selestial did not change it. If the new time is right, change the ${what} in Selestial; the calendar then follows.`,
+      nextAction: `Check the ${what} in Selestial. Selestial did not change it. If the new time is right, change the ${what} in Selestial; the calendar then follows. If not, choose "Put Selestial's time back" under Integrations › Google Calendar.`,
       dueAt: Date.now() + 2 * 3600_000,
       completionCondition: `The ${what} in Selestial and the calendar agree.`,
       key: `calendar-change:${link._id}:${args.change}:${Math.floor(Date.now() / 3_600_000)}`,
       about: link.subject.table === "jobs" ? { table: "jobs", id: link.subject.id } : undefined,
       actor: { kind: "system" },
     });
+    await ctx.db.patch(link._id, { externalChange: args.change, externalTimes: times, externalTaskId: taskId, updatedAt: Date.now() });
     await recordEvent(ctx, { companyId: args.companyId, type: "google.calendar_external_change", actor: { kind: "system" }, subject: link.subject.table === "jobs" ? { table: "jobs", id: link.subject.id } : { table: "companies", id: args.companyId }, data: { change: args.change } });
     return null;
+  },
+});
+
+/**
+ * Visits and interviews in the next two weeks that sit on a busy time of a calendar chosen for availability.
+ * A person may schedule over a busy time; this is where it is flagged, so the Owner can decide.
+ */
+export const overBusy = companyQuery({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const to = now + 14 * DAY;
+    const busy = await calendarBusy(ctx, ctx.companyId, now, to);
+    if (busy.length === 0) return [];
+    const out: { what: "visit" | "interview"; id: string; startsAt: number; endsAt: number }[] = [];
+    const jobs = await ctx.db.query("jobs").withIndex("by_company_start", (q) => q.eq("companyId", ctx.companyId).gte("startsAt", now).lt("startsAt", to)).take(1000);
+    for (const job of jobs) if (job.status !== "cancelled" && isBusy(busy, job)) out.push({ what: "visit", id: job._id, startsAt: job.startsAt, endsAt: job.endsAt });
+    const interviews = await ctx.db.query("interviews").withIndex("by_company_application", (q) => q.eq("companyId", ctx.companyId)).take(500);
+    for (const interview of interviews) {
+      if (interview.status !== "confirmed" || !interview.startsAt || !interview.endsAt || interview.endsAt < now || interview.startsAt > to) continue;
+      if (isBusy(busy, { startsAt: interview.startsAt, endsAt: interview.endsAt })) out.push({ what: "interview", id: interview._id, startsAt: interview.startsAt, endsAt: interview.endsAt });
+    }
+    return out.sort((a, b) => a.startsAt - b.startsAt).slice(0, 50);
+  },
+});
+
+/** Events changed in Google that are waiting for a person, with the time Selestial has and the time Google shows. */
+export const changed = companyQuery({
+  args: {},
+  handler: async (ctx) => {
+    const links = await ctx.db.query("googleCalendarLinks").withIndex("by_company_subject", (q) => q.eq("companyId", ctx.companyId)).take(2000);
+    const out = [];
+    for (const link of links) {
+      if (!link.externalChange) continue;
+      const subject = link.subject.table === "jobs" ? await ctx.db.get(link.subject.id) : await ctx.db.get(link.subject.id);
+      if (!subject) continue;
+      out.push({ linkId: link._id, what: link.subject.table === "jobs" ? ("visit" as const) : ("interview" as const), subjectId: link.subjectId, change: link.externalChange, google: link.externalTimes ?? null, selestial: { startsAt: subject.startsAt ?? null, endsAt: subject.endsAt ?? null }, since: link.updatedAt });
+      if (out.length >= 50) break;
+    }
+    return out;
+  },
+});
+
+/**
+ * "Put Selestial's time back": a person decided the change made in Google was wrong. The flag is cleared and
+ * the next sync writes Selestial's version over it. To keep Google's time instead, the visit is changed in
+ * Selestial, which settles the change the same way.
+ */
+export const keepSelestial = managerMutation({
+  args: { linkId: v.id("googleCalendarLinks") },
+  handler: async (ctx, args) => {
+    const link = await ctx.db.get(args.linkId);
+    if (!link || link.companyId !== ctx.companyId) notFound();
+    if (!link.externalChange) return { queued: false };
+    const connection = await requireFeature(ctx, ctx.companyId, "calendar");
+    await settleChange(ctx, link, "A person chose to put Selestial's version back on the calendar.", byMember(ctx));
+    // An empty hash makes the next sync write the event again, whatever Google now shows.
+    await ctx.db.patch(link._id, { externalChange: undefined, externalTimes: undefined, externalTaskId: undefined, writtenHash: "", updatedAt: Date.now() });
+    await enquire(ctx, ctx.companyId, connection._id, "calendar_sync", `calendar_sync:keep:${link._id}:${Date.now()}`, {}, ctx.member._id);
+    return { queued: true };
   },
 });
 
@@ -186,20 +264,33 @@ export const notified = internalMutation({
   },
 });
 
+/** A calendar row with no push channel, kept only to remember where the timed read got to. */
+const POLL_PREFIX = "poll:";
+
+/**
+ * Where to read changes from: the sync calendar, with the push channel's sync token if there is one. Without a
+ * channel (no public site address, or not production) the timer still reads changes, keeping its own token.
+ */
 export const watchFor = internalQuery({
   args: { companyId: v.id("companies") },
   handler: async (ctx, args) => {
-    const row = (await ctx.db.query("googleWatches").withIndex("by_company", (q) => q.eq("companyId", args.companyId)).take(10)).find((w) => w.kind === "calendar");
+    const connection = await activeConnection(ctx, args.companyId, "calendar");
+    const target = (await ctx.db.query("googleResources").withIndex("by_company_kind", (q) => q.eq("companyId", args.companyId).eq("kind", "calendar_sync")).take(5)).find((r) => r.access !== "lost");
+    if (!connection || connection.status !== "connected" || !target) return null;
+    const rows = (await ctx.db.query("googleWatches").withIndex("by_company", (q) => q.eq("companyId", args.companyId)).take(10)).filter((w) => w.kind === "calendar" && w.target === target.externalId);
+    const row = rows.find((w) => !w.channelId.startsWith(POLL_PREFIX)) ?? rows[0] ?? null;
     const links = await ctx.db.query("googleCalendarLinks").withIndex("by_company_subject", (q) => q.eq("companyId", args.companyId)).take(2000);
-    return row ? { watchId: row._id, connectionId: row.connectionId, calendarId: row.target, syncToken: row.syncToken ?? null, links: links.map((l) => ({ eventId: l.eventId, writtenHash: l.writtenHash })) } : null;
+    return { watchId: row?._id ?? null, connectionId: connection._id, calendarId: target.externalId, syncToken: row?.syncToken ?? null, links: links.filter((l) => l.calendarId === target.externalId).map((l) => ({ eventId: l.eventId, writtenHash: l.writtenHash })) };
   },
 });
 
 export const saveSyncToken = internalMutation({
-  args: { watchId: v.id("googleWatches"), syncToken: v.union(v.string(), v.null()) },
+  args: { watchId: v.union(v.id("googleWatches"), v.null()), companyId: v.id("companies"), connectionId: v.id("googleConnections"), calendarId: v.string(), syncToken: v.union(v.string(), v.null()) },
   handler: async (ctx, args) => {
-    const row = await ctx.db.get(args.watchId);
+    const row = args.watchId ? await ctx.db.get(args.watchId) : null;
     if (row) await ctx.db.patch(row._id, { syncToken: args.syncToken ?? undefined });
+    // No channel: a row that only remembers the timed read's place. It never matches a notification (convex/http.ts checks the channel id's form).
+    else if (args.syncToken) await ctx.db.insert("googleWatches", { companyId: args.companyId, connectionId: args.connectionId, kind: "calendar", target: args.calendarId, channelId: `${POLL_PREFIX}${args.companyId}`, tokenHash: "none", expiresAt: 0, syncToken: args.syncToken, createdAt: Date.now() });
     return null;
   },
 });
@@ -221,18 +312,23 @@ export const pullChanges = internalAction({
     const plan = await ctx.runQuery(internal.googleCalendar.plan, args);
     const desired = new Map((plan?.desired ?? []).map((d) => [d.id, d]));
     for (const event of result.events) {
-      if (event.extendedProperties?.private?.selestial !== "1" || !known.has(event.id)) continue;
+      const link = known.get(event.id);
+      if (event.extendedProperties?.private?.selestial !== "1" || !link) continue;
       const wanted = desired.get(event.id);
+      if (!wanted) continue;
+      // Only a difference from what Selestial last WROTE is someone else's change. While a visit has changed in
+      // Selestial and the sync has not written it yet, Google still shows Selestial's older version: that is
+      // not a change made in Google, and the sync is about to replace it.
+      if (link.writtenHash !== draftHash(wanted)) continue;
       if (event.status === "cancelled") {
-        if (wanted) await ctx.runMutation(internal.googleCalendar.externalChange, { companyId: args.companyId, eventId: event.id, change: "deleted" });
+        await ctx.runMutation(internal.googleCalendar.externalChange, { companyId: args.companyId, eventId: event.id, change: "deleted" });
         continue;
       }
-      if (!wanted) continue;
       const start = Date.parse(event.start?.dateTime ?? event.start?.date ?? "");
       const end = Date.parse(event.end?.dateTime ?? event.end?.date ?? "");
-      if (start !== wanted.startsAt || end !== wanted.endsAt) await ctx.runMutation(internal.googleCalendar.externalChange, { companyId: args.companyId, eventId: event.id, change: "moved" });
+      if (start !== wanted.startsAt || end !== wanted.endsAt) await ctx.runMutation(internal.googleCalendar.externalChange, { companyId: args.companyId, eventId: event.id, change: "moved", ...(Number.isFinite(start) && Number.isFinite(end) ? { startsAt: start, endsAt: end } : {}) });
     }
-    if (result.nextSyncToken) await ctx.runMutation(internal.googleCalendar.saveSyncToken, { watchId: state.watchId, syncToken: result.nextSyncToken });
+    if (result.nextSyncToken) await ctx.runMutation(internal.googleCalendar.saveSyncToken, { watchId: state.watchId, companyId: args.companyId, connectionId: state.connectionId, calendarId: state.calendarId, syncToken: result.nextSyncToken });
     return null;
   },
 });

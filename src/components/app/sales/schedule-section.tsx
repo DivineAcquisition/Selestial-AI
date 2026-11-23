@@ -115,6 +115,7 @@ export function ScheduleSection({ n, data, working, setBody, summary, done, comp
           <span>
             <span className="font-medium text-strong">{capacity.state === "fits" ? "Crew available" : capacity.state === "tight" ? "Last crew available" : capacity.state === "full" ? "No crew free" : capacity.state === "closed" ? "Not bookable" : "Capacity not checked"}</span>
             <span className="block text-xs text-muted-foreground">{capacity.why}</span>
+            {capacity.calendarNote ? <span className="block text-xs text-warning-foreground">{capacity.calendarNote}</span> : null}
           </span>
         </div>
       ) : null}

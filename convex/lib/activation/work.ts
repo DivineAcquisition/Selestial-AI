@@ -557,7 +557,7 @@ async function careSetup(env: Env): Promise<Result> {
   const s = env.snapshot;
   const outputs: Output[] = [];
   if (!s.retention.guaranteeWritten) outputs.push(await gapTask(env, "retention", "activation.care:guarantee", "Write your service guarantee in your own words", "Add the guarantee Retention may offer when a visit falls short, in the Retention Playbook.", "The guarantee is written in the Retention Playbook."));
-  if (!s.retention.reviewLink) outputs.push(await gapTask(env, "retention", "activation.care:review_link", "Add the link where customers leave reviews", "Add your review link in the Retention Playbook, so happy customers can be pointed to it.", "A review link is set in the Retention Playbook."));
+  if (!s.retention.reviewLink) outputs.push(await gapTask(env, "retention", "activation.care:review_link", "Add the link where customers leave reviews", "Add your review link in the Retention Playbook, so every customer's feedback invitation can point to it.", "A review link is set in the Retention Playbook."));
   const feedback: Output = {
     kind: "feedback_request",
     ref: { table: "companies", id: env.company._id, label: "Feedback request after a customer's first visit", href: "/app/agents/retention/playbook" },
