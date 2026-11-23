@@ -76,6 +76,8 @@ export const googleTables = {
     access: v.union(v.literal("verified"), v.literal("unverified"), v.literal("lost")),
     accessNote: v.optional(v.string()),
     verifiedAt: v.optional(v.number()),
+    /** For an ad account: the creation time of the newest Local Services lead read ("YYYY-MM-DD HH:MM:SS", the account's time zone). */
+    cursor: v.optional(v.string()),
     addedBy: v.id("members"),
     createdAt: v.number(),
   })
@@ -216,8 +218,15 @@ export const googleTables = {
     dailyBudgetCents: v.number(),
     keywords: v.array(v.string()),
     postalCodes: v.array(v.string()),
+    /** The first headline and description. The ad shows them with the ones below (a responsive search ad needs 3 and 2). */
     headline: v.string(),
     description: v.string(),
+    headlines: v.optional(v.array(v.string())),
+    descriptions: v.optional(v.array(v.string())),
+    /** Cities to show the ads in, besides the ZIP codes, like "Austin, TX". */
+    cities: v.optional(v.array(v.string())),
+    /** How keywords match searches. Absent means phrase. */
+    keywordMatch: v.optional(v.union(v.literal("phrase"), v.literal("exact"))),
     finalUrl: v.string(),
     state: v.union(v.literal("draft"), v.literal("approved"), v.literal("created_paused"), v.literal("active"), v.literal("failed")),
     googleCampaign: v.optional(v.string()),

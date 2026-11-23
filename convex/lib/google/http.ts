@@ -55,8 +55,8 @@ export const NOT_RUN_ON_TEST = "Not run: this is not the production backend, so 
 
 /** Hosts whose POSTs are Selestial's own sign-in or its own computation: no customer's Google account changes. */
 const READ_ONLY_HOSTS = new Set(["oauth2.googleapis.com", "routes.googleapis.com", "routeoptimization.googleapis.com", "generativelanguage.googleapis.com", "places.googleapis.com"]);
-/** POSTs that only read: a Google Ads query, and busy times from Calendar. */
-const READ_ONLY_PATHS = [/\/googleAds:search$/, /\/calendar\/v3\/freeBusy$/];
+/** POSTs that only read: a Google Ads query, Google Ads location lookups, and busy times from Calendar. */
+const READ_ONLY_PATHS = [/\/googleAds:search$/, /^\/v\d+\/geoTargetConstants:suggest$/, /\/calendar\/v3\/freeBusy$/];
 
 /**
  * Whether a call writes to a Google account: a calendar event, a public review reply, an ad, a reported
