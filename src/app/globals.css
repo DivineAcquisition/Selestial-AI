@@ -1363,6 +1363,13 @@
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
+  /* The Owner's decision (November 23, 2026): the home page's integrations hub keeps moving even with reduced
+     motion on. Each animated part of the hub carries .hub-motion and its own duration in --hub-d
+     (src/components/marketing/integration-hub.tsx). Nothing else is exempt. */
+  .hub-motion {
+    animation-duration: var(--hub-d) !important;
+    animation-iteration-count: infinite !important;
+  }
 }
 
 /*

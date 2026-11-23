@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+
 import { IntegrationMark } from "@/components/app/integration-mark";
 import { LogoMark } from "@/components/brand/logo";
 import { AgentMark } from "@/components/marketing/agent-mark";
@@ -69,12 +71,12 @@ export function IntegrationHub({ className }: { className?: string }) {
       <div className="relative aspect-square w-full">
         {/* Atmosphere: a soft glow, and two slowly turning orbit rings. */}
         <div aria-hidden className="absolute inset-[18%] rounded-full bg-brand-500/25 blur-3xl" />
-        <div aria-hidden className="absolute inset-[9%] rounded-full border border-dashed border-brand-500/25 motion-safe:animate-hub-orbit">
+        <div aria-hidden className="absolute inset-[9%] rounded-full border border-dashed border-brand-500/25 animate-hub-orbit hub-motion" style={{ "--hub-d": "22s" } as CSSProperties}>
           <span className="absolute top-0 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-400 shadow-[0_0_14px_4px_rgba(139,108,246,0.85)]" />
           <span className="absolute bottom-[14.6%] left-[14.6%] size-1.5 -translate-x-1/2 translate-y-1/2 rounded-full bg-brand-300 shadow-[0_0_10px_3px_rgba(179,158,255,0.8)]" />
           <span className="absolute right-[14.6%] bottom-[14.6%] size-1.5 translate-x-1/2 translate-y-1/2 rounded-full bg-brand-300 shadow-[0_0_10px_3px_rgba(179,158,255,0.8)]" />
         </div>
-        <div aria-hidden className="absolute inset-[27%] rounded-full border border-brand-500/30 motion-safe:animate-hub-orbit-reverse">
+        <div aria-hidden className="absolute inset-[27%] rounded-full border border-brand-500/30 animate-hub-orbit-reverse hub-motion" style={{ "--hub-d": "14s" } as CSSProperties}>
           <span className="absolute top-0 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-400 shadow-[0_0_14px_4px_rgba(139,108,246,0.9)]" />
           <span className="absolute bottom-0 left-1/2 size-1.5 -translate-x-1/2 translate-y-1/2 rounded-full bg-brand-300 shadow-[0_0_10px_3px_rgba(179,158,255,0.8)]" />
         </div>
@@ -109,8 +111,8 @@ export function IntegrationHub({ className }: { className?: string }) {
                   strokeDasharray="7 57"
                   strokeDashoffset={64}
                   filter="url(#hub-glow)"
-                  className="opacity-0 motion-safe:animate-hub-flow motion-safe:opacity-100"
-                  style={{ animationDelay: `${(index * 0.41) % 2.6}s` }}
+                  className="animate-hub-flow hub-motion"
+                  style={{ animationDelay: `${(index * 0.41) % 2.6}s`, "--hub-d": "2.6s" } as CSSProperties}
                 />
                 <path
                   d={d}
@@ -120,8 +122,8 @@ export function IntegrationHub({ className }: { className?: string }) {
                   fill="none"
                   strokeDasharray="4 60"
                   filter="url(#hub-glow)"
-                  className="opacity-0 motion-safe:animate-hub-flow-out motion-safe:opacity-100"
-                  style={{ animationDelay: `${(index * 0.41 + 1.3) % 2.6}s` }}
+                  className="animate-hub-flow-out hub-motion"
+                  style={{ animationDelay: `${(index * 0.41 + 1.3) % 2.6}s`, "--hub-d": "2.6s" } as CSSProperties}
                 />
               </g>
             ) : (
@@ -142,7 +144,7 @@ export function IntegrationHub({ className }: { className?: string }) {
         {/* The agents, on the inner ring. */}
         {agents.map((agent, index) => (
           <div key={agent.id} aria-hidden className="absolute" style={{ left: `${agent.x}%`, top: `${agent.y}%`, transform: "translate(-50%, -50%)" }}>
-            <span style={{ animationDelay: `${index * -1.1}s` }} className="relative flex rounded-full p-[3px] motion-safe:animate-hub-float shadow-[0_10px_28px_-10px_rgba(104,56,239,0.9)] [background:conic-gradient(from_180deg,#6838ef,#b39eff,#6838ef)]">
+            <span style={{ animationDelay: `${index * -1.1}s`, "--hub-d": "4.5s" } as CSSProperties} className="relative flex rounded-full p-[3px] animate-hub-float hub-motion shadow-[0_10px_28px_-10px_rgba(104,56,239,0.9)] [background:conic-gradient(from_180deg,#6838ef,#b39eff,#6838ef)]">
               <span className="flex rounded-full bg-background p-[2px]">
                 <AgentMark id={agent.id} size="sm" />
               </span>
@@ -153,8 +155,8 @@ export function IntegrationHub({ className }: { className?: string }) {
         {/* Selestial at the core: the mark itself, no frame, in a breathing glow. */}
         <div className="absolute inset-0 grid place-items-center">
           <span className="relative grid place-items-center">
-            <span aria-hidden className="absolute inset-[-55%] rounded-full bg-[radial-gradient(circle,rgba(124,77,255,0.45),transparent_65%)] motion-safe:animate-pulse" />
-            <span aria-hidden className="absolute inset-[-18%] rounded-[30%] border border-brand-400/40 motion-safe:animate-ping [animation-duration:3s]" />
+            <span aria-hidden className="absolute inset-[-55%] rounded-full bg-[radial-gradient(circle,rgba(124,77,255,0.45),transparent_65%)] animate-pulse hub-motion" style={{ "--hub-d": "2s" } as CSSProperties} />
+            <span aria-hidden className="absolute inset-[-18%] rounded-[30%] border border-brand-400/40 animate-ping hub-motion [animation-duration:3s]" style={{ "--hub-d": "3s" } as CSSProperties} />
             <LogoMark className="relative size-16 drop-shadow-[0_18px_30px_rgba(81,38,199,0.65)] sm:size-24" />
           </span>
         </div>
