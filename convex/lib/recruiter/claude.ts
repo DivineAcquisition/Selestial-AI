@@ -19,10 +19,10 @@ import Anthropic from "@anthropic-ai/sdk";
 
 import { REGISTRY } from "../ai/registry";
 
-import { interpretByRule, type Interpretation } from "./interpret";
+import { interpretByRule, READ_CLASSIFICATIONS, REPLY_INTENTS, type Interpretation } from "./interpret";
 import { plainText, type MessageBody } from "./mail";
 import { rulesLooksLikeHiring, type HiringModel } from "./model";
-import { CLASSIFICATIONS, SOURCES, type Classification, type Source } from "./schema";
+import { SOURCES, type Classification, type Source } from "./schema";
 
 // Routine extraction: the inexpensive route from the registry (Claude Haiku 5.5).
 const MODEL = REGISTRY.classify.primary.model;
@@ -51,7 +51,7 @@ const ADDRESS_KINDS = ["direct", "relay", "notification", "unknown"] as const;
 const READ_SCHEMA = {
   type: "object",
   properties: {
-    classification: { type: "string", enum: [...CLASSIFICATIONS] },
+    classification: { type: "string", enum: [...READ_CLASSIFICATIONS], description: "new_application: the person applied. employment_inquiry: asks about work and has not applied. applicant_reply: an applicant writing about their application. unrelated: not hiring mail." },
     source: { type: "string", enum: [...SOURCES] },
     reason: { type: "string", description: "One short sentence on why this classification." },
     name: { type: "string", description: "The applicant's name as written, or empty." },
@@ -75,7 +75,7 @@ const READ_SCHEMA = {
         additionalProperties: false,
       },
     },
-    replyIntent: { type: "string", enum: ["", "withdraw", "no_contact", "question"], description: "For a reply from an applicant: withdraw, no_contact (asks not to be contacted), or question. Otherwise empty." },
+    replyIntent: { type: "string", enum: ["", ...REPLY_INTENTS], description: "For a reply from an applicant: withdraw, no_contact (asks not to be contacted), availability (gives days or times they can work), pay (asks what it pays), or question. Otherwise empty." },
   },
   required: ["classification", "source", "reason", "name", "role", "sourceApplicationId", "phone", "location", "experience", "availability", "addresses", "replyIntent"],
   additionalProperties: false,
@@ -155,8 +155,9 @@ export function claudeModel(apiKey: string, options: { fetch?: typeof fetch; max
         experience: orUndefined(answer.experience),
         availability: orUndefined(answer.availability),
         addresses: (Array.isArray(answer.addresses) ? answer.addresses : []).slice(0, 30).map((entry) => ({ address: String(entry.address), kind: (ADDRESS_KINDS as readonly string[]).includes(entry.kind) ? (entry.kind as (typeof ADDRESS_KINDS)[number]) : "unknown", where: `model: ${String(entry.where)}` })),
-        replyIntent: answer.replyIntent === "withdraw" || answer.replyIntent === "no_contact" || answer.replyIntent === "question" ? answer.replyIntent : undefined,
+        replyIntent: (REPLY_INTENTS as readonly string[]).includes(answer.replyIntent) ? (answer.replyIntent as Interpretation["replyIntent"]) : undefined,
         forwarded: /^\s*(fwd?|fw)\s*:/i.test(message.subject),
+        readBy: "model",
       };
       // A job board's own notice keeps the classification code gave it, whatever the reading says.
       if (header) {

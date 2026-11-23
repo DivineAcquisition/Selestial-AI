@@ -144,7 +144,9 @@ export const update = ownerMutation({
     const row = await ownInbox(ctx, args.connectionId);
     if (row.status === "disconnected") throw userError("This inbox is disconnected. Connect it again to use it.");
     const purposes = cleanPurposes(args.purposes);
-    await ctx.db.patch(row._id, { purposes, ...(args.label !== undefined ? { folder: args.label === null ? undefined : optionalText(args.label, "The label", 200) } : {}) });
+    const folder = args.label === undefined ? row.folder : args.label === null ? undefined : optionalText(args.label, "The label", 200);
+    // A different label is a different reading boundary: the next read starts the window again with it (filing skips what it has).
+    await ctx.db.patch(row._id, { purposes, folder, ...(folder !== row.folder ? { cursor: undefined, ...(row.discovery === "label" || folder ? { discovery: folder ? ("label" as const) : ("search" as const) } : {}) } : {}) });
     await recordEvent(ctx, { companyId: ctx.companyId, type: "mailbox.updated", actor: byMember(ctx), subject: { table: "mailboxConnections", id: row._id }, data: { purposes: purposes.join(",") } });
     // A purpose taken away: messages waiting for this inbox under it go another way now.
     await resumeWaiting(ctx, ctx.companyId);

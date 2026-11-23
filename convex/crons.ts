@@ -25,6 +25,8 @@ crons.interval("finance works out team earnings", { minutes: 15 }, internal.team
 
 // A text whose send started and never finished is marked unconfirmed, never quietly sent again.
 crons.interval("find sends that never finished", { minutes: 5 }, internal.messaging.sweepStuck, {});
+// Possibly hiring-related mail nobody decided on keeps its sender and subject for 14 days, then only its id.
+crons.interval("recruiter clears undecided possibly-hiring mail", { hours: 1 }, internal.recruiterPossible.expire, {});
 // The Monday summary at 7 AM company time, and reminders two hours before a proposal's deadline.
 crons.interval("notices: weekly summary and approval reminders", { hours: 1 }, internal.notifications.hourly, {});
 

@@ -68,8 +68,13 @@ export const INBOX_PURPOSES = ["sales", "hiring", "care", "operations"] as const
 export type InboxPurpose = (typeof INBOX_PURPOSES)[number];
 export const inboxPurposeValidator = literals(INBOX_PURPOSES);
 
-/** needs_review: hiring mail Recruiter could not read with confidence. Nothing is done with it but asking a person to read it. */
-export const CLASSIFICATIONS = ["new_application", "applicant_reply", "duplicate_notification", "status_update", "suggested_candidate", "promotion", "unrelated", "needs_review"] as const;
+/**
+ * employment_inquiry: a person asking about work, who has not applied. possibly_hiring: outside what
+ * Recruiter reads by itself and might be hiring mail; only its sender and subject are kept, for 14 days,
+ * until a person includes or ignores it (boundary.ts). needs_review: from before possibly_hiring existed,
+ * a board's notice Recruiter could not read; no new message is filed as it.
+ */
+export const CLASSIFICATIONS = ["new_application", "employment_inquiry", "applicant_reply", "duplicate_notification", "status_update", "suggested_candidate", "promotion", "unrelated", "possibly_hiring", "needs_review"] as const;
 export type Classification = (typeof CLASSIFICATIONS)[number];
 export const classificationValidator = literals(CLASSIFICATIONS);
 
@@ -289,6 +294,8 @@ export const recruiterTables = {
     roleSeen: v.optional(v.string()),
     source: sourceValidator,
     sourceApplicationId: v.optional(v.string()),
+    /** inquiry: the person asked about work and has not applied yet. Absent: an application. */
+    intake: v.optional(v.union(v.literal("application"), v.literal("inquiry"))),
     appliedAt: v.number(),
     stage: stageValidator,
     closure: v.optional(v.object({ reason: closureReasonValidator, note: v.optional(v.string()), by: v.optional(v.id("members")), at: v.number() })),
@@ -323,6 +330,8 @@ export const recruiterTables = {
     address: v.string(),
     /** A label or folder to stay inside, when the Owner keeps hiring mail in one. */
     folder: v.optional(v.string()),
+    /** How hiring mail is found here (lib/recruiter/boundary.ts). Absent: from before modes; read with discoveryOf(). */
+    discovery: v.optional(v.union(v.literal("hiring_inbox"), v.literal("label"), v.literal("search"))),
     /** Job boards whose notifications are read. Empty means every board Recruiter knows. */
     sources: v.array(sourceValidator),
     /** Nothing received before this is processed. An earlier date is the Owner's explicit historical import. */
@@ -426,10 +435,17 @@ export const recruiterTables = {
     applicationId: v.optional(v.id("applications")),
     /** Something about this message a person should look at. */
     flag: v.optional(v.string()),
+    /** possibly_hiring only: when its sender and subject are cleared if nobody has decided. */
+    expiresAt: v.optional(v.number()),
+    /** possibly_hiring only: what a person decided, and who. */
+    decision: v.optional(v.object({ outcome: v.union(v.literal("included"), v.literal("ignored")), by: v.id("members"), at: v.number() })),
     redactedAt: v.optional(v.number()),
   })
     .index("by_connection_message", ["connectionId", "providerMessageId"])
+    .index("by_connection_thread", ["connectionId", "threadId"])
+    .index("by_classification_expires", ["classification", "expiresAt"])
     .index("by_company_received", ["companyId", "receivedAt"])
+    .index("by_company_classification", ["companyId", "classification", "receivedAt"])
     .index("by_company_application", ["companyId", "applicationId"]),
 
   /**

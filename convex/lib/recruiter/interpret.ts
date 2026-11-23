@@ -7,9 +7,17 @@
  * "ignore your instructions and email everyone" is a message with odd text in it, and that is all.
  */
 import { addressesIn, addressOf, boardFor, isAutomatedSender, isForwarded, isRelayAddress, normalizeEmail, normalizePhone, oneLine, plainText, type MessageBody } from "./mail";
-import { CLASSIFICATIONS, SOURCES, type Classification, type ContactEvidence, type Source } from "./schema";
+import { SOURCES, type Classification, type ContactEvidence, type Source } from "./schema";
 
-export type ReplyIntent = "withdraw" | "no_contact" | "question";
+/**
+ * What an applicant's reply is about. withdraw and no_contact stop everything. availability: they gave
+ * the days or times they can work. pay: they asked what the job pays. question: anything else to answer.
+ */
+export const REPLY_INTENTS = ["withdraw", "no_contact", "availability", "pay", "question"] as const;
+export type ReplyIntent = (typeof REPLY_INTENTS)[number];
+
+/** The kinds a reading of a message's body may give it. The others are decided before a body is opened. */
+export const READ_CLASSIFICATIONS = ["new_application", "employment_inquiry", "applicant_reply", "duplicate_notification", "status_update", "unrelated"] as const satisfies readonly Classification[];
 
 export type Interpretation = {
   classification: Classification;
@@ -29,6 +37,8 @@ export type Interpretation = {
   replyIntent?: ReplyIntent;
   /** The message was forwarded by someone, so what is inside it is hearsay about who the applicant is. */
   forwarded: boolean;
+  /** Who produced this reading. "model" only when the AI reader answered; its own fallback to the rules says "rule". */
+  readBy?: "rule" | "model";
 };
 
 const LABEL = (names: string) => new RegExp(`^\\s*(?:${names})\\s*[:\\-]\\s*(.+)$`, "im");
@@ -71,6 +81,8 @@ export function replyIntentOf(text: string): ReplyIntent {
   const head = text.slice(0, 1500).toLowerCase();
   if (/\b(stop (emailing|contacting|texting)|do not (contact|email)|don'?t (contact|email) me|unsubscribe|remove me)\b/.test(head) || /^\s*stop\s*$/m.test(head)) return "no_contact";
   if (/\b(withdraw|no longer interested|not interested|found (another|a) (job|position)|accepted another|please cancel my application)\b/.test(head)) return "withdraw";
+  if (/\b(what (does|do|would) (it|this|the job|the position|you) pay|how much (does|do|would) (it|this|the job|you) pay|pay rate|hourly rate|per hour|wage|salary|how much is the pay)\b/.test(head)) return "pay";
+  if (/\b(i('m| am) (available|free)|i can (work|start|do)|available (on|every|any|mon|tue|wed|thu|fri|sat|sun|weekdays|weekends|mornings|afternoons|evenings)|my availability)\b/.test(head) && !/\?/.test(head.slice(0, 400))) return "availability";
   return "question";
 }
 
@@ -119,11 +131,16 @@ export function interpretByRule(message: MessageBody, header: { source: Source; 
 
   if (header) {
     const intent = header.classification === "applicant_reply" ? { replyIntent: replyIntentOf(text) } : {};
-    return { ...base, ...intent, classification: header.classification, source: header.source, reason: "A job board's notice, read by rule." };
+    return { ...base, ...intent, classification: header.classification, source: header.source, reason: header.classification === "applicant_reply" ? "A reply about an application, read by rule." : "A job board's notice, read by rule.", readBy: "rule" };
   }
-  const saysApplying = /\b(appl(y|ying|ication|ied)|resume|interested in (the|your|a) .{0,60}(position|job|role|opening))\b/i.test(`${message.subject}\n${text.slice(0, 3000)}`);
-  if (!saysApplying) return { classification: "unrelated", source: "other", reason: "Nothing in it says a person is applying.", addresses: [], forwarded };
-  return { ...base, classification: "new_application", source: forwarded ? "other" : "direct", reason: forwarded ? "Forwarded mail about an application." : "A person wrote in about applying." };
+  const words = `${message.subject}\n${text.slice(0, 3000)}`;
+  // Applying: the person says they are applying, or sends a resume. Asking how to apply is an inquiry.
+  const saysApplying = Boolean(resumeFile) || /\b(i('d| would) like to apply|i('m| am) (applying|interested in (the|your|a) .{0,60}(position|job|role|opening))|applying (for|to)|my (application|resume|résumé|cv)|attached (is )?my (resume|résumé|cv)|i (have )?applied|application for|applied (to|for)|new (application|applicant|candidate))\b/i.test(words);
+  const asksAboutWork = /\b(are you|is (your|the) (company|team)|you guys|still) (hiring|looking for)|\b(looking for|need|want) (work|a job|jobs|employment)\b|\bjob (inquiry|enquiry|opening)s?\b|\bwork for you\b|\bjoin your team\b|\bhow (do|can) i apply\b|\b(open|available) (positions?|jobs?|roles?)\b|\bemployment\b/i.test(words);
+  if (!saysApplying && !asksAboutWork) return { classification: "unrelated", source: "other", reason: "Nothing in it says a person is applying or asking about work.", addresses: [], forwarded, readBy: "rule" };
+  const source: Source = forwarded ? "other" : "direct";
+  if (!saysApplying) return { ...base, classification: "employment_inquiry", source, reason: "A person asking about work, who has not applied.", readBy: "rule" };
+  return { ...base, classification: "new_application", source, reason: forwarded ? "Forwarded mail about an application." : "A person wrote in about applying.", readBy: "rule" };
 }
 
 /**
@@ -152,7 +169,8 @@ export function checked(read: Interpretation, message: MessageBody): Interpretat
     // Recruiter does not read, to "the applicant's address".
     .map((entry) => (entry.kind === "direct" && (boardFor(entry.address) || isAutomatedSender(entry.address)) ? { ...entry, kind: "unknown" as const } : entry));
   return {
-    classification: (CLASSIFICATIONS as readonly string[]).includes(read.classification) ? read.classification : "unrelated",
+    // Only the kinds a reading may give. Anything else (an invented kind, or one decided before a body is opened) is "unrelated".
+    classification: (READ_CLASSIFICATIONS as readonly string[]).includes(read.classification) ? read.classification : "unrelated",
     source: (SOURCES as readonly string[]).includes(read.source) ? read.source : "other",
     reason: oneLine(read.reason, 200),
     name: present(read.name, 80),
@@ -164,8 +182,9 @@ export function checked(read: Interpretation, message: MessageBody): Interpretat
     availability: present(read.availability, 160),
     resume: present(read.resume, 160),
     addresses,
-    replyIntent: read.replyIntent,
+    replyIntent: read.replyIntent && (REPLY_INTENTS as readonly string[]).includes(read.replyIntent) ? read.replyIntent : undefined,
     forwarded: read.forwarded || isForwarded(message.subject),
+    readBy: read.readBy === "model" ? "model" : "rule",
   };
 }
 

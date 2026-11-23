@@ -19,7 +19,7 @@ import type { Classification, ContactEvidence, Fact, Source } from "./schema";
 import { DAY, recruiterSettings } from "./settings";
 import { liveTaskByKey, openTask, setTaskState } from "../taskState";
 
-export type Verdict = { classification: Classification; classifiedBy: "rule" | "model"; reason: string; source?: Source };
+export type Verdict = { classification: Classification; classifiedBy: "rule" | "model"; reason: string; source?: Source; /** possibly_hiring: when its sender and subject are cleared. */ expiresAt?: number };
 export type IngestInput = {
   header: MessageHeader;
   verdict: Verdict;
@@ -96,22 +96,6 @@ export async function applicantForSender(ctx: QueryCtx | MutationCtx, companyId:
   if (applicantIds.length !== 1) return null;
   const applicant = await ctx.db.get(applicantIds[0]);
   return applicant && !applicant.redactedAt ? applicant : null;
-}
-
-/**
- * Asks a person to read one message Recruiter could not read with confidence. Once per message: the same
- * message arriving again is never filed twice, and the task is keyed by the filed message.
- */
-async function askToRead(ctx: MutationCtx, connection: Doc<"mailboxConnections">, sourceMessageId: Id<"sourceMessages">, input: IngestInput): Promise<void> {
-  const key = `recruiter.review:${sourceMessageId}`;
-  if (await liveTaskByKey(ctx, connection.companyId, key)) return;
-  const from = addressOf(input.header.from) ?? "an unknown sender";
-  const subject = oneLine(input.header.subject, 120) || "(no subject)";
-  const dueAt = Date.now() + DAY;
-  const question = `Recruiter couldn't tell what this hiring email is, so it did nothing with it. From ${from}, subject "${subject}". Open it in ${connection.address}: if someone applied or replied, add or update their application yourself.`;
-  const taskId = await openTask(ctx, { companyId: connection.companyId, agent: "recruiter", title: `Read a hiring email Recruiter couldn't read: "${subject}"`.slice(0, 200), nextAction: question.slice(0, 500), dueAt, completionCondition: "A person read the email and handled it", about: { table: "mailboxConnections", id: connection._id }, key, actor: RECRUITER });
-  await setTaskState(ctx, (await ctx.db.get(taskId))!, "needs_decision", { openQuestion: question.slice(0, 1000), dueAt, withPersonSince: Date.now() }, RECRUITER);
-  await recordEvent(ctx, { companyId: connection.companyId, type: "mailbox.message_needs_review", actor: RECRUITER, subject: { table: "mailboxConnections", id: connection._id }, data: { source: input.verdict.source ?? "other" } });
 }
 
 /** The applicant this evidence reliably points at, and one it only might be. */
@@ -251,10 +235,29 @@ export async function ingestMessage(ctx: MutationCtx, connection: Doc<"mailboxCo
 
   const { verdict, read } = input;
   const base = { companyId, connectionId: connection._id, providerMessageId: input.header.id, classification: verdict.classification, classifiedBy: verdict.classifiedBy, receivedAt: input.header.receivedAt };
-  // Unrelated mail leaves only its id and that verdict: no sender, no subject, no text.
+  // Unrelated mail leaves only its id and that verdict: no sender, no subject, no text. A job board's
+  // advertising and its suggested candidates (people who have not applied) keep which board it was, nothing more.
   if (verdict.classification === "unrelated") {
     await ctx.db.insert("sourceMessages", base);
     return "unrelated";
+  }
+  if (verdict.classification === "promotion" || verdict.classification === "suggested_candidate") {
+    await ctx.db.insert("sourceMessages", { ...base, ...(verdict.source ? { source: verdict.source } : {}) });
+    return verdict.classification;
+  }
+  // Might be hiring mail. Its sender and subject only, for a person to include or ignore, and cleared after 14 days.
+  if (verdict.classification === "possibly_hiring") {
+    await ctx.db.insert("sourceMessages", {
+      ...base,
+      threadId: input.header.threadId,
+      reason: verdict.reason.slice(0, 200),
+      ...(verdict.source ? { source: verdict.source } : {}),
+      fromAddress: addressOf(input.header.from) ?? undefined,
+      subject: oneLine(input.header.subject, 200),
+      expiresAt: verdict.expiresAt ?? Date.now() + 14 * DAY,
+    });
+    await recordEvent(ctx, { companyId, type: "mailbox.message_possibly_hiring", actor: RECRUITER, subject: { table: "mailboxConnections", id: connection._id }, data: { source: verdict.source ?? "other" } });
+    return "possibly_hiring";
   }
   const sourceMessageId = await ctx.db.insert("sourceMessages", {
     ...base,
@@ -268,12 +271,7 @@ export async function ingestMessage(ctx: MutationCtx, connection: Doc<"mailboxCo
     attachments: input.attachments,
     flag: read?.forwarded ? "Forwarded mail: the addresses inside it are not proof of who the applicant is." : undefined,
   });
-  if (verdict.classification === "needs_review") {
-    await ctx.db.patch(sourceMessageId, { flag: "Recruiter couldn't tell what this email is. A person should read it." });
-    await askToRead(ctx, connection, sourceMessageId, input);
-    return "needs_review";
-  }
-  if (verdict.classification === "promotion" || verdict.classification === "suggested_candidate" || !read) return verdict.classification;
+  if (!read) return verdict.classification;
   if (verdict.classification === "applicant_reply") return handleReply(ctx, connection, sourceMessageId, input);
 
   const company = (await ctx.db.get(companyId))!;
@@ -351,6 +349,7 @@ export async function ingestMessage(ctx: MutationCtx, connection: Doc<"mailboxCo
     roleSeen: read.role,
     source,
     sourceApplicationId: read.sourceApplicationId,
+    ...(verdict.classification === "employment_inquiry" ? { intake: "inquiry" as const } : {}),
     appliedAt: input.header.receivedAt,
     stage: "received",
     contact,

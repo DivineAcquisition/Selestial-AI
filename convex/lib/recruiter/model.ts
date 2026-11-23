@@ -49,7 +49,8 @@ const mock: HiringModel = {
     return mockModel.looksLikeHiring ? mockModel.looksLikeHiring(input) : rulesModel.looksLikeHiring(input);
   },
   async interpret(message, header) {
-    return mockModel.interpret ? mockModel.interpret(message) : rulesModel.interpret(message, header);
+    // A test's stand-in answer is the model's; without one, the rules answer and say so.
+    return mockModel.interpret ? { readBy: "model", ...mockModel.interpret(message) } : rulesModel.interpret(message, header);
   },
 };
 

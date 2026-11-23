@@ -8,7 +8,7 @@ import { EARLY_OFFER } from "./lib/billing/catalog";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { addMember, company, NOW, person, refusal, start, type T } from "../tests/harness";
-import { flush, indeedApplication, recruiterTestEnv, setup as recruiterSetup } from "../tests/recruiterHarness";
+import { flush, indeedApplication, mail, recruiterTestEnv, setup as recruiterSetup } from "../tests/recruiterHarness";
 import { billing } from "../tests/setupBilling";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -426,10 +426,15 @@ describe("billing", () => {
           aiReads += 1;
           throw new Error("The AI reader must not run without credits.");
         };
+        // A job board's notice the rules can read never asks for the AI reader at all, so it is free.
         await r.receive(indeedApplication());
         await flush(r.t);
+        expect(await r.t.run(async (ctx) => ctx.db.query("aiExecutions").collect())).toEqual([]);
+        // A person's own email would be read by AI. At zero credits, the rules read it instead.
+        await r.receive(mail({ from: "Chris Park <chris.park@example.test>", subject: "Application for the House Cleaner position", text: "I would like to apply for the House Cleaner position.\nChris Park" }));
+        await flush(r.t);
         expect(aiReads).toBe(0);
-        expect(await r.applications()).toEqual([expect.objectContaining({ name: "Maria Lopez" })]);
+        expect((await r.applications()).map((row) => row.name).sort()).toEqual(["Chris Park", "Maria Lopez"]);
         expect((await r.t.run(async (ctx) => ctx.db.query("aiExecutions").collect())).map((row) => [row.agent, row.state, row.block])).toEqual([["recruiter", "denied", "credits"]]);
       } finally {
         mockModel.interpret = null;

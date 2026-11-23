@@ -2,13 +2,17 @@
  * The hiring mailbox, behind one interface. A connector lists message headers after a cursor and fetches
  * one message's body. It can read; it cannot send, delete or mark anything.
  *
- * Gmail and Microsoft 365 connectors are not built: each needs an OAuth app and a place to keep a
- * company's refresh token, neither of which exists yet (docs/recruiter/05-assumptions.md). Until then
- * the mock is the only connector, so every path above this interface is exercised without a real inbox.
+ * Gmail is built (gmail.ts) and is created per run with that run's access token. Microsoft 365 is not.
+ * The mock stands in for a mailbox in tests, so every path above this interface is exercised without one.
  */
+import type { DiscoveryMode } from "./boundary";
 import type { MessageBody, MessageHeader } from "./mail";
 
-export type MailboxScope = { address: string; folder?: string; after: number };
+/**
+ * Where reading stays: received after `after`, and by `mode` (lib/recruiter/boundary.ts). In "label" mode
+ * only messages that carry `folder` now; in "search" mode the provider narrows by recruiting words first.
+ */
+export type MailboxScope = { address: string; folder?: string; after: number; mode?: DiscoveryMode };
 
 export type ListResult = { headers: MessageHeader[]; /** Where to continue from. Unchanged when nothing new came. */ cursor: string | null; more: boolean };
 
@@ -21,18 +25,19 @@ export interface MailboxConnector {
   provider: string;
   /** Headers only, oldest first, after `cursor`. Never a body. */
   list(scope: MailboxScope, cursor: string | null, limit: number): Promise<ListResult>;
-  fetch(scope: MailboxScope, id: string): Promise<MessageBody | null>;
+  /** One message's body. Attachment text is read only when `attachments` is true; otherwise they are listed by name. */
+  fetch(scope: MailboxScope, id: string, options?: { attachments?: boolean }): Promise<MessageBody | null>;
 }
 
 // ── The mock ────────────────────────────────────────────────────────────────────────────────────
 
-type MockInbox = { messages: MessageBody[]; fail: "auth" | "provider" | null; fetched: string[]; listed: number };
+type MockInbox = { messages: MessageBody[]; fail: "auth" | "provider" | null; fetched: string[]; attachmentsRead: string[]; listed: number };
 const inboxes = new Map<string, MockInbox>();
 
 /** The test inbox for an address. Tests put messages in and set failures here. */
 export function mockInbox(address: string): MockInbox {
   const key = address.toLowerCase();
-  if (!inboxes.has(key)) inboxes.set(key, { messages: [], fail: null, fetched: [], listed: 0 });
+  if (!inboxes.has(key)) inboxes.set(key, { messages: [], fail: null, fetched: [], attachmentsRead: [], listed: 0 });
   return inboxes.get(key)!;
 }
 
@@ -55,12 +60,15 @@ export const mockConnector: MailboxConnector = {
     const next = start + eligible.length;
     return { headers, cursor: String(next), more: next < inbox.messages.length };
   },
-  async fetch(scope, id) {
+  async fetch(scope, id, options) {
     const inbox = mockInbox(scope.address);
     if (inbox.fail === "auth") throw new MailboxAuthError("mock: authorization expired");
     if (inbox.fail === "provider") throw new MailboxProviderError("mock: provider unavailable");
     inbox.fetched.push(id);
-    return inbox.messages.find((message) => message.id === id) ?? null;
+    const message = inbox.messages.find((row) => row.id === id) ?? null;
+    if (!message) return null;
+    if (options?.attachments) inbox.attachmentsRead.push(id);
+    return options?.attachments ? message : { ...message, attachments: message.attachments.map(({ text: _text, ...file }) => file) };
   },
 };
 

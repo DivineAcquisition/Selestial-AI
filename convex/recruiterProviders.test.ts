@@ -179,10 +179,13 @@ describe("Claude reading hiring mail", () => {
       const { mockModel } = await import("./lib/recruiter/model");
       mockModel.interpret = () => ({ classification: "new_application", source: "indeed", reason: "x", name: "Maria Lopez", role: "House Cleaner", addresses: [{ address: "maria.lopez@example.test", kind: "direct", where: "body" }, { address: "attacker@evil.test", kind: "direct", where: "model" }], forwarded: false });
       const s = await setup();
-      await s.receive(indeedApplication({ text: message.text }));
-      const [row] = await s.applications();
+      // A notice the rules can name someone from is read by rule, for nothing, and the model is never asked.
+      await s.receive(indeedApplication({ id: "by-rule", text: message.text }));
+      expect((await s.applications())[0]).toMatchObject({ contact: { status: "direct", address: "maria.lopez@example.test" } });
+      // One the rules cannot name anyone from goes to the model, whose answer names the attacker too.
+      await s.receive(indeedApplication({ id: "by-model", subject: "New application for House Cleaner", text: "Candidate details below.\nmaria.lopez@example.test\nattacker@evil.test" }));
+      const row = (await s.applications()).find((entry) => entry.contact.status !== "direct")!;
       expect(row).toMatchObject({ stage: "contact_needed", contact: { status: "conflict" } });
-      expect(await s.approvals()).toEqual([]);
       expect(emailsTo("attacker@evil.test")).toEqual([]);
     } finally {
       undo();

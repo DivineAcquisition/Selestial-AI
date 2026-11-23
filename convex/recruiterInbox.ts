@@ -1,8 +1,11 @@
 /**
- * Reading the hiring inbox. One run for one connection: list headers after the saved cursor, decide
- * from sender and subject which messages are hiring mail, open only those, file each one, then save the
- * cursor. The cursor is saved after the page is filed, never before, so a crash replays the page and
- * filing ignores what it already has. Nothing here sends, deletes or marks a message.
+ * Reading the hiring inbox. One run for one connection: list headers after the saved cursor, pass each
+ * through the recruiting boundary (lib/recruiter/boundary.ts), open only what it lets through, file each
+ * one, then save the cursor. The cursor is saved after the page is filed, never before, so a crash replays
+ * the page and filing ignores what it already has. Nothing here sends, deletes or marks a message.
+ *
+ * Every way a read starts (the first scan, the timer, Gmail push, a reconnect, a manual refresh, the next
+ * run after a failure) is this one run, so they all apply the same boundary.
  *
  * Internal only. A browser cannot start a run or hand it a message.
  */
@@ -10,19 +13,20 @@ import { v } from "convex/values";
 
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { internalAction, internalMutation, internalQuery } from "./_generated/server";
+import { internalAction, internalMutation, internalQuery, type ActionCtx } from "./_generated/server";
 import { recordEvent } from "./lib/events";
-import { checked, headerEvidence } from "./lib/recruiter/interpret";
-import { applicantForSender, ingestMessage, type IngestInput, type Verdict } from "./lib/recruiter/intake";
-import { addressOf, classifyHeader, isReplySubject, plainText, worthReading, type MessageBody, type MessageHeader } from "./lib/recruiter/mail";
+import { discoveryOf, gate, POSSIBLE_DAYS, type Gate, type Known } from "./lib/recruiter/boundary";
+import { checked, headerEvidence, interpretByRule, REPLY_INTENTS, type Interpretation } from "./lib/recruiter/interpret";
+import { applicantForSender, ingestMessage, type IngestInput } from "./lib/recruiter/intake";
+import { addressOf, oneLine, plainText, type MessageBody, type MessageHeader } from "./lib/recruiter/mail";
 import { accessToken, gmailConnector, googleApp } from "./lib/recruiter/gmail";
-import { connectorFor, MailboxAuthError } from "./lib/recruiter/mailbox";
+import { connectorFor, MailboxAuthError, type MailboxConnector } from "./lib/recruiter/mailbox";
 import { unseal } from "./lib/recruiter/secrets";
-import { hiringModel, rulesModel, type HiringModel } from "./lib/recruiter/model";
+import { hiringModel, type HiringModel } from "./lib/recruiter/model";
 import { finishExecution, openExecution } from "./lib/billing/executions";
 import { reserveExecution } from "./lib/billing/reserve";
-import { classificationValidator, contactEvidenceValidator, sourceValidator } from "./lib/recruiter/schema";
-import { HOUR } from "./lib/recruiter/settings";
+import { classificationValidator, contactEvidenceValidator, sourceValidator, type Classification, type Source } from "./lib/recruiter/schema";
+import { DAY, HOUR } from "./lib/recruiter/settings";
 import { liveTaskByKey, openTask, setTaskState } from "./lib/taskState";
 import { inboxBroke } from "./lib/inbox/events";
 import { purposesOf } from "./lib/inbox/mailboxes";
@@ -48,8 +52,9 @@ const readValidator = v.object({
   availability: v.optional(v.string()),
   resume: v.optional(v.string()),
   addresses: v.array(evidenceValidator),
-  replyIntent: v.optional(v.union(v.literal("withdraw"), v.literal("no_contact"), v.literal("question"))),
+  replyIntent: v.optional(v.union(...REPLY_INTENTS.map((intent) => v.literal(intent)))),
   forwarded: v.boolean(),
+  readBy: v.optional(v.union(v.literal("rule"), v.literal("model"))),
 });
 
 /** What a run needs to start. Null when the connection is not one to read. */
@@ -68,7 +73,7 @@ export const begin = internalQuery({
       .take(200);
     return {
       provider: connection.provider,
-      scope: { address: connection.address, folder: connection.folder, after: connection.processFrom },
+      scope: { address: connection.address, folder: connection.folder, after: connection.processFrom, mode: discoveryOf(connection) },
       cursor: connection.cursor ?? null,
       sources: connection.sources,
       // Our own addresses are never an applicant's.
@@ -77,21 +82,43 @@ export const begin = internalQuery({
   },
 });
 
-/** Which of these messages are new, and which come from an address an applicant is known by. Reads no message. */
+/**
+ * Which of these messages are new, and what Selestial already knows about each sender and thread. Reads
+ * no message: only the addresses and thread ids the mailbox listed.
+ */
 export const triage = internalQuery({
-  args: { connectionId: v.id("mailboxConnections"), messages: v.array(v.object({ id: v.string(), from: v.optional(v.string()) })) },
+  args: { connectionId: v.id("mailboxConnections"), messages: v.array(v.object({ id: v.string(), from: v.optional(v.string()), replyTo: v.optional(v.string()), threadId: v.optional(v.string()) })) },
   handler: async (ctx, args) => {
     const connection = await ctx.db.get(args.connectionId);
     if (!connection) return [];
-    const out: { id: string; seen: boolean; knownApplicant: boolean }[] = [];
+    const companyId = connection.companyId;
+    // The company's working cleaners, by address: their mail about jobs and supplies is not hiring mail.
+    const cleaners = new Set<string>();
+    // Onboarding is left out: someone still onboarding may well write about their hiring.
+    for (const status of ["ready", "paused", "suspended"] as const) {
+      for (const row of await ctx.db
+        .query("cleaners")
+        .withIndex("by_company_status", (q) => q.eq("companyId", companyId).eq("status", status))
+        .take(1000)) {
+        if (row.email) cleaners.add(row.email.trim().toLowerCase());
+      }
+    }
+    const out: { id: string; seen: boolean; known: Known }[] = [];
     for (const message of args.messages) {
       const seen = await ctx.db
         .query("sourceMessages")
         .withIndex("by_connection_message", (q) => q.eq("connectionId", connection._id).eq("providerMessageId", message.id))
         .first();
       // Their own address, or the job board's forwarding address one of their applications came with.
-      const known = await applicantForSender(ctx, connection.companyId, message.from ?? null);
-      out.push({ id: message.id, seen: seen !== null, knownApplicant: known !== null });
+      const applicant = (await applicantForSender(ctx, companyId, message.from ?? null)) ?? (await applicantForSender(ctx, companyId, message.replyTo ?? null));
+      const thread = message.threadId
+        ? (await ctx.db
+            .query("sourceMessages")
+            .withIndex("by_connection_thread", (q) => q.eq("connectionId", connection._id).eq("threadId", message.threadId))
+            .take(20)).some((row) => row.applicationId !== undefined && row.redactedAt === undefined)
+        : false;
+      const customer = message.from ? (await ctx.db.query("customers").withIndex("by_company_email", (q) => q.eq("companyId", companyId).eq("email", message.from)).first()) !== null : false;
+      out.push({ id: message.id, seen: seen !== null, known: { applicant: applicant !== null, thread, customer: customer && applicant === null, cleaner: applicant === null && Boolean(message.from && cleaners.has(message.from)) } });
     }
     return out;
   },
@@ -101,7 +128,7 @@ export const ingest = internalMutation({
   args: {
     connectionId: v.id("mailboxConnections"),
     header: headerValidator,
-    verdict: v.object({ classification: classificationValidator, classifiedBy: v.union(v.literal("rule"), v.literal("model")), reason: v.string(), source: v.optional(sourceValidator) }),
+    verdict: v.object({ classification: classificationValidator, classifiedBy: v.union(v.literal("rule"), v.literal("model")), reason: v.string(), source: v.optional(sourceValidator), expiresAt: v.optional(v.number()) }),
     read: v.optional(readValidator),
     excerpt: v.optional(v.string()),
     attachments: v.optional(v.array(v.object({ name: v.string(), contentType: v.string(), size: v.number(), read: v.boolean() }))),
@@ -190,39 +217,28 @@ export const sync = internalAction({
     if (!start) return null;
     if (!(await ctx.runMutation(internal.recruiterInbox.lease, { connectionId: args.connectionId }))) return null;
     try {
-      let connector = connectorFor(start.provider);
-      if (start.provider === "gmail") {
-        // The stored authorization, opened only here and only for this run.
-        const app = googleApp();
-        const credential = await ctx.runQuery(internal.recruiterMailbox.credentialFor, { connectionId: args.connectionId });
-        const refreshToken = credential ? await unseal(credential.sealedRefreshToken, args.connectionId) : null;
-        if (!app || !refreshToken) {
-          await ctx.runMutation(internal.recruiterInbox.failed, { connectionId: args.connectionId, kind: app ? "auth" : "not_built" });
-          return null;
-        }
-        try {
-          connector = gmailConnector({ token: await accessToken(app, refreshToken) });
-        } catch (error) {
-          await ctx.runMutation(internal.recruiterInbox.failed, { connectionId: args.connectionId, kind: error instanceof MailboxAuthError ? "auth" : "provider" });
-          return null;
-        }
-      }
-      if (!connector) {
-        await ctx.runMutation(internal.recruiterInbox.failed, { connectionId: args.connectionId, kind: "not_built" });
+      const opened = await openConnector(ctx, args.connectionId, start.provider);
+      if ("failure" in opened) {
+        await ctx.runMutation(internal.recruiterInbox.failed, { connectionId: args.connectionId, kind: opened.failure });
         return null;
       }
+      const connector = opened.connector;
       const aiModel = hiringModel();
       let cursor = start.cursor;
       let filed = 0;
-      let opened = 0;
+      let bodies = 0;
       try {
         for (let page = 0; page < MAX_PAGES; page += 1) {
           const listed = await connector.list(start.scope, cursor, PAGE);
-          const marks = await ctx.runQuery(internal.recruiterInbox.triage, { connectionId: args.connectionId, messages: listed.headers.map((header) => ({ id: header.id, from: addressOf(header.from) ?? undefined })) });
+          const marks = await ctx.runQuery(internal.recruiterInbox.triage, {
+            connectionId: args.connectionId,
+            messages: listed.headers.map((header) => ({ id: header.id, from: addressOf(header.from) ?? undefined, replyTo: addressOf(header.replyTo) ?? undefined, threadId: header.threadId })),
+          });
           for (const header of listed.headers) {
             const mark = marks.find((row) => row.id === header.id);
             if (mark?.seen) continue;
-            const input = await decide(header, Boolean(mark?.knownApplicant));
+            const known = mark?.known ?? { applicant: false, thread: false, customer: false, cleaner: false };
+            const input = await decide(header, gate({ header, mode: start.scope.mode, own: start.scope.address, sources: start.sources, known }));
             await ctx.runMutation(internal.recruiterInbox.ingest, { connectionId: args.connectionId, ...input });
             filed += 1;
           }
@@ -234,84 +250,91 @@ export const sync = internalAction({
         await ctx.runMutation(internal.recruiterInbox.failed, { connectionId: args.connectionId, kind: error instanceof MailboxAuthError ? "auth" : "provider" });
         return null;
       }
-      return { filed, opened };
+      return { filed, opened: bodies };
 
-      /**
-       * The AI reader, for one message, once Selestial Credits are held for it. Without a verified hold
-       * (no plan, no credits, billing unreachable, the monthly budget for automatic work spent) that
-       * message is read by the rules instead, so no application is dropped and nothing is charged.
-       */
-      async function readerFor(messageId: string): Promise<{ model: HiringModel; executionId: Id<"aiExecutions"> | null }> {
-        if (aiModel.name === "rules") return { model: rulesModel, executionId: null };
-        const opened = await ctx.runMutation(internal.recruiterInbox.openReading, { connectionId: args.connectionId, messageId });
-        if (!opened) return { model: rulesModel, executionId: null };
-        const held = await reserveExecution(ctx, opened);
-        return held.ok ? { model: aiModel, executionId: opened } : { model: rulesModel, executionId: null };
-      }
-
-      /** Sender and subject first. The body is fetched only for mail that those say is hiring mail. */
-      async function decide(header: MessageHeader, knownApplicant: boolean): Promise<IngestInput> {
-        const held: { reader: { model: HiringModel; executionId: Id<"aiExecutions"> | null } | null } = { reader: null };
-        const pick = async () => (held.reader ??= await readerFor(header.id)).model;
-        const model = {
-          looksLikeHiring: async (input: { from: string; subject: string }) => (await pick()).looksLikeHiring(input),
-          interpret: async (message: MessageBody, known: Parameters<HiringModel["interpret"]>[1]) => (await pick()).interpret(message, known),
-        };
-        try {
-          const decided = await decideWith(header, knownApplicant, model);
-          if (held.reader?.executionId) await ctx.runMutation(internal.recruiterInbox.finishReading, { executionId: held.reader.executionId, read: true });
-          return decided;
-        } catch (error) {
-          if (held.reader?.executionId) await ctx.runMutation(internal.recruiterInbox.finishReading, { executionId: held.reader.executionId, read: false });
-          throw error;
-        }
-      }
-
-      async function decideWith(header: MessageHeader, knownApplicant: boolean, model: Pick<HiringModel, "looksLikeHiring" | "interpret">): Promise<IngestInput> {
-        // The mailbox's own outgoing mail (an invitation Recruiter sent, a reply the Owner wrote) is never an
-        // application or an applicant's reply. Only its id is kept, like any unrelated message.
-        if (addressOf(header.from) === start!.scope.address.toLowerCase()) return { header, verdict: { classification: "unrelated", classifiedBy: "rule", reason: "" } };
-        const byHeader = classifyHeader(header);
-        // What a board's subject says about a person: an application, a message, a status. Not "promotion" or "unrecognised".
-        const boardNamesIt = byHeader.kind === "board" && byHeader.classification !== "promotion" && byHeader.classification !== "needs_review";
-        let verdict: Verdict;
-        if (knownApplicant && (byHeader.kind !== "board" || isReplySubject(header.subject) || !boardNamesIt)) {
-          // Asked before anything else: a known applicant answering through a job board's forwarding address
-          // ("Re: Next step for your application") matches none of the board's subjects, and must still be read.
-          verdict = { classification: "applicant_reply", classifiedBy: "rule", reason: "From an address an applicant is known by.", ...(byHeader.kind === "board" ? { source: byHeader.source } : {}) };
-        } else if (byHeader.kind === "board") {
-          const wanted = start!.sources.length === 0 || start!.sources.includes(byHeader.source);
-          verdict = wanted ? { classification: byHeader.classification, classifiedBy: "rule", reason: byHeader.reason, source: byHeader.source } : { classification: "promotion", classifiedBy: "rule", reason: "From a job board this connection is not set to read.", source: byHeader.source };
-        } else {
-          const guess = await model.looksLikeHiring({ from: header.from.slice(0, 200), subject: header.subject.slice(0, 200) });
-          verdict = guess.hiring ? { classification: "new_application", classifiedBy: "model", reason: guess.reason.slice(0, 200) } : { classification: "unrelated", classifiedBy: "model", reason: "" };
-        }
-        if (!worthReading(verdict.classification)) return { header, verdict };
-
-        const message = await connector!.fetch(start!.scope, header.id);
-        if (!message) return { header, verdict: { ...verdict, classification: "unrelated", reason: "" } };
-        opened += 1;
-        const filed = { excerpt: plainText(message.text, EXCERPT), attachments: message.attachments.slice(0, 10).map((file) => ({ name: file.name.slice(0, 160), contentType: file.contentType.slice(0, 100), size: file.size, read: Boolean(file.text) })) };
-        // Unrecognised mail from a job board: kept for a person to read, and not interpreted (nothing is acted on).
-        if (verdict.classification === "needs_review") return { header, verdict, ...filed };
-        const known = verdict.classification === "applicant_reply" && verdict.classifiedBy === "rule" && knownApplicant ? { source: byHeader.kind === "board" ? byHeader.source : ("direct" as const), classification: "applicant_reply" as const } : byHeader.kind === "board" ? { source: byHeader.source, classification: verdict.classification } : null;
-        // Whoever read it, the reading is checked against the message before it is used.
-        const read = checked(await model.interpret(message, known), message);
-        if (known) read.classification = known.classification;
-        if (read.classification === "unrelated") return { header, verdict: { classification: "unrelated", classifiedBy: verdict.classifiedBy, reason: "" } };
-        return {
-          header,
-          verdict: { ...verdict, classification: read.classification, source: read.source },
-          read,
-          ...filed,
-          headerEvidence: headerEvidence(message, start!.ours),
-        };
+      /** What the boundary said, carried out: nothing fetched for "skip" and "possible", the body for "read". */
+      async function decide(header: MessageHeader, decided: Gate): Promise<IngestInput> {
+        if (decided.verdict === "skip") return { header, verdict: { classification: decided.classification, classifiedBy: "rule", reason: "", source: decided.source } };
+        if (decided.verdict === "possible") return { header, verdict: { classification: "possibly_hiring", classifiedBy: "rule", reason: decided.reason, source: decided.source, expiresAt: Date.now() + POSSIBLE_DAYS * DAY } };
+        const message = await connector!.fetch(start!.scope, header.id, { attachments: decided.attachments });
+        if (!message) return { header, verdict: { classification: "unrelated", classifiedBy: "rule", reason: "" } };
+        bodies += 1;
+        return readMessage(ctx, args.connectionId, aiModel, header, message, decided, start!.ours);
       }
     } finally {
       await ctx.runMutation(internal.recruiterInbox.release, { connectionId: args.connectionId });
     }
   },
 });
+
+/** The mailbox for one run, with that run's access token. The stored authorization is opened only here. */
+export async function openConnector(ctx: ActionCtx, connectionId: Id<"mailboxConnections">, provider: string): Promise<{ connector: MailboxConnector } | { failure: "auth" | "provider" | "not_built" }> {
+  if (provider !== "gmail") {
+    const connector = connectorFor(provider);
+    return connector ? { connector } : { failure: "not_built" };
+  }
+  const app = googleApp();
+  const credential = await ctx.runQuery(internal.recruiterMailbox.credentialFor, { connectionId });
+  const refreshToken = credential ? await unseal(credential.sealedRefreshToken, connectionId) : null;
+  if (!app || !refreshToken) return { failure: app ? "auth" : "not_built" };
+  try {
+    return { connector: gmailConnector({ token: await accessToken(app, refreshToken) }) };
+  } catch (error) {
+    return { failure: error instanceof MailboxAuthError ? "auth" : "provider" };
+  }
+}
+
+/**
+ * Reads one message the boundary let through. A job board's notice is read by the rules first, which costs
+ * nothing; the AI reader is used when the rules could not find who applied, and for anything a person
+ * wrote (an application, an inquiry, a reply). Whoever reads it, the reading is checked against the message
+ * before it is used, and only an answer the AI reader actually gave is charged.
+ */
+export async function readMessage(
+  ctx: ActionCtx,
+  connectionId: Id<"mailboxConnections">,
+  model: HiringModel,
+  header: MessageHeader,
+  message: MessageBody,
+  decided: { classification: Classification; source?: Source; reason: string },
+  ours: string[],
+): Promise<IngestInput> {
+  const filed = { excerpt: plainText(message.text, EXCERPT), attachments: message.attachments.slice(0, 10).map((file) => ({ name: file.name.slice(0, 160), contentType: file.contentType.slice(0, 100), size: file.size, read: Boolean(file.text) })) };
+  const known = decided.classification === "applicant_reply" ? { source: decided.source ?? ("direct" as const), classification: "applicant_reply" as const } : decided.source ? { source: decided.source, classification: decided.classification } : null;
+  let read: Interpretation | null = null;
+  if (known && known.classification !== "applicant_reply") {
+    const byRule = checked(interpretByRule(message, known), message);
+    if (byRule.name && (byRule.phone || byRule.addresses.some((entry) => entry.kind === "direct" || entry.kind === "relay"))) read = byRule;
+  }
+  read ??= await readByModel(ctx, connectionId, model, header.id, message, known);
+  if (known) read.classification = known.classification;
+  const classifiedBy = read.readBy === "model" ? ("model" as const) : ("rule" as const);
+  if (read.classification === "unrelated") return { header, verdict: { classification: "unrelated", classifiedBy, reason: "" } };
+  return { header, verdict: { classification: read.classification, classifiedBy, reason: oneLine(decided.reason, 200), source: read.source }, read, ...filed, headerEvidence: headerEvidence(message, ours) };
+}
+
+/**
+ * The AI reader, for one message, once Selestial Credits are held for it. Without a verified hold (no plan,
+ * no credits, billing unreachable, the monthly budget for automatic work spent) the rules read it instead,
+ * so no application is dropped and nothing is charged.
+ */
+async function readByModel(ctx: ActionCtx, connectionId: Id<"mailboxConnections">, model: HiringModel, messageId: string, message: MessageBody, known: { source: Source; classification: Classification } | null): Promise<Interpretation> {
+  const byRules = () => checked(interpretByRule(message, known), message);
+  if (model.name === "rules") return byRules();
+  const executionId = await ctx.runMutation(internal.recruiterInbox.openReading, { connectionId, messageId });
+  if (!executionId) return byRules();
+  const held = await reserveExecution(ctx, executionId);
+  if (!held.ok) return byRules();
+  try {
+    const read = checked(await model.interpret(message, known), message);
+    // The AI reader falls back to the rules on its own when it gives no usable answer: that is not charged.
+    await ctx.runMutation(internal.recruiterInbox.finishReading, { executionId, read: read.readBy === "model" });
+    return read;
+  } catch (error) {
+    await ctx.runMutation(internal.recruiterInbox.finishReading, { executionId, read: false });
+    throw error;
+  }
+}
 
 /** Opens the execution for one message's AI reading. Null when it cannot be charged, so the rules read it. */
 export const openReading = internalMutation({

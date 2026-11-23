@@ -5,9 +5,11 @@
  * Access is the company's own authorization: OAuth with the scopes below, a refresh token stored
  * encrypted (secrets.ts), an access token fetched for each run and never stored.
  *
- * Reading stays inside what the Owner chose: mail received from `processFrom` on, and inside one label
- * when the Owner named one. Headers are listed first; a body is fetched only for a message Recruiter has
- * already judged from its sender and subject to be hiring mail.
+ * Reading stays inside what the Owner chose: mail received from `processFrom` on, and by discovery mode
+ * (boundary.ts). In "label" mode a message must carry the label when its headers are read, whether the
+ * scan or history found it, so both paths apply the same rule and a label added after a message arrived
+ * is still seen. In "search" mode the scan asks Gmail for recruiting senders and words first. Headers are
+ * listed first; a body is fetched only for a message the boundary lets through.
  *
  * Incremental: the first run scans with a search query and records Gmail's history id; later runs read
  * only what was added since that id. If Gmail no longer has that history (it keeps about a week), the run
@@ -28,6 +30,7 @@
  */
 import { isNonProduction, sendBlocked } from "../environment";
 import { NOT_RUN_ON_TEST } from "../google/http";
+import { SEARCH_SENDERS, SEARCH_TERMS } from "./boundary";
 import { MailboxAuthError, MailboxProviderError, type ListResult, type MailboxConnector, type MailboxScope } from "./mailbox";
 import type { MessageAttachment, MessageBody, MessageHeader } from "./mail";
 
@@ -170,6 +173,21 @@ function labelQuery(folder: string | undefined): string {
   return folder ? ` label:"${folder.replace(/"/g, "")}"` : "";
 }
 
+/**
+ * The narrowing Gmail does before anything is listed, by mode. "search": the job boards Recruiter reads, or a
+ * recruiting word in the subject, and never Gmail's promotions or social tabs. Exported for its test.
+ */
+export function scopeQuery(scope: Pick<MailboxScope, "folder" | "mode">): string {
+  if (scope.mode === "label" || (!scope.mode && scope.folder)) return labelQuery(scope.folder);
+  if (scope.mode === "search") return ` {${[...SEARCH_SENDERS.map((domain) => `from:${domain}`), ...SEARCH_TERMS.map((term) => `subject:${term}`)].join(" ")}} -category:promotions -category:social`;
+  return "";
+}
+
+/** Whether the scope keeps to one label, which every message must then carry when its headers are read. */
+function labelled(scope: Pick<MailboxScope, "folder" | "mode">): string | null {
+  return (scope.mode === "label" || (!scope.mode && scope.folder)) && scope.folder ? scope.folder : null;
+}
+
 export function gmailConnector(input: { token: string; fetch?: Fetch; /** For tests: a smaller scan chunk. */ scanCap?: number }): MailboxConnector {
   const fetcher = input.fetch ?? fetch;
   const scanCap = Math.max(1, input.scanCap ?? SCAN_CAP);
@@ -186,11 +204,16 @@ export function gmailConnector(input: { token: string; fetch?: Fetch; /** For te
 
   async function headersFor(ids: string[], scope: MailboxScope): Promise<MessageHeader[]> {
     const out: MessageHeader[] = [];
+    // One rule for every path: in label mode a message is read only while it carries the label.
+    const kept = labelled(scope);
+    const requiredId = kept ? await labelId(kept) : null;
+    if (kept && !requiredId) throw new MailboxProviderError("gmail: the label was not found");
     for (const id of ids) {
       try {
         const message = await call<GmailMessage>(fetcher, token, `/messages/${encodeURIComponent(id)}?format=metadata&metadataHeaders=From&metadataHeaders=Reply-To&metadataHeaders=Subject`);
         // The mailbox's own sent mail and drafts are not received mail. No labels in the answer: kept.
         if ((message.labelIds ?? []).some((label) => NOT_RECEIVED.includes(label))) continue;
+        if (requiredId && !(message.labelIds ?? []).includes(requiredId)) continue;
         const row = toHeader(message);
         if (row.receivedAt >= scope.after) out.push(row);
       } catch (error) {
@@ -202,7 +225,7 @@ export function gmailConnector(input: { token: string; fetch?: Fetch; /** For te
   }
 
   async function scan(scope: MailboxScope, cursor: Extract<Cursor, { mode: "scan" }>, limit: number): Promise<ListResult> {
-    const q = `after:${Math.floor(scope.after / 1000)}${cursor.until ? ` before:${cursor.until}` : ""}${labelQuery(scope.folder)} -in:sent -in:draft`;
+    const q = `after:${Math.floor(scope.after / 1000)}${cursor.until ? ` before:${cursor.until}` : ""}${scopeQuery(scope)} -in:sent -in:draft`;
     // Ids only, newest first as Gmail gives them, up to one chunk.
     const ids: string[] = [];
     let pageToken: string | undefined;
@@ -250,16 +273,24 @@ export function gmailConnector(input: { token: string; fetch?: Fetch; /** For te
       }
       if (cursor.mode === "scan") return scan(scope, cursor, limit);
 
-      const label = scope.folder ? await labelId(scope.folder) : null;
-      if (scope.folder && !label) throw new MailboxProviderError("gmail: the label was not found");
+      const name = labelled(scope);
+      const label = name ? await labelId(name) : null;
+      if (name && !label) throw new MailboxProviderError("gmail: the label was not found");
       const start = cursor.startHistoryId ?? cursor.historyId;
       try {
-        const page = await call<{ history?: { messagesAdded?: { message: { id: string } }[] }[]; historyId?: string; nextPageToken?: string }>(
-          fetcher,
-          token,
-          `/history?${new URLSearchParams({ startHistoryId: start, historyTypes: "messageAdded", maxResults: String(limit), ...(label ? { labelId: label } : {}), ...(cursor.pageToken ? { pageToken: cursor.pageToken } : {}) })}`,
-        );
-        const ids = [...new Set((page.history ?? []).flatMap((entry) => (entry.messagesAdded ?? []).map((added) => added.message.id)))];
+        // New mail, and (in label mode) mail the Owner labelled after it arrived. headersFor checks the label either way.
+        const params = new URLSearchParams({ startHistoryId: start, maxResults: String(limit), ...(label ? { labelId: label } : {}), ...(cursor.pageToken ? { pageToken: cursor.pageToken } : {}) });
+        params.append("historyTypes", "messageAdded");
+        if (label) params.append("historyTypes", "labelAdded");
+        const page = await call<{ history?: { messagesAdded?: { message: { id: string } }[]; labelsAdded?: { message: { id: string }; labelIds?: string[] }[] }[]; historyId?: string; nextPageToken?: string }>(fetcher, token, `/history?${params}`);
+        const ids = [
+          ...new Set(
+            (page.history ?? []).flatMap((entry) => [
+              ...(entry.messagesAdded ?? []).map((added) => added.message.id),
+              ...(label ? (entry.labelsAdded ?? []).filter((added) => (added.labelIds ?? []).includes(label)).map((added) => added.message.id) : []),
+            ]),
+          ),
+        ];
         const headers = await headersFor(ids, scope);
         const next: Cursor = page.nextPageToken ? { mode: "history", historyId: page.historyId ?? cursor.historyId, pageToken: page.nextPageToken, startHistoryId: start } : { mode: "history", historyId: page.historyId ?? cursor.historyId };
         return { headers, cursor: JSON.stringify(next), more: Boolean(page.nextPageToken) };
@@ -270,7 +301,7 @@ export function gmailConnector(input: { token: string; fetch?: Fetch; /** For te
         return scan(scope, { mode: "scan", historyId: profile.historyId }, limit);
       }
     },
-    async fetch(_scope, id) {
+    async fetch(_scope, id, options) {
       let message: GmailMessage;
       try {
         message = await call<GmailMessage>(fetcher, token, `/messages/${encodeURIComponent(id)}?format=full`);
@@ -285,8 +316,8 @@ export function gmailConnector(input: { token: string; fetch?: Fetch; /** For te
         if (!part) return;
         if (part.filename) {
           const file: MessageAttachment = { name: part.filename, contentType: part.mimeType ?? "application/octet-stream", size: part.body?.size ?? 0 };
-          // Only plain text attachments are read. PDF and Word files are listed, not opened.
-          if (part.mimeType === "text/plain" && part.body?.attachmentId && file.size <= MAX_TEXT_ATTACHMENT) {
+          // Only plain text attachments are read, and only when the message needs them (an application). PDF and Word files are listed, not opened.
+          if (options?.attachments && part.mimeType === "text/plain" && part.body?.attachmentId && file.size <= MAX_TEXT_ATTACHMENT) {
             const data = await call<{ data?: string }>(fetcher, token, `/messages/${encodeURIComponent(id)}/attachments/${encodeURIComponent(part.body.attachmentId)}`);
             if (data.data) file.text = decode(data.data);
           }

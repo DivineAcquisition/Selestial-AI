@@ -36,10 +36,21 @@ export function fakeGoogle(options: { email?: string; scope?: string } = {}) {
     revoked: [] as string[],
     calls: [] as string[],
     codes: new Set<string>(["good-code"]),
+    /** Labels a person put on a message after it arrived, as Gmail's history records them. */
+    labelled: [] as { historyId: number; id: string; labelId: string }[],
+    /** Every search the scan sent, so a test can see what Gmail was asked for. */
+    queries: [] as string[],
   };
   const add = (message: FakeMessage) => {
     state.historyId += 1;
     state.messages.push({ ...message, historyId: state.historyId });
+  };
+  /** A person files an existing message under a label, later. */
+  const label = (id: string, labelId: string) => {
+    const message = state.messages.find((m) => m.id === id)!;
+    message.labels = [...(message.labels ?? ["INBOX"]), labelId];
+    state.historyId += 1;
+    state.labelled.push({ historyId: state.historyId, id, labelId });
   };
   const visible = (message: FakeMessage, labelId: string | null) => !labelId || (message.labels ?? []).includes(labelId);
 
@@ -83,6 +94,7 @@ export function fakeGoogle(options: { email?: string; scope?: string } = {}) {
       });
     }
     if (path === "/messages") {
+      state.queries.push(params.get("q") ?? "");
       const after = Number(params.get("q")?.match(/after:(\d+)/)?.[1] ?? 0) * 1000;
       const label = params.get("q")?.match(/label:"([^"]+)"/)?.[1];
       const labelId = label ? (state.labels.find((row) => row.name === label)?.id ?? "none") : null;
@@ -100,8 +112,10 @@ export function fakeGoogle(options: { email?: string; scope?: string } = {}) {
       const startId = Number(params.get("startHistoryId"));
       if (startId < state.oldestHistory) return json(404, {});
       const labelId = params.get("labelId");
+      const types = params.getAll("historyTypes");
       const added = state.messages.filter((m) => (m.historyId ?? 0) > startId && visible(m, labelId));
-      return json(200, { history: added.map((m) => ({ messagesAdded: [{ message: { id: m.id } }] })), historyId: String(state.historyId) });
+      const relabelled = types.includes("labelAdded") ? state.labelled.filter((row) => row.historyId > startId && (!labelId || row.labelId === labelId)) : [];
+      return json(200, { history: [...added.map((m) => ({ messagesAdded: [{ message: { id: m.id } }] })), ...relabelled.map((row) => ({ labelsAdded: [{ message: { id: row.id }, labelIds: [row.labelId] }] }))], historyId: String(state.historyId) });
     }
     const attachment = path.match(/^\/messages\/([^/]+)\/attachments\/(.+)$/);
     if (attachment) {
@@ -132,5 +146,5 @@ export function fakeGoogle(options: { email?: string; scope?: string } = {}) {
     }
     return json(404, {});
   }) as typeof globalThis.fetch;
-  return { state, add, fetch };
+  return { state, add, label, fetch };
 }

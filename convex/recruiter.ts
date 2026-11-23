@@ -23,7 +23,10 @@ import { connectorFor } from "./lib/recruiter/mailbox";
 import { hiringModel } from "./lib/recruiter/model";
 import { redactDue } from "./lib/recruiter/retention";
 import { secretsConfigured } from "./lib/recruiter/secrets";
+import { discoveryOf } from "./lib/recruiter/boundary";
 import { recruiterSettingsValidator, sourceValidator, type Stage } from "./lib/recruiter/schema";
+
+const discoveryValidator = v.union(v.literal("hiring_inbox"), v.literal("label"), v.literal("search"));
 import { DAY, recruiterSettings } from "./lib/recruiter/settings";
 import { signatureProvider } from "./lib/recruiter/signature";
 import { proposeUrgentOutreach, urgentCandidates } from "./lib/recruiter/urgent";
@@ -163,6 +166,7 @@ export const connectMailbox = ownerMutation({
     sources: v.optional(v.array(sourceValidator)),
     /** Read mail received from this time on. Earlier than now is an explicit historical import. */
     processFrom: v.optional(v.number()),
+    discovery: v.optional(discoveryValidator),
   },
   handler: async (ctx, args) => {
     // A Gmail inbox is connected by signing in to Google (recruiterMailbox.startGmailConnect), which is
@@ -177,11 +181,32 @@ export const connectMailbox = ownerMutation({
       .withIndex("by_company", (q) => q.eq("companyId", ctx.companyId))
       .take(20);
     if (existing.some((row) => row.address === address && row.status !== "disconnected")) throw userError("That inbox is already connected.");
-    const connectionId = await ctx.db.insert("mailboxConnections", { companyId: ctx.companyId, provider: args.provider, address, folder: optionalText(args.folder, "The folder or label", 200), sources: args.sources ?? [], processFrom, status: "connected", failures: 0, createdBy: ctx.member._id, createdAt: now });
+    const folder = optionalText(args.folder, "The folder or label", 200);
+    if (args.discovery === "label" && !folder) throw userError("Name the label Recruiter should read.");
+    const connectionId = await ctx.db.insert("mailboxConnections", { companyId: ctx.companyId, provider: args.provider, address, folder, ...(args.discovery ? { discovery: args.discovery } : {}), sources: args.sources ?? [], processFrom, status: "connected", failures: 0, createdBy: ctx.member._id, createdAt: now });
     // Replies to Recruiter's emails go to the hiring inbox unless the Owner has named another address.
     if (!ctx.company.recruiter?.replyTo) await ctx.db.patch(ctx.companyId, { recruiter: { ...(ctx.company.recruiter ?? {}), replyTo: address } });
     await recordEvent(ctx, { companyId: ctx.companyId, type: "mailbox.connected", actor: byMember(ctx), subject: { table: "mailboxConnections", id: connectionId }, data: { provider: args.provider, historical: processFrom < now } });
     return connectionId;
+  },
+});
+
+/**
+ * How Recruiter finds hiring mail in one inbox (lib/recruiter/boundary.ts). A change starts the next read
+ * from the beginning of the reading window with the new boundary; what was already filed is not filed again.
+ */
+export const setDiscovery = ownerMutation({
+  args: { connectionId: v.id("mailboxConnections"), mode: discoveryValidator, label: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const row = await owned(ctx, args.connectionId);
+    if (row.status === "disconnected") throw userError("This inbox is disconnected. Connect it again first.");
+    const label = args.mode === "label" ? optionalText(args.label, "The label", 200) : undefined;
+    if (args.mode === "label" && !label) throw userError("Name the Gmail label you file hiring mail under.");
+    const changed = discoveryOf(row) !== args.mode || (args.mode === "label" && row.folder !== label);
+    await ctx.db.patch(row._id, { discovery: args.mode, folder: args.mode === "label" ? label : undefined, ...(changed ? { cursor: undefined } : {}) });
+    await recordEvent(ctx, { companyId: ctx.companyId, type: "mailbox.discovery_changed", actor: byMember(ctx), subject: { table: "mailboxConnections", id: row._id }, data: { mode: args.mode } });
+    if (changed) await ctx.scheduler.runAfter(0, internal.recruiterInbox.sync, { connectionId: row._id });
+    return null;
   },
 });
 

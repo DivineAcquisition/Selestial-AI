@@ -135,10 +135,16 @@ describe("the Gmail connector", () => {
     await expect(gmail.list({ ...scope, folder: "No such label" }, first.cursor, 25)).rejects.toThrow("label was not found");
   });
 
-  it("reads a body as plain text, opens text attachments only, and lists the rest", async () => {
+  it("reads a body as plain text, opens text attachments only when asked, and lists the rest", async () => {
     const google = fakeGoogle();
     google.add(message("m1", MONDAY_10AM, { attachments: [{ name: "resume.txt", contentType: "text/plain", size: 40, text: "Dana Cole\ndana.cole@example.test" }, { name: "resume.pdf", contentType: "application/pdf", size: 52_000, text: "never read" }] }));
-    const read = (await gmailConnector({ token: "access-1", fetch: google.fetch }).fetch(scope, "m1"))!;
+    // A reply needs no attachment: they are listed by name and none is downloaded.
+    const listedOnly = (await gmailConnector({ token: "access-1", fetch: google.fetch }).fetch(scope, "m1"))!;
+    expect(listedOnly.attachments).toEqual([
+      { name: "resume.txt", contentType: "text/plain", size: 40 },
+      { name: "resume.pdf", contentType: "application/pdf", size: 52_000 },
+    ]);
+    const read = (await gmailConnector({ token: "access-1", fetch: google.fetch }).fetch(scope, "m1", { attachments: true }))!;
     expect(read.text).toBe("Maria Lopez applied.\nEmail: maria.lopez@example.test");
     expect(read.attachments).toEqual([
       { name: "resume.txt", contentType: "text/plain", size: 40, text: "Dana Cole\ndana.cole@example.test" },
