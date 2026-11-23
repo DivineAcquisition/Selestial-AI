@@ -18,6 +18,7 @@ import { commitMove, planMove } from "./lib/dispatch/reschedule";
 import { dispatchSettings } from "./lib/dispatch/settings";
 import { userError } from "./lib/errors";
 import { byMember, recordEvent } from "./lib/events";
+import { syncCalendarSoon } from "./lib/google/syncSoon";
 import { localParts } from "./lib/availability";
 import { businessSettingsOf, checkArea, checkHours } from "./lib/settings/business";
 import { instant, optionalText } from "./lib/text";
@@ -146,6 +147,8 @@ export const moveVisit = managerMutation({
       subject: { table: "jobs", id: job._id },
       data: { from: job.startsAt, to: move.startsAt, customerNotice: notice ? notice.status : "not_chosen", crewNoticesSkipped: quiet.size, reason: reason ?? null },
     });
+    // The connected calendar follows now rather than at the next sweep. The move does not wait on it.
+    await syncCalendarSoon(ctx, ctx.companyId, ctx.member._id);
     return {
       askedAgain: plan.crew.filter((row) => row.outcome === "asked_again").length,
       placesReopened: plan.crew.filter((row) => row.outcome === "place_reopens").length,

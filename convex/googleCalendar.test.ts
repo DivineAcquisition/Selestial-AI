@@ -182,6 +182,60 @@ describe("busy times from Google Calendar", () => {
     vi.useRealTimers();
   });
 
+  it("mirrors Calendar's own events, a private one only as Busy, removes a cancelled one, and syncs right after a change", async () => {
+    const { as, companyId } = await company(t, "owner", "Alpha");
+    const connectionId = await connectCalendar(t, as, companyId);
+    const ownerId = await t.run(async (ctx) => (await ctx.db.query("members").collect())[0]._id);
+    const meetingId = await as.mutation(api.calendarEvents.create, { companyId, kind: "meeting", title: "Weekly ops", notes: "Budget review", location: "Office", startsAt: JOB_START, endsAt: JOB_START + HOUR, memberIds: [ownerId], cleanerIds: [] });
+    await as.mutation(api.calendarEvents.create, { companyId, kind: "appointment", title: "Doctor", notes: "Private", location: "Clinic", startsAt: JOB_START + 2 * HOUR, endsAt: JOB_START + 3 * HOUR, memberIds: [ownerId], cleanerIds: [], private: true });
+    // Each change asked for a sync at once; changes in the same minute share one.
+    const queued = await t.run((ctx) => ctx.db.query("googleJobs").collect());
+    expect(queued.filter((job) => job.key.startsWith("calendar_sync:soon:"))).toHaveLength(1);
+
+    const bodies: { method: string; body: { summary?: string; description?: string; location?: string } }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+        if (url.includes("oauth2.googleapis.com/token")) return new Response(JSON.stringify({ access_token: "a", expires_in: 3600 }), { status: 200 });
+        if (url.includes("/events") && method !== "GET") bodies.push({ method, body: init?.body ? JSON.parse(String(init.body)) : {} });
+        return new Response(JSON.stringify(url.includes("/events") && method === "GET" ? { items: [] } : { id: "x" }), { status: 200 });
+      }),
+    );
+    expect((await sync(t, companyId, connectionId)).written).toBe(2);
+    const written = bodies.map((row) => row.body);
+    expect(written).toContainEqual(expect.objectContaining({ summary: "Weekly ops", location: "Office" }));
+    expect(written.find((row) => row.description?.includes("Budget review"))).toBeDefined();
+    // The private one: only "Busy", nothing of what it is.
+    const busy = written.find((row) => row.summary === "Busy")!;
+    expect(busy.location).toBeUndefined();
+    expect(JSON.stringify(busy)).not.toMatch(/Doctor|Clinic|Private/);
+
+    // Cancelled in Selestial: removed from Google on the next sync, and the event itself is kept in Selestial.
+    await as.mutation(api.calendarEvents.cancel, { companyId, eventId: meetingId, expectedRevision: 1, reason: "Not needed." });
+    bodies.length = 0;
+    await sync(t, companyId, connectionId);
+    expect(bodies.some((row) => row.method === "DELETE")).toBe(true);
+    expect((await t.run((ctx) => ctx.db.get(meetingId)))?.status).toBe("cancelled");
+  });
+
+  it("takes an interview whose time was cancelled, and a visit moved past the horizon, off the calendar, and keeps past ones", async () => {
+    const { isStale } = await import("./googleCalendar");
+    const now = NOW;
+    const job = (fields: object) => ({ table: "jobs" as const, doc: { status: "scheduled", startsAt: now + HOUR, ...fields } as never });
+    const interview = (status: string) => ({ table: "interviews" as const, doc: { status } as never });
+    expect(isStale({ table: "jobs", id: "j" as never }, null, now)).toBe(true);
+    expect(isStale({ table: "jobs", id: "j" as never }, job({}), now)).toBe(false);
+    expect(isStale({ table: "jobs", id: "j" as never }, job({ status: "cancelled" }), now)).toBe(true);
+    expect(isStale({ table: "jobs", id: "j" as never }, job({ startsAt: now + 61 * 24 * HOUR }), now)).toBe(true);
+    expect(isStale({ table: "jobs", id: "j" as never }, job({ status: "completed", startsAt: now - 30 * 24 * HOUR }), now)).toBe(false);
+    // cancelInterviewTime puts the interview back to "proposed": its old time comes off the calendar.
+    expect(isStale({ table: "interviews", id: "i" as never }, interview("proposed"), now)).toBe(true);
+    expect(isStale({ table: "interviews", id: "i" as never }, interview("confirmed"), now)).toBe(false);
+    expect(isStale({ table: "interviews", id: "i" as never }, interview("completed"), now)).toBe(false);
+  });
+
   it("takes Selestial's own events out of a busy block", () => {
     expect(subtract({ start: 0, end: 100 }, [{ startsAt: 20, endsAt: 40 }])).toEqual([{ start: 0, end: 20 }, { start: 40, end: 100 }]);
     expect(subtract({ start: 0, end: 100 }, [{ startsAt: 0, endsAt: 100 }])).toEqual([]);

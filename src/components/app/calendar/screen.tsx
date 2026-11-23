@@ -1,17 +1,19 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 
+import { useChat, useDescribeChatPage } from "@/components/app/chat/chat-context";
 import { useCompany } from "@/components/app/company";
 import { useDetail } from "@/components/app/detail-panel";
+import { useRun } from "@/components/app/form";
 import { Modal } from "@/components/app/modal";
 import { NewVisitForm } from "@/components/app/screens/forms";
 import { Incomplete } from "@/components/app/screens/dispatch/shared";
-import { ChevronDown, ChevronLeft, ChevronRight, FunnelIcon, PanelLeftIcon, Plus, TriangleAlert, X } from "@/components/icons";
+import { ChevronDown, ChevronLeft, ChevronRight, FunnelIcon, PanelLeftIcon, Plus, Sparkles, TriangleAlert, X } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/selection";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -185,14 +187,49 @@ function CreateMenu({ manager, onCreate }: { manager: boolean; onCreate: (what: 
 
 // ── Needs attention ─────────────────────────────────────────────────────────────────────────────────
 
-function Attention({ items, timezone, now, onOpen, onClose }: { items: Item[]; timezone: string; now: number; onOpen: (item: Item) => void; onClose?: () => void }) {
+type Waiting = CalendarData["waiting"];
+
+/** What the item's problem lets a person do about it, from here. Each goes through the record's own workflow. */
+function AttentionActions({ item, manager, onOpen, onMove }: { item: Item; manager: boolean; onOpen: (item: Item) => void; onMove: (item: Item, to: { startsAt: number; endsAt: number }) => void }) {
+  const { companyId } = useCompany();
+  const keep = useMutation(api.googleCalendar.keepSelestial);
+  const { busy, error, run } = useRun();
+  const change = item.googleChange ?? null;
+  const open = item.source.table === "jobs" && ["booked", "offer_sent", "partly_staffed"].includes(item.status) ? "Find a cleaner" : item.source.table === "calendarEvents" && item.problems.some((words) => words.startsWith("No result") || words.startsWith("Attendance")) ? "Record it" : "Open";
+  return (
+    <div className="grid gap-1">
+      <div className="flex flex-wrap gap-1.5">
+        <Button size="xs" variant="outline" onClick={() => onOpen(item)}>
+          {open}
+        </Button>
+        {change && manager ? (
+          <>
+            <Button size="xs" variant="ghost" disabled={busy} onClick={() => void run(() => keep({ companyId, linkId: change.linkId as Id<"googleCalendarLinks"> }))}>
+              Put Selestial&apos;s time back
+            </Button>
+            {change.change === "moved" && change.startsAt !== null && change.endsAt !== null && (item.source.table === "jobs" || item.source.table === "calendarEvents") ? (
+              <Button size="xs" variant="ghost" onClick={() => onMove(item, { startsAt: change.startsAt!, endsAt: change.endsAt! })}>
+                Use Google&apos;s time
+              </Button>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+      {error ? <p className="text-xs text-destructive-foreground">{error}</p> : null}
+    </div>
+  );
+}
+
+function Attention({ items, waiting, manager, timezone, now, onOpen, onMove, onBookInterview, onClose }: { items: Item[]; waiting: Waiting | null; manager: boolean; timezone: string; now: number; onOpen: (item: Item) => void; onMove: (item: Item, to: { startsAt: number; endsAt: number }) => void; onBookInterview: () => void; onClose?: () => void }) {
+  const outside = (waiting?.googleChanges ?? []).filter((row) => !items.some((item) => item.key === row.key));
+  const count = items.length + (waiting?.interviews.length ? 1 : 0) + (waiting?.corrections.length ? 1 : 0) + (outside.length ? 1 : 0);
   return (
     <section aria-labelledby="calendar-attention" className="rounded-2xl border border-border bg-card">
       <header className="flex items-center justify-between gap-2 border-b border-border px-4 py-2.5">
         <h2 id="calendar-attention" className="flex items-center gap-1.5 text-sm font-semibold text-strong">
-          <TriangleAlert className={cn("size-4", items.length ? "text-destructive-foreground" : "text-muted-foreground")} aria-hidden />
+          <TriangleAlert className={cn("size-4", count ? "text-destructive-foreground" : "text-muted-foreground")} aria-hidden />
           Needs attention
-          <span className="text-muted-foreground tabular-nums">{items.length}</span>
+          <span className="text-muted-foreground tabular-nums">{count}</span>
         </h2>
         {onClose ? (
           <Button variant="ghost" size="icon-sm" aria-label="Hide Needs attention" onClick={onClose}>
@@ -200,13 +237,13 @@ function Attention({ items, timezone, now, onOpen, onClose }: { items: Item[]; t
           </Button>
         ) : null}
       </header>
-      {items.length === 0 ? (
+      {count === 0 ? (
         <p className="px-4 py-5 text-sm text-muted-foreground">Nothing in this range needs you. Problems appear here as soon as the record shows them.</p>
       ) : (
-        <ul className="max-h-[32rem] divide-y divide-border overflow-y-auto">
+        <ul className="max-h-[36rem] divide-y divide-border overflow-y-auto">
           {items.map((item) => (
-            <li key={item.key}>
-              <button type="button" onClick={() => onOpen(item)} aria-label={itemLabel(item, timezone)} className="grid w-full gap-0.5 px-4 py-2.5 text-left hover:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500">
+            <li key={item.key} className="grid gap-1.5 px-4 py-2.5">
+              <button type="button" onClick={() => onOpen(item)} aria-label={itemLabel(item, timezone)} className="grid gap-0.5 text-left focus-visible:outline-2 focus-visible:outline-brand-500">
                 <span className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-strong">
                   <span className={cn("size-2 shrink-0 rounded-full", LAYER_LOOK[item.layer].swatch)} aria-hidden />
                   <span className="truncate">{item.title}</span>
@@ -219,9 +256,49 @@ function Attention({ items, timezone, now, onOpen, onClose }: { items: Item[]; t
                     {words}
                   </span>
                 ))}
+                {item.googleChange?.startsAt ? <span className="text-xs text-muted-foreground">Google shows {whenLabel(item.googleChange.startsAt, now, timezone)}</span> : null}
               </button>
+              <AttentionActions item={item} manager={manager} onOpen={onOpen} onMove={onMove} />
             </li>
           ))}
+          {waiting?.interviews.length ? (
+            <li className="grid gap-1.5 px-4 py-2.5">
+              <p className="text-sm font-medium text-strong">
+                {waiting.interviews.length} {waiting.interviews.length === 1 ? "applicant is" : "applicants are"} waiting for an interview time
+              </p>
+              <p className="text-xs text-muted-foreground">{waiting.interviews.slice(0, 4).map((row) => row.applicant).join(", ")}</p>
+              <div>
+                <Button size="xs" variant="outline" onClick={onBookInterview}>
+                  Book an interview
+                </Button>
+              </div>
+            </li>
+          ) : null}
+          {waiting?.corrections.length ? (
+            <li className="grid gap-1.5 px-4 py-2.5">
+              <p className="text-sm font-medium text-strong">
+                {waiting.corrections.length} approved {waiting.corrections.length === 1 ? "correction needs" : "corrections need"} a visit
+              </p>
+              <p className="text-xs text-muted-foreground">{waiting.corrections.slice(0, 3).map((row) => row.title).join(" · ")}</p>
+              <div>
+                <Button size="xs" variant="outline" asChild>
+                  <Link href="/app/agents/quality/corrections">Open Corrections</Link>
+                </Button>
+              </div>
+            </li>
+          ) : null}
+          {outside.length ? (
+            <li className="grid gap-1.5 px-4 py-2.5">
+              <p className="text-sm font-medium text-strong">
+                {outside.length} {outside.length === 1 ? "event was" : "events were"} changed in Google Calendar outside these dates
+              </p>
+              <div>
+                <Button size="xs" variant="outline" asChild>
+                  <Link href="/app/settings/integrations">Review in Google Calendar settings</Link>
+                </Button>
+              </div>
+            </li>
+          ) : null}
         </ul>
       )}
     </section>
@@ -268,6 +345,11 @@ export function CalendarScreen() {
 
   const visible = useMemo(() => (data ? applyFilters(data.items, state, data) : []), [data, state]);
   const attention = visible.filter((item) => item.problems.length > 0 && item.timing !== "projected");
+  const waiting = data?.waiting;
+  const attentionCount = attention.length + (waiting?.interviews.length ? 1 : 0) + (waiting?.corrections.length ? 1 : 0) + ((waiting?.googleChanges ?? []).some((row) => !attention.some((item) => item.key === row.key)) ? 1 : 0);
+  // Company Chat is told what this page shows: the view, the dates and the time zone. Never a record's contents.
+  const chat = useChat();
+  useDescribeChatPage(range ? { path: `/app/calendar?view=${state.view}&from=${localDate(range.from, timezone)}&to=${localDate(range.to - 1, timezone)}`, label: `Calendar › ${VIEW_LABEL[state.view]}, ${range.label} (${timezone})` } : null);
   const selectedKey = params.get(ITEM_PARAM);
   const selected = selectedKey && data ? (data.items.find((item) => item.key === selectedKey) ?? null) : null;
 
@@ -350,6 +432,10 @@ export function CalendarScreen() {
           <Button variant="ghost" size="icon-sm" className="hidden xl:inline-flex" aria-label={railOpen ? "Hide Needs attention" : "Show Needs attention"} aria-pressed={railOpen} onClick={() => setRailOpen((before) => !before)}>
             <PanelLeftIcon className="rotate-180" aria-hidden />
           </Button>
+          <Button variant="outline" size="sm" onClick={() => chat.openPanel()} title="Opens Company Chat, told which dates you are looking at. It answers from the Calendar with your permissions.">
+            <Sparkles aria-hidden />
+            Ask Selestial
+          </Button>
           <CreateMenu manager={manager} onCreate={setCreating} />
         </div>
       </header>
@@ -408,14 +494,14 @@ export function CalendarScreen() {
       ) : null}
 
       {/* On a narrow screen Needs attention is a line that opens; on a wide one, a rail beside the calendar. */}
-      {attention.length > 0 ? (
+      {attentionCount > 0 ? (
         <details className="rounded-xl border border-destructive/30 bg-destructive/5 xl:hidden">
           <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm font-medium text-destructive-foreground">
             <TriangleAlert className="size-4" aria-hidden />
-            {attention.length} {attention.length === 1 ? "thing needs" : "things need"} attention
+            {attentionCount} {attentionCount === 1 ? "thing needs" : "things need"} attention
           </summary>
           <div className="p-2">
-            <Attention items={attention} timezone={timezone} now={now} onOpen={onOpen} />
+            <Attention items={attention} waiting={data?.waiting ?? null} manager={manager} timezone={timezone} now={now} onOpen={onOpen} onMove={(item, to) => setMoving({ item, to })} onBookInterview={() => setCreating("interview")} />
           </div>
         </details>
       ) : null}
@@ -442,7 +528,7 @@ export function CalendarScreen() {
         </section>
         {railOpen ? (
           <aside className="hidden xl:block" aria-label="Needs attention">
-            <Attention items={attention} timezone={timezone} now={now} onOpen={onOpen} onClose={() => setRailOpen(false)} />
+            <Attention items={attention} waiting={data?.waiting ?? null} manager={manager} timezone={timezone} now={now} onOpen={onOpen} onMove={(item, to) => setMoving({ item, to })} onBookInterview={() => setCreating("interview")} onClose={() => setRailOpen(false)} />
           </aside>
         ) : null}
       </div>

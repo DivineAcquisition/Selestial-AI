@@ -610,7 +610,15 @@ async function external(ctx: Ctx, from: number, to: number) {
 
 export const range = companyQuery({
   args: { from: v.number(), to: v.number(), layers: v.optional(v.array(layerValidator)) },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args) => readCalendar(ctx, args),
+});
+
+/**
+ * The read itself, shared by the page and Company Chat's calendar tools, so both answer from the same
+ * records with the same access: the person asking, with their role.
+ */
+export async function readCalendar(ctx: Ctx, args: { from: number; to: number; layers?: Layer[] }) {
+  {
     if (!Number.isFinite(args.from) || !Number.isFinite(args.to) || args.to <= args.from) throw userError("Choose a range that ends after it starts.");
     if (args.to - args.from > MAX_RANGE_DAYS * DAY + 2 * HOUR) throw userError(`Calendar shows at most ${MAX_RANGE_DAYS} days at a time.`);
     const manager = ctx.role === "owner" || ctx.role === "manager";
@@ -657,6 +665,7 @@ export const range = companyQuery({
     items.sort(byStart);
     const customerName = cache(async (id: string) => (await ctx.db.get(id as Id<"customers">))?.name ?? null);
     for (const item of items) item.customerName = item.customerId ? await customerName(item.customerId) : null;
+    const waiting = await waitingWork(ctx, items, manager);
 
     const cleaners = await ctx.db
       .query("cleaners")
@@ -696,11 +705,55 @@ export const range = companyQuery({
       resources,
       limits,
       external: outside?.status ?? null,
+      waiting,
       bufferMinutes: dispatchSettings(ctx.company).travelBufferMinutes,
       asOf: Date.now(),
     };
-  },
-});
+  }
+}
+
+/**
+ * Work that needs a time or a decision, for Needs attention: changes made in the connected calendar
+ * (attached to the item they are about when it is in view), applicants waiting for an interview time, and
+ * approved corrections no visit has been booked for yet. Each comes with the record it is about.
+ */
+async function waitingWork(ctx: Ctx, items: Item[], manager: boolean) {
+  const byKey = new Map(items.map((item) => [item.key, item]));
+  const googleChanges: { linkId: string; what: "visit" | "interview" | "event"; change: string; key: string; title: string | null }[] = [];
+  const links = await ctx.db.query("googleCalendarLinks").withIndex("by_company_subject", (q) => q.eq("companyId", ctx.companyId)).take(2000);
+  for (const link of links) {
+    if (!link.externalChange) continue;
+    // Office sees changes to visits only, as everywhere else.
+    if (!manager && link.subject.table !== "jobs") continue;
+    const key = `${link.subject.table}:${link.subjectId}`;
+    const item = byKey.get(key);
+    const change = { linkId: link._id, change: link.externalChange, startsAt: link.externalTimes?.startsAt ?? null, endsAt: link.externalTimes?.endsAt ?? null };
+    if (item) {
+      item.googleChange = change;
+      item.problems.push(link.externalChange === "deleted" ? "Deleted in Google Calendar; Selestial did not change it" : link.externalChange === "moved" ? "Moved in Google Calendar; Selestial did not change it" : "Edited in Google Calendar");
+    }
+    googleChanges.push({ linkId: link._id, what: link.subject.table === "jobs" ? "visit" : link.subject.table === "interviews" ? "interview" : "event", change: link.externalChange, key, title: item?.title ?? null });
+    if (googleChanges.length >= 50) break;
+  }
+  if (!manager) return { googleChanges, interviews: [], corrections: [] };
+  const interviews = [];
+  for (const status of ["awaiting_slots", "proposed"] as const) {
+    for (const row of await ctx.db.query("interviews").withIndex("by_company_status", (q) => q.eq("companyId", ctx.companyId).eq("status", status)).take(25)) {
+      const application = await ctx.db.get(row.applicationId);
+      const applicant = application ? await ctx.db.get(application.applicantId) : null;
+      interviews.push({ interviewId: row._id, applicant: applicant?.name ?? "An applicant", status });
+    }
+  }
+  const corrections = [];
+  for (const row of await ctx.db.query("qualityCorrections").withIndex("by_company_state", (q) => q.eq("companyId", ctx.companyId).eq("state", "approved")).take(50)) {
+    if (row.correctionJobId) continue;
+    const kase = await ctx.db.get(row.caseId);
+    // A restricted case is the Owner's alone.
+    if (!kase || (kase.restricted && ctx.role !== "owner")) continue;
+    corrections.push({ correctionId: row._id, title: kase.title, by: row.timeSensitive?.by ?? null });
+  }
+  return { googleChanges, interviews, corrections };
+}
 
 async function crews(ctx: Ctx) {
   const rows = await ctx.db
