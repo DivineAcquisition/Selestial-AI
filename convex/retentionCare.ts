@@ -19,6 +19,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { localParts } from "./lib/availability";
 import { salesLinkMutation, salesLinkQuery } from "./lib/builders";
 import { readProfile } from "./lib/compliance/profile";
+import { reviewLinkFor } from "./lib/google/reviewLink";
 import { allow } from "./lib/rateLimit";
 import { ACTION_WORDS, actionsOf, PAY_NOT_SET, submitAction, whenWords } from "./lib/retention/actions";
 import { addEntry, areasIn, cleanAreas, moveCase, openCase, propertyName, RETENTION, SYSTEM } from "./lib/retention/cases";
@@ -90,7 +91,7 @@ export const view = salesLinkQuery({
       expiresAt: link.expiresAt,
       allowed: link.allowed,
       // Everyone is shown the same public review page, whatever they answered.
-      reviewUrl: settings.reviewUrl,
+      reviewUrl: await reviewLinkFor(ctx, company),
     };
     type Feedback = { submitted: boolean; describedIssue: boolean; crewKnown: boolean };
     type Remedy = { what: string; about: string; when: string | null; minutes: number | null; charge: string | null; open: boolean; answered: "accepted" | "declined" | "asked" | null; booked: boolean };

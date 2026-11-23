@@ -42,7 +42,7 @@ export const FEATURE_INFO: Record<Feature, { label: string; scopes: readonly str
   business_profile: {
     label: "Google Business Profile",
     scopes: [SCOPE.business],
-    does: "See reviews for your locations and reply to them. Nothing is posted until you approve it.",
+    does: "See reviews for your locations; Retention drafts a reply to each new one. Nothing is posted until you approve it.",
   },
   ads: {
     label: "Google Ads",

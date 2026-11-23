@@ -87,6 +87,8 @@ export const googleTables = {
     access: v.union(v.literal("verified"), v.literal("unverified"), v.literal("lost")),
     accessNote: v.optional(v.string()),
     verifiedAt: v.optional(v.number()),
+    /** For a Business Profile location: Google's page where a customer leaves a review (metadata.newReviewUri). */
+    reviewUri: v.optional(v.string()),
     addedBy: v.id("members"),
     createdAt: v.number(),
   })

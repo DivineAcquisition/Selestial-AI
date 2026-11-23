@@ -12,6 +12,7 @@ import { authorityFor } from "../authority";
 import { activeConnections, requireFeature } from "../google/connection";
 import { enabledFeatures, FEATURE_INFO, FEATURES } from "../google/features";
 import { enqueue } from "../google/jobs";
+import { reviewLinkFor } from "../google/reviewLink";
 import { allow } from "../rateLimit";
 import { localParts } from "../availability";
 import { type Field, stableHash } from "./fields";
@@ -185,8 +186,7 @@ export const GOOGLE_TOOLS: ChatTool[] = [
       const customer = await ctx.db.get(String(args.customerId) as Id<"customers">).catch(() => null);
       if (!customer || customer.companyId !== ctx.company._id) return refused("That customer was not found.");
       const reasons: string[] = [];
-      const locations = await ctx.db.query("googleResources").withIndex("by_company_kind", (q) => q.eq("companyId", ctx.company._id).eq("kind", "business_location")).take(5);
-      if (!locations.some((l) => l.access === "verified")) reasons.push("No Business Profile location is connected and verified.");
+      if (!(await reviewLinkFor(ctx, ctx.company))) reasons.push("There is no review link yet: connect and verify a Business Profile location, or add a review link in the Retention Playbook.");
       const jobs = await ctx.db.query("jobs").withIndex("by_company_customer", (q) => q.eq("companyId", ctx.company._id).eq("customerId", customer._id)).order("desc").take(50);
       if (!jobs.some((j) => j.status === "completed" && j.endsAt > Date.now() - 14 * 86_400_000)) reasons.push("No visit finished in the last 14 days.");
       if (!customer.email && !customer.phone) reasons.push("There is no email or phone number.");

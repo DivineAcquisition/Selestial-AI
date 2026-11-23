@@ -16,6 +16,7 @@ import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import { readProfile } from "../compliance/profile";
 import type { Category, Origin } from "../compliance/schema";
 import { recordEvent, type Actor } from "../events";
+import { reviewLinkFor } from "../google/reviewLink";
 import { addressFor, type Channel } from "../finance/outbox";
 import { emailProvider } from "../messaging/email";
 import { messageByKey, type SendIntent } from "../messaging/outbox";
@@ -157,6 +158,11 @@ export async function queueCareMessage(ctx: MutationCtx, planned: PlannedCareMes
   await recordEvent(ctx, { companyId: company._id, type: `message.${status}`, actor: planned.actor, subject: { table: "messages", id: messageId }, data: { purpose: planned.purpose, channel, ...(code ? { policy: code } : {}), ...(refusal ? { refusal } : {}) } });
   if (status === "queued") await ctx.scheduler.runAfter(0, internal.messaging.deliver, { messageId });
   if (status === "held") await ctx.scheduler.runAt(retryAt!, internal.messaging.deliver, { messageId });
+  // The feedback page carries the same public review invitation for everyone (convex/lib/google/reviewLink.ts):
+  // the customer counts as asked for a review, whatever they go on to answer.
+  if (planned.purpose === "feedback_request" && status !== "not_sent" && (await reviewLinkFor(ctx, company))) {
+    await recordEvent(ctx, { companyId: company._id, type: "google.review_requested", actor: planned.actor, subject: { table: "customers", id: customer._id }, data: { channel, via: "feedback_page" } });
+  }
   return (await ctx.db.get(messageId))!;
 }
 

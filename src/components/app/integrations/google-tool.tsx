@@ -389,7 +389,7 @@ function ReviewsPanel({ companyId, manager }: { companyId: Id<"companies">; mana
   return (
     <Panel title="Your reviews" action={manager ? <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void run(() => syncNow({ companyId }))}>Check for new reviews</Button> : undefined}>
       <div className="grid gap-3 px-4 py-4 sm:px-5">
-        <p className="text-xs text-muted-foreground">A reply is posted publicly only after an Owner or Manager approves its exact text. Review requests treat every customer with a finished visit the same, whatever they thought of it.</p>
+        <p className="text-xs text-muted-foreground">Retention drafts a reply to each new review. A reply is posted publicly only after an Owner or Manager approves its exact text. The review invitation on Retention’s feedback page is shown to every customer the same way, whatever they thought of the visit.</p>
         {reviews?.length === 0 ? <p className="text-sm text-muted-foreground">No reviews read yet.</p> : null}
         <ul className="grid gap-3">
           {(reviews ?? []).slice(0, 30).map((r) => {
@@ -402,7 +402,7 @@ function ReviewsPanel({ companyId, manager }: { companyId: Id<"companies">; mana
                 </span>
                 {r.comment ? <p className="text-sm">{r.comment}</p> : null}
                 {r.existingReply ? <p className="text-xs text-muted-foreground">Reply on Google: {r.existingReply}</p> : null}
-                <span className="text-xs text-muted-foreground">{r.state === "publishing" ? "Publishing…" : r.state === "failed" ? `Not published: ${r.problem ?? "Google refused it."}` : r.state === "published" ? "Replied" : r.state === "drafted" ? "Draft saved, not posted" : "No reply yet"}</span>
+                <span className="text-xs text-muted-foreground">{r.state === "publishing" ? "Publishing…" : r.state === "failed" ? `Not published: ${r.problem ?? "Google refused it."}` : r.state === "published" ? "Replied" : r.state === "drafted" ? (r.draftBy === "assistant" ? "Retention drafted a reply below. It is not posted until you approve it." : "Draft saved, not posted") : "No reply yet"}</span>
                 {manager && r.state !== "publishing" ? (
                   <>
                     <TextArea rows={3} value={text} onChange={(e) => setTexts((now) => ({ ...now, [r._id]: e.target.value }))} placeholder="Write a reply" />

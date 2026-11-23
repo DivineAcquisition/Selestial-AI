@@ -474,11 +474,13 @@ export const resourceFor = internalQuery({
 });
 
 export const setResourceAccess = internalMutation({
-  args: { resourceId: v.id("googleResources"), access: v.union(v.literal("verified"), v.literal("lost")), note: v.optional(v.string()), detail: v.optional(v.string()) },
+  args: { resourceId: v.id("googleResources"), access: v.union(v.literal("verified"), v.literal("lost")), note: v.optional(v.string()), detail: v.optional(v.string()), reviewUri: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const row = await ctx.db.get(args.resourceId);
     if (!row) return null;
-    await ctx.db.patch(row._id, { access: args.access, accessNote: args.note?.slice(0, 300), verifiedAt: Date.now(), ...(args.detail ? { detail: args.detail.slice(0, 200) } : {}) });
+    // Only Google's own https review page is kept as a review link.
+    const reviewUri = args.reviewUri && /^https:\/\/(search\.google\.com|g\.page|www\.google\.com)\//.test(args.reviewUri) ? args.reviewUri.slice(0, 500) : undefined;
+    await ctx.db.patch(row._id, { access: args.access, accessNote: args.note?.slice(0, 300), verifiedAt: Date.now(), ...(args.detail ? { detail: args.detail.slice(0, 200) } : {}), ...(reviewUri ? { reviewUri } : {}) });
     return null;
   },
 });

@@ -180,8 +180,10 @@ export const verifyResource = internalAction({
       } else if (resource.kind === "business_location") {
         const account = resource.detail ?? "";
         const locations = await businessLocations(access.token, account);
-        if (!locations.some((l) => l.name === resource.externalId)) throw new GoogleError("not_found", "This location isn’t in your Google account.");
-        await ctx.runMutation(internal.google.setResourceAccess, { resourceId: args.resourceId, access: "verified", note: "Ready." });
+        const found = locations.find((l) => l.name === resource.externalId);
+        if (!found) throw new GoogleError("not_found", "This location isn’t in your Google account.");
+        // Its review page is kept, so Retention's review invitation can point customers to it.
+        await ctx.runMutation(internal.google.setResourceAccess, { resourceId: args.resourceId, access: "verified", note: "Ready.", reviewUri: found.metadata?.newReviewUri });
       } else if (resource.kind === "ads_account" || resource.kind === "conversion_destination") {
         const developer = adsDeveloperToken();
         if (!developer) throw new GoogleError("not_configured", "Google Ads isn’t available yet.");
