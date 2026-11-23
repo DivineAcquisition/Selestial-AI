@@ -29,7 +29,7 @@ import type { DraftBody } from "./lib/sales/draft";
 import { linkToken, linkUrl, newLinkId } from "./lib/sales/links";
 import { channelFor, queueSalesMessage } from "./lib/sales/outbox";
 import { createPlan, todayIn } from "./lib/sales/plans";
-import { buildContent, customerCopy, TEMPLATE_FIELDS, type ProposalContent } from "./lib/sales/proposalContent";
+import { buildContent, customerCopy, TEMPLATE_FIELDS, type ProposalContent, type SiteContent } from "./lib/sales/proposalContent";
 import type { ProposalStatus, ProposalTemplate } from "./lib/sales/schema";
 import { createVisit } from "./lib/sales/visits";
 import { canonical } from "./lib/services/store";
@@ -393,6 +393,35 @@ async function stopFollowUps(ctx: MutationCtx, proposal: Doc<"proposals">, miles
 
 // ── Service setup after acceptance ───────────────────────────────────────────────────────────────
 
+/** The acceptance a setup was started from: who accepted that version, and which option they chose. */
+async function acceptedResponse(ctx: QueryCtx | MutationCtx, proposalId: Id<"proposals">, version: number) {
+  const rows = await ctx.db
+    .query("proposalResponses")
+    .withIndex("by_proposal", (q) => q.eq("proposalId", proposalId))
+    .order("desc")
+    .take(20);
+  return rows.find((r) => r.kind === "accept" && r.version === version);
+}
+
+type AcceptedSite = { ok: true; option: string | null; serviceKey: string | null; serviceName: string | null; priceCents: number | null; versionId: string | null; input: Record<string, unknown> | null; durationMinutes: number | null; crew: number | null } | { ok: false; option: string | null; problem: string };
+
+/**
+ * What the client accepted for one site: the main plan, or the option they chose. A site is only ever
+ * scheduled and billed at these terms. When the chosen option can't be resolved (a version saved before
+ * options carried their service details), it says so instead of falling back to the main plan's rate.
+ */
+function acceptedSite(content: ProposalContent, optionId: string | undefined, info: SiteContent): AcceptedSite {
+  if (!optionId) return { ok: true, option: null, serviceKey: info.service?.key ?? null, serviceName: info.service?.name ?? null, priceCents: info.priceCents, versionId: info.internal.versionId, input: info.internal.input, durationMinutes: info.internal.durationMinutes, crew: info.internal.crew };
+  const option = content.options.find((o) => o.id === optionId);
+  if (!option) return { ok: false, option: null, problem: "The client accepted an option that isn't in this version of the proposal. Send a new version with the terms they chose, so service starts at what they accepted." };
+  const row = option.sites.find((s) => s.key === info.key);
+  if (!row || row.priceCents === null) return { ok: false, option: option.label, problem: `The client accepted "${option.label}", which has no rate for this site. Send a new version with the terms they chose, so service starts at what they accepted.` };
+  if (row.internal?.versionId && row.internal.serviceKey) return { ok: true, option: option.label, serviceKey: row.internal.serviceKey, serviceName: row.serviceName, priceCents: row.priceCents, versionId: row.internal.versionId, input: row.internal.input, durationMinutes: row.internal.durationMinutes, crew: row.internal.crew };
+  // The option is the main plan for this site (same service, same rate): the main plan's details apply.
+  if (row.serviceName === (info.service?.name ?? null) && row.priceCents === info.priceCents) return { ok: true, option: option.label, serviceKey: info.service?.key ?? null, serviceName: row.serviceName, priceCents: row.priceCents, versionId: info.internal.versionId, input: info.internal.input, durationMinutes: info.internal.durationMinutes, crew: info.internal.crew };
+  return { ok: false, option: option.label, problem: `The client accepted "${option.label}" for this site (${row.serviceName ?? "a different service"} at ${formatCents(row.priceCents)}), not the main plan. This proposal was saved before Selestial could schedule an option directly. Send a new version with that option as the main plan, so the client accepts exactly what will be scheduled and billed.` };
+}
+
 export const setup = companyQuery({
   args: { setupId: v.id("serviceSetups") },
   handler: async (ctx, args) => {
@@ -401,26 +430,24 @@ export const setup = companyQuery({
     const version = proposal ? await versionRow(ctx, proposal._id, row.version) : null;
     const content = version?.content as ProposalContent | undefined;
     const agreement = row.agreementId ? await ctx.db.get(row.agreementId) : null;
-    const response = proposal
-      ? (
-          await ctx.db
-            .query("proposalResponses")
-            .withIndex("by_proposal", (q) => q.eq("proposalId", proposal._id))
-            .order("desc")
-            .take(5)
-        ).find((r) => r.kind === "accept")
-      : undefined;
+    const response = proposal ? await acceptedResponse(ctx, proposal._id, row.version) : undefined;
+    const acceptedOption = response?.optionId && content ? (content.options.find((o) => o.id === response.optionId)?.label ?? "An option no longer in this version") : null;
     return {
       setup: row,
       proposal: proposal ? { _id: proposal._id, title: proposal.title, template: proposal.template } : null,
       content: content ?? null,
       agreement: agreement ? { _id: agreement._id, title: agreement.title, workflow: agreement.workflow } : null,
       acceptedBy: response ? { name: response.name, title: response.title ?? null, signer: response.signer ?? null, at: response.at } : null,
+      /** The option the client chose instead of the main plan, by its label. Null: they accepted the main plan. */
+      acceptedOption,
       sites: await Promise.all(
         row.sites.map(async (site) => {
           const plan = site.planId ? await ctx.db.get(site.planId) : null;
           const info = content?.sites.find((s) => s.key === site.key);
-          return { ...site, plan: plan ? { _id: plan._id, status: plan.status } : null, perTurnover: info?.perTurnover ?? false, cadence: info?.cadence ?? null, priceCents: info?.priceCents ?? null, ready: siteBlockers(row, agreement?.workflow ?? null, site).length === 0, blockers: siteBlockers(row, agreement?.workflow ?? null, site) };
+          // The rate and service shown are the ones the client accepted, never the main plan's when they chose an option.
+          const accepted = content && info ? acceptedSite(content, response?.optionId, info) : null;
+          const blockers = [...siteBlockers(row, agreement?.workflow ?? null, site), ...(accepted && !accepted.ok && !site.planId ? [accepted.problem] : [])];
+          return { ...site, plan: plan ? { _id: plan._id, status: plan.status } : null, perTurnover: info?.perTurnover ?? false, cadence: info?.cadence ?? null, priceCents: accepted ? (accepted.ok ? accepted.priceCents : null) : (info?.priceCents ?? null), serviceName: accepted?.ok ? accepted.serviceName : null, ready: blockers.length === 0, blockers };
         }),
       ),
     };
@@ -444,26 +471,30 @@ export const prepareAgreement = companyMutation({
     const proposal = await owned(ctx, row.proposalId);
     const version = await versionRow(ctx, proposal._id, row.version);
     const content = version!.content as ProposalContent;
-    const response = (
-      await ctx.db
-        .query("proposalResponses")
-        .withIndex("by_proposal", (q) => q.eq("proposalId", proposal._id))
-        .order("desc")
-        .take(5)
-    ).find((r) => r.kind === "accept");
+    const response = await acceptedResponse(ctx, proposal._id, row.version);
+    // The agreement states what the client accepted: the option's service and rate when they chose one.
+    const chosen = content.sites.map((s) => ({ site: s, accepted: acceptedSite(content, response?.optionId, s) }));
+    const unresolved = chosen.find((c) => !c.accepted.ok);
+    if (unresolved && !unresolved.accepted.ok) throw userError(unresolved.accepted.problem);
+    const rate = (s: SiteContent) => {
+      const accepted = chosen.find((c) => c.site.key === s.key)?.accepted;
+      return accepted?.ok ? { name: accepted.serviceName, priceCents: accepted.priceCents } : { name: s.service?.name ?? null, priceCents: s.priceCents };
+    };
     const docType = proposal.template === "office" ? "office_janitorial" : proposal.template === "str" ? "str_turnover" : "commercial_msa";
-    const sites = content.sites.map((s) => `${s.label}${s.address ? ` (${s.address})` : ""}: ${s.service?.name ?? ""}, ${s.cadence ?? ""}, ${s.priceCents !== null ? formatCents(s.priceCents) : "rate to confirm"} per ${s.perTurnover ? "turnover" : "visit"}`);
+    const sites = content.sites.map((s) => `${s.label}${s.address ? ` (${s.address})` : ""}: ${rate(s).name ?? ""}, ${s.cadence ?? ""}, ${rate(s).priceCents !== null ? formatCents(rate(s).priceCents!) : "rate to confirm"} per ${s.perTurnover ? "turnover" : "visit"}`);
     const terms: Record<string, string | number | string[]> = {
       [proposal.template === "str" ? "propertyList" : "siteList"]: sites.join("\n"),
       scopeSummary: content.sites.flatMap((s) => s.scope).slice(0, 40).join("; "),
-      serviceName: content.sites.map((s) => s.service?.name).filter(Boolean).join(", "),
+      serviceName: content.sites.map((s) => rate(s).name).filter(Boolean).join(", "),
     };
     if (content.terms.netDays !== null) terms.paymentDueDays = content.terms.netDays;
     const months = /^(\d+)/.exec(content.terms.contractTerm);
     terms.termMonths = months ? Number(months[1]) : 0;
     const single = content.sites.length === 1 ? content.sites[0]! : null;
-    if (single?.priceCents) terms.pricePerVisitCents = single.priceCents;
-    if (content.totals.fixedMonthlyEstimateCents !== null && !content.totals.anyVariable && content.terms.invoiceFrequency.includes("monthly")) terms.monthlyTotalCents = content.totals.fixedMonthlyEstimateCents;
+    const singleRate = single ? rate(single).priceCents : null;
+    if (singleRate) terms.pricePerVisitCents = singleRate;
+    // The monthly estimate was worked out for the main plan; an accepted option has its own rates, so it is left out.
+    if (!response?.optionId && content.totals.fixedMonthlyEstimateCents !== null && !content.totals.anyVariable && content.terms.invoiceFrequency.includes("monthly")) terms.monthlyTotalCents = content.totals.fixedMonthlyEstimateCents;
     if (response?.signer) terms.counterpartySigner = `${response.signer.name}${response.signer.title ? `, ${response.signer.title}` : ""}`;
     const links: { table: "customers" | "properties"; id: string }[] = [{ table: "customers", id: proposal.customerId }, ...content.sites.filter((s) => s.propertyId).slice(0, 5).map((s) => ({ table: "properties" as const, id: s.propertyId! }))];
     const agreementId = await createAgreement(ctx as never, { docType, links, terms, origin: "manual", note: `From proposal version ${row.version}, accepted` } as never);
@@ -500,7 +531,8 @@ async function setupContent(ctx: MutationCtx & MemberAccess, setupId: Id<"servic
   const row = await owned(ctx, setupId);
   const version = await versionRow(ctx, row.proposalId, row.version);
   const agreement = row.agreementId ? await ctx.db.get(row.agreementId) : null;
-  return { row, content: version!.content as ProposalContent, agreementWorkflow: agreement?.workflow ?? null };
+  const response = await acceptedResponse(ctx, row.proposalId, row.version);
+  return { row, content: version!.content as ProposalContent, agreementWorkflow: agreement?.workflow ?? null, optionId: response?.optionId };
 }
 
 /**
@@ -510,7 +542,7 @@ async function setupContent(ctx: MutationCtx & MemberAccess, setupId: Id<"servic
 export const activateSite = companyMutation({
   args: { setupId: v.id("serviceSetups"), siteKey: v.string(), startDate: v.string(), arrivalMinute: v.number() },
   handler: async (ctx, args) => {
-    const { row, content, agreementWorkflow } = await setupContent(ctx, args.setupId);
+    const { row, content, agreementWorkflow, optionId } = await setupContent(ctx, args.setupId);
     const site = row.sites.find((s) => s.key === args.siteKey);
     const info = content.sites.find((s) => s.key === args.siteKey);
     if (!site || !info) throw userError("That site isn't in this setup.");
@@ -521,7 +553,10 @@ export const activateSite = companyMutation({
     if (info.perTurnover) throw userError("Turnovers are scheduled one at a time from real stays. Use Schedule a turnover.");
     if (args.startDate < todayIn(ctx.company.timezone)) throw userError("Start today or later.");
     const cadence = info.internal.cadence as Cadence | null;
-    if (!cadence || !info.internal.versionId || info.priceCents === null) throw userError("This site has no cadence or rate in the accepted proposal.");
+    // The plan is made from what the client accepted. An option that can't be resolved stops here: it is never billed at the main plan's rate.
+    const accepted = acceptedSite(content, optionId, info);
+    if (!accepted.ok) throw userError(accepted.problem);
+    if (!cadence || !accepted.versionId || !accepted.serviceKey || accepted.priceCents === null) throw userError("This site has no cadence or rate in the accepted proposal.");
     const planId = await createPlan(ctx, ctx.company, {
       customerId: row.customerId,
       propertyId: site.propertyId,
@@ -529,20 +564,20 @@ export const activateSite = companyMutation({
       startDate: args.startDate,
       arrivalMinute: args.arrivalMinute,
       arrivalWindowMinutes: 60,
-      durationMinutes: info.internal.durationMinutes ?? 120,
-      crew: info.internal.crew ?? 1,
+      durationMinutes: accepted.durationMinutes ?? 120,
+      crew: accepted.crew ?? 1,
       cadence,
-      serviceKey: info.service!.key,
-      versionId: info.internal.versionId as Id<"serviceVersions">,
-      quoteInput: (info.internal.input ?? {}) as never,
-      visitPriceCents: info.priceCents,
+      serviceKey: accepted.serviceKey,
+      versionId: accepted.versionId as Id<"serviceVersions">,
+      quoteInput: (accepted.input ?? {}) as never,
+      visitPriceCents: accepted.priceCents,
       billing: content.terms.invoiceFrequency.includes("monthly") ? "monthly_consolidated" : "per_visit",
       createdBy: ctx.member._id,
     });
     const now = Date.now();
     const sites = row.sites.map((s) => (s.key === site.key ? { ...s, schedule: "done" as const, planId, activatedAt: now } : s));
     await ctx.db.patch(row._id, { sites, status: sites.every((s) => s.planId || s.schedule === "not_needed") ? "active" : "open", updatedAt: now });
-    await recordEvent(ctx, { companyId: ctx.companyId, type: "service_setup.site_activated", actor: byMember(ctx), subject: { table: "serviceSetups", id: row._id }, data: { siteKey: site.key } });
+    await recordEvent(ctx, { companyId: ctx.companyId, type: "service_setup.site_activated", actor: byMember(ctx), subject: { table: "serviceSetups", id: row._id }, data: { siteKey: site.key, option: accepted.option, visitPriceCents: accepted.priceCents } });
     const proposal = await ctx.db.get(row.proposalId);
     if (proposal) await setMilestone(ctx, proposal.opportunityId, "service_activated");
     return planId;
@@ -553,21 +588,23 @@ export const activateSite = companyMutation({
 export const scheduleTurnover = companyMutation({
   args: { setupId: v.id("serviceSetups"), siteKey: v.string(), date: v.string(), startMinute: v.number(), deadlineMinute: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    const { row, content, agreementWorkflow } = await setupContent(ctx, args.setupId);
+    const { row, content, agreementWorkflow, optionId } = await setupContent(ctx, args.setupId);
     const site = row.sites.find((s) => s.key === args.siteKey);
     const info = content.sites.find((s) => s.key === args.siteKey);
     if (!site || !info || !info.perTurnover) throw userError("That site isn't a turnover site in this setup.");
     const blockers = siteBlockers(row, agreementWorkflow, site);
     if (blockers.length) throw userError(blockers.join(" "));
-    if (!info.internal.versionId || info.priceCents === null || !info.service) throw userError("The accepted proposal has no turnover rate for this site.");
+    const accepted = acceptedSite(content, optionId, info);
+    if (!accepted.ok) throw userError(accepted.problem);
+    if (!accepted.versionId || accepted.priceCents === null || !accepted.serviceKey) throw userError("The accepted proposal has no turnover rate for this site.");
     const startsAt = localInstant(args.date, args.startMinute, ctx.company.timezone);
-    const minutes = info.internal.durationMinutes ?? 120;
+    const minutes = accepted.durationMinutes ?? 120;
     const endsAt = startsAt + minutes * 60_000;
     if (args.deadlineMinute !== undefined && endsAt > localInstant(args.date, args.deadlineMinute, ctx.company.timezone)) throw userError("The turnover can't finish before check-in at that start time.");
-    const crew = info.internal.crew ?? 1;
+    const crew = accepted.crew ?? 1;
     const capacity = await checkCapacity(ctx, ctx.company, { startsAt, endsAt }, crew);
     if (capacity.state !== "fits" && capacity.state !== "tight") throw userError(capacity.why);
-    const jobId = await createVisit(ctx, { company: ctx.company, customerId: row.customerId, propertyId: site.propertyId, versionId: info.internal.versionId as Id<"serviceVersions">, serviceKey: info.service.key, priceCents: info.priceCents, startsAt, endsAt, crew, arrivalWindowMinutes: 0, instructions: info.internal.accessNotes ?? undefined, actor: byMember(ctx), from: "plan" });
+    const jobId = await createVisit(ctx, { company: ctx.company, customerId: row.customerId, propertyId: site.propertyId, versionId: accepted.versionId as Id<"serviceVersions">, serviceKey: accepted.serviceKey, priceCents: accepted.priceCents, startsAt, endsAt, crew, arrivalWindowMinutes: 0, instructions: info.internal.accessNotes ?? undefined, actor: byMember(ctx), from: "plan" });
     if (args.deadlineMinute !== undefined) await ctx.db.patch(jobId, { hardDeadlineAt: localInstant(args.date, args.deadlineMinute, ctx.company.timezone) });
     if (site.schedule !== "done") await ctx.db.patch(row._id, { sites: row.sites.map((s) => (s.key === site.key ? { ...s, schedule: "done" as const, activatedAt: s.activatedAt ?? Date.now() } : s)), updatedAt: Date.now() });
     return jobId;

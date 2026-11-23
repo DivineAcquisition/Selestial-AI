@@ -5,7 +5,7 @@
  *   cd billing && npx atmn push --yes    apply
  *
  * Built from the same plan-to-agent mapping the app checks (convex/lib/billing/catalog.ts), so the two
- * cannot disagree. Prices are the approved $299 and $499. Credit allowances and top-up prices are NOT
+ * cannot disagree. Prices are the approved $299 and $499, and the approved $199 early-user price of Operate. Credit allowances and top-up prices are NOT
  * approved yet, so they are read from the environment and this file refuses to build without them;
  * nothing here invents a commercial value. For Autumn's sandbox, load billing/sandbox.env.example (test
  * values only). For production, Selestial supplies the approved values.
@@ -15,7 +15,7 @@
  */
 import { atmn, feature, plan } from "atmn";
 
-import { AGENT_CATALOG, AGENT_IDS, AUTUMN, PLAN_FEATURES, PLANS, type PlanId } from "../convex/lib/billing/catalog";
+import { AGENT_CATALOG, AGENT_IDS, AUTUMN, EARLY_OFFER, PLAN_FEATURES, PLANS, type PlanId } from "../convex/lib/billing/catalog";
 
 function required(name: string): number {
   const value = Number(process.env[name]);
@@ -39,14 +39,14 @@ export const messaging = feature({ featureId: AUTUMN.messaging, name: "Messaging
 const agentFeatures = AGENT_IDS.map((agent) => feature({ featureId: `agent_${agent.replace(/-/g, "_")}`, name: `${AGENT_CATALOG[agent].name} agent`, type: "boolean" }));
 const platformFeatures = (Object.keys(PLAN_FEATURES) as (keyof typeof PLAN_FEATURES)[]).map((id) => feature({ featureId: `feature_${id}`, name: PLAN_FEATURES[id].name, type: "boolean" }));
 
-function subscription(id: PlanId, included: number) {
+function subscription(id: PlanId, included: number, variant?: { planId: string; name: string; monthlyCents: number }) {
   return plan({
-    planId: AUTUMN.plans[id],
+    planId: variant?.planId ?? AUTUMN.plans[id],
     versionSlug: "v1",
     active: true,
-    name: PLANS[id].name,
+    name: variant?.name ?? PLANS[id].name,
     group: "selestial",
-    price: { amount: PLANS[id].monthlyCents / 100, interval: "month" },
+    price: { amount: (variant?.monthlyCents ?? PLANS[id].monthlyCents) / 100, interval: "month" },
     items: [
       // Included monthly credits, reset each billing period, no rollover.
       { featureId: credits.featureId, included, reset: { interval: "month" } },
@@ -56,7 +56,16 @@ function subscription(id: PlanId, included: number) {
   });
 }
 
-const plans = [subscription("operate", operateCredits), subscription("expand", expandCredits)];
+/**
+ * The early-user price of Operate (approved November 22, 2026): $199 a month, the same group, credits,
+ * agents and features as Operate, so moving to "operate" after 12 months changes only the price. Selestial
+ * attaches it only to a company holding a place (convex/lib/billing/earlyOffer.ts); it is never shown on a
+ * public pricing table. No trial, here or on any plan.
+ */
+const operateEarly = subscription("operate", operateCredits, { planId: AUTUMN.earlyPlan, name: "Operate (early-user price)", monthlyCents: EARLY_OFFER.monthlyCents });
+
+// Every plan in use stays listed: operate and expand carry existing subscriptions, and push deletes what is missing.
+const plans = [subscription("operate", operateCredits), operateEarly, subscription("expand", expandCredits)];
 if (topUpPrice !== null && topUpUnits !== null) {
   // A prepaid, one-off add-on: it adds credits and nothing else.
   plans.push(plan({ planId: AUTUMN.topUpPlan, versionSlug: "v1", active: true, name: "Credit top-up", addOn: true, items: [{ featureId: credits.featureId, price: { amount: topUpPrice, billingUnits: topUpUnits, interval: "one_off", billingMethod: "prepaid" } }] }));

@@ -5,12 +5,13 @@ import { describe, expect, it } from "vitest";
 
 import { AGENT_PROFILES, DEPARTMENTS as BACKEND_DEPARTMENTS } from "../../../convex/lib/departments";
 import { AGENTS as BACKEND_AGENTS } from "../../../convex/lib/statuses";
-import { AGENT_IDS, AGREEMENT_PAGES, BOOKING_PAGES, AGENTS, CLEANER_PAGES, CLIENT_PAGES, SALES_PAGES, SETUP_PAGES, APP_ROOT, BADGE_KINDS, CHAT_PAGES, SERVICES_PAGES, FINANCE_PAGES, DEFAULT_DEPARTMENT, DEPARTMENT_IDS, DEPARTMENTS, EXISTING_ROUTES, FOOTER_ITEMS, LANDING_PATH, NAV_ITEMS, PERSISTENT_ITEMS, SETTINGS_PAGES, SHARED_ITEMS, SIDEBAR_SECTIONS, type Badge } from "./navigation";
+import { AGENT_IDS, AGREEMENT_PAGES, BOOKING_PAGES, AGENTS, CLEANER_PAGES, CLIENT_PAGES, SALES_PAGES, SETUP_PAGES, APP_ROOT, BADGE_KINDS, CHAT_PAGES, SERVICES_PAGES, FINANCE_PAGES, DEFAULT_DEPARTMENT, DEPARTMENT_IDS, DEPARTMENTS, EXISTING_ROUTES, FOOTER_ITEMS, LANDING_PATH, NAV_ITEMS, PERSISTENT_ITEMS, SETTINGS_PAGES, INTEGRATION_PAGES, SHARED_ITEMS, SIDEBAR_SECTIONS, type Badge } from "./navigation";
 import {
   activeFor,
   agentsIn,
   allDestinations,
   breadcrumbsFor,
+  disclosedTabs,
   hrefFor,
   initialSidebarState,
   linkTo,
@@ -58,8 +59,8 @@ const SPEC: Record<string, Record<string, string[]>> = {
   },
   Operations: {
     Dispatch: ["Dispatch Board", "Schedule", "Offers & Coverage", "Live Jobs", "Action Links", "Playbook"],
-    Quality: ["Completion Review", "Checklists & Photos", "Service Issues", "Re-cleans", "Playbook"],
-    "Customer Care": ["Conversations", "Customer Setup", "Service Requests", "Rescheduling & Cancellations", "Playbook"],
+    Quality: ["Reviews", "Cases", "Corrections", "Standards", "Insights", "Playbook"],
+    "Care": ["Conversations", "Customer Setup", "Service Requests", "Rescheduling & Cancellations", "Playbook"],
   },
   Team: {
     Recruiter: ["Hiring Needs", "Applicants", "Screening", "Interviews", "Offers & Agreements", "Onboarding & Readiness", "Playbook"],
@@ -80,7 +81,8 @@ describe("the navigation definition", () => {
     expect(DEPARTMENTS.map((row) => row.label)).toEqual(Object.keys(SPEC));
     for (const department of DEPARTMENTS) expect(agentsIn(department.id).map((agent) => agent.label)).toEqual(Object.keys(SPEC[department.label]));
     expect(AGENTS).toHaveLength(7);
-    expect(SIDEBAR_SECTIONS).toEqual(["business", "departments", "persistent", "agents", "shared", "footer"]);
+    // The department tabs sit directly above the agents they list; the company-wide shortcuts come first.
+    expect(SIDEBAR_SECTIONS).toEqual(["business", "persistent", "departments", "agents", "shared", "footer"]);
     expect(PERSISTENT_ITEMS.map((item) => item.label)).toEqual(["Home", "Approvals", "Inbox", "Search"]);
     // Chat leads Company (November 16, 2026). Integrations moved into Settings the same day, on the owner's request.
     // Services & Pricing joined Company on November 16, 2026, moved out of Settings at the owner's request.
@@ -185,7 +187,7 @@ describe("what is available today", () => {
       .filter((row) => row.destination.availability.status === "live" || (row.destination.availability.status === "planned" && row.destination.availability.notice))
       .map((row) => row.destination.path);
     for (const pattern of APP_PAGES) {
-      const known = live.includes(pattern) || EXISTING_ROUTES.some((route) => route.pattern === pattern) || SETTINGS_PAGES.some((page) => page.path === pattern) || CHAT_PAGES.some((page) => page.path === pattern) || AGREEMENT_PAGES.some((page) => page.path === pattern) || SERVICES_PAGES.some((page) => page.path === pattern) || FINANCE_PAGES.some((page) => page.path === pattern) || CLEANER_PAGES.some((page) => page.path === pattern) || BOOKING_PAGES.some((page) => page.path === pattern) || CLIENT_PAGES.some((page) => page.path === pattern) || SALES_PAGES.some((page) => page.path === pattern) || SETUP_PAGES.some((page) => page.path === pattern);
+      const known = live.includes(pattern) || EXISTING_ROUTES.some((route) => route.pattern === pattern) || SETTINGS_PAGES.some((page) => page.path === pattern) || CHAT_PAGES.some((page) => page.path === pattern) || AGREEMENT_PAGES.some((page) => page.path === pattern) || SERVICES_PAGES.some((page) => page.path === pattern) || FINANCE_PAGES.some((page) => page.path === pattern) || CLEANER_PAGES.some((page) => page.path === pattern) || BOOKING_PAGES.some((page) => page.path === pattern) || CLIENT_PAGES.some((page) => page.path === pattern) || SALES_PAGES.some((page) => page.path === pattern) || SETUP_PAGES.some((page) => page.path === pattern) || INTEGRATION_PAGES.some((page) => page.path === pattern);
       expect(known, `${pattern} is a page that the navigation does not account for`).toBe(true);
     }
     for (const route of EXISTING_ROUTES) expect(APP_PAGES, route.pattern).toContain(route.pattern);
@@ -215,7 +217,16 @@ describe("what is available today", () => {
       for (const backendAgent of department.agents) expect(AGENTS.find((agent) => agent.backendAgent === backendAgent)?.department, backendAgent).toBe(department.id);
     }
     expect(BACKEND_DEPARTMENTS.flatMap((row) => row.agents).sort()).toEqual([...BACKEND_AGENTS].sort());
-    expect(AGENTS.filter((agent) => agent.workflow === "built").map((agent) => agent.id)).toEqual(["sales", "retention", "dispatch", "recruiter"]);
+    expect(AGENTS.filter((agent) => agent.workflow === "built").map((agent) => agent.id)).toEqual(["sales", "retention", "dispatch", "quality", "recruiter"]);
+    // Beneath an agent that is not released, the sidebar lists only tabs that open a real page, never a row
+    // of links to the same coming-soon page. A released agent lists every tab.
+    for (const agent of AGENTS) {
+      const listed = disclosedTabs(agent);
+      if (agent.workflow === "built") expect(listed, agent.id).toEqual([...agent.tabs]);
+      else for (const tab of listed) expect(hrefFor(tab), `${agent.id}.${tab.id}`).not.toBeNull();
+    }
+    expect(disclosedTabs(AGENTS.find((agent) => agent.id === "marketing")!).map((tab) => tab.id)).toEqual(["content-creative"]);
+    for (const id of ["customer-care"]) expect(disclosedTabs(AGENTS.find((agent) => agent.id === id)!), id).toEqual([]);
     // The plan carries no numbers or states of its own: badges get their values from the record.
     expect(JSON.stringify({ AGENTS, NAV_ITEMS })).not.toMatch(/"count"|"badge"|"status":"(working|active)"/);
   });
@@ -348,7 +359,9 @@ describe("navigation behavior", () => {
     expect(linkTo("reports")).toBe("/app/insights");
     expect(linkTo("finance")).toBe("/app/finance");
     expect(linkTo("dispatch")).toBe("/app/agents/dispatch");
-    expect(linkTo("quality")).toBeNull();
+    expect(linkTo("quality")).toBe("/app/agents/quality");
+    expect(linkTo("quality.cases")).toBe("/app/agents/quality/cases");
+    expect(linkTo("quality.playbook")).toBe("/app/agents/quality/playbook");
     expect(linkTo("nothing")).toBeNull();
   });
 

@@ -106,6 +106,49 @@ describe("Messaging funds", () => {
     expect(left(s)).toBe(0);
   });
 
+  it("counts funds paid for on the payment page once Autumn shows them: no longer waiting, and on the statement", async () => {
+    const s = await billed(0);
+    billing.seed(s.companyId, { cardOnFile: false });
+    const { intentId } = await buy(s, 2_500);
+    const month = new Date(MORNING).toISOString().slice(0, 7);
+    expect((await s.as.query(api.messagingUsage.statement, { companyId: s.companyId, month }))!.totals.added).toBe(0);
+
+    billing.payCheckout(s.companyId);
+    await s.as.mutation(api.billing.refresh, { companyId: s.companyId });
+    await settle(s.t);
+    expect(await topUps(s)).toEqual([expect.objectContaining({ status: "paid", amount: 250_000, invoiceUrl: "https://invoice.stripe.test/msg" })]);
+    expect(await s.as.query(api.billing.intent, { companyId: s.companyId, intentId })).toMatchObject({ stage: "done" });
+    expect(left(s)).toBe(250_000);
+    const statement = (await s.as.query(api.messagingUsage.statement, { companyId: s.companyId, month }))!;
+    expect(statement.totals.added).toBe(250_000);
+    expect(statement.funds).toEqual([expect.objectContaining({ description: "Messaging funds added", amount: 250_000 })]);
+    // Reading Autumn again never counts the same payment twice.
+    await s.t.action(internal.billing.syncCompany, { companyId: s.companyId });
+    await settle(s.t);
+    expect(await topUps(s)).toHaveLength(1);
+  });
+
+  it("charges once and records the top-up when the purchase went through and its answer was lost", async () => {
+    const s = await billed(0);
+    billing.state.loseAnswer.push("/v1/billing.attach");
+    const { intentId } = await buy(s, 2_500);
+    const attaches = billing.state.calls.filter((call) => call.path === "/v1/billing.attach");
+    expect(attaches.map((call) => call.key)).toEqual([`intent:${intentId}`, `intent:${intentId}`]);
+    expect(left(s)).toBe(250_000);
+    expect(await topUps(s)).toEqual([expect.objectContaining({ status: "paid", amount: 250_000 })]);
+  });
+
+  it("says a top-up could not be confirmed, not that nothing was charged, when billing never answered", async () => {
+    const s = await billed(0);
+    billing.state.outage = "server";
+    billing.state.outageOps = ["/v1/billing.attach"];
+    await buy(s, 2_500);
+    const [row] = await topUps(s);
+    expect(row).toMatchObject({ status: "failed" });
+    expect(row.problem).toMatch(/couldn’t confirm whether this went through/);
+    expect(row.problem).not.toMatch(/nothing was charged/i);
+  });
+
   it("turns on automatic top-up only with the Owner's authorization of the exact amounts", async () => {
     const s = await billed(0);
     const amounts = { thresholdCents: 500, amountCents: 2_500, monthlyMaxCents: 10_000 };
@@ -121,6 +164,41 @@ describe("Messaging funds", () => {
     await s.as.mutation(api.messagingFunds.setAutoTopUp, { companyId: s.companyId, enabled: false, ...amounts });
     await settle(s.t);
     expect(billing.state.billingControls.get(`company_${s.companyId}`)).toMatchObject({ auto_topups: [expect.objectContaining({ enabled: false })] });
+    expect((await account(s)).messagingControls!.autoTopUp).toMatchObject({ enabled: false });
+  });
+
+  it("shows automatic top-up as off only once Autumn confirmed it, retrying and telling the Owner when it could not", async () => {
+    const s = await billed(0);
+    const amounts = { thresholdCents: 500, amountCents: 2_500, monthlyMaxCents: 10_000 };
+    const wording = autoTopUpWording({ threshold: 50_000, amount: 250_000, monthlyMax: 1_000_000 });
+    const autumn = () => billing.state.billingControls.get(`company_${s.companyId}`) as { auto_topups: { enabled: boolean }[] };
+    const setting = async () => (await account(s)).messagingControls!.autoTopUp;
+    const view = async () => (await s.as.query(api.messagingUsage.overview, { companyId: s.companyId })).controls!.autoTopUp;
+    await s.as.mutation(api.messagingFunds.setAutoTopUp, { companyId: s.companyId, enabled: true, ...amounts, wording });
+    await settle(s.t);
+
+    // Asked to turn off: still on, and shown as on, until Autumn has answered.
+    billing.state.failOnce.push("/v1/customers.update");
+    await s.as.mutation(api.messagingFunds.setAutoTopUp, { companyId: s.companyId, enabled: false, ...amounts });
+    expect(await setting()).toMatchObject({ enabled: true, wording });
+    expect(await view()).toMatchObject({ enabled: true, turningOff: true });
+    // The first try fails; the Owner is told it is still on, and the retry turns it off.
+    await settle(s.t);
+    expect((await account(s)).notices.map((row) => row.text).join(" ")).toMatch(/could not be turned off yet.*still on/);
+    expect(autumn().auto_topups[0].enabled).toBe(false);
+    expect(await view()).toMatchObject({ enabled: false, turningOff: false });
+
+    // Autumn stays unreachable: it is never shown as off, and the Owner is asked to do it again.
+    await s.as.mutation(api.messagingFunds.setAutoTopUp, { companyId: s.companyId, enabled: true, ...amounts, wording });
+    await settle(s.t);
+    billing.state.outage = "server";
+    billing.state.outageOps = ["/v1/customers.update"];
+    await s.as.mutation(api.messagingFunds.setAutoTopUp, { companyId: s.companyId, enabled: false, ...amounts });
+    await settle(s.t);
+    expect(billing.state.calls.filter((call) => call.path === "/v1/customers.update")).toHaveLength(4 + 5);
+    expect(autumn().auto_topups[0].enabled).toBe(true);
+    expect(await view()).toMatchObject({ enabled: true, turningOff: false });
+    expect((await account(s)).notices[0]?.text).toMatch(/still on: billing did not confirm turning it off/);
   });
 
   it("records each automatic top-up once by its invoice, and tells the Owner about a declined one", async () => {

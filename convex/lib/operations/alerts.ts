@@ -7,6 +7,7 @@
  */
 import { emailLayout, emailText, escapeHtml } from "../email/layout";
 import { emailProvider } from "../email/provider";
+import { NOT_SENT_ON_TEST } from "../environment";
 
 export type AlertLine = {
   reason: "critical" | "needs_staff" | "recovery_exhausted" | "owner_asked";
@@ -20,10 +21,33 @@ export type AlertLine = {
 export type AlertBatch = { key: string; lines: AlertLine[]; consoleUrl: string | null };
 export type Recipient = { email: string; name: string };
 
+/**
+ * What a channel did with a batch. `reached` counts the people the provider accepted a message for; an
+ * alert is only "sent" when that is at least one. `retry` means trying the same batch again may help.
+ * `problem` is a reason code for staff (never an address, a key or a provider's own words).
+ */
+export type AlertProblem = "no_recipients" | "not_configured" | "provider_refused" | "provider_unavailable" | "not_production";
+export type AlertOutcome = { reached: number; retry: boolean; problem: AlertProblem | null };
+
 export interface AlertChannel {
   name: string;
-  /** Sends the batch to these people. True when it went (or there was nobody to send to). */
-  send(batch: AlertBatch, recipients: Recipient[]): Promise<boolean>;
+  /** Sends the batch to these people and says how many it reached. */
+  send(batch: AlertBatch, recipients: Recipient[]): Promise<AlertOutcome>;
+}
+
+export const ALERT_PROBLEM_WORDS: Record<AlertProblem, string> = {
+  no_recipients: "No active admin or support staff member is set up to receive alerts.",
+  not_configured: "No email service is set up on this backend.",
+  provider_refused: "The email service refused every alert. Its key or sending domain needs checking.",
+  provider_unavailable: "The email service is not answering. The same alerts are tried again every five minutes.",
+  not_production: "This is not the production backend, and no staff address is on its TEST_RECIPIENTS list.",
+};
+
+/** One outcome for all channels: delivered if any channel reached someone. */
+export function combineOutcomes(outcomes: AlertOutcome[]): AlertOutcome {
+  const reached = outcomes.reduce((sum, row) => sum + row.reached, 0);
+  const retry = outcomes.some((row) => row.retry);
+  return { reached, retry, problem: reached > 0 ? null : (outcomes.find((row) => row.problem)?.problem ?? "not_configured") };
 }
 
 const REASON_WORDS: Record<AlertLine["reason"], string> = {
@@ -52,19 +76,26 @@ export const emailChannel: AlertChannel = {
   name: "email",
   async send(batch, recipients) {
     const provider = emailProvider();
-    if (!provider) return false;
+    if (!provider) return { reached: 0, retry: false, problem: "not_configured" };
+    if (recipients.length === 0) return { reached: 0, retry: false, problem: "no_recipients" };
     const message = alertEmail(batch);
-    let ok = true;
+    let reached = 0;
+    let retry = false;
+    let blocked = 0;
     for (const person of recipients) {
       try {
         // One key per batch and person, so a retry of the same batch never sends twice.
         const result = await provider.send({ to: person.email, ...message, idempotencyKey: `staff-alerts-${batch.key}-${person.email}` });
-        if (!result.ok && result.retryable) ok = false;
+        if (result.ok) reached += 1;
+        else if (result.retryable) retry = true;
+        else if (result.problem === NOT_SENT_ON_TEST) blocked += 1;
       } catch {
-        ok = false;
+        retry = true;
       }
     }
-    return ok;
+    // A refusal (a revoked key, an unverified domain) reaches nobody: it is never counted as sent.
+    const problem: AlertProblem | null = reached > 0 ? null : retry ? "provider_unavailable" : blocked === recipients.length ? "not_production" : "provider_refused";
+    return { reached, retry, problem };
   },
 };
 

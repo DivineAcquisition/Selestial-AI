@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { addMember, company, NOW, readyCleaner, refusal, start, withLinkSecret, type T } from "../tests/harness";
 import { homeSpec, publish } from "../tests/salesHarness";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { linkToken } from "./lib/sales/links";
 import { blankSpec, type Spec } from "./lib/services/spec";
@@ -220,6 +220,137 @@ describe("proposals", () => {
       const job = await t.run((ctx) => ctx.db.get(jobId));
       expect(job?.priceCents).toBe(9500);
       expect(job?.hardDeadlineAt).toBeDefined();
+    });
+  });
+
+  it("starts service at the option the client accepted, never at the main plan's rate", async () => {
+    await withLinkSecret(async () => {
+      const { t, as, companyId, keys } = await setup();
+      const premium = await publish(as, companyId, officeSpec({ name: "Premium office cleaning", pricing: { method: "per_area", unit: "sq_ft", rateMillicents: 20_000, laborMinutesPer1000: 30, walkthroughAbove: 20_000 } }));
+      const { propertyIds, draftId } = await client(as, companyId, "commercial", [{ line1: "9 Option Way" }]);
+      await saveBody(as, companyId, draftId, {
+        sites: [{ key: "s1", propertyId: propertyIds[0], label: "HQ", serviceKey: keys.office, input: { area: 10_000 }, cadence: { kind: "weekly", weekdays: [2] } }],
+        options: [{ id: "b", label: "Option B", siteServiceKeys: { s1: premium } }],
+        terms: { invoiceFrequency: "per_visit" },
+      });
+      const draft = await as.query(api.sales.draft, { companyId, draftId });
+      const saved = await as.mutation(api.proposals.saveVersion, { companyId, draftId, revision: draft.draft.revision });
+      const sent = await as.mutation(api.proposals.send, { companyId, proposalId: saved.proposalId, version: saved.version });
+      const token = sent.url!.split("/c/proposal/")[1]!;
+      const page = (await t.query(api.proposals.publicView, { token }))!;
+      expect(page.content.sites[0]!.priceCents).toBe(100_000);
+      expect(page.content.options[0]!.sites[0]).toEqual({ key: "s1", serviceName: "Premium office cleaning", priceCents: 200_000 });
+      await t.mutation(api.proposals.respond, { token, version: page.version, hash: page.hash, kind: "accept", optionId: "b", name: "Jo Park", authorized: true });
+      const setupId = (await as.query(api.proposals.get, { companyId, proposalId: saved.proposalId })).proposal.setupId!;
+
+      // The setup and the agreement show what was accepted.
+      let view = await as.query(api.proposals.setup, { companyId, setupId });
+      expect(view.acceptedOption).toBe("Option B");
+      expect(view.sites[0]).toMatchObject({ priceCents: 200_000, serviceName: "Premium office cleaning" });
+      const agreementId = await as.mutation(api.proposals.prepareAgreement, { companyId, setupId });
+      const agreement = await t.run((ctx) => ctx.db.get(agreementId));
+      expect(JSON.stringify(agreement)).toMatch(/Premium office cleaning/);
+      expect(JSON.stringify(agreement)).not.toMatch(/100000/);
+      await t.run((ctx) => ctx.db.patch(agreementId, { workflow: "signed" }));
+      await as.mutation(api.proposals.markStep, { companyId, setupId, step: "billing", done: true });
+      await as.mutation(api.proposals.markStep, { companyId, setupId, step: "access", siteKey: "s1", done: true });
+
+      // A version saved before options carried their service details can't be resolved: activation stops and says why.
+      const version = await t.run((ctx) => ctx.db.query("proposalVersions").withIndex("by_proposal_version", (q) => q.eq("proposalId", saved.proposalId).eq("version", saved.version)).unique());
+      const content = version!.content as { options: { sites: Record<string, unknown>[] }[] };
+      await t.run((ctx) => ctx.db.patch(version!._id, { content: { ...content, options: content.options.map((o) => ({ ...o, sites: o.sites.map(({ internal: _internal, ...site }) => site) })) } }));
+      expect(await refusal(as.mutation(api.proposals.activateSite, { companyId, setupId, siteKey: "s1", startDate: "2027-03-09", arrivalMinute: 18 * 60 }))).toMatch(/accepted "Option B".*\$2,000/);
+      view = await as.query(api.proposals.setup, { companyId, setupId });
+      expect(view.sites[0]!.ready).toBe(false);
+      expect(await t.run((ctx) => ctx.db.query("recurringPlans").collect())).toHaveLength(0);
+      await t.run((ctx) => ctx.db.patch(version!._id, { content }));
+
+      const planId = await as.mutation(api.proposals.activateSite, { companyId, setupId, siteKey: "s1", startDate: "2027-03-09", arrivalMinute: 18 * 60 });
+      await settle(t);
+      const plan = await as.query(api.plans.get, { companyId, planId });
+      expect(plan.upcoming[0]!.job?.priceCents).toBe(200_000);
+      const job = await t.run((ctx) => ctx.db.query("jobs").first());
+      expect(job?.serviceSnapshot?.name).toBe("Premium office cleaning");
+    });
+  });
+
+  it("bills a monthly plan's visits once, picks up a visit completed late, and sweeps every plan", async () => {
+    await withLinkSecret(async () => {
+      const { t, as, companyId, keys } = await setup();
+      const { propertyIds, draftId } = await client(as, companyId, "office", [{ line1: "1 Main St" }, { line1: "9 Side St" }]);
+      const site = (key: string, i: number) => ({ key, propertyId: propertyIds[i], label: `Floor ${i + 1}`, serviceKey: keys.office, input: { area: 4000 }, cadence: { kind: "weekly", weekdays: [2] } });
+      await saveBody(as, companyId, draftId, { sites: [site("a", 0), site("b", 1)], terms: { invoiceFrequency: "monthly", startTogether: false } });
+      const draft = await as.query(api.sales.draft, { companyId, draftId });
+      const saved = await as.mutation(api.proposals.saveVersion, { companyId, draftId, revision: draft.draft.revision });
+      const sent = await as.mutation(api.proposals.send, { companyId, proposalId: saved.proposalId, version: saved.version });
+      const token = sent.url!.split("/c/proposal/")[1]!;
+      const page = (await t.query(api.proposals.publicView, { token }))!;
+      await t.mutation(api.proposals.respond, { token, version: page.version, hash: page.hash, kind: "accept", name: "Jo", authorized: true });
+      const setupId = (await as.query(api.proposals.get, { companyId, proposalId: saved.proposalId })).proposal.setupId!;
+      const agreementId = await as.mutation(api.proposals.prepareAgreement, { companyId, setupId });
+      await t.run((ctx) => ctx.db.patch(agreementId, { workflow: "signed" }));
+      await as.mutation(api.proposals.markStep, { companyId, setupId, step: "billing", done: true });
+      const planIds: Id<"recurringPlans">[] = [];
+      for (const key of ["a", "b"]) {
+        await as.mutation(api.proposals.markStep, { companyId, setupId, step: "access", siteKey: key, done: true });
+        planIds.push(await as.mutation(api.proposals.activateSite, { companyId, setupId, siteKey: key, startDate: "2027-03-08", arrivalMinute: 19 * 60 }));
+      }
+      await settle(t);
+      const planId = planIds[0]!;
+      const visits = await t.run((ctx) => ctx.db.query("planVisits").withIndex("by_plan_date", (q) => q.eq("planId", planId)).collect());
+      const march = visits.filter((v) => v.date.startsWith("2027-03")).sort((x, y) => x.date.localeCompare(y.date));
+      expect(march.map((v) => v.date)).toEqual(["2027-03-09", "2027-03-16", "2027-03-23", "2027-03-30"]);
+      const complete = (i: number) => t.run((ctx) => ctx.db.patch(march[i]!.jobId!, { status: "completed" }));
+      const invoices = () => t.run(async (ctx) => (await ctx.db.query("invoices").collect()).filter((invoice) => invoice.monthly?.planId === planId));
+      await complete(0);
+      await complete(1);
+
+      // April: one sweep reaches both plans, a page at a time.
+      vi.setSystemTime(Date.UTC(2027, 3, 2, 12, 0));
+      expect(await t.mutation(internal.plans.sweep, { pageSize: 1 })).toEqual({ plans: 1, more: true });
+      await settle(t);
+      const plans = await t.run((ctx) => Promise.all(planIds.map((id) => ctx.db.get(id))));
+      expect(plans.map((plan) => plan!.billedThrough)).toEqual(["2027-03", "2027-03"]);
+      let drafts = await invoices();
+      expect(drafts).toHaveLength(1);
+      expect(drafts[0]).toMatchObject({ status: "draft", monthly: { planId, month: "2027-03" } });
+      expect(drafts[0]!.lines).toHaveLength(2);
+      expect(drafts[0]!.coveredJobIds).toEqual([march[0]!.jobId, march[1]!.jobId]);
+
+      // A visit on the monthly invoice is not offered again, and asking for its invoice opens the monthly one.
+      const overview = await as.query(api.finance.overview, { companyId, period: "this_month" });
+      expect(overview.findings.find((f) => f.id === "uninvoiced")).toBeUndefined();
+      expect(await as.mutation(api.finance.createInvoice, { companyId, jobId: march[0]!.jobId! })).toEqual({ invoiceId: drafts[0]!._id, existing: true });
+
+      // Marked complete after the month was drafted: it joins the draft, and a second sweep adds nothing twice.
+      await complete(2);
+      await t.mutation(internal.plans.sweep, {});
+      await settle(t);
+      await t.mutation(internal.plans.sweep, {});
+      await settle(t);
+      drafts = await invoices();
+      expect(drafts).toHaveLength(1);
+      expect(drafts[0]!.lines).toHaveLength(3);
+      expect(drafts[0]!.revision).toBe(1);
+      expect(drafts[0]!.totals.totalCents).toBe(3 * 40_000);
+
+      // Once the month's invoice is issued, a still-later visit gets a draft of its own for the same month.
+      await as.mutation(api.finance.issueInvoice, { companyId, invoiceId: drafts[0]!._id, revision: 1, dueDate: null });
+      await complete(3);
+      await t.mutation(internal.plans.sweep, {});
+      await settle(t);
+      drafts = await invoices();
+      expect(drafts.map((invoice) => [invoice.status, invoice.lines.length])).toEqual([["open", 3], ["draft", 1]]);
+      expect(drafts[1]!.coveredJobIds).toEqual([march[3]!.jobId]);
+
+      // A draft the Owner discards is not made again; its visit shows as not invoiced instead.
+      const preview = await as.query(api.finance.voidPreview, { companyId, invoiceId: drafts[1]!._id });
+      await as.mutation(api.finance.voidInvoice, { companyId, invoiceId: drafts[1]!._id, reason: "Billing this one by hand", bindsTo: preview.bindsTo });
+      await t.mutation(internal.plans.sweep, {});
+      await settle(t);
+      expect(await invoices()).toHaveLength(2);
+      const after = await as.query(api.finance.overview, { companyId, period: "this_month" });
+      expect(after.findings.find((f) => f.id === "uninvoiced")?.records).toHaveLength(1);
     });
   });
 

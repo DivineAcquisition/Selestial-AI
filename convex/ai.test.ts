@@ -144,8 +144,12 @@ describe("the AI layer", () => {
       expect(await refusal(as.mutation(api.aiAdmin.setCapability, { capability: "chat", enabled: true, evaluation: "approved" }))).toBe(NOT_FOUND);
     });
 
-    it("does not run Quality's photo review while Quality is unreleased, on any plan", async () => {
+    it("does not run Quality's photo review on a plan that does not include Quality", async () => {
       const { t, as, companyId } = await setup();
+      // Quality is released, and is part of Expand only. On Operate its tools are not offered.
+      const { billing } = await import("../tests/setupBilling");
+      billing.seed(companyId, { plan: "operate", grant: 1000 });
+      await t.action(internal.billing.syncCompany, { companyId });
       const visit = await visitWithPhotos(t, as, companyId);
       process.env.ANTHROPIC_API_KEY = "test";
       mockChat.script = [{ toolCalls: [{ name: "review_visit_photos", input: { jobId: visit.jobId } }] }, { text: "Photo review is not available yet." }];

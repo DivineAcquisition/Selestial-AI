@@ -11,13 +11,19 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { owned } from "./lib/access";
 import { companyMutation, companyQuery, managerMutation, type MemberAccess } from "./lib/builders";
 import { coverageOf, requiredCrew, staffing, type Coverage } from "./lib/dispatch/crew";
+import { issueLink } from "./lib/dispatch/links";
 import { reviewKey } from "./lib/dispatch/live";
+import { dispatchPolicy } from "./lib/dispatch/policy";
+import { returnedSms } from "./lib/dispatch/sms";
+import { queueMessage } from "./lib/messaging/outbox";
 import { commitMove, planMove } from "./lib/dispatch/reschedule";
 import { coverJob } from "./lib/dispatch/workflow";
 import { userError } from "./lib/errors";
 import { cancelVisit, createVisit, createVisitArgs } from "./lib/jobs/visits";
 import { byMember, recordEvent } from "./lib/events";
 import { enqueueRun } from "./lib/retention/runs";
+import { copyVisitPhotos } from "./googleDrive";
+import { onReturned } from "./lib/quality/workflow";
 import { businessSettingsOf, checkArea, checkHours } from "./lib/settings/business";
 import { ACTIVE_ASSIGNMENT, assertChange, JOB_CHANGES, jobStatusValidator, type JobStatus } from "./lib/statuses";
 import { liveTaskByKey, setTaskState } from "./lib/taskState";
@@ -209,6 +215,8 @@ async function change(ctx: MutationCtx & MemberAccess, job: Doc<"jobs">, to: Job
   await recordEvent(ctx, { companyId: ctx.companyId, type: `job.${to}`, actor: byMember(ctx), subject: { table: "jobs", id: job._id }, data: { from: job.status, ...data } });
   // A completed visit is Retention's to follow through: a first service, a correction, or the service after one.
   if (to === "completed") await enqueueRun(ctx, { companyId: ctx.companyId, kind: "service_completed", key: `completed:${job._id}`, jobId: job._id });
+  // Its photos are final now: they go to the Owner's Drive photos folder, when one is chosen.
+  if (to === "completed") await copyVisitPhotos(ctx, job);
 }
 
 /** A job starts only with an accepted cleaner. Scheduled alone never meant covered. */
@@ -246,12 +254,23 @@ export const reviewCompletion = managerMutation({
     const now = Date.now();
     if (args.decision === "return") {
       if (!note || note.length < 3) throw userError("Say what needs correcting, so the crew knows.");
+      const returns = (job.completionReturns ?? 0) + 1;
+      // The crew has to be able to act on this: each cleaner who reported gets a text with a job link that is good
+      // for a day from now (their first link may already have run out), and the page shows the note. The first link
+      // keeps working until its own end, so a page the cleaner still has open is not cut off.
+      const expiresAt = Math.max(job.endsAt + dispatchPolicy(ctx.company).jobAccessGraceHours * 60 * 60 * 1000, now + 24 * 60 * 60 * 1000);
       for (const row of await assignmentsOf(ctx, job)) {
-        if (row.status === "accepted" && row.completion) await ctx.db.patch(row._id, { completion: undefined });
+        if (row.status !== "accepted" || !row.completion) continue;
+        await ctx.db.patch(row._id, { completion: undefined });
+        const cleaner = await ctx.db.get(row.cleanerId);
+        if (!cleaner) continue;
+        const link = await issueLink(ctx, { assignment: row, purpose: "job", expiresAt, actor: byMember(ctx) });
+        if (link) await queueMessage(ctx, { companyId: ctx.companyId, purpose: "assignment_confirmed", cleaner, jobId: job._id, assignmentId: row._id, link, body: returnedSms({ company: ctx.company }), dedupeKey: `returned:${row._id}:${returns}`, actor: byMember(ctx) });
       }
-      await ctx.db.patch(job._id, { completionReportedAt: undefined, completionReturns: (job.completionReturns ?? 0) + 1 });
+      await ctx.db.patch(job._id, { completionReportedAt: undefined, completionReturns: returns, completionReturn: { note, at: now } });
       await recordEvent(ctx, { companyId: ctx.companyId, type: "job.completion_returned", actor: byMember(ctx), subject: { table: "jobs", id: job._id }, data: { note } });
       await settleReview(ctx, job, `Sent back for correction: ${note}`);
+      await onReturned(ctx, (await ctx.db.get(job._id))!);
       return { status: "returned" as const };
     }
     const undecided = (

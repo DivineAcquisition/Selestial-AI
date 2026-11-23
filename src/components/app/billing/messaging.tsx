@@ -160,7 +160,7 @@ function BalanceHero({ data, onIntent }: { data: Live; onIntent: (id: Id<"billin
           <div className={cn("h-full rounded-full", share >= 1 ? "bg-destructive" : share >= 0.8 ? "bg-warning" : "bg-brand-500")} style={{ width: `${share * 100}%` }} />
         </div>
       ) : null}
-      {!data.hasPlan ? <p className="mt-3 text-sm text-muted-foreground">Adding messaging funds needs an active Operate or Expand plan.</p> : null}
+      {!data.hasPlan ? <p className="mt-3 text-sm text-muted-foreground">Adding messaging funds needs an active plan.</p> : null}
       <FormError message={error} />
     </HeroCard>
   );
@@ -272,10 +272,15 @@ function AutoTopUp({ data }: { data: Live }) {
             <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
               Change amounts
             </Button>
-            <Button size="sm" variant="ghost" loading={busy} onClick={() => void run(() => save({ ...args, thresholdCents: Number(dollars(current.threshold)) * 100, amountCents: Number(dollars(current.amount)) * 100, monthlyMaxCents: Number(dollars(current.monthlyMax)) * 100, enabled: false }))}>
+            <Button size="sm" variant="ghost" loading={busy || current.turningOff} disabled={current.turningOff} onClick={() => void run(() => save({ ...args, thresholdCents: Number(dollars(current.threshold)) * 100, amountCents: Number(dollars(current.amount)) * 100, monthlyMaxCents: Number(dollars(current.monthlyMax)) * 100, enabled: false }))}>
               Turn off
             </Button>
           </div>
+          {current.turningOff ? (
+            <p role="status" className="text-xs text-muted-foreground">
+              Turning off. It stays on until billing confirms, so your card can still be charged for a moment. This updates by itself.
+            </p>
+          ) : null}
         </div>
       ) : (
         <form
@@ -338,7 +343,7 @@ function ThisMonth({ data }: { data: Live }) {
   const top = Math.max(1, ...data.month.byAgent.map((row) => row.amount));
   return (
     <Panel title={`This month, since ${day(data.month.from)}`}>
-      <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
+      <div className="grid gap-6 @4xl/main:grid-cols-[3fr_2fr]">
         <div>
           <table className="w-full text-sm">
             <thead className="text-left text-xs text-muted-foreground">

@@ -11,21 +11,38 @@ const REVIEWS = "https://mybusiness.googleapis.com/v4";
 const NOTIFY = "https://mybusinessnotifications.googleapis.com/v1";
 
 export type Account = { name: string; accountName?: string; type?: string };
-export type Location = { name: string; title?: string; storefrontAddress?: { addressLines?: string[]; locality?: string; administrativeArea?: string; postalCode?: string } };
+export type Location = { name: string; title?: string; storefrontAddress?: { addressLines?: string[]; locality?: string; administrativeArea?: string; postalCode?: string }; metadata?: { placeId?: string; newReviewUri?: string } };
 export type Review = { name: string; reviewId?: string; reviewer?: { displayName?: string; isAnonymous?: boolean }; starRating?: string; comment?: string; createTime?: string; updateTime?: string; reviewReply?: { comment?: string; updateTime?: string } };
 
 const STARS: Record<string, number> = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 };
 export const starsOf = (rating?: string) => STARS[rating ?? ""] ?? 0;
 
-export async function accounts(token: string, fetcher?: Fetch): Promise<Account[]> {
-  const body = await googleCall<{ accounts?: Account[] }>(`${ACCOUNTS}/accounts?pageSize=20`, token, { fetcher });
-  return body.accounts ?? [];
+/** How many pages of accounts or locations are read at most: enough for any one business, bounded for a runaway answer. */
+const MAX_PAGES = 10;
+
+/** Every page of a list Google pages with nextPageToken. */
+async function allPages<T>(url: (pageToken?: string) => string, token: string, pick: (body: Record<string, unknown>) => T[] | undefined, fetcher?: Fetch): Promise<T[]> {
+  const out: T[] = [];
+  let pageToken: string | undefined;
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const body = await googleCall<Record<string, unknown> & { nextPageToken?: string }>(url(pageToken), token, { fetcher });
+    out.push(...(pick(body) ?? []));
+    if (!body.nextPageToken) break;
+    pageToken = body.nextPageToken;
+  }
+  return out;
 }
 
+const pageParam = (pageToken?: string) => (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : "");
+
+export async function accounts(token: string, fetcher?: Fetch): Promise<Account[]> {
+  return allPages((pageToken) => `${ACCOUNTS}/accounts?pageSize=20${pageParam(pageToken)}`, token, (body) => body.accounts as Account[] | undefined, fetcher);
+}
+
+/** A location's own review link (metadata.newReviewUri) comes with it: the page where a customer leaves a Google review. */
 export async function locations(token: string, account: string, fetcher?: Fetch): Promise<Location[]> {
   if (!/^accounts\/\d+$/.test(account)) throw new GoogleError("invalid", "That is not a Business Profile account.");
-  const body = await googleCall<{ locations?: Location[] }>(`${INFO}/${account}/locations?readMask=name,title,storefrontAddress&pageSize=100`, token, { fetcher });
-  return body.locations ?? [];
+  return allPages((pageToken) => `${INFO}/${account}/locations?readMask=name,title,storefrontAddress,metadata&pageSize=100${pageParam(pageToken)}`, token, (body) => body.locations as Location[] | undefined, fetcher);
 }
 
 /** "accounts/1/locations/2": the form the review endpoints use. */

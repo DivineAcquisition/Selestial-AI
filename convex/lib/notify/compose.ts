@@ -16,6 +16,7 @@ import { appOrigin } from "../invitations";
 import { quietUntil } from "../messaging/policy";
 import { roleOf } from "../roles";
 import { lockDeadlines } from "../billing/lock";
+import { EARLY_OFFER, PLANS } from "../billing/catalog";
 import { CATEGORY_INFO, EVENT_INFO, NIGHT, type NoticeFacts } from "./catalog";
 import { emailOn, noticeSuppression, preferencesOf, SUPPRESSION_WORDS } from "./preferences";
 import { unsubscribable } from "./route";
@@ -169,6 +170,17 @@ async function agentActed(ctx: MutationCtx, company: Doc<"companies">, facts: No
     about.push({ label: "Customer", value: customer?.name ?? null }, { label: "Case", value: careCase.title });
     path ??= casePath(careCase);
   }
+  const applicationId = str(facts, "applicationId") ? ctx.db.normalizeId("applications", str(facts, "applicationId")!) : null;
+  const application = applicationId ? await ctx.db.get(applicationId) : null;
+  if (application && application.companyId === company._id) {
+    const applicant = await ctx.db.get(application.applicantId);
+    about.push({ label: "Applicant", value: applicant?.name ?? null });
+    path ??= `/app/agents/recruiter/applicants?open=${application._id}`;
+  }
+  // How far it got, so the email never claims more than happened (convex/lib/controls/report.ts).
+  const STAGE: Record<string, string> = { prepared: "Prepared, not sent", queued: "Queued to send; it is checked again before it goes", submitted: "Accepted by the provider", delivered: "Delivered", completed: "Done" };
+  const stage = str(facts, "stage");
+  if (stage && STAGE[stage]) about.push({ label: "Where it stands", value: STAGE[stage] });
   return agentActedEmail({ ...c, agent, did, at: num(facts, "at") ?? at, about, path });
 }
 
@@ -177,6 +189,46 @@ const CASE_PAGE = { follow_through: "needs-attention", recovery: "recovery", con
 function casePath(row: Doc<"retentionCases">): string {
   const page = row.status === "needs_attention" || row.status === "needs_context" ? "needs-attention" : CASE_PAGE[row.kind];
   return `/app/agents/retention/${page}?case=${encodeURIComponent(row._id)}`;
+}
+
+/**
+ * A quality case that needs a person. Read now: a case someone already took, decided or closed sends nothing.
+ * Nobody's words go in the email, and a serious case says only that one exists.
+ */
+async function qualityCase(ctx: MutationCtx, company: Doc<"companies">, event: "quality_serious" | "quality_attention", ref: string | undefined, facts: NoticeFacts | undefined, c: Context): Promise<Built> {
+  const id = ref ? ctx.db.normalizeId("qualityCases", ref) : null;
+  const row = id ? await ctx.db.get(id) : null;
+  if (!row || row.companyId !== company._id) return { problem: "The case no longer exists." };
+  if (row.stage === "closed") return { problem: "The case was closed before this notice went." };
+  const path = `/app/agents/quality/cases?case=${encodeURIComponent(row._id)}`;
+  if (event === "quality_serious") {
+    if (!row.serious || row.serious.decision) return { problem: "The serious concern was already decided before this notice went." };
+    return alertEmail({
+      ...c,
+      eyebrow: "Quality",
+      subject: "A possible serious concern needs your decision",
+      heading: "A serious concern needs the Owner",
+      body: "A visit's record, a report or a conversation shows a possible safety, damage, theft, injury or conduct concern. Quality has restricted the case to you and preserved the visit's evidence. It has admitted nothing, accused nobody and contacted no one.",
+      tone: "danger",
+      note: "Open the case to read what was reported and decide what happens next. Nothing about anyone's work or pay has changed.",
+      facts: [{ label: "Case", value: "Restricted" }],
+      button: { label: "Open the case", path },
+      because: "urgent operations alerts are on",
+    });
+  }
+  if (row.heldBy) return { problem: "A person took the case before this notice went." };
+  const kind = str(facts, "kind");
+  return alertEmail({
+    ...c,
+    eyebrow: "Quality",
+    subject: kind === "verification" ? "A correction did not meet its acceptance criteria" : "A quality case needs your decision",
+    heading: kind === "verification" ? "A correction was not verified" : "A quality case needs a decision",
+    body: row.restricted ? "A restricted quality case needs a decision." : `"${row.title}": ${row.needs ?? row.doing}`,
+    tone: "warning",
+    facts: row.restricted ? [] : [{ label: "Where it stands", value: row.doing }],
+    button: { label: "Open the case", path },
+    because: "urgent operations alerts are on",
+  });
 }
 
 /**
@@ -254,6 +306,22 @@ async function retentionCase(ctx: MutationCtx, company: Doc<"companies">, event:
     button,
     because: "urgent operations alerts are on",
   });
+}
+
+/** Written from the connection as it is when the notice goes: a problem already fixed sends nothing. */
+async function quoAttention(ctx: MutationCtx, company: Doc<"companies">, ref: string | undefined, facts: NoticeFacts | undefined, c: Context): Promise<Built> {
+  const id = ref ? ctx.db.normalizeId("quoConnections", ref) : null;
+  const connection = id ? await ctx.db.get(id) : null;
+  if (!connection || connection.companyId !== company._id) return { problem: "The Quo connection no longer exists." };
+  const kind = str(facts, "kind");
+  const base = { ...c, eyebrow: "Quo", essential: true, because: "you're the Owner, and the Quo connection is part of your account" };
+  const button = { label: "Open the Quo connection", path: "/app/settings/integrations/quo" };
+  if (kind === "disconnected") {
+    if (connection.status !== "disconnected") return { problem: "Quo was connected again." };
+    return alertEmail({ ...base, tone: "warning", subject: "Quo was disconnected from Selestial", heading: "Quo was disconnected", body: "Nothing is sent through your Quo numbers now. Conversations and history are kept, and texts that were waiting won't be sent later. Connect again whenever you're ready.", button });
+  }
+  if (!connection.problem || connection.status === "ready") return { problem: "The Quo problem was already fixed." };
+  return alertEmail({ ...base, tone: "warning", subject: "Quo needs your attention", heading: "Texts through Quo are waiting", body: `${connection.problem.words} Texts through your Quo numbers wait until it's fixed; nothing is sent through another number instead.`, button });
 }
 
 /** Written only while it is still true: the worker is active and their onboarding was approved. */
@@ -413,6 +481,8 @@ async function build(ctx: MutationCtx, message: Doc<"messages">, company: Doc<"c
       return customerPaymentFailed(ctx, notice.ref, c);
     case "worker_ready":
       return workerReady(ctx, company, notice.ref, c);
+    case "quo_attention":
+      return quoAttention(ctx, company, notice.ref, facts, c);
     case "inbox_reconnect":
       return inboxReconnect(ctx, notice.ref, facts, c);
     case "dispatch_escalation":
@@ -421,9 +491,14 @@ async function build(ctx: MutationCtx, message: Doc<"messages">, company: Doc<"c
     case "retention_attention":
     case "retention_outcome":
       return retentionCase(ctx, company, notice.event, notice.ref, facts, c);
+    case "quality_serious":
+    case "quality_attention":
+      return qualityCase(ctx, company, notice.event, notice.ref, facts, c);
     case "texting_progress":
     case "texting_attention":
       return textingNotice(ctx, company, notice.ref, facts, c);
+    case "plan_price_change":
+      return planPriceChange(ctx, company, notice.ref, c);
     case "plan_access":
       return planAccess(ctx, company, notice.ref, facts, c);
     case "activation_result":
@@ -446,6 +521,31 @@ async function build(ctx: MutationCtx, message: Doc<"messages">, company: Doc<"c
         button: { label: str(facts, "actionLabel") ?? "Open Selestial", path: str(facts, "actionPath") ?? "/app" },
         essential: true,
         because: "Selestial tells the Owner when something stops working and needs them, once per problem.",
+      });
+    }
+    case "migration_complete": {
+      const id = notice.ref ? ctx.db.normalizeId("migrations", notice.ref) : null;
+      const migration = id ? await ctx.db.get(id) : null;
+      if (!migration || migration.companyId !== company._id) return { problem: "The migration no longer exists." };
+      const failed = num(facts, "failed") ?? 0;
+      const attention = Object.values(migration.summary ?? {}).reduce((n, s) => n + (s.awaiting ?? 0) + (s.error ?? 0), 0) + failed;
+      return alertEmail({
+        ...c,
+        eyebrow: "Your migration",
+        subject: attention ? "Your import is ready to review" : "Your import is in: everything is accounted for",
+        heading: "Your import is ready to review",
+        body: attention ? "Customers, properties and upcoming work have been imported. Some records need attention before your agents can use them." : "Everything in your files was imported, matched to a record you already had, or skipped by your choice.",
+        tone: attention ? "warning" : "info",
+        note: "Nothing has been sent to customers or cleaners. Imported visits, recurring services and team members wait until you release them.",
+        facts: [
+          { label: "Created", value: String(num(facts, "created") ?? 0) },
+          { label: "Updated", value: String(num(facts, "updated") ?? 0) },
+          { label: "Matched to existing records", value: String(num(facts, "linked") ?? 0) },
+          { label: "Skipped", value: String(num(facts, "skipped") ?? 0) },
+          { label: "Failed", value: String(failed) },
+          ...(attention ? [{ label: "Need your attention", value: String(attention) }] : []),
+        ],
+        button: { label: "Review your import", path: "/app/migration?step=verify" },
       });
     }
     case "support_summary":
@@ -502,6 +602,21 @@ async function textingNotice(ctx: MutationCtx, company: Doc<"companies">, ref: s
     case "interrupted":
       if (row.status !== "interrupted") return { problem: "Texting is running again." };
       return alertEmail({ ...base, tone: "danger", subject: "Business texting is paused", heading: "The carriers paused your texting", body: "Texts from your number are on hold. Selestial is looking into it with the carriers and will tell you if anything is needed from you. Nothing is sent while it's paused.", button: open("progress", "See what's happening") });
+    case "rejected":
+      if (row.status !== "rejected") return { problem: "The request is no longer turned down." };
+      return alertEmail({ ...base, tone: "warning", subject: "Your texting setup wasn't approved", heading: "Selestial review didn't approve your texting setup", body: `${row.note ? `Selestial review said: "${row.note}" ` : ""}Nothing was filed with the carriers and nothing was charged. Your answers are saved: you can change them and submit again.`, button: open("review", "Review your setup") });
+    case "failed":
+      if (row.status !== "failed") return { problem: "The request is moving again." };
+      return alertEmail({ ...base, tone: "warning", subject: "Your texting setup has stopped for now", heading: "We hit a problem setting up your texting", body: "We hit a problem on our side while setting up business texting and are looking into it. You don't need to do anything right now. Nothing more is charged while it's stopped, and we'll email you when it moves again or if we need something from you.", button: open("progress", "See where it stands") });
+    case "release_requested": {
+      const transfer = str(facts, "needs") === "port_out";
+      if (row.status === "released") return { problem: "The number has already been given up." };
+      return alertEmail({ ...base, tone: "info", subject: transfer ? `We have your request to move ${number}` : `We have your request to release ${number}`, heading: transfer ? "Your request to move your number" : "Your request to release your number", body: transfer ? `Selestial received your request to move ${number} to another provider. Your new provider starts the transfer, which typically takes several business days. Until it completes, the number keeps working here, Selestial won't release it, and its monthly number and registration fees continue.` : `Selestial received your request to release ${number}. A person at Selestial reviews it, typically within 2 business days. Until the release completes, the number keeps working and its monthly number and registration fees continue. You can cancel the request until then. Once released, the number can't be recovered.`, facts: [{ label: "Number", value: number }], button: open("progress", "See the request") });
+    }
+    case "released":
+    case "transfer_completed":
+      if (row.status !== "released") return { problem: "The number is still set up." };
+      return alertEmail({ ...base, tone: "info", subject: kind === "released" ? `${number} has been released` : `${number} has moved to your new provider`, heading: kind === "released" ? "Your texting number was released" : "Your number's transfer is complete", body: kind === "released" ? `${number} is no longer yours on Selestial and can't be recovered. Texts to it won't reach you, its carrier registration has ended, and Selestial sends no more texts for your business. Its monthly number and registration fees have stopped. Setup fees already paid aren't refunded.` : `${number} now belongs to your new provider. Selestial sends no more texts from it, and its monthly number and registration fees here have stopped. Setup fees already paid aren't refunded.`, facts: [{ label: "Number", value: number }], button: open("progress", "Open business texting") });
   }
   return { problem: "This texting notice is out of date." };
 }
@@ -589,6 +704,51 @@ async function planAccess(ctx: MutationCtx, company: Doc<"companies">, ref: stri
       });
   }
   return { problem: "This billing notice is out of date." };
+}
+
+/**
+ * The early-user price is ending (convex/earlyOffer.ts): sent once, about 30 days before. Read again when it
+ * goes: a company that cancelled meanwhile, or whose offer already ended, is not told about a price it won't pay.
+ */
+async function planPriceChange(ctx: MutationCtx, company: Doc<"companies">, ref: string | undefined, c: Context): Promise<Built> {
+  const id = ref ? ctx.db.normalizeId("earlyOffers", ref) : null;
+  const row = id ? await ctx.db.get(id) : null;
+  if (!row || row.companyId !== company._id || row.state !== "claimed" || !row.offerEndsAt) return { problem: "The early-user price is no longer on this plan." };
+  const account = await ctx.db
+    .query("billingAccounts")
+    .withIndex("by_company_env", (q) => q.eq("companyId", company._id).eq("env", row.env))
+    .unique();
+  if (!account?.plan || account.subscription.endsAt !== null) return { problem: "The plan is ending, so its price won't change." };
+  const date = dateOnly(row.offerEndsAt, c.timezone);
+  const full = money(EARLY_OFFER_FULL_CENTS);
+  return alertEmail({
+    ...c,
+    eyebrow: "Billing",
+    tone: "info",
+    essential: true,
+    because: "you're the Owner, and the plan price is part of your account",
+    subject: `Your Selestial price changes to ${full} a month on ${date}`,
+    heading: `Your early-user price ends on ${date}`,
+    body: `Your first 12 months of Operate at ${money(EARLY_OFFER_CENTS)} a month end on ${date}. From that date Operate is ${full} a month, charged on your usual billing day. Nothing else changes: the same agents, features and monthly credits.`,
+    note: "You don't need to do anything. If you'd rather not continue, you can cancel in Plan & Usage before that date and the plan stays active until it.",
+    facts: [
+      { label: "Changes on", value: date },
+      { label: "Price until then", value: `${money(EARLY_OFFER_CENTS)} a month` },
+      { label: "Price from then", value: `${full} a month` },
+    ],
+    button: { label: "Open Plan & Usage", path: "/app/settings/billing" },
+  });
+}
+
+const EARLY_OFFER_CENTS = EARLY_OFFER.monthlyCents;
+const EARLY_OFFER_FULL_CENTS = PLANS[EARLY_OFFER.plan].monthlyCents;
+
+function dateOnly(at: number, timezone: string): string {
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone: timezone, month: "long", day: "numeric", year: "numeric" }).format(new Date(at));
+  } catch {
+    return new Intl.DateTimeFormat("en-US", { timeZone: "UTC", month: "long", day: "numeric", year: "numeric" }).format(new Date(at));
+  }
 }
 
 /** The notice as it should go now, or why it shouldn't. */

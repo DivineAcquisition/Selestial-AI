@@ -14,7 +14,7 @@
  * happen in production.
  */
 
-export const TASK_IDS = ["chat_response_standard", "chat_response_advanced", "hiring_message_reading", "image_generation", "image_edit", "video_generation", "applicant_evaluation", "follow_up_draft", "dispatch_exception_analysis", "retention_assessment", "agreement_draft", "campaign_generation", "research_brief", "sales_message_reading"] as const;
+export const TASK_IDS = ["chat_response_standard", "chat_response_advanced", "hiring_message_reading", "image_generation", "image_edit", "video_generation", "applicant_evaluation", "follow_up_draft", "dispatch_exception_analysis", "retention_assessment", "quality_review", "agreement_draft", "campaign_generation", "research_brief", "sales_message_reading"] as const;
 export type Task = (typeof TASK_IDS)[number];
 
 export const TASKS: Record<Task, { label: string; unit: string; available: boolean }> = {
@@ -66,6 +66,11 @@ export const TASKS: Record<Task, { label: string; unit: string; available: boole
   retention_assessment: {
     label: "Retention assessment",
     unit: "One reading of one customer's own words about a service, for a retention case.",
+    available: true,
+  },
+  quality_review: {
+    label: "Quality reading",
+    unit: "One reading of one quality case's evidence by an AI reader: suggested findings that cite the evidence, and a plain summary. A person reviews every finding.",
     available: true,
   },
   agreement_draft: {
@@ -125,6 +130,7 @@ export const RATE_CARDS: readonly RateCard[] = [
       follow_up_draft: 1,
       dispatch_exception_analysis: 2,
       retention_assessment: 2,
+      quality_review: 3,
       agreement_draft: 5,
       campaign_generation: 20,
       research_brief: 5,
@@ -146,6 +152,7 @@ export const RATE_CARDS: readonly RateCard[] = [
       follow_up_draft: null,
       dispatch_exception_analysis: null,
       retention_assessment: null,
+      quality_review: null,
       agreement_draft: null,
       campaign_generation: null,
       /** Research briefs did not exist when this card was approved. Under this card they have no rate, so they cannot run. */
@@ -175,11 +182,41 @@ export const RATE_CARDS: readonly RateCard[] = [
       follow_up_draft: null,
       dispatch_exception_analysis: null,
       retention_assessment: null,
+      quality_review: null,
       agreement_draft: null,
       campaign_generation: null,
       research_brief: 10,
       /** Not approved on this card either: until a card gives it a rate, the Sales agent reads by rule and charges nothing. */
       sales_message_reading: null,
+    },
+    specs: {
+      image_generation: { sizes: ["1024x1024"], fastAllowed: false, describe: "Standard quality, 1024 × 1024, one image per charge." },
+      image_edit: { sizes: ["1024x1024"], describe: "Standard quality, 1024 × 1024, one edited image per charge." },
+      video_generation: { durations: [6], describe: "One 6-second clip at the standard resolution with the model's default audio. Other lengths have no published price yet." },
+    },
+    startingAt: { video_generation: true },
+  },
+  {
+    version: "2026-11c",
+    fixture: false,
+    note: "The 2026-11b rates unchanged, plus Sales message reading at 1 credit (the same as a hiring email read by AI), approved by the owner on November 22, 2026. Put in force by setting BILLING_RATE_CARD to 2026-11c.",
+    rates: {
+      chat_response_standard: 1,
+      chat_response_advanced: 5,
+      hiring_message_reading: 1,
+      image_generation: 20,
+      image_edit: 15,
+      video_generation: 200,
+      applicant_evaluation: null,
+      follow_up_draft: null,
+      dispatch_exception_analysis: null,
+      retention_assessment: null,
+      quality_review: null,
+      agreement_draft: null,
+      campaign_generation: null,
+      research_brief: 10,
+      /** One customer message read by the AI reader. Messages the rules settle alone, and mail Sales ignores, are not charged. */
+      sales_message_reading: 1,
     },
     specs: {
       image_generation: { sizes: ["1024x1024"], fastAllowed: false, describe: "Standard quality, 1024 × 1024, one image per charge." },

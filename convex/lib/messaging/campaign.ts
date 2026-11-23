@@ -36,7 +36,7 @@ export function campaignFor(row: Doc<"textingRequests">, input: { brandId: strin
     optoutMessage: drafts.stop_reply ?? "",
     helpKeywords: "HELP,INFO",
     optinKeywords: "START,UNSTOP,YES",
-    optoutKeywords: "STOP,STOPALL,UNSUBSCRIBE,CANCEL,END,QUIT",
+    optoutKeywords: "STOP,STOPALL,UNSUBSCRIBE,CANCEL,END,QUIT,REVOKE,OPTOUT",
     subscriberOptin: true,
     subscriberOptout: true,
     subscriberHelp: true,

@@ -332,12 +332,14 @@ export const revokeManage = ownerMutation({
     if (!grant) return null;
     await ctx.db.patch(grant._id, { revokedAt: now, revokedBy: ctx.member._id });
     await recordEvent(ctx, { companyId: ctx.companyId, type: "support.access_revoked", actor: byMember(ctx), subject: { table: "supportGrants", id: grant._id } });
+    // Every session still open, however long ago it started: an extended session is older than two session lengths.
     const sessions = await ctx.db
       .query("supportSessions")
-      .withIndex("by_company_started", (q) => q.eq("companyId", ctx.companyId).gt("startedAt", now - 2 * SESSION_MS))
-      .take(50);
+      .withIndex("by_open_expires", (q) => q.eq("endedAt", undefined))
+      .order("desc")
+      .take(1000);
     for (const row of sessions) {
-      if (row.endedAt === undefined && row.manage?.grantId === grant._id && row.mode === "manage") {
+      if (row.companyId === ctx.companyId && row.manage?.grantId === grant._id && row.mode === "manage") {
         await ctx.db.patch(row._id, { mode: "view" });
         await log(ctx, row, "manage", "back to View: the owner ended Manage access");
       }

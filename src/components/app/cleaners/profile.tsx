@@ -15,6 +15,7 @@ import { canManage, useCompany } from "@/components/app/company";
 import { useDetail } from "@/components/app/detail-panel";
 import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { Modal } from "@/components/app/modal";
+import { QualityOnCleaner } from "@/components/app/screens/quality/context";
 import { useNow } from "@/components/app/use-now";
 import { type LucideIcon, ArrowRight, CalendarIcon, Check, ChevronDown, Clock, Hand, HistoryIcon, Mail, MapPin, MessageSquareText, PenLine, Plus, Sparkles, TriangleAlert, User, Users } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
@@ -524,7 +525,7 @@ function AttentionList({ profile, onSection }: { profile: Profile; onSection?: (
 }
 
 export function OverviewSection({ profile, onSection }: { profile: Profile; onSection?: (section: SectionId) => void }) {
-  const { timezone } = useCompany();
+  const { timezone, role } = useCompany();
   const now = useNow();
   const openJob = useDetail();
   return (
@@ -565,6 +566,11 @@ export function OverviewSection({ profile, onSection }: { profile: Profile; onSe
       </div>
       <div className="grid content-start gap-4">
         <FollowUpsCard profile={profile} />
+        {canManage(role) ? (
+          <Card title="Quality">
+            <QualityOnCleaner cleanerId={profile.cleanerId} />
+          </Card>
+        ) : null}
         <Card title="Details">
           <div className="grid gap-3">
             <Fact icon={MessageSquareText} label="Mobile">{profile.phone ?? <span className="text-muted-foreground">Not on file</span>}</Fact>
@@ -654,7 +660,7 @@ function WeekBars({ windows }: { windows: Profile["availability"]["windows"] }) 
 }
 
 const ASSIGNMENT_WORDS: Record<string, string> = { accepted: "Accepted", offered: "Offered", declined: "Declined", expired: "No answer", cancelled: "Ended" };
-const END_WORDS: Record<string, string> = { released: "released by a person", job_covered: "job was covered", job_cancelled: "job was cancelled", job_moved: "job moved", dropped: "they said they could not attend", no_show: "no-show declared by a person", undelivered: "offer was not delivered" };
+const END_WORDS: Record<string, string> = { sending_blocked: "Not texted: the company's texts were not going out", released: "released by a person", job_covered: "job was covered", job_cancelled: "job was cancelled", job_moved: "job moved", dropped: "they said they could not attend", no_show: "no-show declared by a person", undelivered: "offer was not delivered" };
 
 type AvailabilityDialog = "week" | "away" | "date" | "confirm" | null;
 const SOURCE_WORDS: Record<string, string> = { cleaner: "From them", subcontractor: "From their company", member: "Recorded" };

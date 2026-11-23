@@ -12,7 +12,7 @@ export const INTEGRATION_IDS = [
   "google-drive", "google-calendar", "gmail", "google-business-profile",
   "outlook", "onedrive",
   "yelp", "facebook-reviews",
-  "texting-number",
+  "texting-number", "quo",
   "quickbooks-online", "xero",
   "indeed", "checkr",
   "jobber", "housecall-pro", "zenmaid", "launch27",
@@ -20,7 +20,7 @@ export const INTEGRATION_IDS = [
 export type IntegrationId = (typeof INTEGRATION_IDS)[number];
 
 /** Built integrations: no request needed, the page links to where they are set up. */
-export const BUILT: readonly IntegrationId[] = ["stripe", "gmail", "texting-number", "google-drive", "google-calendar", "google-business-profile", "google-ads", "google-local-services-ads", "jobber", "housecall-pro"];
+export const BUILT: readonly IntegrationId[] = ["stripe", "gmail", "texting-number", "quo", "google-drive", "google-calendar", "google-business-profile", "google-ads", "google-local-services-ads", "jobber", "housecall-pro"];
 
 export function isIntegrationId(value: string): value is IntegrationId {
   return (INTEGRATION_IDS as readonly string[]).includes(value);

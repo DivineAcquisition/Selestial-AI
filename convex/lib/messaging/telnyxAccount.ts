@@ -339,6 +339,37 @@ export function deleteBrand(fetcher: Fetcher, brandId: string): Promise<Answer<t
   return call(fetcher, "DELETE", `/10dlc/brand/${encodeURIComponent(brandId)}`, null, () => true);
 }
 
+// ── Giving a number up (convex/texting.ts `offboard`, docs/texting/03-offboarding.md) ─────────────
+//
+// NOT YET EXERCISED AGAINST LIVE TELNYX. The shapes below follow Telnyx's v2 API reference as read on
+// 2026-11-22: `GET /v2/phone_numbers?filter[phone_number]=` lists the account's own numbers wrapped in `data`
+// with each number's `id`; `DELETE /v2/phone_numbers/{id}` releases a number; and
+// `DELETE /v2/10dlc/phone_number_campaigns/{phoneNumber}` takes a number off its campaign. Run the staff
+// procedure against one real number, watching Mission Control, before relying on any of them.
+
+/** The account's own record of a number, or null when the account no longer has it (released, or moved away). */
+export function findOwnedNumber(fetcher: Fetcher, phoneNumber: string): Promise<Answer<{ id: string; status: string | null } | null>> {
+  const query = new URLSearchParams({ "filter[phone_number]": phoneNumber });
+  return call(fetcher, "GET", `/phone_numbers?${query}`, null, (json) => {
+    const rows = (json as { data?: unknown } | null)?.data;
+    if (!Array.isArray(rows)) return null;
+    const mine = rows.filter((row): row is Record<string, unknown> => !!row && typeof row === "object").find((row) => row.phone_number === phoneNumber);
+    const id = str(mine?.id);
+    // Wrapped, because "not there" (null) is an answer here, not an unexpected shape.
+    return { found: id ? { id, status: str(mine?.status) } : null };
+  }).then((answer) => (answer.ok ? { ok: true as const, value: answer.value.found } : answer));
+}
+
+/** Takes a number off its 10DLC campaign. Texts from it stop being registered traffic at once. */
+export function unassignNumber(fetcher: Fetcher, phoneNumber: string): Promise<Answer<true>> {
+  return call(fetcher, "DELETE", `/10dlc/phone_number_campaigns/${encodeURIComponent(phoneNumber)}`, null, () => true);
+}
+
+/** Releases a number from the account, by the id `findOwnedNumber` returned. Permanent: Telnyx does not give it back. */
+export function releaseNumber(fetcher: Fetcher, id: string): Promise<Answer<true>> {
+  return call(fetcher, "DELETE", `/phone_numbers/${encodeURIComponent(id)}`, null, () => true);
+}
+
 // ── What statuses mean ───────────────────────────────────────────────────────────────────────────
 
 export const BRAND_READY = new Set(["VERIFIED", "VETTED_VERIFIED"]);

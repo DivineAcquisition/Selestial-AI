@@ -3,7 +3,7 @@
  * text, at most its first 200 characters with any link taken out, and no IP or device data.
  *
  * Keywords are the whole message, trimmed, in any letter case:
- * STOP, STOPALL, UNSUBSCRIBE, CANCEL, END, QUIT: stop every text from this business.
+ * STOP, STOPALL, UNSUBSCRIBE, CANCEL, END, QUIT, REVOKE, OPTOUT, OPT OUT: stop every text from this business.
  * HELP, INFO: one answer with who is texting and how to reach them.
  * START, UNSTOP, YES: undo a STOP, and only what the STOP withdrew.
  * A plain-words request to stop ("stop texting me") stops texts too, and a person checks it.
@@ -27,6 +27,7 @@ import { chargeInbound } from "./lib/messagingBilling/ledger";
 import { allow } from "./lib/rateLimit";
 import type { Agent } from "./lib/statuses";
 import { liveTaskByKey, openTask, setTaskState } from "./lib/taskState";
+import { ensureConversation } from "./lib/quo/route";
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -34,19 +35,27 @@ const SYSTEM: Actor = { kind: "system" };
 /** At most this many automatic answers to one number in an hour, whatever it sends. */
 const REPLIES_PER_HOUR = 5;
 
-const STOP_WORDS = new Set(["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"]);
+const STOP_WORDS = new Set(["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT", "REVOKE", "OPTOUT", "OPT OUT", "OPT-OUT"]);
 const HELP_WORDS = new Set(["HELP", "INFO"]);
 const START_WORDS = new Set(["START", "UNSTOP", "YES"]);
 const PLAIN_STOP = /\b(stop (texting|messaging|contacting|sending)|(don'?t|do not) (text|message|contact)|remove me|unsubscribe me|no more (texts|messages))\b/i;
+/**
+ * A message that is nothing but a request to stop, said politely or at a little more length ("please stop",
+ * "stop texting me", "stop these texts please"). It is an opt-out in its own right, never only a task.
+ * Anything with more in it ("stop by at 3", "don't stop") is left to the rules above and to a person.
+ */
+const JUST_STOP = /^(please |pls |plz )?(stop|unsubscribe|opt out|optout)( (it|this|that|now|all|everything|please|pls|plz|thanks|thank you|(texting|messaging|contacting|sending)( me)?|(sending |with )?((the|these|those|your|all|any) )?(texts?|messages?|msgs?)( to me)?))*$/i;
 
 export type InboundKind = "stop" | "help" | "start" | "plain_stop" | "ignored";
 
 export function classify(body: string): InboundKind {
-  const word = body.trim().replace(/[.!]+$/, "").toUpperCase();
+  const word = body.trim().replace(/[.!]+$/, "").replace(/\s+/g, " ").toUpperCase();
   if (STOP_WORDS.has(word)) return "stop";
   if (HELP_WORDS.has(word)) return "help";
   if (START_WORDS.has(word)) return "start";
   if (PLAIN_STOP.test(body)) return "plain_stop";
+  // Punctuation aside, the whole message asks to stop.
+  if (JUST_STOP.test(body.trim().replace(/[.,!?;:'"]+/g, " ").replace(/\s+/g, " ").trim())) return "plain_stop";
   return "ignored";
 }
 
@@ -92,17 +101,40 @@ export const telnyx = internalMutation({
   },
 });
 
-async function handleSms(ctx: MutationCtx, args: { to: string; from: string; body: string; receivedAt: number; providerId?: string; billing?: { providerMessageId: string; parts?: number; mms: boolean } }): Promise<InboundResult> {
+export type ReceiveSms = {
+  to: string;
+  from: string;
+  body: string;
+  receivedAt: number;
+  providerId?: string;
+  billing?: { providerMessageId: string; parts?: number; mms: boolean };
+  /** Known from a trusted connection (a Quo webhook to this company's own URL). Otherwise found from the number. */
+  companyId?: Id<"companies">;
+  provider?: "telnyx" | "quo";
+  quo?: { connectionId: Id<"quoConnections">; senderId: string; providerConversationId?: string; providerMessageId?: string };
+};
+
+/** A text to the company, from either provider. The same handling, whichever carried it. */
+export async function receiveSms(ctx: MutationCtx, args: ReceiveSms): Promise<InboundResult> {
+  return handleSms(ctx, args);
+}
+
+async function handleSms(ctx: MutationCtx, args: ReceiveSms): Promise<InboundResult> {
   {
     const to = normalAddress("sms", args.to);
-    const companyId = to ? await companyForNumber(ctx, to) : null;
-    if (!companyId) return { kind: "unknown_number", replied: false };
+    const companyId = args.companyId ?? (to ? await companyForNumber(ctx, to) : null);
+    if (!companyId || !to) return { kind: "unknown_number", replied: false };
     // An incoming text costs money whether or not the balance covers it, and is always received and handled:
     // it is charged (within the overdraft bound, with the Owner and staff told) and never refused.
     if (args.billing) await chargeInbound(ctx, { companyId, providerMessageId: args.billing.providerMessageId, provider: "telnyx", mms: args.billing.mms, parts: args.billing.parts, activity: args.billing.mms ? "Incoming picture message" : "Incoming text" });
     const from = normalAddress("sms", args.from);
     if (!from) return { kind: "bad_number", replied: false };
     const kind = classify(args.body);
+    // The conversation, whichever provider carries it: its route is fixed on its first text (lib/quo/route.ts), and
+    // every text received is kept with it, so the thread is complete. Received and handled even while agents are paused.
+    const conversation = await ensureConversation(ctx, companyId, from, args.provider === "quo" && args.quo ? { provider: "quo", sender: to, connectionId: args.quo.connectionId, senderId: args.quo.senderId, providerConversationId: args.quo.providerConversationId } : { provider: "native", sender: to });
+    await ctx.db.patch(conversation._id, { lastInboundAt: args.receivedAt });
+    await ctx.db.insert("smsInbound", { companyId, conversationId: conversation._id, provider: args.provider === "quo" ? "quo" : "native", providerMessageId: args.quo?.providerMessageId, body: excerpt(args.body) ?? "", receivedAt: args.receivedAt, routedTo: kind === "ignored" ? undefined : kind === "plain_stop" ? "opt_out_review" : kind });
     // Not a keyword. Someone on record who texts the company's number is answered by a person, and a
     // cleaner's text is also read against their own visits (dispatchReplies.ts).
     // Kept in the client's conversation when the number is a client's or one of its contacts'.
@@ -122,6 +154,8 @@ async function handleSms(ctx: MutationCtx, args: { to: string; from: string; bod
       // A client's contact is on no record the sending policy reads, so their text is filed under the client.
       const people: RecipientRecord[] = known.length > 0 ? known : await contactSenders(ctx, clients, from);
       if (people.length > 0) await replyTask(ctx, companyId, from, people, args.body, args.receivedAt);
+      // A text from someone on no record, that Sales didn't take: the review queue, with a person and a next step.
+      else await unknownSender(ctx, companyId, from, args.body, args.receivedAt, conversation);
       const task = await liveTaskByKey(ctx, companyId, `inbound.reply:${from}`);
       await fileClientText(ctx, { companyId, from, excerpt: excerpt(args.body) ?? "", kind: "message", at: args.receivedAt, taskId: task?._id }, clients);
       // A text from exactly one known client is also read by Retention for a stated wish to cancel or a described problem.
@@ -172,7 +206,8 @@ async function handleSms(ctx: MutationCtx, args: { to: string; from: string; bod
     }
 
     if (kind === "start") {
-      const stops = (await activeSuppressions(ctx, companyId, "sms", from)).filter((row) => row.reason === "stop_keyword");
+      // A stop asked for in the person's own words is theirs to undo with START, exactly like a keyword STOP.
+      const stops = (await activeSuppressions(ctx, companyId, "sms", from)).filter((row) => row.reason === "stop_keyword" || row.reason === "natural_language");
       // START means something only after a STOP. Otherwise it is an ordinary reply, such as "Yes" to an offer.
       if (stops.length === 0) return ordinary();
       for (const row of stops) await liftSuppression(ctx, row, { liftedBy: byRecipient, note: "Replied START.", actor: SYSTEM });
@@ -190,9 +225,10 @@ async function handleSms(ctx: MutationCtx, args: { to: string; from: string; bod
     }
 
     // A plain-words request to stop. Texts stop now; a person reads it and confirms what the person wants.
+    // Marked as withdrawn by the person's own stop, so their own START gives back exactly this and nothing more.
     const { suppression } = await addSuppression(ctx, { companyId, channel: "sms", address: from, scope: "all", reason: "natural_language", sourceMessage: excerpt(args.body), at, actor: SYSTEM });
     for (const person of people) {
-      await withdrawChannel(ctx, { companyId, recipient: asRecipient(person), channel: "sms", source: "text_reply", recordedBy: byRecipient, evidence: "Asked in their own words to stop texts.", actor: SYSTEM, at });
+      await withdrawChannel(ctx, { companyId, recipient: asRecipient(person), channel: "sms", source: "text_reply", recordedBy: byRecipient, stopKeyword: true, evidence: "Asked in their own words to stop texts.", actor: SYSTEM, at });
     }
     await reviewTask(ctx, companyId, from, people, suppression);
     await salesOptedOut(ctx, companyId, people);
@@ -248,6 +284,24 @@ async function replyTask(ctx: MutationCtx, companyId: Id<"companies">, address: 
   });
   await setTaskState(ctx, (await ctx.db.get(taskId))!, "needs_decision", { openQuestion: question, dueAt: at + HOUR, withPersonSince: Date.now() }, SYSTEM);
   await read(taskId);
+}
+
+/**
+ * A text from a number on no record, that Sales didn't take as an inquiry: the conversation goes to the review
+ * queue, and a person gets one task per number to read it and decide. Nothing is answered automatically.
+ */
+async function unknownSender(ctx: MutationCtx, companyId: Id<"companies">, address: string, body: string, at: number, conversation: Doc<"smsConversations">) {
+  if (conversation.owner.kind === "agents") await ctx.db.patch(conversation._id, { owner: { kind: "review" }, ownerReason: "A text from a number that isn't on any record. A person decides who it is and who answers.", ownerChangedAt: Date.now() });
+  const key = `inbound.unknown:${address}`;
+  const question = `A number that isn't on any record texted the company: "${excerpt(body) ?? ""}". Decide who it is and answer, or link it to a customer, applicant or cleaner.`.slice(0, 1000);
+  const existing = await liveTaskByKey(ctx, companyId, key);
+  if (existing) {
+    await setTaskState(ctx, existing, "needs_decision", { openQuestion: question, dueAt: at + HOUR, withPersonSince: existing.withPersonSince ?? Date.now() }, SYSTEM, { sameStatus: true });
+    return;
+  }
+  if (!(await allow(ctx, `inbound-task:${companyId}:${address}`, 5, HOUR))) return;
+  const taskId = await openTask(ctx, { companyId, agent: "sales", title: `Text from ${address}`, nextAction: "Read the text and decide who answers it", dueAt: at + HOUR, completionCondition: "A person read the text and dealt with it", key, actor: SYSTEM });
+  await setTaskState(ctx, (await ctx.db.get(taskId))!, "needs_decision", { openQuestion: question, dueAt: at + HOUR, withPersonSince: Date.now() }, SYSTEM);
 }
 
 /** A task for a person to read a plain-words opt-out and confirm it. Opened once per number while it is open. */

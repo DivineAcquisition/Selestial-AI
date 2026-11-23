@@ -1,4 +1,7 @@
-/** A stand-in for Google's OAuth token endpoint and the Gmail API, for tests. Nothing reaches the network. */
+/**
+ * A stand-in for Google's OAuth token endpoint and the Gmail API, for tests. Nothing reaches the network.
+ * It answers the way the Gmail API v1 reference says Gmail does; it has not been checked against Gmail itself.
+ */
 import type { MessageBody } from "../convex/lib/recruiter/mail";
 
 const b64url = (text: string) => {
@@ -83,7 +86,11 @@ export function fakeGoogle(options: { email?: string; scope?: string } = {}) {
       const after = Number(params.get("q")?.match(/after:(\d+)/)?.[1] ?? 0) * 1000;
       const label = params.get("q")?.match(/label:"([^"]+)"/)?.[1];
       const labelId = label ? (state.labels.find((row) => row.name === label)?.id ?? "none") : null;
-      const all = state.messages.filter((m) => m.receivedAt >= after && visible(m, labelId)).reverse();
+      const before = Number(params.get("q")?.match(/before:(\d+)/)?.[1] ?? 0) * 1000;
+      // `-in:sent -in:draft`: Gmail's own labels for mail the mailbox wrote.
+      const received = (m: FakeMessage) => !/-in:sent/.test(params.get("q") ?? "") || !(m.labels ?? []).some((l) => l === "SENT" || l === "DRAFT");
+      // Newest first, as Gmail lists.
+      const all = state.messages.filter((m) => m.receivedAt >= after && (!before || m.receivedAt < before) && visible(m, labelId) && received(m)).sort((a, b) => b.receivedAt - a.receivedAt);
       const start = Number(params.get("pageToken") ?? 0);
       const size = Number(params.get("maxResults") ?? 100);
       const page = all.slice(start, start + size);
@@ -107,7 +114,8 @@ export function fakeGoogle(options: { email?: string; scope?: string } = {}) {
       const message = state.messages.find((m) => m.id === decodeURIComponent(one[1]));
       if (!message) return json(404, {});
       const headers = [{ name: "From", value: message.from }, { name: "Subject", value: message.subject }, ...(message.replyTo ? [{ name: "Reply-To", value: message.replyTo }] : [])];
-      if (params.get("format") === "metadata") return json(200, { id: message.id, threadId: message.threadId, internalDate: String(message.receivedAt), payload: { headers } });
+      const labelIds = message.labels ?? ["INBOX"];
+      if (params.get("format") === "metadata" || params.get("format") === "minimal") return json(200, { id: message.id, threadId: message.threadId, internalDate: String(message.receivedAt), labelIds, payload: { headers } });
       return json(200, {
         id: message.id,
         threadId: message.threadId,

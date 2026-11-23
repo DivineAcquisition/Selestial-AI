@@ -56,7 +56,7 @@ export const RECORD_FIELD_LABELS: Record<RecordField, string> = {
 
 /** The fields each kind asks for, in the order shown. */
 export const FIELDS_FOR: Record<RecordKind, RecordField[]> = {
-  appointment: ["clientName", "clientEmail", "clientPhone", "street", "date", "time", "duration", "description", "assignedTo", "reference"],
+  appointment: ["clientName", "clientEmail", "clientPhone", "street", "date", "time", "duration", "amount", "description", "assignedTo", "reference"],
   recurring: ["clientName", "clientEmail", "clientPhone", "street", "frequency", "date", "endDate", "time", "duration", "amount", "description", "reference"],
   history: ["clientName", "clientEmail", "clientPhone", "date", "amount", "reference", "description", "status"],
 };
@@ -148,6 +148,42 @@ export function readDay(value: string | undefined): string | null {
   return null;
 }
 
+/** A timestamp that names its own zone: "2026-12-03T02:00:00Z" or "2026-12-03 18:00-08:00". */
+const ZONED = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?\s*(Z|[+-]\d{2}(?::?\d{2})?)$/i;
+
+/** The instant a zoned timestamp names, or null when the value is not one. */
+function zonedInstant(value: string | undefined): number | null {
+  const match = ZONED.exec(value?.trim() ?? "");
+  if (!match) return null;
+  if (!validDay(+match[1], +match[2], +match[3]) || +match[4] > 23 || +match[5] > 59) return null;
+  let offsetMinutes = 0;
+  if (match[7].toUpperCase() !== "Z") {
+    const sign = match[7].startsWith("-") ? -1 : 1;
+    const digitsOnly = match[7].slice(1).replace(":", "");
+    offsetMinutes = sign * (+digitsOnly.slice(0, 2) * 60 + +(digitsOnly.slice(2, 4) || "0"));
+  }
+  return Date.UTC(+match[1], +match[2] - 1, +match[3], +match[4], +match[5], +(match[6] ?? "0")) - offsetMinutes * 60_000;
+}
+
+/**
+ * The day and start time of a row on the company's clock.
+ *
+ * - A timestamp with its own zone ("…T02:00Z", or an offset) is an instant: it is converted to the
+ *   company's time zone first, so 02:00 UTC on the 3rd is the evening of the 2nd in Chicago, on either
+ *   side of a daylight-saving change.
+ * - Anything else is already the company's wall clock and is read as written.
+ * - The time comes from the Start time column when the row has one, and otherwise from the time written
+ *   in the date column ("Scheduled start", "Booking start date time").
+ */
+export function readStart(row: Pick<RecordRow, "date" | "time">, timezone: string): { day: string | null; time: string | null } {
+  const instant = zonedInstant(row.date);
+  if (instant !== null) {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(instant)).map((part) => [part.type, part.value]));
+    return { day: `${parts.year}-${parts.month}-${parts.day}`, time: readTime(row.time) ?? `${parts.hour}:${parts.minute}` };
+  }
+  return { day: readDay(row.date), time: readTime(row.time) ?? readTime(row.date) };
+}
+
 /** A time of day, HH:MM on a 24-hour clock, from "9:30", "09:30 AM", "2:00pm" or a date with a time. */
 export function readTime(value: string | undefined): string | null {
   const match = /(\d{1,2}):(\d{2})(?::\d{2})?\s*([ap]\.?m\.?)?/i.exec(value ?? "");
@@ -198,12 +234,19 @@ export function readCents(value: string | undefined): number | null {
 export function readCadence(value: string | undefined): Schedule | null {
   const text = value?.trim().toLowerCase().replace(/\s+/g, " ");
   if (!text) return null;
+  // "Bi-monthly" means twice a month to some and every two months to others. It is never guessed.
+  if (ambiguousCadence(text)) return null;
   if (/twice (a|per) month|semi-?monthly|2x (a |per )?month/.test(text)) return "twice_per_month";
   if (/every (4|four) weeks|every 28 days|4-?weekly/.test(text)) return "every_28_days";
   if (/every (2|two|other) weeks?|bi-?weekly|fortnight|every 14 days/.test(text)) return "every_14_days";
   if (/^weekly$|every week|every 7 days|once a week|^1 week/.test(text)) return "every_7_days";
   if (/monthly|every month|once a month|per month/.test(text)) return "once_per_month";
   return null;
+}
+
+/** True for a frequency that reads two ways, so the owner chooses the schedule themselves. */
+export function ambiguousCadence(value: string | undefined): boolean {
+  return /\bbi-?\s?monthly\b/i.test(value ?? "");
 }
 
 export const CADENCE_WORDS: Record<Schedule, string> = {
@@ -231,16 +274,30 @@ export function recordProblems(kind: RecordKind, row: RecordRow): string[] {
 }
 
 /** Notes that do not stop the import but the owner should see. */
-export function recordNotes(kind: RecordKind, row: RecordRow, today: string): string[] {
+export function recordNotes(kind: RecordKind, row: RecordRow, today: string, timezone?: string): string[] {
   const notes: string[] = [];
-  const day = readDay(row.date);
+  const day = timezone ? readStart(row, timezone).day : readDay(row.date);
   if (kind === "appointment" && day && day < today) notes.push("This date has passed. It is kept as history, not as an upcoming visit.");
-  if (kind === "recurring" && row.frequency && !readCadence(row.frequency)) notes.push(`"${row.frequency}" is kept as written; choose the schedule when you set it up.`);
+  if (kind === "recurring" && row.frequency && ambiguousCadence(row.frequency)) notes.push(`"${row.frequency}" can mean twice a month or every two months. It is kept as written and marked for review; choose the schedule when you set it up.`);
+  else if (kind === "recurring" && row.frequency && !readCadence(row.frequency)) notes.push(`"${row.frequency}" is kept as written; choose the schedule when you set it up.`);
   return notes;
 }
 
-/** The key that says two rows are the same record, so a file imported twice adds nothing the second time. */
-export function recordKey(kind: RecordKind, row: RecordRow): string {
+const keyPart = (value: string | undefined) => (value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+
+/**
+ * The key that says two rows are the same record, so a file imported twice adds nothing the second time.
+ * It names the job number, the day and start time on the company's clock, the client and the service
+ * street: two visits for one client on one day, at different times or different properties, are two records.
+ */
+export function recordKey(kind: RecordKind, row: RecordRow, timezone = "UTC"): string {
+  const start = readStart(row, timezone);
+  const parts = ["v2", kind, keyPart(row.reference), start.day ?? "", start.time ?? "", keyPart(row.clientEmail ?? row.clientPhone ?? row.clientName), keyPart(row.street).replace(/[.,#]/g, ""), kind === "history" ? String(readCents(row.amount) ?? "") : ""];
+  return parts.join("|").slice(0, 400);
+}
+
+/** The key records were stored under before the street and the date column's time were part of it. Read only to recognize those records. */
+export function legacyRecordKey(kind: RecordKind, row: RecordRow): string {
   const parts = [kind, (row.reference ?? "").trim().toLowerCase(), readDay(row.date) ?? "", readTime(row.time) ?? "", (row.clientEmail ?? row.clientPhone ?? row.clientName ?? "").trim().toLowerCase(), kind === "history" ? String(readCents(row.amount) ?? "") : ""];
   return parts.join("|").slice(0, 300);
 }

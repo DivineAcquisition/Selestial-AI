@@ -12,6 +12,7 @@ import { authorityFor } from "../authority";
 import { activeConnections, requireFeature } from "../google/connection";
 import { enabledFeatures, FEATURE_INFO, FEATURES } from "../google/features";
 import { enqueue } from "../google/jobs";
+import { reviewLinkFor } from "../google/reviewLink";
 import { allow } from "../rateLimit";
 import { localParts } from "../availability";
 import { type Field, stableHash } from "./fields";
@@ -185,8 +186,7 @@ export const GOOGLE_TOOLS: ChatTool[] = [
       const customer = await ctx.db.get(String(args.customerId) as Id<"customers">).catch(() => null);
       if (!customer || customer.companyId !== ctx.company._id) return refused("That customer was not found.");
       const reasons: string[] = [];
-      const locations = await ctx.db.query("googleResources").withIndex("by_company_kind", (q) => q.eq("companyId", ctx.company._id).eq("kind", "business_location")).take(5);
-      if (!locations.some((l) => l.access === "verified")) reasons.push("No Business Profile location is connected and verified.");
+      if (!(await reviewLinkFor(ctx, ctx.company))) reasons.push("There is no review link yet: connect and verify a Business Profile location, or add a review link in the Retention Playbook.");
       const jobs = await ctx.db.query("jobs").withIndex("by_company_customer", (q) => q.eq("companyId", ctx.company._id).eq("customerId", customer._id)).order("desc").take(50);
       if (!jobs.some((j) => j.status === "completed" && j.endsAt > Date.now() - 14 * 86_400_000)) reasons.push("No visit finished in the last 14 days.");
       if (!customer.email && !customer.phone) reasons.push("There is no email or phone number.");
@@ -225,7 +225,8 @@ export const GOOGLE_TOOLS: ChatTool[] = [
   {
     name: "draft_google_ads_campaign",
     label: "Drafting a Google Ads campaign",
-    description: "Save a Google Ads search campaign draft for an authorized ad account. It costs nothing and is not created in Google Ads: the Owner approves the draft and budget, it is created paused, and turning it on is a separate Owner decision. Uses Sales's permission to draft campaigns.",
+    description:
+      "Save a Google Ads search campaign draft for an authorized ad account. It costs nothing and is not created in Google Ads: the Owner approves the draft and budget, it is created paused (budget, ad group, keywords, one responsive search ad and the service area), and turning it on is a separate Owner decision. The ad needs at least 3 different headlines (30 characters each) and 2 descriptions (90 each), keywords, and ZIP codes or cities. Leave finalUrl out to use the company's booking page. Uses Sales's permission to draft campaigns.",
     kind: "draft",
     minimumRole: "manager",
     specialist: "marketing",
@@ -236,10 +237,12 @@ export const GOOGLE_TOOLS: ChatTool[] = [
         name: { type: "string", max: 80 },
         dailyBudgetDollars: { type: "number", description: "Daily budget in dollars, 1 to 500." },
         keywords: { type: "array", items: { type: "string", max: 80 }, maxItems: 50 },
-        postalCodes: { type: "array", items: { type: "string", max: 5 }, maxItems: 100 },
-        headline: { type: "string", max: 30 },
-        description: { type: "string", max: 90 },
-        finalUrl: { type: "string", max: 500 },
+        keywordMatch: { type: "string", enum: ["phrase", "exact"], optional: true, description: "How keywords match searches. Phrase unless asked otherwise." },
+        postalCodes: { type: "array", items: { type: "string", max: 5 }, maxItems: 100, description: "The service area's ZIP codes." },
+        cities: { type: "array", items: { type: "string", max: 80 }, maxItems: 50, optional: true, description: "Cities in the service area, like \"Austin, TX\"." },
+        headlines: { type: "array", items: { type: "string", max: 30 }, maxItems: 15, description: "3 to 15 different headlines, 30 characters or fewer each." },
+        descriptions: { type: "array", items: { type: "string", max: 90 }, maxItems: 4, description: "2 to 4 different descriptions, 90 characters or fewer each." },
+        finalUrl: { type: "string", max: 500, optional: true, description: "The https landing page. Leave out to use the company's booking page." },
       },
     },
     run: async (ctx, args) => {
@@ -248,7 +251,24 @@ export const GOOGLE_TOOLS: ChatTool[] = [
       if (!(await paced(ctx, "ads_draft"))) return refused("Too many campaign drafts from Chat in the last hour.");
       try {
         await requireFeature(ctx, ctx.company._id, "ads");
-        const draftId = await createDraft(ctx, ctx.company._id, ctx.member._id, { accountId: String(args.accountId), name: String(args.name), dailyBudgetCents: Math.round(Number(args.dailyBudgetDollars) * 100), keywords: (args.keywords as string[]) ?? [], postalCodes: (args.postalCodes as string[]) ?? [], headline: String(args.headline), description: String(args.description), finalUrl: String(args.finalUrl) });
+        const list = (value: unknown) => (Array.isArray(value) ? value.map(String) : []);
+        // Older callers send one headline and one description; they count with the lists.
+        const headlines = [...list(args.headlines), ...(typeof args.headline === "string" ? [args.headline] : [])];
+        const descriptions = [...list(args.descriptions), ...(typeof args.description === "string" ? [args.description] : [])];
+        const draftId = await createDraft(ctx, ctx.company._id, ctx.member._id, {
+          accountId: String(args.accountId),
+          name: String(args.name),
+          dailyBudgetCents: Math.round(Number(args.dailyBudgetDollars) * 100),
+          keywords: list(args.keywords),
+          keywordMatch: args.keywordMatch === "exact" ? "exact" : "phrase",
+          postalCodes: list(args.postalCodes),
+          cities: list(args.cities),
+          headline: headlines[0] ?? "",
+          description: descriptions[0] ?? "",
+          headlines: headlines.slice(1),
+          descriptions: descriptions.slice(1),
+          finalUrl: typeof args.finalUrl === "string" && args.finalUrl.trim() ? args.finalUrl : undefined,
+        });
         return { status: "proposed", summary: "Campaign draft saved in Selestial. Nothing was created in Google Ads and nothing will spend until the Owner approves it and later turns it on.", data: { draftId, state: "draft", spends: false }, link: SETTINGS };
       } catch (error) {
         return refused(say(error, "The draft could not be saved."));

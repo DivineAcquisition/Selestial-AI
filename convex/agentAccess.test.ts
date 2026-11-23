@@ -26,20 +26,20 @@ describe("Early access to coming-soon agents", () => {
     const t = start();
     const { as, companyId } = await company(t, "owner-a", "Alpha Cleaning");
     const office = await addMember(t, as, companyId, "office-a", "office");
-    expect(await as.query(api.agentAccess.mine, { companyId, agent: "quality" })).toMatchObject({ requested: false });
+    expect(await as.query(api.agentAccess.mine, { companyId, agent: "customer-care" })).toMatchObject({ requested: false });
 
-    await as.mutation(api.agentAccess.request, { companyId, agent: "quality", uses: ["Every visit reviewed", "Every visit reviewed", " "], note: "We lose customers to missed tasks." });
-    await office.mutation(api.agentAccess.request, { companyId, agent: "quality", uses: ["Re-cleans arranged"] });
+    await as.mutation(api.agentAccess.request, { companyId, agent: "customer-care", uses: ["Every call answered", "Every call answered", " "], note: "We miss calls after hours." });
+    await office.mutation(api.agentAccess.request, { companyId, agent: "customer-care", uses: ["Bookings taken by phone"] });
     // Asking again updates your own line; it never adds you twice.
-    await office.mutation(api.agentAccess.request, { companyId, agent: "quality", uses: ["Re-cleans arranged", "Issues traced to the cause"] });
+    await office.mutation(api.agentAccess.request, { companyId, agent: "customer-care", uses: ["Bookings taken by phone", "Questions answered"] });
     const rows = await t.run(async (ctx) => ctx.db.query("agentAccessRequests").collect());
     expect(rows).toHaveLength(1);
-    expect(rows[0].requesters.map((r) => r.uses)).toEqual([["Every visit reviewed"], ["Re-cleans arranged", "Issues traced to the cause"]]);
-    expect(await office.query(api.agentAccess.mine, { companyId, agent: "quality" })).toMatchObject({ requested: true, mine: true, people: 2, status: "requested" });
+    expect(rows[0].requesters.map((r) => r.uses)).toEqual([["Every call answered"], ["Bookings taken by phone", "Questions answered"]]);
+    expect(await office.query(api.agentAccess.mine, { companyId, agent: "customer-care" })).toMatchObject({ requested: true, mine: true, people: 2, status: "requested" });
 
-    await office.mutation(api.agentAccess.withdraw, { companyId, agent: "quality" });
-    expect(await office.query(api.agentAccess.mine, { companyId, agent: "quality" })).toMatchObject({ requested: true, mine: false, people: 1 });
-    await as.mutation(api.agentAccess.withdraw, { companyId, agent: "quality" });
+    await office.mutation(api.agentAccess.withdraw, { companyId, agent: "customer-care" });
+    expect(await office.query(api.agentAccess.mine, { companyId, agent: "customer-care" })).toMatchObject({ requested: true, mine: false, people: 1 });
+    await as.mutation(api.agentAccess.withdraw, { companyId, agent: "customer-care" });
     expect(await t.run(async (ctx) => ctx.db.query("agentAccessRequests").collect())).toHaveLength(0);
   });
 

@@ -12,7 +12,7 @@ const TONE: Record<Detail["status"]["tone"], NonNullable<BadgeProps["variant"]>>
 
 const ASSIGNMENT_WORDS: Record<string, string> = { offered: "Offered · not accepted", accepted: "Accepted", declined: "Declined", expired: "No answer in time", cancelled: "Released" };
 /** A cancelled assignment says why it ended. Only a person's release reads as "Released". */
-const ENDED_WORDS: Record<string, string> = { job_covered: "Offer withdrawn · place filled", job_cancelled: "Visit cancelled", job_moved: "Ended · visit moved", dropped: "Could not attend", no_show: "No-show", undelivered: "Text not delivered" };
+const ENDED_WORDS: Record<string, string> = { sending_blocked: "Not texted: the company's texts were not going out", job_covered: "Offer withdrawn · place filled", job_cancelled: "Visit cancelled", job_moved: "Ended · visit moved", dropped: "Could not attend", no_show: "No-show", undelivered: "Text not delivered" };
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -27,7 +27,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
  * The one detail layout, the same for a visit, an approval and a task:
  * current situation, relevant context, next action, ways to step in, history.
  */
-export function DetailView({ detail, now, timezone, onOpen, actions }: { detail: Detail; now: number; timezone: string; onOpen: (ref: EventRef) => void; actions?: React.ReactNode }) {
+export function DetailView({ detail, now, timezone, onOpen, actions, quality }: { detail: Detail; now: number; timezone: string; onOpen: (ref: EventRef) => void; actions?: React.ReactNode; quality?: React.ReactNode }) {
   const next = detail.next;
   const due = next.when ? until(next.when, now) : null;
   return (
@@ -119,6 +119,8 @@ export function DetailView({ detail, now, timezone, onOpen, actions }: { detail:
           <RunTrace steps={detail.job.run} />
         </Section>
       ) : null}
+
+      {quality ? <Section title="Quality">{quality}</Section> : null}
 
       {actions ? <Section title="Step in">{actions}</Section> : null}
 

@@ -28,6 +28,7 @@ import { isOwner } from "./lib/roles";
 import { literals } from "./lib/statuses";
 import { currentEvidence, evidenceRows, syncRecommendations } from "./lib/texting/case";
 import { EVIDENCE_PURPOSE_WORDS, EVIDENCE_PURPOSES, EVIDENCE_STATE_WORDS, NUMBER_ROUTES } from "./lib/texting/caseSchema";
+import { numberRequest, OFFBOARDING_ROUTES, openOffboarding, OWNER_WORDS, PORT_OUT_WORDING, RELEASE_WORDING, isOffboarding, wordingFor } from "./lib/texting/offboarding";
 import { checkEvidenceFile, EVIDENCE_ACCEPTED, EVIDENCE_MAX_BYTES, REVIEW_COPY_WORDING, reviewToken, signedEvidenceUrl } from "./lib/texting/evidence";
 import { PERMISSION_PLACES } from "./lib/texting/schema";
 
@@ -195,7 +196,7 @@ export const workspace = companyQuery({
       notes,
       exceptions,
       recommendations,
-      catalog: { purposes: EVIDENCE_PURPOSES.map((key) => ({ key, ...EVIDENCE_PURPOSE_WORDS[key] })), places: PERMISSION_PLACES, accepted: EVIDENCE_ACCEPTED, maxBytes: EVIDENCE_MAX_BYTES, reviewCopyWording: REVIEW_COPY_WORDING, portWording: PORT_WORDING },
+      catalog: { purposes: EVIDENCE_PURPOSES.map((key) => ({ key, ...EVIDENCE_PURPOSE_WORDS[key] })), places: PERMISSION_PLACES, accepted: EVIDENCE_ACCEPTED, maxBytes: EVIDENCE_MAX_BYTES, reviewCopyWording: REVIEW_COPY_WORDING, portWording: PORT_WORDING, releaseWording: RELEASE_WORDING, portOutWording: PORT_OUT_WORDING },
     };
   },
 });
@@ -526,7 +527,8 @@ export const actOnRecommendation = companyMutation({
     const now = Date.now();
     const decided = { decidedAt: now, decidedBy: ctx.member._id, updatedAt: now };
     const request = setup.requestId ? await ctx.db.get(setup.requestId) : null;
-    const editable = !request || ((["needs_you", "rejected", "cancelled"] as string[]).includes(request.status) && request.needs?.kind !== "code");
+    // The same rule as the setup itself (convex/textingSetup.ts): not while a code is awaited, and not once the carriers approved and only the number is being chosen again.
+    const editable = !request || ((["needs_you", "rejected", "cancelled"] as string[]).includes(request.status) && request.needs?.kind !== "code" && request.needs?.kind !== "number");
     switch (args.action) {
       case "dismiss":
         await ctx.db.patch(fresh._id, { status: "dismissed", nextAction: "Dismissed. It comes back only if the details change.", ...decided });
@@ -655,6 +657,97 @@ export const requestAssistance = companyMutation({
     });
     await recordEvent(ctx, { companyId: ctx.companyId, type: "texting.assistance_requested", actor: byMember(ctx), subject: { table: "companies", id: ctx.companyId }, data: { route: args.route } });
     return id;
+  },
+});
+
+// ── Giving a number up ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The Owner asks Selestial to release the company's texting number, or says it is moving to another provider
+ * (docs/texting/03-offboarding.md). Nothing is released, moved or changed by asking: the request is saved with
+ * the owner's acceptance, in the exact words shown, for exactly this number, and assigned to Selestial. The
+ * number keeps working and its fees continue until Selestial completes it.
+ *
+ * One request per number at a time: asking again for the same thing answers with the request already open,
+ * and a release is refused while a transfer is pending (and the other way round), so a number in the middle
+ * of a transfer is never released.
+ */
+export const requestOffboarding = companyMutation({
+  args: { route: literals(OFFBOARDING_ROUTES), acknowledgement: v.string(), words: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    if (ctx.support || !isOwner(ctx.role)) notAllowed();
+    const setup = await setupFor(ctx);
+    const request = await numberRequest(ctx, ctx.companyId);
+    if (!request) throw userError("There's no active texting number on this account to stop using.");
+    const open = await openOffboarding(ctx, ctx.companyId, request.phoneNumber);
+    const pending = open.find((row) => row.assisted?.authorization);
+    if (pending) {
+      if (pending.assisted?.route === args.route) return pending._id;
+      throw userError(pending.assisted?.route === "port_out" ? "A transfer of this number to another provider is pending, so it can't be released. Cancel the transfer request first if you've changed your mind." : "A release of this number is pending, so a transfer can't be started. Cancel the release request first if you've changed your mind.");
+    }
+    if (request.offboarding) throw userError("Selestial has already started on this number. Write to support if something needs to change.");
+    if (args.acknowledgement !== wordingFor(args.route)) throw userError(args.route === "release" ? "Read and accept what releasing your number means before asking." : "Read and accept what moving your number involves before asking.");
+    const now = Date.now();
+    const number = request.phoneNumber;
+    const words = cleanWords(args.words, "Your note", 1000) || undefined;
+    const authorization = { wording: wordingFor(args.route), at: now, by: ctx.member._id };
+    const fields = {
+      ownerWords: OWNER_WORDS[args.route](number),
+      blocker: args.route === "release" ? "Nothing is released until a person at Selestial has reviewed your request." : "The transfer is started by your new provider, not by Selestial.",
+      canContinue: "Your number keeps working and texts keep going out until this completes.",
+      nextAction: args.route === "release" ? "Selestial reviews your request, typically within 2 business days, then releases the number." : "Ask your new provider to start the transfer. Selestial confirms here once it has completed.",
+      followUpAt: now + 2 * 24 * HOUR,
+      state: args.route === "release" ? ("waiting_selestial" as const) : ("waiting_provider" as const),
+      updatedAt: now,
+    };
+    // A work item Selestial opened when the plan was cancelled becomes the owner's request: one item per number.
+    const work = open.find((row) => row.assisted?.source === "plan_cancelled");
+    let id: Id<"textingExceptions">;
+    if (work) {
+      id = work._id;
+      await ctx.db.patch(work._id, { ...fields, assisted: { ...work.assisted!, route: args.route, phoneNumber: number, authorization, ...(words ? { words } : {}) }, history: [...work.history, { at: now, state: fields.state, words: args.route === "release" ? "The owner asked for the number to be released." : "The owner said the number is moving to another provider.", by: "owner" }].slice(-100) });
+    } else {
+      id = await ctx.db.insert("textingExceptions", {
+        companyId: ctx.companyId,
+        setupId: setup._id,
+        requestId: request._id,
+        category: "number",
+        severity: "medium",
+        assignee: { kind: "staff" },
+        ...fields,
+        assisted: { route: args.route, phoneNumber: number, authorization, source: "owner", ...(words ? { words } : {}) },
+        history: [{ at: now, state: fields.state, words: "Requested by the owner.", by: "owner" }],
+        reopened: 0,
+        createdAt: now,
+      });
+    }
+    await recordEvent(ctx, { companyId: ctx.companyId, type: "texting.release_requested", actor: byMember(ctx), subject: { table: "textingRequests", id: request._id }, data: { kind: args.route, phoneNumber: number } });
+    return id;
+  },
+});
+
+/** The Owner takes the request back. Possible until Selestial starts the release or confirms the transfer. */
+export const cancelOffboarding = companyMutation({
+  args: { exceptionId: v.id("textingExceptions") },
+  handler: async (ctx, args) => {
+    if (ctx.support || !isOwner(ctx.role)) notAllowed();
+    const row = await ctx.db.get(args.exceptionId);
+    if (!row || row.companyId !== ctx.companyId || !isOffboarding(row)) notFound();
+    if (row.state === "resolved" || !row.assisted.authorization) throw userError("There's no open request to cancel.");
+    const request = row.requestId ? await ctx.db.get(row.requestId) : null;
+    if (request?.offboarding || request?.status === "released") throw userError("Selestial has already started on this, so it can't be cancelled here. Write to support right away.");
+    const now = Date.now();
+    const { authorization, ...assisted } = row.assisted;
+    void authorization;
+    if (row.assisted.source === "plan_cancelled") {
+      // Selestial's own work item stays open; only the owner's authorization is taken back.
+      await ctx.db.patch(row._id, { assisted: { ...assisted, route: "release" }, state: "waiting_selestial", nextAction: "Selestial contacts the owner about the number.", history: [...row.history, { at: now, state: "waiting_selestial", words: "The owner cancelled their request. Nothing may be released.", by: "owner" }].slice(-100), updatedAt: now });
+    } else {
+      // The authorization is removed with it, so reopening this item later can never stand for the owner's yes.
+      await ctx.db.patch(row._id, { assisted, state: "resolved", resolution: "Cancelled by the owner. Nothing was released or moved.", history: [...row.history, { at: now, state: "resolved", words: "Cancelled by the owner.", by: "owner" }].slice(-100), updatedAt: now });
+    }
+    if (request) await recordEvent(ctx, { companyId: ctx.companyId, type: "texting.release_cancelled", actor: byMember(ctx), subject: { table: "textingRequests", id: request._id }, data: { kind: row.assisted.route, phoneNumber: request.phoneNumber } });
+    return null;
   },
 });
 

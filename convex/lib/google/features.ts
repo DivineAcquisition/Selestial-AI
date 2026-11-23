@@ -1,10 +1,14 @@
 /**
  * What a company's Google connection can be used for, and the least access each use needs. Consent is
- * asked per feature, incrementally: turning on Calendar later adds Calendar's scopes to the same Google
- * grant (include_granted_scopes) without asking again for what was already given.
+ * asked per feature, and it is NOT incremental: each tool is its own connection with its own token, and
+ * every consent request asks only for that tool's scopes with include_granted_scopes=false (oauth.ts), so
+ * a token never carries another tool's access. Turning on Calendar later is a second sign-in at Google
+ * for Calendar alone. At Google's end these are still one grant per Google account, so revoking any one
+ * token ends them all; disconnecting therefore revokes only when nothing else uses that account
+ * (convex/google.ts, convex/inboxes.ts).
  *
- * Gmail is a separate connection (convex/recruiterMailbox.ts) because it is per mailbox, not per company,
- * and its read and send permissions are asked for separately there.
+ * Gmail is a separate connection (convex/recruiterMailbox.ts) because it is per mailbox, not per company.
+ * Reading (gmail.readonly) is always asked for there; sending (gmail.send) only when the Owner allows it.
  *
  * Platform credentials (Maps, Routes, Route Optimization, Gemini) belong to Selestial and are never part
  * of a company's Google grant.
@@ -38,7 +42,7 @@ export const FEATURE_INFO: Record<Feature, { label: string; scopes: readonly str
   business_profile: {
     label: "Google Business Profile",
     scopes: [SCOPE.business],
-    does: "See reviews for your locations and reply to them. Nothing is posted until you approve it.",
+    does: "See reviews for your locations; Retention drafts a reply to each new one. Nothing is posted until you approve it.",
   },
   ads: {
     label: "Google Ads",

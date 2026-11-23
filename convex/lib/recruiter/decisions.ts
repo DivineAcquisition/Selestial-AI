@@ -7,6 +7,7 @@
  * in every company. LEGAL REVIEW: rules on automated hiring decisions differ by state; this setting
  * should not be offered to customers until counsel has reviewed it (docs/recruiter/05-assumptions.md).
  */
+import { reportAction } from "../controls/report";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx } from "../../_generated/server";
 import { requestApproval } from "../approvalQueue";
@@ -50,6 +51,7 @@ export async function proposeOrDecline(ctx: MutationCtx, application: Doc<"appli
   if (authority.kind !== "level" || authority.level === "off") return;
   if (authority.level !== "propose") {
     await declineOnRequirement(ctx, application, result.label, RECRUITER, true);
+    await reportAction(ctx, { companyId: company._id, agent: "recruiter", action: DECLINE_FIXED, level: authority.level, subject: { table: "applications", id: application._id }, ref: application._id, stage: "completed", kind: "decline", data: { applicationId: application._id } });
     return;
   }
   await requestApproval(ctx, {

@@ -23,6 +23,7 @@ import type { Id } from "../../../../convex/_generated/dataModel";
 import { EXPERIENCE_KINDS, KIND_LABELS, type ExperienceKind } from "../../../../convex/lib/booking/definition";
 import { BookingRules } from "./rules";
 import { Checkbox } from "@/components/ui/selection";
+import { PageHeader } from "@/components/app/layout";
 
 const ROOT = "/app/agents/sales/booking-forms";
 const KIND_ICONS: Record<ExperienceKind, React.ReactNode> = {
@@ -47,13 +48,12 @@ export function BookingFormsHome() {
 
   return (
     <div className="grid gap-5">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-wider text-brand-300">Sales · Booking Forms</p>
-          <h1 className="mt-1 font-heading text-2xl tracking-tight text-strong">Booking Experiences</h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Pages customers book on, with your services, prices, times, deposits and agreements. Each experience has a public link, a draft you can test, and published versions.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
+      <PageHeader
+        eyebrow="Sales · Booking Forms"
+        title="Booking Experiences"
+        lead="Pages customers book on, with your services, prices, times, deposits and agreements. Each experience has a public link, a draft you can test, and published versions."
+        actions={
+          <>
           <Link href={panel === "rules" ? ROOT : `${ROOT}?panel=rules`} className={buttonVariants({ variant: "outline", size: "sm" })}>
             <Sliders aria-hidden /> Booking rules
           </Link>
@@ -62,8 +62,9 @@ export function BookingFormsHome() {
               <Plus aria-hidden /> New experience
             </button>
           ) : null}
-        </div>
-      </header>
+          </>
+        }
+      />
 
       {panel === "rules" ? <BookingRules onClose={() => router.push(ROOT)} /> : null}
 
@@ -90,7 +91,7 @@ export function BookingFormsHome() {
               .
             </Notice>
           ) : null}
-          {!overview.plan ? <Notice tone="warning" title="Publishing needs an active plan">Booking pages are part of the Operate and Expand plans.</Notice> : null}
+          {!overview.plan ? <Notice tone="warning" title="Publishing needs an active plan">Booking pages come with your Selestial plan. Choose a plan in Settings to publish.</Notice> : null}
           {overview.experiences.length === 0 ? (
             <Empty title="No booking experiences yet" action={canDraft ? <button type="button" onClick={() => setCreating(true)} className={buttonVariants({ variant: "primary", size: "sm" })}><Plus aria-hidden /> Create your first</button> : undefined}>
               Start from a residential booking, a commercial walkthrough request, a short-term rental turnover, recurring enrollment or a campaign page. Each starts from the services you have published.

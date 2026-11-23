@@ -4,6 +4,7 @@
  * planned twice: `dedupeKey` names it. Every message is checked by the sending policy
  * (convex/lib/messaging/policy.ts) when it is planned and again when it is sent.
  */
+import { textingProvider } from "../quo/route";
 import { internal } from "../../_generated/api";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx } from "../../_generated/server";
@@ -11,7 +12,7 @@ import type { Category, Origin, Recipient, ReplyKind } from "../compliance/schem
 import { recordEvent, type Actor } from "../events";
 import type { Agent } from "../statuses";
 import { checkSend, type PolicyCode } from "./policy";
-import { messagingProvider, sendablePhone } from "./provider";
+import { sendablePhone } from "./provider";
 
 export type MessagePurpose = Doc<"messages">["purpose"];
 
@@ -73,7 +74,7 @@ type Plan = {
  * planned for the end of the window, when the policy is asked again.
  */
 async function plan(ctx: MutationCtx, input: Plan): Promise<Doc<"messages">> {
-  const provider = messagingProvider();
+  const provider = await textingProvider(ctx, input.companyId, input.to);
   const now = Date.now();
   let problem = input.problem ?? (provider ? null : "Text messaging is not connected.");
   let code: PolicyCode | null = null;

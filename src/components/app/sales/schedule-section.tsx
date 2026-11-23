@@ -79,7 +79,7 @@ export function ScheduleSection({ n, data, working, setBody, summary, done, comp
     <FormSection n={n} id="schedule" title={recurring ? "Schedule & cadence" : "Schedule"} lead={`Times are on the company's clock (${data.timezone.replace(/_/g, " ")}).`} done={done}>
       {recurring ? <CadencePicker cadence={cadence} onChange={setCadence} anchorDate={schedule.date} /> : null}
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 @2xl/main:grid-cols-3">
         <label className="grid gap-1.5 text-sm">
           <span className="font-medium text-strong">{recurring ? "First-service date" : "Date"}</span>
           <input type="date" min={today(data.timezone)} className={fieldClass()} value={schedule.date ?? ""} onChange={(e) => setSchedule({ date: e.target.value || undefined })} />
@@ -94,7 +94,7 @@ export function ScheduleSection({ n, data, working, setBody, summary, done, comp
         </label>
       </div>
       {recurring ? (
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 @2xl/main:grid-cols-3">
           <label className="grid gap-1.5 text-sm">
             <span className="font-medium text-strong">End date (optional)</span>
             <input type="date" min={schedule.date} className={fieldClass()} value={body.recurring?.endDate ?? ""} onChange={(e) => setBody((b) => ({ ...b, recurring: { ...b.recurring, endDate: e.target.value || undefined } }))} />
@@ -115,6 +115,7 @@ export function ScheduleSection({ n, data, working, setBody, summary, done, comp
           <span>
             <span className="font-medium text-strong">{capacity.state === "fits" ? "Crew available" : capacity.state === "tight" ? "Last crew available" : capacity.state === "full" ? "No crew free" : capacity.state === "closed" ? "Not bookable" : "Capacity not checked"}</span>
             <span className="block text-xs text-muted-foreground">{capacity.why}</span>
+            {capacity.calendarNote ? <span className="block text-xs text-warning-foreground">{capacity.calendarNote}</span> : null}
           </span>
         </div>
       ) : null}

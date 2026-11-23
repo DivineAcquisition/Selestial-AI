@@ -82,6 +82,8 @@ export const REDACTED_FIELDS: Record<string, { hide: readonly string[]; mask?: r
   sourceMessages: { hide: ["excerpt", "subject"] },
   replyReadings: { hide: ["excerpt"] },
   retentionEntries: { hide: ["text"] },
+  // A drafted message to a customer, kept as an object: its subject and body are hidden, the rest stays.
+  retentionActions: { hide: ["message"] },
   chatMessages: { hide: ["text"] },
 };
 export const HIDDEN_WORDS = "Hidden in support session";

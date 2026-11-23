@@ -8,6 +8,7 @@
  * board itself is convex/pipeline.ts; quotes and bookings are the workspace's (convex/sales.ts,
  * convex/bookings.ts), which the agent uses too.
  */
+import { newConversationGaps, textingProvider } from "./lib/quo/route";
 import { v } from "convex/values";
 
 import type { Id } from "./_generated/dataModel";
@@ -22,7 +23,6 @@ import { userError } from "./lib/errors";
 import { byMember, recordEvent } from "./lib/events";
 import { emailProvider } from "./lib/messaging/email";
 import { senderGaps } from "./lib/messaging/policy";
-import { messagingProvider } from "./lib/messaging/provider";
 import { isManager, isOwner } from "./lib/roles";
 import { ACTION_WORDS, openActions, quiet } from "./lib/sales/actions";
 import { bookingReadiness } from "./lib/sales/agentBooking";
@@ -64,13 +64,24 @@ async function agentOpportunities(ctx: QueryCtx, companyId: Id<"companies">, ope
   return out;
 }
 
+/**
+ * Who reads customer messages. An AI reader that is connected but has no approved credit rate on the active
+ * rate card cannot be charged for, so it is never called and the company's rules do all the reading. The
+ * readiness row and the overview both say what this says; approving a rate on the rate card changes both.
+ */
+function messageReader(): { reader: string; rate: number | null; reading: "rules" | "ai" } {
+  const reader = salesReaderName();
+  const rate = activeRateCard()?.rates.sales_message_reading ?? null;
+  return { reader, rate, reading: reader !== "rules" && rate !== null ? "ai" : "rules" };
+}
+
 /** What the agent needs connected before it can do each part of its work, and whether each is in place. Never a made-up "ready". */
 export const readiness = companyQuery({
   args: {},
   handler: async (ctx) => {
     const profile = await readProfile(ctx, ctx.companyId);
-    const smsGaps = senderGaps(profile.messaging, "sms");
-    const textingConnected = Boolean(messagingProvider());
+    const smsGaps = await newConversationGaps(ctx, ctx.companyId, senderGaps(profile.messaging, "sms"));
+    const textingConnected = Boolean(await textingProvider(ctx, ctx.companyId, null));
     const emailConnected = Boolean((await ownMailbox(ctx, ctx.companyId)) || emailProvider());
     const emailGaps = senderGaps(profile.messaging, "email");
     const catalog = (await publishedCatalog(ctx, ctx.companyId)).filter((row) => row.service.status === "active");
@@ -82,8 +93,7 @@ export const readiness = companyQuery({
       .query("cleaners")
       .withIndex("by_company_status", (q) => q.eq("companyId", ctx.companyId).eq("status", "ready"))
       .take(5);
-    const reader = salesReaderName();
-    const rate = activeRateCard()?.rates.sales_message_reading ?? null;
+    const { reader, rate } = messageReader();
     return [
       { key: "services", label: "Published services", ok: catalog.length > 0, detail: catalog.length > 0 ? `${catalog.length} published. The agent quotes only from these.` : "No service is published, so the agent has nothing to quote from.", href: "/app/services", action: "Open Services & Pricing" },
       { key: "texting", label: "Text messages", ok: textingConnected && smsGaps.length === 0, detail: !textingConnected ? "Texting isn't connected for Selestial yet." : smsGaps.length > 0 ? smsGaps.map((gap) => gap.words).join(" ") : `Sends from ${profile.messaging.smsNumber}.`, href: "/app/texting", action: "Open texting setup" },
@@ -181,7 +191,8 @@ export const overview = companyQuery({
       paused,
       state,
       working: running.length,
-      reader: salesReaderName(),
+      // What reads customer messages in practice: an AI reader only once it is connected and has an approved credit rate.
+      reader: messageReader().reading,
       firstBatch: settings.firstBatchDecidedAt === null ? { decided: false as const, waiting: batchWaiting } : { decided: true as const, at: settings.firstBatchDecidedAt },
       counts: {
         newInquiries: cards.filter((card) => card.stage === "new").length,

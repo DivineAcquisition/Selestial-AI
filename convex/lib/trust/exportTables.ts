@@ -37,6 +37,10 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   { table: "tasks", index: "by_company_status_due" },
   { table: "permissions", index: "by_company_action" },
   { table: "approvals", index: "by_company_status_decideBy" },
+  // Agent Controls (convex/lib/controls/schema.ts): every settings change with the policy before and after, and the daily allowance ledger.
+  { table: "controlChanges", index: "by_company_revision" },
+  { table: "allowanceDays", index: "by_company_action_day" },
+  { table: "allowanceReservations", index: "by_company_action_day" },
   { table: "messages", index: "by_company_queued" },
   { table: "coverageRequests", index: "by_company_job" },
   { table: "checklistItems", index: "by_company_job" },
@@ -76,6 +80,7 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   { table: "billingDunning", index: "by_company_resolved" },
   { table: "aiExecutions", index: "by_company_created", omit: ["lockId"], why: "Autumn's internal reference for a credit hold." },
   { table: "messagingCharges", index: "by_company_created", omit: ["lockId"], why: "Autumn's internal reference for a messaging hold." },
+  { table: "earlyOffers", index: "by_company_env" },
   { table: "billingIntents", index: "by_company_created", omit: ["url"], why: "A short-lived payment or portal address." },
   { table: "agentAccessRequests", index: "by_company_last" },
   { table: "messagingAttention", index: "by_company_at", omit: ["resolvedBy"], why: "Which Selestial staff member resolved it." },
@@ -155,6 +160,10 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   { table: "servicePlans", index: "by_company_customer" },
   { table: "clientNotes", index: "by_company_customer" },
   { table: "inboundMessages", index: "by_company_customer" },
+  // Texting conversations and the company's Quo connection (convex/lib/quo/schema.ts). The connection's key and webhook secret are not on it.
+  { table: "smsConversations", index: "by_company_address" },
+  { table: "smsInbound", index: "by_company_received" },
+  { table: "quoConnections", index: "by_company" },
   // Retention (convex/lib/retention/schema.ts): signals, cases and their history, actions, feedback, and background runs.
   { table: "retentionSignals", index: "by_company_status" },
   { table: "retentionCases", index: "by_company_status" },
@@ -163,6 +172,23 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   { table: "retentionFeedback", index: "by_company_customer" },
   { table: "retentionLinks", index: "by_company_customer", omit: ["publicId"], why: "Half of a customer link." },
   { table: "retentionRuns", index: "by_company_kind", omit: ["payload"], why: "A customer's text held only until it is read; the conversation keeps it." },
+  // Quality (convex/lib/quality/schema.ts).
+  { table: "qualityStandards", index: "by_company_status" },
+  { table: "qualityReviews", index: "by_company_status" },
+  { table: "qualityCases", index: "by_company_created" },
+  { table: "qualityFindings", index: "by_company_category" },
+  { table: "qualityEntries", index: "by_company_case" },
+  { table: "qualityEvidence", index: "by_company_case" },
+  { table: "qualityRequests", index: "by_company_status", omit: ["publicId"], why: "Half of a private link." },
+  { table: "qualitySubmissions", index: "by_company_case" },
+  { table: "qualityFiles", index: "by_company_request", omit: ["storageId"], why: "The stored file itself is not part of the export." },
+  { table: "qualityCorrections", index: "by_company_state" },
+  { table: "qualityImprovements", index: "by_company_state" },
+  { table: "qualityRuns", index: "by_company_status" },
+  { table: "qualityConnections", index: "by_company_provider", omit: ["publicId"], why: "The address a provider's deliveries are accepted at." },
+  { table: "qualityComms", index: "by_company_occurred" },
+  { table: "qualityExtracts", index: "by_company_comm" },
+  { table: "qualityAssociations", index: "by_company_status" },
   { table: "pricingProfiles", index: "by_company" },
   { table: "serviceQuotes", index: "by_company_created" },
   { table: "serviceImports", index: "by_company_created" },
@@ -234,6 +260,11 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   { table: "bookingEvents", index: "by_company_experience_at" },
   // Notifications to members (convex/lib/notify/schema.ts): each person's choices. The notices themselves are messages.
   { table: "notificationPreferences", index: "by_company_member" },
+  // Migration (convex/lib/migration/schema.ts): the saved migration, its files and runs, and what each source record became.
+  { table: "migrations", index: "by_company" },
+  { table: "migrationLinks", index: "by_company_source_kind_external" },
+  { table: "importedHistory", index: "by_company_customer_day" },
+  { table: "openingBalances", index: "by_company_customer" },
 ];
 
 /** Company tables kept out of the export, and why. */
@@ -251,20 +282,26 @@ export const NOT_EXPORTED: Readonly<Record<string, string>> = {
   chatUploads: "Internal file references for chat attachments; the files themselves are private to the member who uploaded them.",
   chatMessages: "The words of private chats, for the same reason as conversations.",
   googleCredentials: "A sealed authorization to the company's Google account; it opens the account, so a copy must never leave. The connection itself is exported.",
-  googleOAuthStates: "Ten-minute, single-use records of a Google sign-in in progress; nothing in them is about the business.",
+  googleOAuthStates: "Short-lived, single-use records of a Google sign-in in progress; while one waits to be confirmed it holds a sealed authorization (deleted within fifteen minutes), so a copy must never leave.",
   googleLeadKeys: "The hash of the lead-form key; it proves Google's deliveries and is useless outside Selestial.",
   googleWatches: "Notification channels with Google, renewed automatically; their secrets must not leave.",
   googleChoices: "A short-lived copy of what Google listed for the Owner to choose from.",
   googleBusy: "A short-lived copy of busy times read from Google Calendar; the calendar itself is the record.",
   connectorCredentials: "A sealed authorization to the company's Jobber or Housecall Pro account; it opens that account, so a copy must never leave. The connection itself is exported.",
+  qualityCredentials: "A sealed key to the company's phone platform; it opens that account, so a copy must never leave. The connection itself is exported.",
+  quoSecrets: "The company's sealed Quo API key and webhook secret; they open the Quo account, so a copy must never leave. The connection itself is exported.",
   connectorStates: "Ten-minute, single-use records of a Jobber sign-in in progress; nothing in them is about the business.",
   connectorReads: "A copy of another system's client list kept for a day while the owner checks it; what was imported is exported as clients and properties.",
   googleTravel: "Cached drive times between rounded map points, recomputed as needed.",
   portalCodes: "Hashes of one-time codes that unlock a portal for ten minutes; nothing in them is about the business.",
   capacityHolds: "Short-lived reservations of a day's minutes while a booking waits; the booking keeps what matters.",
+  migrationFiles: "Each uploaded export's name, columns and mapping; the rows it contained are what was imported, exported as clients, properties, plans and visits.",
+  migrationRows: "Working copies of the rows of uploaded files while they were reviewed; what was imported is exported as clients, properties, plans and visits, and each one's source is in migrationLinks.",
+  migrationRuns: "Progress records of background imports; their totals are in the migration and each record's result in migrationLinks.",
   lockdownCompanies: "A restore's record of each company's sending and agent settings before Selestial paused them; the settings themselves are on the company, which is exported.",
   incidents: "Selestial's own operational records about the service (what broke, what recovery ran). What happened to the company's records is exported in those records and the event log.",
   trustRequests: "Requests to Selestial are Selestial's records about a person, answered through the privacy request process.",
+  companyDeletions: "Selestial's record of a staff-run deletion of the company; it exists only once the company is being deleted.",
 };
 
 /** Fields of the company row itself that never leave. */

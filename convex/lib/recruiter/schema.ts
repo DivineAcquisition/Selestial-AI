@@ -68,7 +68,8 @@ export const INBOX_PURPOSES = ["sales", "hiring", "care", "operations"] as const
 export type InboxPurpose = (typeof INBOX_PURPOSES)[number];
 export const inboxPurposeValidator = literals(INBOX_PURPOSES);
 
-export const CLASSIFICATIONS = ["new_application", "applicant_reply", "duplicate_notification", "status_update", "suggested_candidate", "promotion", "unrelated"] as const;
+/** needs_review: hiring mail Recruiter could not read with confidence. Nothing is done with it but asking a person to read it. */
+export const CLASSIFICATIONS = ["new_application", "applicant_reply", "duplicate_notification", "status_update", "suggested_candidate", "promotion", "unrelated", "needs_review"] as const;
 export type Classification = (typeof CLASSIFICATIONS)[number];
 export const classificationValidator = literals(CLASSIFICATIONS);
 
@@ -389,7 +390,17 @@ export const recruiterTables = {
     purposes: v.optional(v.array(inboxPurposeValidator)),
     expiresAt: v.number(),
     usedAt: v.optional(v.number()),
-  }).index("by_stateHash", ["stateHash"]),
+    /**
+     * Google answered, and the mailbox is waiting for the member who started this to confirm it while
+     * signed in (convex/recruiterMailbox.ts). Until then nothing can use it: there is no connection, the
+     * authorization is sealed to this record, and it is deleted (and Google's grant ended) when `until` passes.
+     */
+    pending: v.optional(v.object({ address: v.string(), sealedRefreshToken: v.string(), scopes: v.array(v.string()), until: v.number() })),
+    /** The hash of the one-time value Google's answer was sent on to the app with. Only that browser has the value. */
+    confirmHash: v.optional(v.string()),
+  })
+    .index("by_stateHash", ["stateHash"])
+    .index("by_confirmHash", ["confirmHash"]),
 
   /**
    * One message seen in the hiring inbox. For unrelated mail only the provider's id and that verdict are
@@ -463,7 +474,10 @@ export const recruiterTables = {
     size: v.number(),
     clientKey: v.string(),
     uploadedAt: v.number(),
-  }).index("by_company_application", ["companyId", "applicationId"]),
+  })
+    .index("by_company_application", ["companyId", "applicationId"])
+    // So a file already kept on an application is never deleted through another link (lib/uploads.ts).
+    .index("by_storage", ["storageId"]),
 
   /** One evaluation of a submitted application against the role's criteria. A recommendation, never a decision. */
   screenings: defineTable({

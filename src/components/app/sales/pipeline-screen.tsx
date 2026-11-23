@@ -57,7 +57,7 @@ export function PipelineScreen() {
   if (data === undefined) return <Skeleton className="h-[60vh] rounded-2xl" />;
   const stats = data.last30;
   return (
-    <div className="mx-auto max-w-[1400px]">
+    <div className="min-w-0">
       <PageHeader
         title="Pipeline"
         lead="Every deal, where it is, who has it, and what happens next. Reminders go to your team; nothing is sent to customers on its own."

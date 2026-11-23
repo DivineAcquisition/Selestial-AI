@@ -25,12 +25,14 @@ export function ReviewStep() {
   const b = view.setup.business;
   const sole = b.entityType === "SOLE_PROPRIETOR";
   const correcting = view.request?.status === "needs_you";
+  // Only the number is being chosen again: the rest is approved and stays as filed, but it still has to be sent.
+  const frozen = locked && !view.numberOnly;
   const missing = [...view.issues.business.map((row) => row.words), ...view.issues.activities, ...view.issues.permission, ...view.issues.number];
   const links = view.pages.filter((row) => row.url);
 
   return (
     <>
-      <StepHeading eyebrow="Step 5 of 6" title={correcting ? "Review your corrected details" : "Review & submit"} lead={correcting ? "Everything you filled in before is kept. Check the changes, then send them back." : "Check everything once more. You can change any part before you submit."} />
+      <StepHeading eyebrow="Step 5 of 6" title={correcting ? "Review your corrected details" : "Review & submit"} lead={view.numberOnly ? "The carriers approved everything below as you filed it. Only your number changed: check it, then send it back." : correcting ? "Everything you filled in before is kept. Check the changes, then send them back." : "Check everything once more. You can change any part before you submit."} />
 
       <Summary title="Your business" step="business">
         <Row label="Name on texts" value={b.displayName} />
@@ -93,14 +95,14 @@ export function ReviewStep() {
           </div>
         ) : null}
         <label className="flex items-start gap-3 rounded-xl border border-border p-3.5 text-sm leading-6">
-          <Checkbox checked={agreed} onCheckedChange={(checked) => setAgreed(checked)} className="mt-1 shrink-0" disabled={locked} />
+          <Checkbox checked={agreed} onCheckedChange={(checked) => setAgreed(checked)} className="mt-1 shrink-0" disabled={frozen} />
           <span className="text-strong">{view.charges.wording}</span>
         </label>
         <div>
-          <Button variant="primary" size="lg" disabled={!agreed || missing.length > 0 || locked} onClick={() => void (async () => {
+          <Button variant="primary" size="lg" disabled={!agreed || missing.length > 0 || frozen} onClick={() => void (async () => {
             if (await run((revision) => submit({ companyId, revision, authorization: view.charges.wording }))) await go("progress");
           })()}>
-            {correcting ? "Send my corrections to Selestial review" : "Submit for Selestial review"}
+            {view.numberOnly ? "Send my new number to Selestial review" : correcting ? "Send my corrections to Selestial review" : "Submit for Selestial review"}
           </Button>
         </div>
       </Section>

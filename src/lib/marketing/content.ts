@@ -12,6 +12,8 @@ export const SITE_DESCRIPTION =
 
 /** Where the operations assessment lives. Every "Get early access" button goes here. */
 export const ASSESSMENT_PATH = "/assessment";
+/** Where "Sign up" goes: the account page on the app host (the public host redirects it there, src/lib/hosts.ts). */
+export const SIGNUP_PATH = "/signup";
 
 export const NAV = {
   links: [
@@ -195,53 +197,57 @@ export const PHILOSOPHY = {
 } as const;
 
 /**
- * Public pricing. The plans and prices are approved; credit allowances are not, so none is shown. Every
+ * Public pricing: the one plan on sale (PLANS_ON_SALE in convex/lib/billing/catalog.ts). The price is approved; credit allowances are not, so none is shown. Every
  * agent and feature that is not working today says so.
  */
 export const PRICING = {
   id: "pricing",
   eyebrow: "Pricing",
   headline: "The right AI workforce for your cleaning company.",
-  lead: "Start with four essential agents. Expand into a complete team as your operation grows.",
+  lead: "One plan for early companies: four agents that work today, plus Quality free for early users.",
   plans: [
     {
       id: "operate",
       name: "Operate",
       price: "$299",
       period: "/month",
-      summary: "Keep sales, hiring, dispatch, and retention moving from one workspace.",
-      today: [
-        "Sales: inquiries by text and email, quotes customers accept online, follow-ups and bookings",
+      /**
+       * The approved early-user offer (convex/lib/billing/earlyOffer.ts). The page is built ahead of time and
+       * cannot cheaply know the places left, so it says "while places last"; the app shows the live count
+       * and never shows $199 unless it will be honored.
+       */
+      offer: { price: "$199", period: "/month", terms: "for your first 12 months, then $299", note: "For the first 25 companies. While places last." },
+      tagline: "Early-user plan",
+      /** The early-user bonus agent: included at no extra cost for companies on the early-user price. */
+      bonus: { id: "quality", name: "Quality", title: "Quality Control AI agent", does: "Reviews every finished visit's photos and checklist, flags what was missed, and asks the cleaner first." },
+      /** The four agents that work today, each with what it does in one line. */
+      agents: [
+        { id: "sales", does: "Inquiries by text and email, quotes customers accept online, follow-ups and bookings" },
+        { id: "dispatch", does: "Offers, coverage, live jobs and cleaner text-message links" },
+        { id: "retention", does: "Concerns followed through to an outcome, plan changes, renewals and re-engagement" },
+        { id: "recruiter", does: "Your hiring inbox, invitations, applications, interviews and offers" },
+      ] as const,
+      /** Everything else in the plan. */
+      platform: [
         "Booking pages for your website, priced from your own services",
-        "Dispatch: offers, coverage, live jobs and cleaner text-message links",
-        "Retention: service concerns followed through to an outcome, recurring-plan changes customers can make themselves, renewals and re-engagement",
-        "Recruiter: your hiring inbox, invitations, applications, interviews and offers",
         "Clients & Properties, Cleaners, Services & Pricing and Finance",
         "Company Chat, approvals, and agreements with AI-guided drafting",
         "A monthly allowance of Selestial Credits for AI work",
       ],
-      later: [],
-    },
-    {
-      id: "expand",
-      name: "Expand",
-      price: "$499",
-      period: "/month",
-      summary: "Add marketing, quality, customer care, and team coordination, with customer portals and advanced controls.",
-      today: ["Everything in Operate", "Creative Studio for images and video", "Advanced approval routing and template governance for agreements", "A larger monthly credit allowance"],
-      later: ["Marketing, Quality and Customer Care, included when released", "Customer portal, your own domain for booking pages, advanced workflow customization, and team and location governance, when available"],
+      summary: "Keep sales, hiring, dispatch, and retention moving from one workspace.",
+      later: ["Marketing and Care. They are not part of this plan today, and no plan or purchase makes one available sooner.", "Customer portal, your own domain for booking pages, and Creative Studio for images and video."],
     },
   ],
-  allowanceNote: "Each plan includes a monthly allowance of Selestial Credits, and Expand includes twice Operate's. Your Usage page shows your allowance, what each piece of AI work costs, and what used it.",
+  allowanceNote: "The plan includes a monthly allowance of Selestial Credits. Your Usage page shows your allowance, what each piece of AI work costs, and what used it.",
   services: "Bespoke implementation, migration and custom development are scoped separately.",
   faqs: [
-    { q: "Which agents does each plan include?", a: "Operate includes Sales, Retention, Recruiter and Dispatch. Expand adds Marketing, Quality and Customer Care. Onboarding new cleaners through to readiness is part of Recruiter, and coordinating their visits is part of Dispatch, in both plans. Today Sales, Retention, Dispatch and Recruiter are working; the others are included in their plan when each is released, and no plan or purchase makes one available sooner." },
+    { q: "Which agents are included?", a: "Sales, Retention, Recruiter and Dispatch, all working today. Early users on the $199 price also get Quality, the Quality Control AI agent, at no extra cost. Onboarding new cleaners through to readiness is part of Recruiter, and coordinating their visits is part of Dispatch. Marketing and Care are not released, and no plan or purchase makes one available sooner." },
     { q: "What uses credits?", a: "Selestial Credits pay for defined AI work, such as one Company Chat answer, one hiring email read by AI, or one generated image. Each is charged once when it is completed. Viewing records, opening or answering a cleaner’s link, accepting a job, status changes and scheduled reminders use no credits." },
     { q: "What happens when credits run out?", a: "New AI work pauses and the Owner is told. Schedules, records, cleaner links, active jobs and everything that does not use AI keep working. Nothing is bought automatically; you can buy a top-up or wait for the monthly reset." },
     { q: "Do top-ups unlock agents?", a: "No. A top-up adds credits only. Agents and features come with the plan, and only once they are released." },
     { q: "How do monthly credits reset?", a: "Included credits reset at the start of each billing period and do not roll over. Purchased credits are used after the included ones, do not reset, and can be used while you have an active plan." },
     { q: "How is texting and calling charged?", a: "Text messages, calls and other outside services are measured separately from credits and priced openly. When AI writes a message that is then sent, the AI work and the message are shown as separate items." },
-    { q: "How do upgrades, downgrades and cancellation work?", a: "Upgrading shows the exact charge and takes effect once payment is confirmed; credits already used this month still count. Downgrading takes effect at renewal and lists what you would lose first; your records, completed work and signed agreements are kept. Cancelling stops the renewal, and the plan stays active until the end of the period you paid for." },
+    { q: "How do starting and cancelling work?", a: "Choosing the plan shows the exact charge before you pay and takes effect once payment is confirmed. Cancelling stops the renewal, and the plan stays active until the end of the period you paid for." },
   ],
 } as const;
 
@@ -401,7 +407,7 @@ export const TASK_TRAIL = {
 export const INTEGRATIONS = {
   id: "connections",
   headline: "Works with the tools you already use.",
-  lead: "Selestial connects to the places your leads, applicants, calendar and payments already live. Some connections work today; the rest are on the way, and each says which.",
+  lead: "Selestial connects to the places your leads, applicants, calendar and payments already live.",
   liveLabel: "Live",
   plannedLabel: "Coming soon",
   groups: [
@@ -411,6 +417,7 @@ export const INTEGRATIONS = {
         { name: "Google Ads", catalogId: "google-ads", mark: "google-ads", live: true, body: "Lead-form leads arrive in Sales with their source attached." },
         { name: "Google Business Profile", catalogId: "google-business-profile", mark: "google-business-profile", live: true, body: "Your business profile, connected to the workspace." },
         { name: "Business texting", catalogId: "texting-number", mark: "texting-number", live: true, body: "Text customers and cleaners from your company’s own number." },
+        { name: "Quo", catalogId: "quo", mark: "quo", live: true, body: "Keep your Quo number: agents text from it and replies come back to Selestial." },
         { name: "Meta lead ads", catalogId: "meta-lead-ads", mark: "meta-lead-ads", live: false, body: "New leads from Facebook and Instagram go straight to Sales." },
       ],
     },
@@ -552,7 +559,7 @@ export const PLATFORM = {
         { label: "1 more bathroom", value: "$25.00" },
       ],
       total: { label: "Per visit", value: "$185.00" },
-      status: "Live",
+      status: "Published",
     },
     booking: {
       title: "Booking pages",

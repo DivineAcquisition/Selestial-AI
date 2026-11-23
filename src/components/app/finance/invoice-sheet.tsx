@@ -273,7 +273,7 @@ function Lines({ detail }: { detail: Detail }) {
   return (
     <section aria-label="Lines">
       <h3 className="mb-2 text-sm font-semibold text-strong">What it&apos;s for</h3>
-      <div className="overflow-hidden rounded-xl border border-border">
+      <div className="overflow-x-auto rounded-xl border border-border">
         <table className="w-full text-sm">
           <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
             <tr>

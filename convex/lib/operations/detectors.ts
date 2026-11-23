@@ -12,6 +12,7 @@ import type { Doc, Id, TableNames } from "../../_generated/dataModel";
 import type { QueryCtx } from "../../_generated/server";
 import { maskAddress } from "../cleaners/portal";
 import type { Area, Check, Kind, OpenState, Severity } from "./catalog";
+import { UNMETERED_WARNING, unmeteredWithoutReason } from "./readiness";
 
 const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
@@ -60,7 +61,7 @@ async function load<T extends TableNames>(ctx: QueryCtx, table: T, source: Relat
   return id ? await ctx.db.get(id) : null;
 }
 
-const AGENT_NAMES: Record<string, string> = { dispatch: "Dispatch", recruiter: "Recruiter", sales: "Sales", retention: "Care & Retention" };
+const AGENT_NAMES: Record<string, string> = { dispatch: "Dispatch", recruiter: "Recruiter", sales: "Sales", retention: "Care & Retention", quality: "Quality" };
 const agentName = (agent: string) => AGENT_NAMES[agent] ?? agent;
 
 // ── Agent work ────────────────────────────────────────────────────────────────────────────────────
@@ -277,13 +278,47 @@ const ownerNotices: Detector = {
 /** The stuck-send job (every 5 minutes) marks a send unconfirmed 5 minutes after it started. Twenty minutes means it is not running. */
 const SENDING_STUCK = 20 * MINUTE;
 
+/**
+ * A queued message goes within seconds, and a retry within minutes, each on its own timer. One still queued
+ * after this long has lost its timer (a restore does not bring timers back) and will never go by itself.
+ */
+export const QUEUED_STUCK = 2 * HOUR;
+
+/** Messages queued longer than QUEUED_STUCK, oldest first. Queued rows that were never attempted sort first in the index. */
+export async function stuckQueued(ctx: QueryCtx, now: number, limit = 20): Promise<Doc<"messages">[]> {
+  const rows = await ctx.db
+    .query("messages")
+    .withIndex("by_status_attempted", (q) => q.eq("status", "queued"))
+    .take(200);
+  return rows.filter((row) => Math.max(row.queuedAt, row.attemptedAt ?? 0) < now - QUEUED_STUCK).slice(0, limit);
+}
+
 const stuckSends: Detector = {
   check: "stuck_sends",
   everyMinutes: 5,
   async scan() {
-    return [ref("platform", "stuck_sends")];
+    return [ref("platform", "stuck_sends"), ref("platform", "stuck_queued")];
   },
   async evaluate(ctx, source, now) {
+    if (source.table === "platform" && source.id === "stuck_queued") {
+      const waiting = await stuckQueued(ctx, now);
+      if (waiting.length === 0) return null;
+      const oldest = Math.min(...waiting.map((row) => row.queuedAt));
+      return {
+        key: "message_stuck_queued",
+        kind: "message_stuck_queued",
+        area: "platform",
+        severity: "high",
+        state: "needs_staff",
+        title: "Messages are queued and not going",
+        impact: `${many(waiting.length, "message has", "messages have")}${waiting.length === 20 ? " (or more)" : ""} been queued for over two hours. Their send timers are gone, as happens after a restore, so they will not go by themselves. Nothing is sent again automatically.`,
+        nextAction: "List them with `npx convex run restoration:status`. For each, check with the provider that it did not already go, then have the company send it again or stop it. Do not requeue in bulk.",
+        diagnostics: `oldest queued ${new Date(oldest).toISOString()}`,
+        source,
+        since: oldest,
+        attempts: 0,
+      };
+    }
     if (source.table !== "platform" || source.id !== "stuck_sends") return null;
     const stuck = await ctx.db
       .query("messages")
@@ -533,6 +568,49 @@ const connectors: Detector = {
 
 /** The settlement sweeps run every 5 minutes. A settlement due an hour ago means they are not. */
 const SETTLE_OVERDUE = HOUR;
+/** Finished work that was not charged, and a failed plan payment no company was found for, are shown this long. */
+const BILLING_REVIEW_WINDOW = 3 * DAY;
+/** How convex/billingLock.ts keeps a failed plan payment it could not match to a company. */
+const UNMATCHED_PLAN_FAILURE = "stripe.invoice.payment_failed.unmatched";
+
+/** The month-12 move should be on Autumn's record this long before the price changes. */
+const EARLY_SWITCH_DUE = 7 * DAY;
+
+/**
+ * An early-user company whose move from $199 to $299 is failing, not yet on Autumn's record a week before
+ * month 12 ends, or past month 12 and still on $199. Never silent: the company would otherwise keep paying
+ * a price the offer does not give.
+ */
+async function earlyOfferSwitch(ctx: QueryCtx, source: Related, now: number): Promise<Finding | null> {
+  const row = await load(ctx, "earlyOffers", source);
+  if (!row || row.state !== "claimed" || row.offerEndsAt === undefined) return null;
+  const account = await ctx.db
+    .query("billingAccounts")
+    .withIndex("by_company_env", (q) => q.eq("companyId", row.companyId).eq("env", row.env))
+    .unique();
+  // Ending anyway (cancelled), or no longer on the $199 plan: nothing to move.
+  if (!account || account.autumnPlanId !== "operate_early" || account.subscription.endsAt !== null) return null;
+  const late = now > row.offerEndsAt + DAY;
+  const due = now > row.offerEndsAt - EARLY_SWITCH_DUE && !row.switchConfirmedAt;
+  if (!row.switchProblem && !due && !late) return null;
+  const endsOn = new Date(row.offerEndsAt).toISOString().slice(0, 10);
+  return {
+    key: `early_offer_switch:${row.companyId}`,
+    kind: "early_offer_switch",
+    area: "billing",
+    companyId: row.companyId,
+    provider: "autumn",
+    severity: late ? "critical" : "high",
+    state: row.switchProblem || late ? "needs_staff" : "recovering",
+    title: late ? "Early-user company is still on $199 after month 12" : "Early-user price is not yet set to move to $299",
+    impact: late ? `The 12 months at $199 ended on ${endsOn}, and Autumn still bills $199. The Owner was told the price would be $299 from that date.` : `The 12 months at $199 end on ${endsOn}. The move to $299 at the end of that billing period is not on Autumn's record yet.`,
+    nextAction: row.switchProblem ? "Read the problem, then check the customer in Autumn: the plan should show Operate scheduled for the end of the 12th period. The hourly sweep asks again." : "Check that the “early-user offer” job is running, and the customer in Autumn.",
+    diagnostics: [row.switchProblem, `attempts ${row.switchAttempts ?? 0}`, row.switchRequestedAt ? `asked ${new Date(row.switchRequestedAt).toISOString()}` : "not asked yet"].filter(Boolean).join(" · "),
+    source,
+    since: row.switchRequestedAt ?? row.offerEndsAt - EARLY_SWITCH_DUE,
+    attempts: row.switchAttempts ?? 0,
+  };
+}
 
 const aiBilling: Detector = {
   check: "ai_billing",
@@ -551,11 +629,39 @@ const aiBilling: Detector = {
         .take(50);
       out.push(...overdue.map((row) => ref("aiExecutions", row._id)));
     }
+    const unbilled = await ctx.db
+      .query("aiExecutions")
+      .withIndex("by_settlement_next", (q) => q.eq("settlement", "unbilled"))
+      .order("desc")
+      .take(100);
+    out.push(...unbilled.filter((row) => row.updatedAt > now - BILLING_REVIEW_WINDOW).map((row) => ref("aiExecutions", row._id)));
+    const strangers = await ctx.db
+      .query("billingWebhooks")
+      .withIndex("by_type_received", (q) => q.eq("type", UNMATCHED_PLAN_FAILURE).gt("receivedAt", now - BILLING_REVIEW_WINDOW))
+      .take(50);
+    out.push(...strangers.map((row) => ref("billingWebhooks", row._id)));
+    // Early-user companies whose move to $299 is failing or late (convex/earlyOffer.ts).
+    for (const env of ["sandbox", "production"] as const) {
+      const claimed = await ctx.db
+        .query("earlyOffers")
+        .withIndex("by_env_state", (q) => q.eq("env", env).eq("state", "claimed"))
+        .take(200);
+      out.push(...claimed.filter((row) => row.switchProblem || (row.offerEndsAt !== undefined && now > row.offerEndsAt - EARLY_SWITCH_DUE)).map((row) => ref("earlyOffers", row._id)));
+    }
     return out;
   },
   async evaluate(ctx, source, now) {
+    if (source.table === "earlyOffers") return earlyOfferSwitch(ctx, source, now);
+    if (source.table === "billingWebhooks") {
+      const event = await load(ctx, "billingWebhooks", source);
+      if (!event || event.type !== UNMATCHED_PLAN_FAILURE || event.receivedAt <= now - BILLING_REVIEW_WINDOW) return null;
+      return { key: "plan_invoice_unmatched", kind: "plan_invoice_unmatched", area: "billing", provider: "stripe", severity: "high", state: "needs_staff", title: "A failed plan payment matched no company", impact: "Stripe reported a failed Selestial plan payment and no company could be found for it. Nobody was warned and no account was locked.", nextAction: "Find the customer in Stripe, check which company it is, and contact the Owner. Check that Autumn puts its customer id on the Stripe customer.", diagnostics: `Stripe event ${event.deliveryId}${event.customerId ? ` · customer ${event.customerId}` : ""}`, source, since: event.receivedAt, attempts: 0, plural: (n) => ({ title: `${many(n, "failed plan payment", "failed plan payments")} matched no company`, impact: "Stripe reported failed Selestial plan payments and no company could be found for them. Nobody was warned and no account was locked." }) };
+    }
     const row = await load(ctx, "aiExecutions", source);
     if (!row) return null;
+    if (row.settlement === "unbilled" && row.updatedAt > now - BILLING_REVIEW_WINDOW) {
+      return { key: `ai_work_unbilled:${row.companyId}`, kind: "ai_work_unbilled", area: "billing", companyId: row.companyId, provider: "autumn", severity: "low", state: "needs_staff", title: "Finished AI work was not charged", impact: "The work finished and was delivered; Autumn refused its charge, usually because the credit hold had expired. The company was not charged and the work will not run again.", nextAction: "Check why the charge was refused. If holds are expiring before work finishes, the hold time for this kind of work is too short.", diagnostics: `execution ${row._id} (${row.task}, ${row.charged ?? row.credits} credits)${row.settleProblem ? ` · ${row.settleProblem.slice(0, 200)}` : ""}`, source, since: row.updatedAt, attempts: row.settleAttempts, plural: (n) => ({ title: `${many(n, "piece", "pieces")} of finished AI work ${n === 1 ? "was" : "were"} not charged`, impact: "The work finished and was delivered; Autumn refused the charges, usually because the credit holds had expired. The company was not charged and nothing will run again." }) };
+    }
     if (row.settlement === "unverified") {
       return { key: `ai_settlement_unverified:${row.companyId}`, kind: "ai_settlement_unverified", area: "billing", companyId: row.companyId, provider: "autumn", severity: "medium", state: "needs_staff", title: "An AI credit charge is unsettled", impact: "The work finished; only its charge could not be confirmed with Autumn after every retry. The work will not run again.", nextAction: "Compare with Autumn's usage record, then confirm or release the hold.", diagnostics: `execution ${row._id} (${row.task}, ${row.credits} credits)${row.settleProblem ? ` · ${row.settleProblem.slice(0, 200)}` : ""}`, source, since: row.updatedAt, attempts: row.settleAttempts, plural: (n) => ({ title: `${many(n, "AI credit charge is", "AI credit charges are")} unsettled`, impact: "The work finished; only the charges could not be confirmed with Autumn after every retry. Nothing will run again." }) };
     }
@@ -576,6 +682,7 @@ const messagingBilling: Detector = {
       .withIndex("by_settlement_next", (q) => q.eq("settlement", "unverified"))
       .take(200);
     out.push(...unverified.map((row) => ref("messagingCharges", row._id)));
+    out.push(ref("platform", "messaging_unmetered"));
     for (const settlement of ["pending_confirm", "pending_release", "pending_track"] as const) {
       const overdue = await ctx.db
         .query("messagingCharges")
@@ -586,6 +693,25 @@ const messagingBilling: Detector = {
     return out;
   },
   async evaluate(ctx, source, now) {
+    // One incident, raised once, for as long as production sends for free with no reason recorded. It closes
+    // by itself when MESSAGING_BILLING is on or MESSAGING_BILLING_SUBSIDY_NOTE says why (lib/operations/readiness.ts).
+    if (source.table === "platform" && source.id === "messaging_unmetered") {
+      if (!unmeteredWithoutReason()) return null;
+      return {
+        key: "messaging_unmetered",
+        kind: "messaging_unmetered",
+        area: "platform",
+        severity: "high",
+        state: "needs_staff",
+        title: "Messages are not being charged",
+        impact: `${UNMETERED_WARNING} Every company's texts and emails are free while MESSAGING_BILLING is off on the production backend.`,
+        nextAction: "Decide with the owner. To charge: follow the rollout order in docs/billing/03-messaging-billing.md. To keep it free on purpose: set MESSAGING_BILLING_SUBSIDY_NOTE to what was approved, by whom, and until when.",
+        diagnostics: "MESSAGING_BILLING is not \"on\"; MESSAGING_BILLING_SUBSIDY_NOTE is empty.",
+        source,
+        since: now,
+        attempts: 0,
+      };
+    }
     const row = await load(ctx, "messagingCharges", source);
     if (!row) return null;
     if (row.settlement === "unverified") {
@@ -618,6 +744,77 @@ const messagingAttention: Detector = {
   },
 };
 
+// ── Company deletion (convex/companyDeletion.ts) ──────────────────────────────────────────────────
+
+/** A deletion request this close to its due date and not completed needs a person. */
+export const DELETION_DUE_WARNING = 14 * DAY;
+/** A running deletion that has made no progress for this long has stopped. */
+const DELETION_STALLED = HOUR;
+const OPEN_REQUEST: readonly Doc<"trustRequests">["status"][] = ["received", "verifying", "in_progress", "waiting_on_requester", "routed_to_business"];
+const dueAt = (dueOn: string) => Date.parse(`${dueOn}T00:00:00Z`);
+
+const companyDeletions: Detector = {
+  check: "company_deletion",
+  everyMinutes: 60,
+  async scan(ctx, now) {
+    const out: Related[] = [];
+    for (const status of OPEN_REQUEST) {
+      const rows = await ctx.db
+        .query("trustRequests")
+        .withIndex("by_kind_status_received", (q) => q.eq("kind", "privacy").eq("status", status))
+        .take(200);
+      for (const row of rows) if (row.subtype === "deletion" && row.companyId && row.dueOn && dueAt(row.dueOn) - now <= DELETION_DUE_WARNING) out.push(ref("trustRequests", row._id));
+    }
+    for (const status of ["failed", "running"] as const) {
+      for (const row of await ctx.db.query("companyDeletions").withIndex("by_status", (q) => q.eq("status", status)).take(50)) out.push(ref("companyDeletions", row._id));
+    }
+    return out;
+  },
+  async evaluate(ctx, source, now) {
+    const request = await load(ctx, "trustRequests", source);
+    if (request) {
+      if (request.subtype !== "deletion" || !request.companyId || !request.dueOn || !OPEN_REQUEST.includes(request.status)) return null;
+      const due = dueAt(request.dueOn);
+      if (due - now > DELETION_DUE_WARNING) return null;
+      const overdue = due <= now;
+      return {
+        key: `company_deletion_due:${request._id}`,
+        kind: "company_deletion_due",
+        area: "platform",
+        companyId: request.companyId,
+        severity: overdue ? "critical" : "high",
+        state: "needs_staff",
+        title: overdue ? "A company deletion is overdue" : "A company deletion is due within 14 days",
+        impact: `The Privacy Notice promises a leaving company's records are deleted within 90 days. Request ${request.reference} is due ${request.dueOn} and is not completed.`,
+        nextAction: "Open the request in Staff › Requests, clear the preconditions and start the deletion.",
+        source,
+        since: due - DELETION_DUE_WARNING,
+        attempts: 0,
+      };
+    }
+    const deletion = await load(ctx, "companyDeletions", source);
+    if (!deletion) return null;
+    const stalled = deletion.status === "running" && now - (deletion.lastProgressAt ?? deletion.startedAt ?? now) > DELETION_STALLED;
+    if (deletion.status !== "failed" && !stalled) return null;
+    const last = deletion.errors[deletion.errors.length - 1];
+    return {
+      key: `company_deletion_failed:${deletion._id}`,
+      kind: "company_deletion_failed",
+      area: "platform",
+      companyId: deletion.companyId,
+      severity: "high",
+      state: "needs_staff",
+      title: deletion.status === "failed" ? "A company deletion run failed" : "A company deletion run has stopped",
+      impact: "The company is closed to everyone but its records are only partly deleted.",
+      nextAction: "Read the error on the request, fix the cause, then resume the deletion from the request page. It continues where it stopped.",
+      diagnostics: last ? `${last.table ?? deletion.phase}: ${last.message.slice(0, 200)}` : `phase ${deletion.phase}`,
+      source,
+      since: deletion.lastProgressAt ?? deletion.startedAt ?? deletion.createdAt,
+      attempts: deletion.attempts,
+    };
+  },
+};
+
 export const DETECTORS: readonly Detector[] = [
   agentWork,
   chatRuns,
@@ -632,6 +829,7 @@ export const DETECTORS: readonly Detector[] = [
   aiBilling,
   messagingBilling,
   messagingAttention,
+  companyDeletions,
 ];
 
 export function detectorFor(check: Check): Detector {

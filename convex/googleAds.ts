@@ -13,7 +13,9 @@ import { internalMutation, internalQuery, type MutationCtx } from "./_generated/
 import { companyQuery, managerMutation, ownerMutation } from "./lib/builders";
 import { notFound, userError } from "./lib/errors";
 import { byMember, recordEvent } from "./lib/events";
-import { customerId as adsCustomerId } from "./lib/google/ads";
+import { AD_LIMITS, campaignProblem, distinct, draftCopy } from "./lib/google/adDrafts";
+import { customerId as adsCustomerId, lsaSince } from "./lib/google/ads";
+import { linkOrigin } from "./lib/dispatch/links";
 import { activeConnection, requireFeature } from "./lib/google/connection";
 import type { ConversionEvent } from "./lib/google/datamanager";
 import { enqueue } from "./lib/google/jobs";
@@ -168,12 +170,50 @@ async function adsAccount(ctx: MutationCtx, companyId: Id<"companies">, accountI
   return row;
 }
 
+/** Queues one read of an ad account's results. Keyed per five minutes, so asking twice reads once. */
+async function queueSnapshotFor(ctx: MutationCtx, account: Doc<"googleResources">, connectionId: Id<"googleConnections">, requestedBy?: Id<"members">, bucketMs = 300_000) {
+  return enqueue(ctx, { companyId: account.companyId, connectionId, kind: "ads_snapshot", key: `ads_snapshot:${account.externalId}:${Math.floor(Date.now() / bucketMs)}`, payload: { accountId: account.externalId, loginCustomerId: account.detail }, requestedBy });
+}
+
 export const refreshResults = managerMutation({
   args: { accountId: v.string() },
   handler: async (ctx, args) => {
     const connection = await requireFeature(ctx, ctx.companyId, "ads");
     const account = await adsAccount(ctx, ctx.companyId, args.accountId);
-    return enqueue(ctx, { companyId: ctx.companyId, connectionId: connection._id, kind: "ads_snapshot", key: `ads_snapshot:${account.externalId}:${Math.floor(Date.now() / 300_000)}`, payload: { accountId: account.externalId, loginCustomerId: account.detail }, requestedBy: ctx.member._id });
+    return queueSnapshotFor(ctx, account, connection._id, ctx.member._id);
+  },
+});
+
+/** Right after an ad account is confirmed reachable: read its results, so the page is not empty until the next sweep. */
+export const queueSnapshot = internalMutation({
+  args: { resourceId: v.id("googleResources") },
+  handler: async (ctx, args) => {
+    const account = await ctx.db.get(args.resourceId);
+    if (!account || account.kind !== "ads_account" || account.access !== "verified") return null;
+    const connection = await activeConnection(ctx, account.companyId, "ads");
+    if (!connection || connection.status !== "connected") return null;
+    await queueSnapshotFor(ctx, account, connection._id);
+    return null;
+  },
+});
+
+const RESULTS_EVERY_MS = 6 * 60 * 60 * 1000;
+
+/** Every six hours: results for each confirmed ad account whose Google Ads connection is on. Bounded per run. */
+export const sweepResults = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const rows = await ctx.db.query("googleResources").withIndex("by_company_kind").take(2000);
+    let queued = 0;
+    for (const row of rows) {
+      if (queued >= 200) break;
+      if (row.kind !== "ads_account" || row.access !== "verified") continue;
+      const connection = await activeConnection(ctx, row.companyId, "ads");
+      if (!connection || connection.status !== "connected" || !connection.grantedScopes.includes("https://www.googleapis.com/auth/adwords")) continue;
+      const out = await queueSnapshotFor(ctx, row, connection._id, undefined, RESULTS_EVERY_MS);
+      if (!out.repeated) queued += 1;
+    }
+    return queued;
   },
 });
 
@@ -181,26 +221,53 @@ export const drafts = companyQuery({
   args: {},
   handler: async (ctx) => {
     const rows = await ctx.db.query("googleAdDrafts").withIndex("by_company_updated", (q) => q.eq("companyId", ctx.companyId)).order("desc").take(50);
-    return rows.map((r) => ({ _id: r._id, accountId: r.accountId, name: r.name, dailyBudgetCents: r.dailyBudgetCents, keywords: r.keywords, postalCodes: r.postalCodes, headline: r.headline, description: r.description, finalUrl: r.finalUrl, state: r.state, googleCampaign: r.googleCampaign ?? null, problem: r.problem ?? null, updatedAt: r.updatedAt }));
+    return rows.map((r) => {
+      const copy = draftCopy(r);
+      return { _id: r._id, accountId: r.accountId, name: r.name, dailyBudgetCents: r.dailyBudgetCents, keywords: r.keywords, keywordMatch: r.keywordMatch ?? "phrase", postalCodes: r.postalCodes, cities: r.cities ?? [], headline: r.headline, description: r.description, headlines: copy.headlines, descriptions: copy.descriptions, finalUrl: r.finalUrl, state: r.state, googleCampaign: r.googleCampaign ?? null, problem: r.problem ?? null, updatedAt: r.updatedAt };
+    });
   },
 });
 
-export async function createDraft(ctx: MutationCtx, companyId: Id<"companies">, memberId: Id<"members"> | undefined, input: { accountId: string; name: string; dailyBudgetCents: number; keywords: string[]; postalCodes: string[]; headline: string; description: string; finalUrl: string }) {
+/** The company's published booking page, if it has one: the landing page when a draft names none. */
+async function bookingPage(ctx: MutationCtx, companyId: Id<"companies">): Promise<string | null> {
+  const origin = linkOrigin();
+  const settings = await ctx.db.query("bookingSettings").withIndex("by_company", (q) => q.eq("companyId", companyId)).first();
+  if (!origin || !origin.startsWith("https://") || !settings?.handle) return null;
+  const page = await ctx.db.query("bookingExperiences").withIndex("by_company_status", (q) => q.eq("companyId", companyId).eq("status", "published")).order("desc").first();
+  return page ? `${origin}/b/${settings.handle}/${page.slug}` : null;
+}
+
+export type DraftInput = { accountId: string; name: string; dailyBudgetCents: number; keywords: string[]; keywordMatch?: "phrase" | "exact"; postalCodes: string[]; cities?: string[]; headline: string; description: string; headlines?: string[]; descriptions?: string[]; finalUrl?: string };
+
+export async function createDraft(ctx: MutationCtx, companyId: Id<"companies">, memberId: Id<"members"> | undefined, input: DraftInput) {
   const account = await adsAccount(ctx, companyId, input.accountId);
   if (!Number.isInteger(input.dailyBudgetCents) || input.dailyBudgetCents < 100 || input.dailyBudgetCents > MAX_DAILY_BUDGET_CENTS) throw userError(`The daily budget must be between $1 and $${MAX_DAILY_BUDGET_CENTS / 100}.`);
-  if (!/^https:\/\//.test(input.finalUrl)) throw userError("The landing page must be an https address.");
+  const finalUrl = input.finalUrl?.trim() || (await bookingPage(ctx, companyId));
+  if (!finalUrl) throw userError("Add a landing page: this company has no published booking page to send people to.");
+  if (!/^https:\/\//.test(finalUrl)) throw userError("The landing page must be an https address.");
   const now = Date.now();
+  const fields = {
+    keywords: distinct(input.keywords).slice(0, AD_LIMITS.keywords.max),
+    keywordMatch: input.keywordMatch === "exact" ? ("exact" as const) : undefined,
+    postalCodes: input.postalCodes.map((p) => p.trim()).filter((p) => /^\d{5}$/.test(p)).slice(0, 100),
+    cities: distinct(input.cities ?? []).map((c) => c.slice(0, 80)).slice(0, 50),
+    headline: text(input.headline, "The headline", AD_LIMITS.headlines.chars),
+    description: text(input.description, "The description", AD_LIMITS.descriptions.chars),
+    headlines: distinct(input.headlines ?? []).slice(0, AD_LIMITS.headlines.max),
+    descriptions: distinct(input.descriptions ?? []).slice(0, AD_LIMITS.descriptions.max),
+    finalUrl: finalUrl.slice(0, 500),
+  };
+  // A draft that could not become a whole campaign is refused now, with the reason, not after the Owner approves it.
+  const problem = campaignProblem(fields);
+  if (problem) throw userError(problem);
   const id = await ctx.db.insert("googleAdDrafts", {
     companyId,
     accountId: adsCustomerId(account.externalId),
     // The name carries a unique suffix, so a retry finds this campaign instead of making a second one.
     name: `${text(input.name, "The campaign name", 80)} · Selestial ${now.toString(36)}`,
     dailyBudgetCents: input.dailyBudgetCents,
-    keywords: input.keywords.map((k) => k.trim()).filter(Boolean).slice(0, 50),
-    postalCodes: input.postalCodes.map((p) => p.trim()).filter((p) => /^\d{5}$/.test(p)).slice(0, 100),
-    headline: text(input.headline, "The headline", 30),
-    description: text(input.description, "The description", 90),
-    finalUrl: input.finalUrl.slice(0, 500),
+    ...fields,
+    cities: fields.cities.length ? fields.cities : undefined,
     state: "draft",
     createdBy: memberId,
     createdAt: now,
@@ -210,7 +277,20 @@ export async function createDraft(ctx: MutationCtx, companyId: Id<"companies">, 
 }
 
 export const draftCampaign = managerMutation({
-  args: { accountId: v.string(), name: v.string(), dailyBudgetCents: v.number(), keywords: v.array(v.string()), postalCodes: v.array(v.string()), headline: v.string(), description: v.string(), finalUrl: v.string() },
+  args: {
+    accountId: v.string(),
+    name: v.string(),
+    dailyBudgetCents: v.number(),
+    keywords: v.array(v.string()),
+    keywordMatch: v.optional(v.union(v.literal("phrase"), v.literal("exact"))),
+    postalCodes: v.array(v.string()),
+    cities: v.optional(v.array(v.string())),
+    headline: v.string(),
+    description: v.string(),
+    headlines: v.optional(v.array(v.string())),
+    descriptions: v.optional(v.array(v.string())),
+    finalUrl: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     await requireFeature(ctx, ctx.companyId, "ads");
     const draftId = await createDraft(ctx, ctx.companyId, ctx.member._id, args);
@@ -244,7 +324,7 @@ export const activateCampaign = ownerMutation({
     if (draft.state !== "created_paused" || !draft.googleCampaign) throw userError("Only a campaign that exists in Google Ads, paused, can be turned on.");
     if (args.confirmDailyBudgetCents !== draft.approvedBudgetCents) throw userError("The budget you confirmed does not match the approved budget.");
     await ctx.db.patch(draft._id, { activatedBy: ctx.member._id, updatedAt: Date.now() });
-    const queued = await enqueue(ctx, { companyId: ctx.companyId, connectionId: connection._id, kind: "ads_activate", key: `ads_activate:${draft._id}`, payload: { draftId: draft._id }, requestedBy: ctx.member._id });
+    const queued = await enqueue(ctx, { companyId: ctx.companyId, connectionId: connection._id, kind: "ads_activate", key: `ads_activate:${draft._id}`, payload: { draftId: draft._id }, requestedBy: ctx.member._id, again: true });
     await recordEvent(ctx, { companyId: ctx.companyId, type: "google.ads_campaign_activation_requested", actor: byMember(ctx), subject: { table: "companies", id: ctx.companyId }, data: { dailyBudgetCents: draft.dailyBudgetCents } });
     return queued;
   },
@@ -262,10 +342,30 @@ export const draftFor = internalQuery({
 });
 
 export const campaignCreated = internalMutation({
-  args: { draftId: v.id("googleAdDrafts"), resourceName: v.string() },
+  args: { draftId: v.id("googleAdDrafts"), resourceName: v.string(), note: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const draft = await ctx.db.get(args.draftId);
-    if (draft) await ctx.db.patch(draft._id, { state: "created_paused", googleCampaign: args.resourceName, updatedAt: Date.now() });
+    if (draft) await ctx.db.patch(draft._id, { state: "created_paused", googleCampaign: args.resourceName, problem: args.note?.slice(0, 500), updatedAt: Date.now() });
+    return null;
+  },
+});
+
+/** The campaign could not be created as drafted. The Owner sees why and can approve it again once it is fixed. */
+export const campaignFailed = internalMutation({
+  args: { draftId: v.id("googleAdDrafts"), problem: v.string() },
+  handler: async (ctx, args) => {
+    const draft = await ctx.db.get(args.draftId);
+    if (draft && draft.state === "approved") await ctx.db.patch(draft._id, { state: "failed", problem: args.problem.slice(0, 500), updatedAt: Date.now() });
+    return null;
+  },
+});
+
+/** Why a paused campaign was not turned on. It stays paused; nothing spends. */
+export const campaignNotActivated = internalMutation({
+  args: { draftId: v.id("googleAdDrafts"), problem: v.string() },
+  handler: async (ctx, args) => {
+    const draft = await ctx.db.get(args.draftId);
+    if (draft) await ctx.db.patch(draft._id, { problem: args.problem.slice(0, 500), activatedBy: undefined, updatedAt: Date.now() });
     return null;
   },
 });
@@ -275,7 +375,7 @@ export const campaignActivated = internalMutation({
   handler: async (ctx, args) => {
     const draft = await ctx.db.get(args.draftId);
     if (!draft) return null;
-    await ctx.db.patch(draft._id, { state: "active", updatedAt: Date.now() });
+    await ctx.db.patch(draft._id, { state: "active", problem: undefined, updatedAt: Date.now() });
     await recordEvent(ctx, { companyId: draft.companyId, type: "google.ads_campaign_activated", actor: { kind: "system" }, subject: { table: "companies", id: draft.companyId }, data: { dailyBudgetCents: draft.dailyBudgetCents } });
     return null;
   },
@@ -328,7 +428,7 @@ export function conversionEligibility(input: { job: Pick<Doc<"jobs">, "status" |
 
 export const conversionPlan = internalQuery({
   args: { conversionId: v.id("googleConversions") },
-  handler: async (ctx, args): Promise<{ ok: false; why: string } | { ok: true; conversionId: Id<"googleConversions">; destination: { accountId: string; conversionActionId: string; loginAccountId?: string }; event: ConversionEvent }> => {
+  handler: async (ctx, args): Promise<{ ok: false; why: string } | { ok: true; conversionId: Id<"googleConversions">; destinationId: Id<"googleResources">; destinationVerified: boolean; destination: { accountId: string; conversionActionId: string; loginAccountId?: string }; event: ConversionEvent }> => {
     const row = await ctx.db.get(args.conversionId);
     if (!row) return { ok: false, why: "The conversion was removed." };
     const job = await ctx.db.get(row.jobId);
@@ -338,7 +438,7 @@ export const conversionPlan = internalQuery({
     const why = job ? conversionEligibility({ job, lead, hasConsent: Boolean(settings?.conversionConsent), hasDestination: Boolean(destination?.detail) }) : "The visit was removed.";
     if (why || !job || !lead?.gclid || !settings?.conversionConsent || !destination?.detail) return { ok: false, why: why ?? "Not reportable." };
     const [accountId, loginAccountId] = destination.detail.split(":");
-    return { ok: true, conversionId: row._id, destination: { accountId, conversionActionId: destination.externalId, loginAccountId: loginAccountId || undefined }, event: { transactionId: row.transactionId, at: job.createdAt, valueCents: row.valueCents, currency: "USD", gclid: lead.gclid, consent: { adUserData: settings.conversionConsent.adUserData, adPersonalization: settings.conversionConsent.adPersonalization } } };
+    return { ok: true, conversionId: row._id, destinationId: destination._id, destinationVerified: destination.access === "verified", destination: { accountId, conversionActionId: destination.externalId, loginAccountId: loginAccountId || undefined }, event: { transactionId: row.transactionId, at: job.createdAt, valueCents: row.valueCents, currency: "USD", gclid: lead.gclid, consent: { adUserData: settings.conversionConsent.adUserData, adPersonalization: settings.conversionConsent.adPersonalization } } };
   },
 });
 
@@ -369,7 +469,7 @@ export const sweepConversions = internalMutation({
       for (const lead of leads) {
         if (!lead.customerId || !lead.gclid || lead.test) continue;
         const jobs = await ctx.db.query("jobs").withIndex("by_company_customer", (q) => q.eq("companyId", companyId).eq("customerId", lead.customerId!)).take(20);
-        const first = jobs.filter((j) => j.createdAt >= lead.receivedAt && j.status !== "cancelled" && (j.priceCents ?? 0) > 0).sort((a, b) => a.createdAt - b.createdAt)[0];
+        const first = jobs.filter((j) => !j.migration && j.createdAt >= lead.receivedAt && j.status !== "cancelled" && (j.priceCents ?? 0) > 0).sort((a, b) => a.createdAt - b.createdAt)[0];
         if (!first) continue;
         const done = await ctx.db.query("googleConversions").withIndex("by_company_job", (q) => q.eq("companyId", companyId).eq("jobId", first._id)).first();
         if (done) continue;
@@ -393,10 +493,46 @@ export const sweepLocalServices = internalMutation({
       if (row.kind !== "ads_account" || row.access === "lost") continue;
       const connection = await activeConnection(ctx, row.companyId, "ads");
       if (!connection || connection.status !== "connected" || !connection.grantedScopes.includes("https://www.googleapis.com/auth/adwords")) continue;
-      await enqueue(ctx, { companyId: row.companyId, connectionId: connection._id, kind: "lsa_poll", key: `lsa_poll:${row.externalId}:${bucket}`, payload: { accountId: row.externalId, loginCustomerId: row.detail } });
+      // From the newest lead already read, with an hour's overlap (a lead seen twice is taken once), not a week every time.
+      await enqueue(ctx, { companyId: row.companyId, connectionId: connection._id, kind: "lsa_poll", key: `lsa_poll:${row.externalId}:${bucket}`, payload: { accountId: row.externalId, loginCustomerId: row.detail, since: lsaSince(row.cursor, Date.now()) } });
       queued += 1;
     }
     return queued;
+  },
+});
+
+/** Moves an ad account's Local Services cursor forward to the newest lead read. Never backwards. */
+export const advanceLsaCursor = internalMutation({
+  args: { companyId: v.id("companies"), accountId: v.string(), newest: v.string() },
+  handler: async (ctx, args) => {
+    if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(args.newest)) return null;
+    const id = adsCustomerId(args.accountId);
+    const rows = await ctx.db.query("googleResources").withIndex("by_company_kind", (q) => q.eq("companyId", args.companyId).eq("kind", "ads_account")).take(20);
+    for (const row of rows) {
+      if (adsCustomerId(row.externalId) !== id) continue;
+      // The fixed-width format compares as text in time order.
+      if (!row.cursor || args.newest.slice(0, 19) > row.cursor) await ctx.db.patch(row._id, { cursor: args.newest.slice(0, 19) });
+    }
+    return null;
+  },
+});
+
+/** The company's Google Ads connection, when it is on: the one that can look a conversion action up before anything is reported. */
+export const adsConnectionFor = internalQuery({
+  args: { companyId: v.id("companies") },
+  handler: async (ctx, args) => {
+    const connection = await activeConnection(ctx, args.companyId, "ads");
+    return connection && connection.status === "connected" && connection.grantedScopes.includes("https://www.googleapis.com/auth/adwords") ? connection._id : null;
+  },
+});
+
+/** A note on a conversion destination that stays "unverified" until Google answers its first report. */
+export const destinationNote = internalMutation({
+  args: { resourceId: v.id("googleResources"), note: v.string() },
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get(args.resourceId);
+    if (row && row.kind === "conversion_destination") await ctx.db.patch(row._id, { access: "unverified", accessNote: args.note.slice(0, 300) });
+    return null;
   },
 });
 

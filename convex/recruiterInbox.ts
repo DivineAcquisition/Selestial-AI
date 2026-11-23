@@ -13,8 +13,8 @@ import type { Id } from "./_generated/dataModel";
 import { internalAction, internalMutation, internalQuery } from "./_generated/server";
 import { recordEvent } from "./lib/events";
 import { checked, headerEvidence } from "./lib/recruiter/interpret";
-import { ingestMessage, type IngestInput, type Verdict } from "./lib/recruiter/intake";
-import { addressOf, classifyHeader, plainText, worthReading, type MessageBody, type MessageHeader } from "./lib/recruiter/mail";
+import { applicantForSender, ingestMessage, type IngestInput, type Verdict } from "./lib/recruiter/intake";
+import { addressOf, classifyHeader, isReplySubject, plainText, worthReading, type MessageBody, type MessageHeader } from "./lib/recruiter/mail";
 import { accessToken, gmailConnector, googleApp } from "./lib/recruiter/gmail";
 import { connectorFor, MailboxAuthError } from "./lib/recruiter/mailbox";
 import { unseal } from "./lib/recruiter/secrets";
@@ -89,13 +89,9 @@ export const triage = internalQuery({
         .query("sourceMessages")
         .withIndex("by_connection_message", (q) => q.eq("connectionId", connection._id).eq("providerMessageId", message.id))
         .first();
-      const known = message.from
-        ? await ctx.db
-            .query("applicants")
-            .withIndex("by_company_email", (q) => q.eq("companyId", connection.companyId).eq("email", message.from))
-            .first()
-        : null;
-      out.push({ id: message.id, seen: seen !== null, knownApplicant: known !== null && !known.redactedAt });
+      // Their own address, or the job board's forwarding address one of their applications came with.
+      const known = await applicantForSender(ctx, connection.companyId, message.from ?? null);
+      out.push({ id: message.id, seen: seen !== null, knownApplicant: known !== null });
     }
     return out;
   },
@@ -113,7 +109,7 @@ export const ingest = internalMutation({
   },
   handler: async (ctx, args) => {
     const connection = await ctx.db.get(args.connectionId);
-    if (!connection) return "gone";
+    if (!connection || connection.status === "disconnected") return "gone";
     const input: IngestInput = { header: args.header, verdict: args.verdict, read: args.read, excerpt: args.excerpt, attachments: args.attachments, headerEvidence: args.headerEvidence };
     return ingestMessage(ctx, connection, input);
   },
@@ -148,7 +144,8 @@ export const commit = internalMutation({
   args: { connectionId: v.id("mailboxConnections"), cursor: v.union(v.string(), v.null()) },
   handler: async (ctx, args) => {
     const connection = await ctx.db.get(args.connectionId);
-    if (!connection) return null;
+    // A person disconnected it while this run was reading. The run must not bring it back.
+    if (!connection || connection.status === "disconnected") return null;
     await ctx.db.patch(connection._id, { cursor: args.cursor ?? connection.cursor, lastSyncAt: Date.now(), failures: 0, status: "connected", problem: undefined });
     const task = await liveTaskByKey(ctx, connection.companyId, `recruiter.mailbox:${connection._id}`);
     if (task) await setTaskState(ctx, task, "done", { outcome: "The hiring inbox is being read again.", closedAt: Date.now() }, { kind: "system" });
@@ -161,7 +158,8 @@ export const failed = internalMutation({
   args: { connectionId: v.id("mailboxConnections"), kind: v.union(v.literal("auth"), v.literal("provider"), v.literal("not_built")) },
   handler: async (ctx, args) => {
     const connection = await ctx.db.get(args.connectionId);
-    if (!connection) return null;
+    // Disconnected on purpose while this run was reading: of course it failed. No status, notice or task.
+    if (!connection || connection.status === "disconnected") return null;
     const failures = connection.failures + 1;
     const auth = args.kind === "auth";
     const problem = auth
@@ -270,13 +268,20 @@ export const sync = internalAction({
       }
 
       async function decideWith(header: MessageHeader, knownApplicant: boolean, model: Pick<HiringModel, "looksLikeHiring" | "interpret">): Promise<IngestInput> {
+        // The mailbox's own outgoing mail (an invitation Recruiter sent, a reply the Owner wrote) is never an
+        // application or an applicant's reply. Only its id is kept, like any unrelated message.
+        if (addressOf(header.from) === start!.scope.address.toLowerCase()) return { header, verdict: { classification: "unrelated", classifiedBy: "rule", reason: "" } };
         const byHeader = classifyHeader(header);
+        // What a board's subject says about a person: an application, a message, a status. Not "promotion" or "unrecognised".
+        const boardNamesIt = byHeader.kind === "board" && byHeader.classification !== "promotion" && byHeader.classification !== "needs_review";
         let verdict: Verdict;
-        if (byHeader.kind === "board") {
+        if (knownApplicant && (byHeader.kind !== "board" || isReplySubject(header.subject) || !boardNamesIt)) {
+          // Asked before anything else: a known applicant answering through a job board's forwarding address
+          // ("Re: Next step for your application") matches none of the board's subjects, and must still be read.
+          verdict = { classification: "applicant_reply", classifiedBy: "rule", reason: "From an address an applicant is known by.", ...(byHeader.kind === "board" ? { source: byHeader.source } : {}) };
+        } else if (byHeader.kind === "board") {
           const wanted = start!.sources.length === 0 || start!.sources.includes(byHeader.source);
           verdict = wanted ? { classification: byHeader.classification, classifiedBy: "rule", reason: byHeader.reason, source: byHeader.source } : { classification: "promotion", classifiedBy: "rule", reason: "From a job board this connection is not set to read.", source: byHeader.source };
-        } else if (knownApplicant) {
-          verdict = { classification: "applicant_reply", classifiedBy: "rule", reason: "From an address an applicant is known by." };
         } else {
           const guess = await model.looksLikeHiring({ from: header.from.slice(0, 200), subject: header.subject.slice(0, 200) });
           verdict = guess.hiring ? { classification: "new_application", classifiedBy: "model", reason: guess.reason.slice(0, 200) } : { classification: "unrelated", classifiedBy: "model", reason: "" };
@@ -286,7 +291,10 @@ export const sync = internalAction({
         const message = await connector!.fetch(start!.scope, header.id);
         if (!message) return { header, verdict: { ...verdict, classification: "unrelated", reason: "" } };
         opened += 1;
-        const known = byHeader.kind === "board" ? { source: byHeader.source, classification: verdict.classification } : knownApplicant ? { source: "direct" as const, classification: "applicant_reply" as const } : null;
+        const filed = { excerpt: plainText(message.text, EXCERPT), attachments: message.attachments.slice(0, 10).map((file) => ({ name: file.name.slice(0, 160), contentType: file.contentType.slice(0, 100), size: file.size, read: Boolean(file.text) })) };
+        // Unrecognised mail from a job board: kept for a person to read, and not interpreted (nothing is acted on).
+        if (verdict.classification === "needs_review") return { header, verdict, ...filed };
+        const known = verdict.classification === "applicant_reply" && verdict.classifiedBy === "rule" && knownApplicant ? { source: byHeader.kind === "board" ? byHeader.source : ("direct" as const), classification: "applicant_reply" as const } : byHeader.kind === "board" ? { source: byHeader.source, classification: verdict.classification } : null;
         // Whoever read it, the reading is checked against the message before it is used.
         const read = checked(await model.interpret(message, known), message);
         if (known) read.classification = known.classification;
@@ -295,8 +303,7 @@ export const sync = internalAction({
           header,
           verdict: { ...verdict, classification: read.classification, source: read.source },
           read,
-          excerpt: plainText(message.text, EXCERPT),
-          attachments: message.attachments.slice(0, 10).map((file) => ({ name: file.name.slice(0, 160), contentType: file.contentType.slice(0, 100), size: file.size, read: Boolean(file.text) })),
+          ...filed,
           headerEvidence: headerEvidence(message, start!.ours),
         };
       }

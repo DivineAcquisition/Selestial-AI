@@ -6,6 +6,7 @@
  * Reads change nothing. An offer shows the area, never the street: the address and the way in are
  * shown only on the job page, and only while the cleaner is the accepted cleaner on it.
  */
+import { discardUpload } from "./lib/uploads";
 import { v } from "convex/values";
 
 import type { Doc, Id } from "./_generated/dataModel";
@@ -24,6 +25,8 @@ import { areaWords, arrivalWords, durationWords, roleWords } from "./lib/dispatc
 import { whenWords } from "./lib/dispatch/workflow";
 import { notFound, userError } from "./lib/errors";
 import { recordEvent, type Actor } from "./lib/events";
+import { qualityOnEvidence } from "./lib/quality/hooks";
+import { isPreserved } from "./lib/quality/cases";
 
 const MAX_PHOTOS_PER_KIND = 30;
 const MAX_PHOTO_BYTES = 15 * 1024 * 1024;
@@ -200,6 +203,8 @@ export const job = linkQuery({
         checkedInAt: assignment.checkIn?.at ?? null,
         late: assignment.late ?? null,
         completion: assignment.completion ?? null,
+        // The office's note when it sent the report back, until this cleaner reports again.
+        returned: !assignment.completion && jobDoc.completionReturn ? jobDoc.completionReturn : null,
         checklist: items.map((item) => ({ id: item._id, section: item.section ?? null, label: item.label, requiresPhoto: item.requiresPhoto, state: item.state, skipReason: item.skipReason ?? null, by: item.byCleanerId ? (names.get(item.byCleanerId) ?? "A cleaner") : null })),
         photos,
         required: { before: policy.beforePhotosRequired, after: policy.afterPhotosRequired },
@@ -269,6 +274,7 @@ export const setChecklistItem = linkMutation({
       at: args.state === "pending" ? undefined : Date.now(),
     });
     await recordEvent(ctx, { companyId: ctx.companyId, type: "job.checklist_item_set", actor: asCleaner(ctx), subject: { table: "jobs", id: jobDoc._id }, data: { itemId: item._id, state: args.state } });
+    await qualityOnEvidence(ctx, jobDoc);
     return null;
   },
 });
@@ -308,18 +314,22 @@ export const attachPhoto = linkMutation({
       .withIndex("by_company_assignment_key", (q) => q.eq("companyId", ctx.companyId).eq("assignmentId", assignment._id).eq("clientKey", clientKey))
       .first();
     if (existing) {
-      if (existing.storageId !== args.storageId) await ctx.storage.delete(args.storageId);
+      if (existing.storageId !== args.storageId) await discardUpload(ctx, args.storageId);
       return { evidenceId: existing._id, duplicate: true };
     }
     const file = await ctx.db.system.get(args.storageId);
     if (!file) throw userError("That upload was not found. Try again.");
     if (!file.contentType?.startsWith("image/") || file.size > MAX_PHOTO_BYTES) {
-      await ctx.storage.delete(args.storageId);
+      await discardUpload(ctx, args.storageId);
       throw userError("Photos must be images, 15 MB or smaller.");
     }
     const all = await jobEvidence(ctx, jobDoc);
     // One upload is one photo: a stored file is never attached twice, here or on another job.
-    if (all.some((row) => row.storageId === args.storageId)) throw userError("This photo is already recorded.");
+    const kept = await ctx.db
+      .query("evidence")
+      .withIndex("by_storage", (q) => q.eq("storageId", args.storageId))
+      .first();
+    if (kept || all.some((row) => row.storageId === args.storageId)) throw userError("This photo is already recorded.");
     if (all.filter((row) => row.kind === args.kind).length >= MAX_PHOTOS_PER_KIND) throw userError(`This job already has ${MAX_PHOTOS_PER_KIND} photos of this kind.`);
     let itemId: Id<"checklistItems"> | undefined;
     if (args.kind === "item") {
@@ -329,6 +339,7 @@ export const attachPhoto = linkMutation({
     }
     const evidenceId = await ctx.db.insert("evidence", { companyId: ctx.companyId, jobId: jobDoc._id, assignmentId: assignment._id, cleanerId: ctx.link.cleanerId, kind: args.kind, checklistItemId: itemId, storageId: args.storageId, clientKey, uploadedAt: Date.now() });
     await recordEvent(ctx, { companyId: ctx.companyId, type: "job.photo_added", actor: asCleaner(ctx), subject: { table: "jobs", id: jobDoc._id }, data: { kind: args.kind, assignmentId: assignment._id } });
+    await qualityOnEvidence(ctx, jobDoc);
     return { evidenceId, duplicate: false };
   },
 });
@@ -343,6 +354,8 @@ export const removePhoto = linkMutation({
     if (assignment.completion) throw userError("You have already submitted this job.");
     const row = await ctx.db.get(args.evidenceId);
     if (!row || row.companyId !== ctx.companyId || row.assignmentId !== assignment._id) notFound();
+    // A photo a quality case preserves (a serious concern) stays, whoever asks.
+    if (await isPreserved(ctx, ctx.companyId, row._id)) throw userError("This photo is kept as evidence on an open case and can't be removed.");
     await ctx.db.delete(row._id);
     await ctx.storage.delete(row.storageId);
     await recordEvent(ctx, { companyId: ctx.companyId, type: "job.photo_removed", actor: asCleaner(ctx), subject: { table: "jobs", id: jobDoc._id }, data: { kind: row.kind, assignmentId: assignment._id } });

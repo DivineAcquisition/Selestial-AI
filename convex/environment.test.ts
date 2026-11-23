@@ -13,7 +13,7 @@ import { stripeConfig } from "./lib/finance/stripe";
 import { orderNumber, searchNumbers } from "./lib/messaging/telnyxAccount";
 import { telnyxProvider } from "./lib/messaging/telnyx";
 import { recipientOf, sendFromGmail } from "./lib/recruiter/gmail";
-import { company, readyMessaging, refusal, start, staffWith } from "../tests/harness";
+import { company, readyMessaging, refusal, seedVisit, start, staffWith } from "../tests/harness";
 
 const TEST_BACKEND = "https://happy-otter-123.convex.cloud";
 const LIVE_BACKEND = `https://${PRODUCTION_DEPLOYMENTS[0]}.convex.cloud`;
@@ -205,13 +205,14 @@ describe("Restoring without replaying anything", () => {
     for (const id of [a.companyId, b.companyId]) {
       const row = (await t.run((ctx) => ctx.db.get(id)))!;
       expect(row.suspendedAt).toBeDefined();
-      expect([...row.pausedAgents].sort()).toEqual(["dispatch", "recruiter", "retention", "sales"]);
+      expect([...row.pausedAgents].sort()).toEqual(["dispatch", "quality", "recruiter", "retention", "sales"]);
     }
     const status = await t.query(internal.restoration.status, {});
     expect(status.lockdown).toMatchObject({ lockedCompanies: 2 });
     expect(status.toReconcile.messages.sending).toBe(1);
     const verified = await t.action(internal.restoration.verify, {});
-    expect(verified.problems).toEqual([]);
+    // No orphaned rows; the one message caught mid-send is named as something to look up before release.
+    expect(verified.problems).toEqual(["1 messages may or may not have gone: look each up at its provider before release."]);
     expect(verified.companies).toBe(2);
 
     await expect(t.mutation(internal.restoration.release, { lockdownId: locked.lockdownId, note: "ok" })).rejects.toThrow(/reconciled/);
@@ -232,10 +233,122 @@ describe("custom domains", () => {
     expect(environment({ CONVEX_CLOUD_URL: "https://terrific-avocet-835.convex.cloud" })).toBe("non_production");
   });
 
-  test("people see api.selestial.io for the live backend's HTTP routes, and each other backend's own site address", () => {
-    expect(publicApiOrigin({ CONVEX_CLOUD_URL: "https://stoic-gazelle-731.convex.cloud", CONVEX_SITE_URL: "https://stoic-gazelle-731.convex.site" })).toBe("https://api.selestial.io");
+  test("people see each backend's own site address for its HTTP routes unless PUBLIC_API_ORIGIN names another", () => {
+    // api.selestial.io is not assumed: on November 23, 2026 it served the client API and every HTTP route there was 404.
+    expect(publicApiOrigin({ CONVEX_CLOUD_URL: "https://stoic-gazelle-731.convex.cloud", CONVEX_SITE_URL: "https://stoic-gazelle-731.convex.site" })).toBe("https://stoic-gazelle-731.convex.site");
+    expect(publicApiOrigin({ CONVEX_CLOUD_URL: "https://stoic-gazelle-731.convex.cloud", CONVEX_SITE_URL: "https://stoic-gazelle-731.convex.site", PUBLIC_API_ORIGIN: "https://api.selestial.io" })).toBe("https://api.selestial.io");
     expect(publicApiOrigin({ CONVEX_CLOUD_URL: "https://terrific-avocet-835.convex.cloud", CONVEX_SITE_URL: "https://terrific-avocet-835.convex.site" })).toBe("https://terrific-avocet-835.convex.site");
     expect(publicApiOrigin({ CONVEX_CLOUD_URL: "https://terrific-avocet-835.convex.cloud", PUBLIC_API_ORIGIN: "https://hooks.example.com/" })).toBe("https://hooks.example.com");
     expect(publicApiOrigin({})).toBeNull();
+  });
+
+  test("release undoes only what the lock-down set: staff suspensions, an unpaid-plan lock and changed pauses are left alone and reported", async () => {
+    const t = start();
+    const STAFF = { subject: "user_staff_restore", email: "staff@selestial.test", name: "Staff" };
+    await staffWith(t, STAFF, ["outbound.suspend"]);
+    const staff = t.withIdentity({ ...STAFF, emailVerified: true });
+    const plain = await company(t, "owner_a", "Alpha");
+    const before = await company(t, "owner_b", "Bravo");
+    const during = await company(t, "owner_c", "Charlie");
+    const unpaid = await company(t, "owner_d", "Delta");
+    const changed = await company(t, "owner_e", "Echo");
+    await plain.as.mutation(api.companies.setPausedAgents, { companyId: plain.companyId, agents: ["recruiter"] });
+    await unpaid.as.mutation(api.companies.setPausedAgents, { companyId: unpaid.companyId, agents: ["sales"] });
+    // Bravo was suspended by staff before the restore.
+    await staff.mutation(api.compliance.setSuspended, { companyId: before.companyId, suspended: true, note: "Carrier complaint under review." });
+    const earlier = (await t.run((ctx) => ctx.db.get(before.companyId)))!.suspendedAt!;
+
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(Date.now() + 60_000);
+      const locked = await t.mutation(internal.restoration.lockDown, { reason: "Restored from the 03:00 backup" });
+      expect(locked).toMatchObject({ locked: 5, done: true });
+      vi.setSystemTime(Date.now() + 60_000);
+      // During the lock-down: staff suspend Charlie for their own reason (the time on the company does not change)...
+      await staff.mutation(api.compliance.setSuspended, { companyId: during.companyId, suspended: true, note: "Reported for spam during the incident." });
+      // ...Delta's plan goes unpaid and locks, remembering the lock-down's pauses as if they were the Owner's...
+      const lockedAt = Date.now();
+      const dunningId = await t.run(async (ctx) => {
+        const all = (await ctx.db.get(unpaid.companyId))!.pausedAgents;
+        await ctx.db.patch(unpaid.companyId, { billingLockedAt: lockedAt });
+        return ctx.db.insert("billingDunning", { companyId: unpaid.companyId, env: "sandbox", invoiceId: "in_test_1", attempts: 4, amountCents: 9900, currency: "usd", hostedUrl: null, firstFailedAt: lockedAt, lastFailedAt: lockedAt, nextAttemptAt: null, lockedAt, priorPausedAgents: all, events: [], updatedAt: lockedAt });
+      });
+      // ...and someone sets Echo's pauses by hand.
+      await t.run((ctx) => ctx.db.patch(changed.companyId, { pausedAgents: ["dispatch"] }));
+
+      vi.setSystemTime(Date.now() + 60_000);
+      const released = await t.mutation(internal.restoration.release, { lockdownId: locked.lockdownId, note: "Reconciled the outbox with Telnyx and Resend, charges with Autumn and Stripe" });
+      // Alpha and Bravo go back exactly as they were; the other three are reported.
+      expect(released).toMatchObject({ restored: 2, done: true });
+      expect(released.skipped).toHaveLength(3);
+      const why = Object.fromEntries(released.skipped.map((row) => [row.companyId, row.why]));
+
+      // Alpha: exactly as it was.
+      const alpha = (await t.run((ctx) => ctx.db.get(plain.companyId)))!;
+      expect(alpha.suspendedAt).toBeUndefined();
+      expect(alpha.pausedAgents).toEqual(["recruiter"]);
+      // Bravo: suspended before, still suspended at the same time; its agents come back.
+      const bravo = (await t.run((ctx) => ctx.db.get(before.companyId)))!;
+      expect(bravo.suspendedAt).toBe(earlier);
+      expect(bravo.pausedAgents).toEqual([]);
+      // Charlie: staff suspended it during the lock-down, so release does not lift that.
+      const charlie = (await t.run((ctx) => ctx.db.get(during.companyId)))!;
+      expect(charlie.suspendedAt).toBeDefined();
+      expect(why[during.companyId]).toMatch(/suspension changed since the lock-down/);
+      // Delta: locked for an unpaid plan, so every agent stays paused, and paying gives back the Owner's own choice.
+      const delta = (await t.run((ctx) => ctx.db.get(unpaid.companyId)))!;
+      expect(delta.suspendedAt).toBeUndefined();
+      expect(delta.billingLockedAt).toBe(lockedAt);
+      expect([...delta.pausedAgents].sort()).toEqual(["dispatch", "quality", "recruiter", "retention", "sales"]);
+      expect((await t.run((ctx) => ctx.db.get(dunningId)))!.priorPausedAgents).toEqual(["sales"]);
+      expect(why[unpaid.companyId]).toMatch(/unpaid plan/);
+      // Echo: its pauses were changed since, so they are left as they are; its suspension was the lock-down's own.
+      const echo = (await t.run((ctx) => ctx.db.get(changed.companyId)))!;
+      expect(echo.pausedAgents).toEqual(["dispatch"]);
+      expect(echo.suspendedAt).toBeUndefined();
+      expect(why[changed.companyId]).toMatch(/agent pauses changed/);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("status and verify list what must be reconciled first: in-flight card payments and refunds, unconfirmed messages, and messages that lost their timers", async () => {
+    const t = start();
+    const a = await company(t, "owner_a", "Alpha");
+    const now = Date.now();
+    const HOUR = 60 * 60 * 1000;
+    const visit = await seedVisit(a.as, a.companyId);
+    await t.run((ctx) => ctx.db.patch(visit.jobId, { status: "completed" }));
+    const { invoiceId } = await a.as.mutation(api.finance.createInvoice, { companyId: a.companyId, jobId: visit.jobId });
+    await t.run(async (ctx) => {
+      const payment = { companyId: a.companyId, invoiceId, customerId: visit.customerId, amountCents: 18500, method: "card" as const, source: "stripe" as const, refundedCents: 0, createdAt: now, updatedAt: now };
+      const stripe = { accountId: "acct_1", livemode: false, createTries: 1 };
+      await ctx.db.insert("payments", { ...payment, status: "processing", clientKey: "k1", stripe: { ...stripe, paymentIntentId: "pi_processing" } });
+      await ctx.db.insert("payments", { ...payment, status: "checking", clientKey: "k2", stripe: { ...stripe, paymentIntentId: "pi_checking" } });
+      // A pay page nobody opened has nothing at Stripe; a settled payment is not in flight.
+      await ctx.db.insert("payments", { ...payment, status: "awaiting_customer", clientKey: "k3" });
+      const paid = await ctx.db.insert("payments", { ...payment, status: "succeeded", clientKey: "k4", stripe: { ...stripe, paymentIntentId: "pi_done" } });
+      await ctx.db.insert("refunds", { companyId: a.companyId, paymentId: paid, invoiceId, customerId: visit.customerId, amountCents: 500, reason: "Missed a room", status: "pending", alsoCredit: false, stripeRefundId: "re_pending", tries: 1, clientKey: "r1", createdAt: now, updatedAt: now });
+      const message = { companyId: a.companyId, purpose: "reminder" as const, body: "See you tomorrow", to: "+15125550123", attempts: 1 };
+      await ctx.db.insert("messages", { ...message, dedupeKey: "m-unconfirmed", status: "unconfirmed", provider: "telnyx", providerMessageId: "tx_1", queuedAt: now - HOUR, attemptedAt: now - HOUR });
+      await ctx.db.insert("messages", { ...message, dedupeKey: "m-queued-old", status: "queued", attempts: 0, queuedAt: now - 5 * HOUR });
+      await ctx.db.insert("messages", { ...message, dedupeKey: "m-queued-new", status: "queued", attempts: 0, queuedAt: now - 60_000 });
+      await ctx.db.insert("messages", { ...message, dedupeKey: "m-scheduled-past", status: "held", attempts: 0, queuedAt: now - 30 * HOUR, scheduledFor: now - 6 * HOUR });
+      await ctx.db.insert("messages", { ...message, dedupeKey: "m-scheduled-later", status: "held", attempts: 0, queuedAt: now - HOUR, scheduledFor: now + 6 * HOUR });
+    });
+    const status = await t.query(internal.restoration.status, {});
+    expect(status.toReconcile.payments).toMatchObject({ payment_processing: 1, payment_checking: 1, refund_pending: 1 });
+    expect(status.stuckMessages.map((row) => [row.status, row.dueAt === null]).sort()).toEqual([["held", false], ["queued", true]]);
+
+    const verified = await t.action(internal.restoration.verify, {});
+    expect(verified.reconcileFirst.payments.map((row) => row.stripePaymentIntent).sort()).toEqual(["pi_checking", "pi_processing"]);
+    expect(verified.reconcileFirst.refunds.map((row) => row.stripeRefund)).toEqual(["re_pending"]);
+    expect(verified.reconcileFirst.unconfirmedMessages).toMatchObject([{ status: "unconfirmed", provider: "telnyx", providerMessageId: "tx_1" }]);
+    expect(verified.reconcileFirst.stuckMessages).toHaveLength(2);
+    expect(verified.problems.join(" ")).toMatch(/2 card payments are in progress.*1 refunds are in progress.*1 messages may or may not have gone.*2 queued or scheduled messages have lost their send timers/);
+    // Ids and states only: no message body, no amount, no address.
+    expect(JSON.stringify(verified.reconcileFirst)).not.toMatch(/See you tomorrow|5125550123|18500/);
+    // Nothing is sent or scheduled by looking.
+    expect(await t.run((ctx) => ctx.db.system.query("_scheduled_functions").collect())).toHaveLength(0);
   });
 });

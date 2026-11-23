@@ -6,14 +6,16 @@ import { ConvexHttpClient } from "convex/browser";
 import { headers } from "next/headers";
 
 import { submitTrustRequest, type RequestKind, type RequestState, type SaveRequest } from "@/lib/trust/requests";
+import { serverBackendUrl } from "@/lib/app/server-backend";
 
 import { api } from "../../convex/_generated/api";
 
 /** Saving needs the Convex address and the secret this server shares with it. The secret never leaves the server. */
 function saver(): SaveRequest {
-  const url = process.env.NEXT_PUBLIC_CONVEX_URL?.trim();
+  // Never the live backend from a preview (src/lib/app/server-backend.ts).
+  const url = serverBackendUrl();
   const secret = process.env.PUBLIC_FORM_SECRET?.trim();
-  if (!url || !/^https:\/\//.test(url) || !secret) return null;
+  if (!url || !secret) return null;
   return async (input) => {
     const client = new ConvexHttpClient(url);
     let timer: ReturnType<typeof setTimeout> | undefined;

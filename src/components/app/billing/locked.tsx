@@ -87,6 +87,56 @@ function useCardUpdate(companyId: Id<"companies">) {
  * The Owner sees what's owed and pays; everyone else sees who can. The page reopens by itself the
  * moment Stripe reports the payment, because the lock is read live.
  */
+/**
+ * The Owner's records stay theirs while the account is locked: one file with everything the company holds,
+ * prepared on request and downloadable for 24 hours. Nothing here needs the plan to be paid.
+ */
+function LockedExport({ companyId }: { companyId: Id<"companies"> }) {
+  const rows = useQuery(api.dataRights.exports, { companyId });
+  const request = useMutation(api.dataRights.requestExport);
+  const download = useMutation(api.dataRights.downloadUrl);
+  const { busy, error, run } = useRun();
+  const latest = rows?.find((row) => row.status === "ready" || row.status === "preparing") ?? null;
+  return (
+    <section className="rounded-3xl border border-border bg-card p-6" aria-labelledby="locked-export">
+      <h2 id="locked-export" className="text-sm font-semibold text-strong">
+        Your records are still yours
+      </h2>
+      <p className="mt-2 text-sm text-muted-foreground">Download one file with every record your company holds. Nothing is deleted while the account is locked.</p>
+      <div className="mt-4">
+        {latest?.status === "ready" ? (
+          <Button
+            variant="outline"
+            size="sm"
+            loading={busy}
+            onClick={() =>
+              void run(async () => {
+                const { url } = await download({ companyId, exportId: latest.id });
+                window.location.assign(url);
+              })
+            }
+          >
+            Download your records
+          </Button>
+        ) : latest?.status === "preparing" ? (
+          <p className="text-sm text-strong" role="status">
+            Preparing your file. It appears here when it&rsquo;s ready, usually within a few minutes.
+          </p>
+        ) : (
+          <Button variant="outline" size="sm" loading={busy} onClick={() => void run(() => request({ companyId }))}>
+            Prepare a download
+          </Button>
+        )}
+      </div>
+      {error ? (
+        <p className="mt-3 text-sm text-destructive-foreground" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 export function AccountLocked({ companyId, status, businesses, onSwitch }: { companyId: Id<"companies">; status: LockStatus; businesses?: { companyId: string; name: string; locked?: boolean }[]; onSwitch?: (companyId: string) => void }) {
   const refresh = useMutation(api.billing.refresh);
   const card = useCardUpdate(companyId);
@@ -214,6 +264,7 @@ export function AccountLocked({ companyId, status, businesses, onSwitch }: { com
                 ))}
               </ul>
             </section>
+            {status.owner ? <LockedExport companyId={companyId} /> : null}
           </aside>
         </div>
 

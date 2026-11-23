@@ -7,6 +7,7 @@ import { MapPin } from "@/components/icons";
 import { details, mapsKey, newSession, suggest, type PickedAddress, type Suggestion } from "@/lib/app/address";
 import { joinIds, markComposite, useFieldControl } from "@/components/ui/selection/field-context";
 import { cn } from "@/lib/utils";
+import { usePlacement } from "@/components/ui/selection/use-placement";
 
 type Props = {
   label: string;
@@ -35,8 +36,10 @@ export function AddressField({ label, value, onChange, onPick, required, disable
   const [problem, setProblem] = useState<string | null>(null);
   const session = useRef<string>("");
   const typed = useRef(false);
+  const box = useRef<HTMLSpanElement>(null);
   // Suggestions for an earlier, longer search are not shown once the field is nearly empty again.
   const shown = value.trim().length >= 3 ? options : [];
+  const placement = usePlacement(box, enabled && open && shown.length > 0);
 
   // Ask Google a moment after typing stops, and drop an answer that arrives after newer typing.
   useEffect(() => {
@@ -115,10 +118,10 @@ export function AddressField({ label, value, onChange, onPick, required, disable
 
   return (
     <Field label={label} required={required} hint={problem ?? hint ?? (enabled ? "Start typing and pick your address, or type it in full. You can add a unit or suite on the next line." : undefined)} className={className}>
-      <AddressBox>
+      <AddressBox box={box}>
         {input}
         {enabled && open && shown.length > 0 ? (
-          <ul id={list} role="listbox" aria-label={`Suggested addresses for ${label}`} className="absolute inset-x-0 top-full z-[80] mt-1 max-h-72 overflow-auto rounded-xl border border-border bg-popover shadow-lg shadow-black/10 p-1 shadow-lg">
+          <ul id={list} role="listbox" aria-label={`Suggested addresses for ${label}`} style={{ maxHeight: placement.maxHeight }} className={cn("absolute inset-x-0 z-popover overflow-auto rounded-xl border border-border bg-popover p-1 shadow-lg shadow-black/10", placement.side === "top" ? "bottom-full mb-1" : "top-full mt-1")}>
             {shown.map((option, index) => (
               <li
                 key={option.placeId}
@@ -151,8 +154,12 @@ export function AddressField({ label, value, onChange, onPick, required, disable
  * The street input and its suggestion list, as one control inside the Field. It is marked composite so
  * the Field labels the input itself (by id) and puts the hint on the input, not on a wrapper.
  */
-function AddressBox({ children }: { children: React.ReactNode }) {
-  return <span className="relative block">{children}</span>;
+function AddressBox({ box, children }: { box: React.RefObject<HTMLSpanElement | null>; children: React.ReactNode }) {
+  return (
+    <span ref={box} className="relative block">
+      {children}
+    </span>
+  );
 }
 markComposite(AddressBox);
 

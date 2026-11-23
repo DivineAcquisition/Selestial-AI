@@ -53,6 +53,11 @@ export function confirmedSms(input: { company: Company; job: Job }): string {
   return `${input.company.name}: you're confirmed for ${arrivalWords(input.job, input.company.timezone)}. Address, instructions, checklist and check-in are here: {link}`;
 }
 
+/** The office sent the crew's report back. The note itself is on the page, behind the link, not in the text. */
+export function returnedSms(input: { company: Company }): string {
+  return `${input.company.name}: your report for this visit was sent back with a note. Open it to see what needs correcting and report again: {link}`;
+}
+
 /** Says when the job is and where to check in. It never says the cleaner is on the way: nobody has confirmed that. */
 export function reminderSms(input: { company: Company; job: Job }): string {
   return `${input.company.name} reminder: your job is ${arrivalWords(input.job, input.company.timezone)}. Open it to check in when you arrive, or to tell us if you're running late: {link}`;

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, TriangleAlert } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/fields/confirm";
+import { StickyBar } from "@/components/app/layout";
 import { cn } from "@/lib/utils";
 
 /**
@@ -41,12 +42,8 @@ export function SaveBar({
   if (!canEdit) return null;
   const blocked = problems.length > 0 || stale;
   return (
-    <div
-      className={cn(
-        "z-20 grid gap-2 rounded-2xl border bg-card px-4 py-3 transition-shadow sm:px-5",
-        dirty ? "sticky bottom-3 border-brand-500/40 shadow-lg shadow-black/5" : "border-border",
-      )}
-    >
+    // Sticky only while there is something to save; the team console rises above it meanwhile.
+    <StickyBar active={dirty} className={cn("grid gap-2 rounded-2xl border bg-card px-4 py-3 transition-shadow sm:px-5", dirty ? "border-brand-500/40 shadow-lg shadow-black/5" : "border-border")}>
       {stale ? (
         <p role="alert" className="flex items-start gap-2 text-sm text-strong">
           <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
@@ -87,7 +84,7 @@ export function SaveBar({
           ) : "All changes saved."}
         </span>
       </div>
-    </div>
+    </StickyBar>
   );
 }
 

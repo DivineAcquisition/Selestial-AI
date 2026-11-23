@@ -389,8 +389,17 @@ describe("Dispatch: from a staffing need to accepted coverage", () => {
     await s.t.mutation(internal.assignments.expireDue, {});
     await flush(s.t);
     job = await s.job(jobId);
-    expect(job.assignments.find((row) => row.cleanerId === s.cleaners.Lena)).toMatchObject({ status: "cancelled", endCause: "undelivered" });
+    // It ends as "never texted", which rules nobody out, and Dispatch does not move on to Rosa: asking her would
+    // only record another offer nobody is texted about.
+    expect(job.assignments.map((row) => [row.cleanerId, row.status, row.endCause])).toEqual([[s.cleaners.Lena, "cancelled", "sending_blocked"]]);
     expect(job.assignments.some((row) => row.status === "expired")).toBe(false);
+    // Later sweeps hold too, while the task about sending is open, and Lena is still someone to ask.
+    await s.t.mutation(internal.dispatch.cover, { jobId });
+    await flush(s.t);
+    expect((await s.job(jobId)).assignments).toHaveLength(1);
+    const found = await s.as.query(api.dispatch.candidates, { companyId: s.companyId, jobId });
+    expect(found.candidates.map((row) => row.name)).toEqual(expect.arrayContaining(["Lena", "Rosa"]));
+    expect(mockOutbox).toEqual([]);
     // Still one task about sending, however many offers it happens to.
     expect((await s.tasks("needs_decision")).filter((task) => task.title === "Dispatch's texts to cleaners are not going out")).toHaveLength(1);
   });

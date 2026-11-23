@@ -47,7 +47,7 @@ export function splitEvenly(cents: number, cleanerIds: Id<"cleaners">[]): { clea
 }
 
 /** Where a job's pay stands, in the cleaner's words and the Owner's. */
-export const EARNING_STATE_WORDS = { calculated: "Being reviewed", needs_review: "Being reviewed", approved: "Approved, not paid yet", payment_started: "Payment on its way", paid: "Paid", void: "Set aside" } as const;
+export const EARNING_STATE_WORDS = { calculated: "Being reviewed", needs_review: "Being reviewed", approved: "Approved, not paid yet", payment_started: "Payment started, not confirmed", paid: "Paid", void: "Set aside" } as const;
 export const TEAM_PAY_METHOD_WORDS = { zelle: "Zelle", venmo: "Venmo", cash: "Cash", check: "Check", bank_transfer: "Bank transfer", payroll: "Payroll", other: "Other" } as const;
 
 /**

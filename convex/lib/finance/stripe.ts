@@ -121,6 +121,14 @@ export function getPlatformCustomer(customerId: string) {
   return call<{ id: string; metadata?: Record<string, string> | null; deleted?: boolean }>("GET", `/v1/customers/${encodeURIComponent(customerId)}`, {});
 }
 
+/**
+ * An invoice on Selestial's own Stripe account, read to learn whether an unpaid plan invoice has since been
+ * paid or voided (convex/billingLock.ts). Only its id, status and customer are used.
+ */
+export function getPlatformInvoice(invoiceId: string) {
+  return call<{ id: string; status?: string | null; customer?: string | { id?: string } | null }>("GET", `/v1/invoices/${encodeURIComponent(invoiceId)}`, {});
+}
+
 // ── The objects Selestial reads, reduced to the fields it uses ────────────────────────────────────
 
 export type RawAccount = {

@@ -4,7 +4,9 @@ import { AUTUMN, planIdFromAutumn, type PlanId } from "./catalog";
 
 export type Projection = {
   plan: PlanId | null;
-  subscription: { pastDue: boolean; startedAt: number | null; periodEnd: number | null; endsAt: number | null; scheduledPlan: PlanId | null; scheduledAt: number | null };
+  /** Autumn's own id for the active plan (operate_early for the early-user price, which `plan` reads as Operate). */
+  autumnPlanId: string | null;
+  subscription: { pastDue: boolean; startedAt: number | null; periodEnd: number | null; endsAt: number | null; scheduledPlan: PlanId | null; scheduledAt: number | null; scheduledAutumnPlanId?: string | null };
   credits: {
     remaining: number;
     granted: number;
@@ -54,6 +56,7 @@ export function projectCustomer(customer: RawCustomer, now: number): Projection 
   return {
     messaging,
     plan: active ? planIdFromAutumn(active.plan_id) : null,
+    autumnPlanId: active ? active.plan_id : null,
     subscription: {
       pastDue: active?.past_due === true,
       startedAt: when(active?.started_at),
@@ -61,6 +64,7 @@ export function projectCustomer(customer: RawCustomer, now: number): Projection 
       endsAt: active && active.canceled_at !== null && active.canceled_at !== undefined ? (when(active.expires_at) ?? when(active.current_period_end)) : null,
       scheduledPlan: scheduled ? planIdFromAutumn(scheduled.plan_id) : null,
       scheduledAt: scheduled ? (when(scheduled.started_at) ?? when(active?.current_period_end)) : null,
+      scheduledAutumnPlanId: scheduled ? scheduled.plan_id : null,
     },
     credits,
   };

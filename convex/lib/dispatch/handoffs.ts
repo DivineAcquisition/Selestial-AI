@@ -1,7 +1,7 @@
 /**
  * Dispatch does not hire, change a customer's price, settle a complaint, judge quality or pay anyone.
  * When its work reaches one of those, it opens a task in that agent's queue and says so. Recruiter is an
- * agent the record already knows. Customer Care, Quality and Finance are not built, so their queues are
+ * agent the record already knows. Care, Quality and Finance are not built, so their queues are
  * worked by a person: the task is held for a person from the start, never left for an agent that does not
  * exist. Cleaner contact and availability problems are Dispatch's own (lib/dispatch/delivery.ts), not a
  * handoff: Team Coordinator was retired and its operational work is Dispatch's.
@@ -19,7 +19,7 @@ type About = typeof aboutValidator.type;
 export const QUEUE_NAMES: Record<StoredHandoffQueue, string> = {
   recruiter: "Recruiter",
   team_coordinator: "Team Coordinator (retired)",
-  customer_care: "Customer Care",
+  customer_care: "Care",
   quality: "Quality",
   finance: "Finance",
 };
@@ -48,7 +48,8 @@ export async function handOff(ctx: MutationCtx, input: Handoff): Promise<Doc<"ta
     companyId: input.companyId,
     // Recruiter is a known agent. The other queues have no agent yet, so the task is filed under Dispatch,
     // which raised it, and held for a person.
-    agent: input.to === "recruiter" ? "recruiter" : "dispatch",
+    // Quality is built: its queue is its own. Its review tasks are still decided by a person.
+    agent: input.to === "recruiter" ? "recruiter" : input.to === "quality" ? "quality" : "dispatch",
     title: input.title.slice(0, 200),
     nextAction: input.question.slice(0, 500),
     dueAt: input.dueAt,

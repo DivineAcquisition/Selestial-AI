@@ -89,7 +89,8 @@ export type ProposalContent = {
   intro: string;
   client: { name: string; email: string | null };
   sites: SiteContent[];
-  options: { id: string; label: string; description: string | null; sites: { key: string; serviceName: string | null; priceCents: number | null }[] }[];
+  /** `internal` (absent on versions saved before it existed) is what starting service on an accepted option needs; never shown to the customer. */
+  options: { id: string; label: string; description: string | null; sites: { key: string; serviceName: string | null; priceCents: number | null; internal?: { serviceKey: string | null; versionId: string | null; input: Record<string, unknown> | null; durationMinutes: number | null; crew: number | null } }[] }[];
   terms: {
     invoiceFrequency: string;
     netDays: number | null;
@@ -183,7 +184,7 @@ export async function buildContent(ctx: QueryCtx, company: Doc<"companies">, tem
     for (const site of draft.sites) {
       const key = option.siteServiceKeys?.[site.key];
       const content = key ? await siteContent(ctx, company, template, { ...site, serviceKey: key, customRateCents: undefined }) : null;
-      rows.push({ key: site.key, serviceName: content?.service?.name ?? null, priceCents: content?.priceCents ?? null });
+      rows.push({ key: site.key, serviceName: content?.service?.name ?? null, priceCents: content?.priceCents ?? null, ...(content ? { internal: { serviceKey: content.service?.key ?? null, versionId: content.internal.versionId, input: content.internal.input, durationMinutes: content.internal.durationMinutes, crew: content.internal.crew } } : {}) });
     }
     options.push({ id: option.id, label: option.label.trim().slice(0, 80) || "Alternative", description: option.description?.trim() || null, sites: rows });
   }
@@ -225,5 +226,5 @@ export async function buildContent(ctx: QueryCtx, company: Doc<"companies">, tem
 
 /** The customer's copy: internal notes and private details removed. */
 export function customerCopy(content: ProposalContent) {
-  return { ...content, sites: content.sites.map(({ internal: _internal, referenceCents: _ref, customReason: _reason, ...site }) => site) };
+  return { ...content, sites: content.sites.map(({ internal: _internal, referenceCents: _ref, customReason: _reason, ...site }) => site), options: content.options.map((option) => ({ ...option, sites: option.sites.map(({ internal: _optionInternal, ...site }) => site) })) };
 }

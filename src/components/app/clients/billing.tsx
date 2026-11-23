@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 import { api } from "../../../../convex/_generated/api";
+import { OpeningBalances } from "./imported";
 import { Card, EmptyState, money } from "./bits";
 import type { Profile } from "./profile";
 
@@ -33,7 +34,8 @@ export function BillingTab({ profile }: { profile: Profile }) {
         <Lock className="size-3.5" aria-hidden /> Only the Owner sees this tab. Billing changes are made in Finance.
       </p>
       <Amounts billing={billing} />
-      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <OpeningBalances customerId={profile.id} />
+      <div className="grid min-w-0 gap-4 @4xl/main:grid-cols-[minmax(0,1fr)_20rem]">
         <Card
           title="Invoices"
           action={

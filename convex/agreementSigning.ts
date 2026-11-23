@@ -20,6 +20,7 @@ import { sha256Bytes } from "./lib/agreements/hash";
 import { load, versionRow } from "./lib/agreements/store";
 import { applyEvent, expireDue, markDispatchFailed, markDispatched, remind, sendBlockers, startRequest, withdraw } from "./lib/agreements/signingStore";
 import { eventSchema } from "./lib/agreements/eventSchema";
+import { copyToDrive } from "./googleDrive";
 
 export const status = companyQuery({ args: {}, handler: async () => signingStatus() });
 
@@ -181,6 +182,13 @@ export const saveSigned = internalMutation({
     }
     await ctx.db.patch(request._id, args.storageId ? { signedFileId: args.storageId, signedFileHash: args.hash, evidenceNote: args.evidence?.slice(0, 500), problem: undefined } : { problem: args.problem?.slice(0, 300) ?? "The signed copy could not be retrieved." });
     await recordEvent(ctx, { companyId: request.companyId, type: args.storageId ? "agreement.signed_copy_stored" : "agreement.signed_copy_failed", actor: { kind: "system" }, subject: { table: "agreementSignatureRequests", id: request._id } });
+    // The signed copy is final: it also goes to the Owner's Drive agreements folder, when one is chosen.
+    if (args.storageId) {
+      const agreement = await ctx.db.get(request.agreementId);
+      const file = await ctx.db.system.get(args.storageId);
+      const type = file?.contentType ?? "application/pdf";
+      await copyToDrive(ctx, request.companyId, { record: `signed:${request._id}`, storageId: args.storageId, name: `${agreement?.title ?? "Agreement"} (signed, v${request.version})${type === "application/pdf" ? ".pdf" : ""}`, mimeType: type, purpose: "agreements" });
+    }
     return null;
   },
 });

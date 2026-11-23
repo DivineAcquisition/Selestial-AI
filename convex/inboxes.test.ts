@@ -10,13 +10,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fakeGoogle } from "../tests/fakeGoogle";
 import { refusal } from "../tests/harness";
-import { flush, HOUR, indeedApplication, MONDAY_10AM, recruiterTestEnv, setup, type Setup } from "../tests/recruiterHarness";
+import { confirmGmail, flush, HOUR, indeedApplication, MONDAY_10AM, recruiterTestEnv, setup, type Setup } from "../tests/recruiterHarness";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { forgetGoogleKeys, googleKeys } from "./lib/google/pubsub";
 import { mockEmails } from "./lib/messaging/email";
 import { rateLimited, rawMessage, sendFromGmail } from "./lib/recruiter/gmail";
 import { MailboxProviderError } from "./lib/recruiter/mailbox";
+import { seal } from "./lib/recruiter/secrets";
 
 const KEY = btoa(String.fromCharCode(...new Uint8Array(32).map((_, i) => i + 1)));
 const ENV = { GOOGLE_CLIENT_ID: "client-id.apps.test", GOOGLE_CLIENT_SECRET: "client-secret-not-real", MAILBOX_TOKEN_KEY: KEY, CONVEX_SITE_URL: "https://deployment.convex.site.test", APP_ORIGIN: "https://app.selestial.test" };
@@ -45,6 +46,8 @@ async function connectShared(s: Setup, purposes: Purpose[], canSend = true) {
   const state = new URL(url).searchParams.get("state")!;
   const response = await s.t.fetch(`/oauth/google/callback?state=${encodeURIComponent(state)}&code=good-code`, { method: "GET" });
   await flush(s.t);
+  // Google's answer leaves the mailbox waiting; the signed-in Owner confirms it in the app.
+  await confirmGmail(s, response);
   const connectionId = (await s.t.run(async (ctx) => (await ctx.db.query("mailboxConnections").collect()).find((row) => row.provider === "gmail")!._id)) as Id<"mailboxConnections">;
   return { url, response, connectionId };
 }
@@ -69,7 +72,7 @@ describe("connecting an inbox with purposes", () => {
   it("comes back to Connected apps, keeps the purposes, tells the Owner, and lists the agents that use it", async () => {
     const s = await setup();
     const { response, connectionId } = await connectShared(s, ["sales", "care"]);
-    expect(response.headers.get("Location")).toBe("https://app.selestial.test/app/settings/integrations?tool=gmail&result=connected");
+    expect(response.headers.get("Location")).toMatch(/^https:\/\/app\.selestial\.test\/app\/settings\/integrations\?tool=gmail&result=confirm&pending=[A-Za-z0-9_-]{20,}$/);
     const listed = await s.as.query(api.inboxes.list, { companyId: s.companyId });
     const inbox = listed.inboxes.find((row) => row.id === connectionId)!;
     expect(inbox).toMatchObject({ status: "connected", state: "Connected", legacy: false, canSend: true, agents: ["sales", "retention"], findings: null });
@@ -219,6 +222,30 @@ describe("disconnecting", () => {
     await flush(s.t);
     expect(google.state.revoked).toEqual([]);
     expect((await s.as.query(api.inboxes.list, { companyId: s.companyId })).inboxes.find((i) => i.id === connectionId)?.grant).toBe("kept_shared");
+  });
+
+  it("disconnecting a Google tool on the same Google account leaves the grant, so the inbox keeps working", async () => {
+    const s = await setup();
+    const { connectionId } = await connectShared(s, ["hiring"]);
+    const seedTool = async (email: string, sub: string) =>
+      s.t.run(async (ctx) => {
+        const member = (await ctx.db.query("members").collect()).find((m) => m.companyId === s.companyId)!;
+        const toolId = await ctx.db.insert("googleConnections", { companyId: s.companyId, feature: "drive", googleSub: sub, email, status: "connected", grantedScopes: [], connectedBy: member._id, connectedAt: Date.now() });
+        await ctx.db.insert("googleCredentials", { companyId: s.companyId, connectionId: toolId, sealedRefreshToken: (await seal("tool-refresh-token", toolId))!, createdAt: Date.now() });
+      });
+    await seedTool("Hiring@Alpha-Cleaning.test".toLowerCase(), "sub-1");
+    expect(await s.as.mutation(api.google.disconnect, { companyId: s.companyId, feature: "drive" })).toEqual({ stopped: true, revokedAtGoogle: false });
+    await flush(s.t);
+    // Nothing was revoked at Google, the tool's own token is gone, and the inbox is untouched.
+    expect(google.state.revoked).toEqual([]);
+    expect(await s.t.run(async (ctx) => ctx.db.query("googleCredentials").collect())).toEqual([]);
+    expect(await s.t.run((ctx) => ctx.db.get(connectionId))).toMatchObject({ status: "connected" });
+    expect(await s.t.action(internal.recruiterInbox.sync, { connectionId })).toMatchObject({ filed: expect.any(Number) });
+    // A tool on a different Google account, with no inbox on it, is still revoked when it goes.
+    await seedTool("someone@elsewhere.test", "sub-2");
+    expect(await s.as.mutation(api.google.disconnect, { companyId: s.companyId, feature: "drive" })).toEqual({ stopped: true, revokedAtGoogle: true });
+    await flush(s.t);
+    expect(google.state.revoked).toEqual(["tool-refresh-token"]);
   });
 
   it("can't touch another company's inbox", async () => {

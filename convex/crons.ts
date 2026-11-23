@@ -56,6 +56,8 @@ crons.interval("creative studio follows up quiet generations", { minutes: 5 }, i
 // Billing: settlements that failed are retried, holds left behind by stopped work are released, and work that never reported back is closed.
 crons.interval("billing settles and recovers AI work", { minutes: 5 }, internal.billing.sweep, {});
 crons.interval("unpaid plans: reminder before cancel, cancel after 30 days locked", { hours: 1 }, internal.billingLock.sweep, {});
+// The early-user offer: unpaid reservations give their place back, the one reminder 30 days before, and the move to $299 at month 12.
+crons.interval("early-user offer: reservations, reminder and month-12 move", { hours: 1 }, internal.earlyOffer.sweep, {});
 crons.interval("messaging charges settle and recover", { minutes: 5 }, internal.messagingBilling.sweep, {});
 crons.interval("texting number monthly fees", { hours: 6 }, internal.texting.chargeNumbers, {});
 // Telnyx callbacks can be lost: a registration the carriers are working on is checked if it has been quiet for six hours.
@@ -69,6 +71,7 @@ crons.interval("google calendar sync and watches", { minutes: 10 }, internal.goo
 crons.interval("google business profile reviews", { minutes: 60 }, internal.googleBusiness.sweep, {});
 crons.interval("google local services leads", { minutes: 15 }, internal.googleAds.sweepLocalServices, {});
 crons.interval("google conversions for booked jobs", { minutes: 30 }, internal.googleAds.sweepConversions, {});
+crons.interval("google ads results by campaign", { hours: 6 }, internal.googleAds.sweepResults, {});
 crons.interval("google drive times for coming visits", { minutes: 30 }, internal.googleRoutes.sweep, {});
 crons.daily("renew gmail push watches", { hourUTC: 9, minuteUTC: 41 }, internal.recruiterGmailWatch.sweep, {});
 
@@ -77,6 +80,9 @@ crons.interval("cleaners follow-ups", { minutes: 30 }, internal.cleanerFollowUps
 crons.interval("cleaners requirements that expire", { minutes: 60 }, internal.requirements.expireDue, {});
 // Booking Experiences: holds that ended, and sessions customers walked away from.
 crons.interval("bookings let go of ended holds", { minutes: 5 }, internal.bookingOps.sweep, {});
+
+// A migration import whose background step stopped picks up from its last checkpoint (convex/migration.ts).
+crons.interval("migration imports resume after an interruption", { minutes: 2 }, internal.migration.sweep, {});
 
 // Sales: lapsed holds and Dispatch handoffs that need another try; recurring plans made to their horizon.
 crons.interval("sales bookings sweep", { minutes: 10 }, internal.bookings.sweep, {});
@@ -87,6 +93,10 @@ crons.interval("sales follow-up reminders", { minutes: 30 }, internal.pipeline.s
 crons.interval("sales agent picks up what a missed trigger left", { minutes: 5 }, internal.salesAgent.sweep, {});
 
 // Retention: reconciles plans, visits, billing and agreements; reads back handoffs; closes questions nobody answered; retries unfinished work.
+// Quality: reviews, requests and corrections waiting on someone, retries with backoff, and work that can resume.
+crons.interval("quality keeps its work moving", { minutes: 10 }, internal.qualityWork.sweep, {});
+// Quality: calls, texts and late transcripts from a connected phone platform, when the Owner turned reading on.
+crons.interval("quality reads the connected phone platform", { minutes: 10 }, internal.qualityComms.sweep, {});
 crons.interval("retention reconciles and follows through", { minutes: 10 }, internal.retentionWork.sweep, {});
 // Only inboxes connected for Care & Retention, and only where the Owner turned reading on.
 crons.interval("retention reads customer replies in care inboxes", { minutes: 10 }, internal.retentionInbox.sweep, {});

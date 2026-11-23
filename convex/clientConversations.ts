@@ -7,6 +7,7 @@
  * Billing messages (invoices, payment reminders) are the Owner's, as in Finance: other roles see that
  * some exist, never their words or amounts.
  */
+import { textingProvider } from "./lib/quo/route";
 import { v } from "convex/values";
 
 import { internal } from "./_generated/api";
@@ -21,7 +22,6 @@ import { channelValidator, type Channel } from "./lib/compliance/schema";
 import { userError } from "./lib/errors";
 import { byMember, recordEvent } from "./lib/events";
 import { emailProvider } from "./lib/messaging/email";
-import { messagingProvider } from "./lib/messaging/provider";
 import { isManager } from "./lib/roles";
 import { literals } from "./lib/statuses";
 
@@ -235,7 +235,7 @@ export const send = companyMutation({
     if (args.sendAt !== undefined && (args.sendAt < now + MINUTE || args.sendAt > now + 60 * DAY)) throw userError("Schedule it between a minute and 60 days from now.");
     const answer = await sendCheck(ctx, customer, target, args.channel, draftedBy, args.sendAt ?? now);
     if (!answer.ok && answer.retryAt === undefined) throw userError(`Not sent: ${answer.words}`);
-    const provider = args.channel === "email" ? emailProvider() : messagingProvider();
+    const provider = args.channel === "email" ? emailProvider() : await textingProvider(ctx, ctx.companyId, null);
     const sendAt = args.sendAt ?? (answer.ok ? undefined : answer.retryAt);
     const status = sendAt === undefined ? "queued" : "held";
     const about = args.about ? { ...args.about, label: await aboutLabel(ctx, customer, args.about) } : undefined;

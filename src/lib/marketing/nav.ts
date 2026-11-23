@@ -35,7 +35,7 @@ export const SITE_NAV: { menus: NavMenu[]; pricing: { href: string; label: strin
       sections: ["agents", "problem"],
       columns: [
         { title: "Working today", items: AGENT_PAGE_IDS.filter((id) => AGENT_PAGES[id].status === "live").map(agentItem) },
-        { title: "Coming soon, in Expand", items: AGENT_PAGE_IDS.filter((id) => AGENT_PAGES[id].status === "coming_soon").map(agentItem) },
+        { title: "Coming later", items: AGENT_PAGE_IDS.filter((id) => AGENT_PAGES[id].status === "coming_soon").map(agentItem) },
       ],
       footer: { href: "/agents", label: "Meet the whole team" },
     },

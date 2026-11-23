@@ -62,7 +62,7 @@ export const view = statementQuery({
       to: localDateKey(Date.now(), tz),
       validUntil: localDateKey(link.expiresAt, tz),
       jobs,
-      payments: payments.map((p) => ({ id: p._id, amountCents: p.amountCents, method: METHOD_WORDS[p.method], status: p.status === "paid" ? "Paid" : "On its way", on: p.paidOn ?? localDateKey(p.startedAt, tz), jobs: p.parts.length })),
+      payments: payments.map((p) => ({ id: p._id, amountCents: p.amountCents, method: METHOD_WORDS[p.method], status: p.status === "paid" ? "Paid" : "Started, not confirmed", on: p.paidOn ?? localDateKey(p.startedAt, tz), jobs: p.parts.length })),
       totals: {
         earnedCents: jobs.reduce((s, j) => s + (j.totalCents ?? 0), 0),
         paidCents: payments.filter((p) => p.status === "paid").reduce((s, p) => s + p.amountCents, 0),

@@ -12,14 +12,14 @@ export type Department = { id: DepartmentId; name: string; purpose: string; agen
 
 /**
  * The three departments. They are departments, not lifecycle stages. Only the agents the backend
- * knows are listed here; Marketing, Quality and Customer Care join their departments when each is designed
+ * knows are listed here; Marketing, Quality and Care join their departments when each is designed
  * (docs/foundation/01-navigation.md). Team Coordinator was retired: Team is Recruiter alone, with the shared
  * Cleaners workspace. The sidebar's own list of all seven is
  * src/lib/app/navigation.ts, and a test keeps the two in agreement.
  */
 export const DEPARTMENTS: readonly Department[] = [
   { id: "growth", name: "Growth", purpose: "Customer interest, bookings and lasting customer relationships.", agents: ["sales", "retention"] },
-  { id: "operations", name: "Operations", purpose: "Staffing, service delivery, quality and customer care.", agents: ["dispatch"] },
+  { id: "operations", name: "Operations", purpose: "Staffing, service delivery, quality and customer care.", agents: ["dispatch", "quality"] },
   { id: "team", name: "Team", purpose: "Hiring, onboarding, readiness and availability.", agents: ["recruiter"] },
 ];
 
@@ -47,6 +47,12 @@ export const AGENT_PROFILES: Record<Agent, { name: string; responsibility: strin
     name: "Retention",
     responsibility: "Service concerns, recurring-service continuity, renewals and re-engagement.",
     completion: "A concern followed through to an outcome the customer confirmed, or recorded as it actually is.",
+    built: true,
+  },
+  quality: {
+    name: "Quality",
+    responsibility: "Service standards, completion reviews, quality investigations, correction scope and verification, and proposed improvements.",
+    completion: "A visit reviewed against the standard that applied, a concern investigated to findings a person reviewed, and any correction verified, with the customer's own answer kept apart.",
     built: true,
   },
 };

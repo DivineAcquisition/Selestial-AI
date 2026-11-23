@@ -11,6 +11,7 @@ import { ChatThread } from "@/components/app/chat/thread";
 import { DocumentWorkspace } from "@/components/app/chat/workspace";
 import { ArrowUpRight, Plus, Sparkles, X } from "@/components/icons";
 import { cn } from "@/lib/utils";
+import { useLayoutVariable } from "@/components/app/layout";
 
 const onChatPage = (pathname: string) => pathname === "/app/chat" || pathname.startsWith("/app/chat/") || pathname === "/app/chats";
 
@@ -48,6 +49,8 @@ export function ChatPanel() {
   const pathname = usePathname();
   const panel = useRef<HTMLElement>(null);
   const hidden = onChatPage(pathname);
+  // Open beside the page on a wide screen, the panel tells the shell its width so the page makes room for it.
+  useLayoutVariable("--app-panel-width", panel, panelOpen && !hidden, (element) => (element.getBoundingClientRect().width >= window.innerWidth ? 0 : element.getBoundingClientRect().width));
 
   useEffect(() => {
     if (!panelOpen || hidden) return;
@@ -62,7 +65,7 @@ export function ChatPanel() {
           id="ask-selestial"
           ref={panel}
           aria-label="Ask Selestial"
-          className="live-enter fixed inset-0 z-40 flex flex-col bg-background sm:inset-y-0 sm:right-0 sm:left-auto sm:w-[27rem] sm:border-l sm:border-border sm:shadow-[-24px_0_60px_-30px_rgba(27,14,69,0.45)]"
+          className="live-enter fixed inset-0 z-panel flex flex-col bg-background sm:inset-y-0 sm:right-0 sm:left-auto sm:w-[27rem] sm:border-l sm:border-border sm:shadow-[-24px_0_60px_-30px_rgba(27,14,69,0.45)]"
           onKeyDown={(event) => {
             if (event.key === "Escape" && !event.defaultPrevented) {
               const target = event.target as HTMLElement;
@@ -107,7 +110,7 @@ export function ChatPanel() {
         </aside>
       ) : null}
       {artifactId && !hidden ? (
-        <div className={cn("fixed inset-0 z-50 flex sm:inset-y-0 sm:left-auto sm:border-l sm:border-border sm:shadow-2xl", panelOpen ? "sm:right-[27rem] sm:w-[min(34rem,calc(100vw-28rem))]" : "sm:right-0 sm:w-[min(36rem,100vw)]")}>
+        <div className={cn("fixed inset-0 z-modal flex sm:inset-y-0 sm:left-auto sm:border-l sm:border-border sm:shadow-2xl", panelOpen ? "sm:right-[27rem] sm:w-[min(34rem,calc(100vw-28rem))]" : "sm:right-0 sm:w-[min(36rem,100vw)]")}>
           <div className="flex min-h-0 w-full flex-col">
             <ChatBoundary compact>
               <DocumentWorkspace artifactId={artifactId} onClose={() => openArtifact(null)} />

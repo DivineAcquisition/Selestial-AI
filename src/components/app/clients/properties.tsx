@@ -15,6 +15,7 @@ import { useCompany } from "@/components/app/company";
 import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { Modal } from "@/components/app/modal";
 import { NewVisitForm } from "@/components/app/screens/forms";
+import { QualityOnProperty } from "@/components/app/screens/quality/context";
 import { ArrowLeft, Lock, MapPin, Plus } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -150,7 +151,7 @@ function PropertyDetail({ profile, propertyId }: { profile: Profile; propertyId:
       <FormError message={error} />
       {busy ? <p className="text-sm text-muted-foreground">Archiving…</p> : null}
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
+      <div className="grid gap-5 @4xl/main:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
         <div className="grid min-w-0 content-start gap-5">
           <Card title={str ? "The rental" : site ? "The site" : "The home"}>
             <dl className="grid gap-3 text-sm sm:grid-cols-3">
@@ -227,6 +228,9 @@ function PropertyDetail({ profile, propertyId }: { profile: Profile; propertyId:
               </ul>
             </Card>
           ) : null}
+          <Card title="Quality">
+            <QualityOnProperty propertyId={p.id as Id<"properties">} />
+          </Card>
           <Card>
             <AgreementsForRecord table="properties" id={p.id} title="Agreements for this property" />
           </Card>

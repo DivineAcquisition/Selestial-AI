@@ -9,6 +9,7 @@
  * credit is a change in Finance; a message is a question. Each names who has it, the record to watch
  * and what is expected back, and the case stays open until that comes back and is verified.
  */
+import { settle } from "../controls/allowance";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import { requestApproval } from "../approvalQueue";
@@ -30,6 +31,7 @@ import { issueCareLink } from "./links";
 import { careChannel, queueCareMessage, type CarePurpose } from "./outbox";
 import { applyPlanChange, CHANGE_OUTCOME, NEEDS_PERSON } from "./planChanges";
 import { retentionSettings } from "./settings";
+import { enqueueQualityRun } from "../quality/runs";
 import type { ActionKind, HandoffTo, LinkPurpose } from "./schema";
 
 type Ctx = QueryCtx | MutationCtx;
@@ -140,6 +142,9 @@ export async function prepareAction(ctx: MutationCtx, row: Case, input: NewActio
 async function setAction(ctx: MutationCtx, action: Action, patch: Partial<Action>): Promise<Action> {
   const done = patch.status === "done" || patch.status === "failed" || patch.status === "declined" || patch.status === "cancelled";
   await ctx.db.patch(action._id, { ...patch, updatedAt: Date.now(), ...(done && action.doneAt === undefined ? { doneAt: Date.now() } : {}) });
+  // Its allowance reservation, if it has one, settles once: spent when done, returned when it didn't happen.
+  if (patch.status === "done") await settle(ctx, action.companyId, `retentionActions:${action._id}`, "committed");
+  else if (patch.status === "failed" || patch.status === "declined" || patch.status === "cancelled" || patch.status === "blocked") await settle(ctx, action.companyId, `retentionActions:${action._id}`, "released");
   return (await ctx.db.get(action._id))!;
 }
 
@@ -178,7 +183,8 @@ export async function correctionSlots(ctx: Ctx, company: Doc<"companies">, input
         if (!hours.some((w) => w.weekday === weekday && w.startMinute <= minute && minute + input.minutes <= w.endMinute)) continue;
       }
       const answer = await checkCapacity(ctx, company, { startsAt, endsAt }, input.crew);
-      if (answer.state === "fits" || answer.state === "tight") {
+      // A time on a busy block of the Owner's Google Calendar is not offered (convex/lib/google/busy.ts).
+      if ((answer.state === "fits" || answer.state === "tight") && !answer.calendarBusy) {
         out.push({ startsAt, endsAt, state: answer.state });
         break;
       }
@@ -241,7 +247,8 @@ export async function submitAction(ctx: MutationCtx, company: Doc<"companies">, 
     return { status: "proposed", detail };
   }
   const cost = action.estimatedCostCents ?? action.money?.amountCents ?? null;
-  const permit = await permitFor(ctx, company._id, action.permission, { cents: cost });
+  // A money action acting without asking reserves its share of today's allowance under this action's own key.
+  const permit = await permitFor(ctx, company._id, action.permission, { cents: cost }, { key: `retentionActions:${action._id}`, source: { table: "retentionActions", id: action._id } });
   if (permit.mode === "refuse") {
     action = await setAction(ctx, action, { status: "blocked", result: permit.why, authorization: permit.label });
     await addEntry(ctx, row, { kind: "action", text: `Not carried out: ${action.summary}. ${permit.why}`, actor: SYSTEM });
@@ -269,7 +276,7 @@ export async function submitAction(ctx: MutationCtx, company: Doc<"companies">, 
   action = await setAction(ctx, action, { authorization: permit.label });
   const result = await carryOut(ctx, company, action, actor);
   if (permit.level === "execute_and_report") {
-    await recordEvent(ctx, { companyId: company._id, type: "retention.reported", actor: RETENTION, subject: { table: "retentionActions", id: action._id }, data: { kind: action.kind, action: action.permission, caseId: action.caseId, ok: result.ok } });
+    await recordEvent(ctx, { companyId: company._id, type: "retention.reported", actor: RETENTION, subject: { table: "retentionActions", id: action._id }, data: { kind: action.kind, action: action.permission, caseId: action.caseId, ok: result.ok, ref: action._id, stage: (await ctx.db.get(action._id))?.status === "done" ? "completed" : "queued" } });
   }
   return { status: (await ctx.db.get(action._id))!.status, detail: result.detail };
 }
@@ -538,7 +545,10 @@ export async function syncHandoff(ctx: MutationCtx, action: Action): Promise<boo
       ? await ctx.db.query("invoiceCredits").withIndex("by_company_customer", (q) => q.eq("companyId", action.companyId).eq("customerId", row.customerId).gte("at", action.createdAt)).take(20)
       : action.money.invoiceId ? await ctx.db.query("refunds").withIndex("by_company_invoice", (q) => q.eq("companyId", action.companyId).eq("invoiceId", action.money!.invoiceId!)).take(20) : [];
     const match = rows.find((r) => r.amountCents === action.money!.amountCents && (!("reversed" in r) || !r.reversed) && (!("createdAt" in r) || (r as Doc<"refunds">).createdAt >= action.createdAt));
-    if (match) return finish(true, `${action.kind === "credit" ? "A credit" : "A refund"} of ${money(action.money.amountCents)} is recorded in Finance.`, { actualCostCents: action.money.amountCents });
+    if (match) {
+      await enqueueQualityRun(ctx, { companyId: action.companyId, kind: "financial_settled", key: `money:${action._id}`, payload: { retentionCaseId: action.caseId } });
+      return finish(true, `${action.kind === "credit" ? "A credit" : "A refund"} of ${money(action.money.amountCents)} is recorded in Finance.`, { actualCostCents: action.money.amountCents });
+    }
   }
   const task = handoff.taskId ? await ctx.db.get(handoff.taskId) : null;
   if (task?.status === "done") return finish(true, task.outcome ?? "Marked done.");

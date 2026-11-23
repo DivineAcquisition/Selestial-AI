@@ -14,10 +14,11 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalAction, internalMutation, internalQuery, type ActionCtx } from "./_generated/server";
 import { accessTokenFor } from "./google";
+import { noticeInApp } from "./lib/activation/notices";
 import { recordEvent } from "./lib/events";
 import { listCalendars } from "./lib/google/calendar";
 import { accounts as businessAccounts, locations as businessLocations } from "./lib/google/business";
-import { accessibleCustomers, search as adsSearch } from "./lib/google/ads";
+import { accessibleCustomers, conversionAction, customerId as adsCustomerId, customerInfo, formatCustomerId, managedClients, search as adsSearch } from "./lib/google/ads";
 import { FOLDER, getFile, listChildren } from "./lib/google/drive";
 import { GoogleError, plainProblem } from "./lib/google/http";
 import { backoff, MAX_ATTEMPTS } from "./lib/google/jobs";
@@ -29,6 +30,14 @@ const STUCK_MS = 15 * 60 * 1000;
 const READS: Doc<"googleJobs">["kind"][] = ["calendar_sync", "lsa_poll", "knowledge_import"];
 /** Writes other people see: a public review reply, an ad going live, a conversion reported. Held while Selestial has suspended the company's outbound activity. */
 const PUBLIC_WRITES: Doc<"googleJobs">["kind"][] = ["review_reply", "ads_campaign", "ads_activate", "conversion"];
+const HELD = "Held: Selestial suspended this company's outbound activity.";
+/**
+ * A public write held through a suspension is only run if it is still this fresh when the suspension ends.
+ * Older than this, the reply, ad or conversion was approved for a moment that has passed: it is cancelled
+ * and the Owner is told, so they decide again with what is true now.
+ */
+export const HELD_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const PUBLIC_WRITE_WORDS: Partial<Record<Doc<"googleJobs">["kind"], string>> = { review_reply: "A review reply", ads_campaign: "An ad campaign", ads_activate: "An ad going live", conversion: "A conversion report to Google Ads" };
 
 export const tick = internalMutation({
   args: {},
@@ -42,7 +51,14 @@ export const tick = internalMutation({
         if (PUBLIC_WRITES.includes(job.kind)) {
           const company = await ctx.db.get(job.companyId);
           if (!company || company.suspendedAt !== undefined) {
-            await ctx.db.patch(job._id, { nextAt: now + 15 * 60_000, lastError: "Held: Selestial suspended this company's outbound activity.", updatedAt: now });
+            await ctx.db.patch(job._id, { nextAt: now + 15 * 60_000, lastError: HELD, updatedAt: now });
+            continue;
+          }
+          // Released: a write that waited too long is not run on the Owner's behalf after the fact.
+          if (job.lastError === HELD && now - job.createdAt > HELD_MAX_AGE_MS) {
+            await ctx.db.patch(job._id, { status: "cancelled", lastError: "Not run: it was held while Selestial had paused this company's outbound activity, and is now out of date.", updatedAt: now });
+            await recordEvent(ctx, { companyId: job.companyId, type: "google.job_stale", actor: { kind: "system" }, subject: { table: "companies", id: job.companyId }, data: { kind: job.kind } });
+            await noticeInApp(ctx, { companyId: job.companyId, kind: "service_issue", headline: `${PUBLIC_WRITE_WORDS[job.kind] ?? "A Google update"} was not sent to Google`, summary: "It was waiting while Selestial had paused your outbound activity, and is now more than a day old. Nothing was posted. Start it again if you still want it.", key: `google-stale:${job._id}` });
             continue;
           }
         }
@@ -121,7 +137,8 @@ export const run = internalAction({
       await ctx.runMutation(internal.googleWork.finish, { jobId: job._id, outcome: out.outcome ?? "done", result: out.result ? JSON.stringify(out.result) : undefined, providerRef: out.providerRef, error: out.error });
     } catch (error) {
       if (error instanceof GoogleError) {
-        const outcome = error.kind === "uncertain" ? "uncertain" : error.retryable ? "retry" : "failed";
+        // Refused before anything was sent: settled once as not run, never retried and never counted as a failure.
+        const outcome = error.kind === "not_production" ? "cancelled" : error.kind === "uncertain" ? "uncertain" : error.retryable ? "retry" : "failed";
         await ctx.runMutation(internal.googleWork.finish, { jobId: job._id, outcome, error: error.message, retryAfterMs: error.retryAfterMs });
       } else {
         await ctx.runMutation(internal.googleWork.finish, { jobId: job._id, outcome: "retry", error: error instanceof Error ? error.message.slice(0, 300) : "Unexpected failure." });
@@ -154,6 +171,8 @@ export const verifyResource = internalAction({
           const note = resource.kind === "drive_source" ? (children.length ? `Ready. Selestial can read ${children.length} file${children.length === 1 ? "" : "s"} here.` : "Ready. To let Selestial read files already in this folder, pick them too.") : "Ready. Selestial can save files here.";
           await ctx.runMutation(internal.google.setResourceAccess, { resourceId: args.resourceId, access: "verified", note, detail: file.mimeType });
         } else await ctx.runMutation(internal.google.setResourceAccess, { resourceId: args.resourceId, access: "verified", note: file.capabilities?.canDownload === false ? "Its owner doesn’t allow downloads, so Selestial can’t read it." : "Ready.", detail: file.mimeType });
+        // A knowledge source is read as soon as it is confirmed, not only when the Owner presses Refresh.
+        if (resource.kind === "drive_source") await ctx.runMutation(internal.googleDrive.readAfterCheck, { resourceId: args.resourceId });
       } else if (resource.kind === "calendar_sync" || resource.kind === "calendar_busy") {
         const calendars = await listCalendars(access.token);
         const found = calendars.find((c) => c.id === resource.externalId);
@@ -163,14 +182,41 @@ export const verifyResource = internalAction({
       } else if (resource.kind === "business_location") {
         const account = resource.detail ?? "";
         const locations = await businessLocations(access.token, account);
-        if (!locations.some((l) => l.name === resource.externalId)) throw new GoogleError("not_found", "This location isn’t in your Google account.");
-        await ctx.runMutation(internal.google.setResourceAccess, { resourceId: args.resourceId, access: "verified", note: "Ready." });
-      } else if (resource.kind === "ads_account" || resource.kind === "conversion_destination") {
+        const found = locations.find((l) => l.name === resource.externalId);
+        if (!found) throw new GoogleError("not_found", "This location isn’t in your Google account.");
+        // Its review page is kept, so Retention's review invitation can point customers to it.
+        await ctx.runMutation(internal.google.setResourceAccess, { resourceId: args.resourceId, access: "verified", note: "Ready.", reviewUri: found.metadata?.newReviewUri });
+      } else if (resource.kind === "ads_account") {
         const developer = adsDeveloperToken();
         if (!developer) throw new GoogleError("not_configured", "Google Ads isn’t available yet.");
-        const account = resource.kind === "ads_account" ? resource.externalId : (resource.detail ?? "").split(":")[0];
+        const account = adsCustomerId(resource.externalId);
+        const manager = resource.detail && /^\d{10}$/.test(resource.detail.replace(/-/g, "")) ? resource.detail.replace(/-/g, "") : null;
         const reachable = await accessibleCustomers(access.token, developer);
-        if (!reachable.includes(account.replace(/-/g, ""))) throw new GoogleError("not_found", "Your Google account can’t reach this ad account.");
+        // Reached directly, or through the manager account it was chosen under (login-customer-id).
+        if (!reachable.includes(account)) {
+          if (!manager || !reachable.includes(manager)) throw new GoogleError("not_found", "Your Google account can’t reach this ad account.");
+          await customerInfo(access.token, developer, account, manager);
+        }
+        await ctx.runMutation(internal.google.setResourceAccess, { resourceId: args.resourceId, access: "verified", note: manager ? `Ready, through manager account ${formatCustomerId(manager)}.` : "Ready." });
+        await ctx.runMutation(internal.googleAds.queueSnapshot, { resourceId: args.resourceId });
+      } else if (resource.kind === "conversion_destination") {
+        // The booked-job reporting token only carries the Data Manager scope, which cannot query Google Ads. The
+        // conversion action is looked up with the Google Ads connection when there is one; otherwise Google's
+        // answer to the first report decides (googleExecutors.ts, conversion).
+        const [account, login] = (resource.detail ?? "").split(":");
+        const developer = adsDeveloperToken();
+        const adsConnection = await ctx.runQuery(internal.googleAds.adsConnectionFor, { companyId: resource.companyId });
+        const ads = adsConnection && developer ? await accessTokenFor(ctx, adsConnection) : null;
+        if (!developer || !ads?.ok || !/^\d{10}$/.test((account ?? "").replace(/-/g, ""))) {
+          await ctx.runMutation(internal.googleAds.destinationNote, { resourceId: args.resourceId, note: "Selestial can’t look this conversion up without Google Ads connected. It’s confirmed when Google accepts the first booked-visit report." });
+          return null;
+        }
+        const action = await conversionAction(ads.token, developer, account, resource.externalId, login || null);
+        if (!action) throw new GoogleError("not_found", "This conversion isn’t in that Google Ads account any more.");
+        if (action.type !== "UPLOAD_CLICKS") {
+          await ctx.runMutation(internal.google.setResourceAccess, { resourceId: args.resourceId, access: "lost", note: "This conversion doesn’t accept imported clicks. In Google Ads, choose or create one whose source is “Website (Import from clicks)”." });
+          return null;
+        }
         await ctx.runMutation(internal.google.setResourceAccess, { resourceId: args.resourceId, access: "verified", note: "Ready." });
       }
     } catch (error) {
@@ -210,17 +256,36 @@ export const listChoices = internalAction({
       } else if (args.kind === "ads_accounts") {
         const developer = adsDeveloperToken();
         if (!developer) return await store([], "Google Ads isn’t available yet."), null;
+        // Accounts reached directly, and the advertiser accounts under each manager account. One reached through a
+        // manager carries the manager's id as its detail: every later call goes through it (login-customer-id).
         const ids = await accessibleCustomers(access.token, developer);
-        await store(ids.map((id) => ({ id, label: `${id.slice(0, 3)}-${id.slice(3, 6)}-${id.slice(6)}` })), ids.length ? undefined : "This Google account doesn’t have any Google Ads accounts.");
+        const direct = new Map<string, { id: string; label: string; detail?: string }>();
+        const managed = new Map<string, { id: string; label: string; detail?: string }>();
+        const label = (id: string, name: string) => (name ? `${name} (${formatCustomerId(id)})` : formatCustomerId(id));
+        for (const id of ids.slice(0, 50)) {
+          const info = await customerInfo(access.token, developer, id, id).catch(() => null);
+          if (!info) {
+            direct.set(id, { id, label: formatCustomerId(id) });
+            continue;
+          }
+          if (!info.manager) {
+            direct.set(id, { id, label: label(id, info.name) });
+            continue;
+          }
+          for (const client of await managedClients(access.token, developer, id).catch(() => [])) if (!managed.has(client.id)) managed.set(client.id, { id: client.id, label: `${label(client.id, client.name)} · through ${label(id, info.name)}`, detail: id });
+        }
+        const items = [...direct.values(), ...[...managed.values()].filter((item) => !direct.has(item.id))];
+        await store(items, items.length ? undefined : "This Google account doesn’t have any Google Ads accounts.");
       } else if (args.kind === "conversion_actions") {
         const developer = adsDeveloperToken();
         if (!developer) return await store([], "Google Ads isn’t available yet."), null;
         const items: { id: string; label: string; detail?: string }[] = [];
         for (const account of await ctx.runQuery(internal.googleAds.adsAccountsFor, { companyId })) {
-          const rows = await adsSearch<{ conversionAction?: { id?: string; name?: string } }>(access.token, developer, account.id, "SELECT conversion_action.id, conversion_action.name FROM conversion_action WHERE conversion_action.status = 'ENABLED'", account.login ?? undefined);
-          for (const row of rows) if (row.conversionAction?.id) items.push({ id: String(row.conversionAction.id), label: row.conversionAction.name ?? "Conversion", detail: account.id });
+          // Only "Import from clicks" conversions accept booked-visit reports. The detail is "account:manager", as the report needs it.
+          const rows = await adsSearch<{ conversionAction?: { id?: string; name?: string } }>(access.token, developer, account.id, "SELECT conversion_action.id, conversion_action.name FROM conversion_action WHERE conversion_action.status = 'ENABLED' AND conversion_action.type = 'UPLOAD_CLICKS'", account.login ?? undefined);
+          for (const row of rows) if (row.conversionAction?.id) items.push({ id: String(row.conversionAction.id), label: row.conversionAction.name ?? "Conversion", detail: account.login ? `${account.id}:${account.login.replace(/-/g, "")}` : account.id });
         }
-        await store(items, items.length ? undefined : "Choose a Google Ads account first, or add a conversion in Google Ads.");
+        await store(items, items.length ? undefined : "Choose a Google Ads account first, or in Google Ads add a conversion whose source is “Website (Import from clicks)”.");
       } else if (args.kind === "folder_contents" && args.scope) {
         const children = await listChildren(access.token, args.scope);
         await store(children.map((f) => ({ id: f.id, label: f.name, detail: f.mimeType })), children.length ? undefined : "No files here yet.");

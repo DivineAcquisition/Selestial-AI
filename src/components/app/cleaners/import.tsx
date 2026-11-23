@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "../../../../convex/_generated/api";
 import { CLEANERS_PATH } from "./state";
+import { StickyBar } from "@/components/app/layout";
 
 type Checked = FunctionReturnType<typeof api.workforce.checkImport>;
 type Result = FunctionReturnType<typeof api.workforce.importRows>;
@@ -225,7 +226,7 @@ export function ImportScreen() {
             })}
           </ul>
           <FormError message={error} />
-          <div className="sticky bottom-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-border bg-card/95 px-4 py-3 shadow-lg backdrop-blur">
+          <StickyBar className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-border bg-card/95 px-4 py-3 shadow-lg backdrop-blur">
             <Button variant="ghost" onClick={() => setChecked(null)}>
               Back
             </Button>
@@ -233,7 +234,7 @@ export function ImportScreen() {
               <FileSpreadsheet aria-hidden />
               Import {ready} {ready === 1 ? "person" : "people"}
             </Button>
-          </div>
+          </StickyBar>
         </section>
       ) : null}
 

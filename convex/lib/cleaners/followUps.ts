@@ -13,6 +13,7 @@
  *  - After the company's limit of reminders, a person is asked to step in. Silence is never read as anything:
  *    no status changes, no consequence, no score.
  */
+import { reportAction } from "../controls/report";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx } from "../../_generated/server";
 import { requestApproval } from "../approvalQueue";
@@ -50,6 +51,8 @@ export type Need = { summary: string; items: { key: string; label: string }[] } 
 
 /** What the topic still needs from this cleaner, read from the record now. Null means nothing. */
 export async function needFor(ctx: MutationCtx, company: Doc<"companies">, cleaner: Doc<"cleaners">, topic: FollowUpTopic, now: number): Promise<Need> {
+  // A cleaner a migration added waits until the Owner releases the team: nothing reaches them before that.
+  if (cleaner.migration?.held) return null;
   if (cleaner.status === "ended" || cleaner.status === "suspended" || cleaner.status === "paused") return null;
   const settings = cleanersSettings(company);
   if (topic === "onboarding") {
@@ -329,6 +332,11 @@ export async function runFollowUp(ctx: MutationCtx, followUpId: Id<"followUps">,
     }
   }
   await send(ctx, company, cleaner, followUp, need, now);
+  if (!options.approved) {
+    const authority = await authorityFor(ctx, company._id, TOPIC_ACTION[followUp.topic]);
+    const action = TOPIC_ACTION[followUp.topic];
+    if (authority.kind === "level") await reportAction(ctx, { companyId: company._id, agent: action.startsWith("recruiter.") ? "recruiter" : "dispatch", action, level: authority.level, subject: { table: "cleaners", id: cleaner._id }, ref: `${followUp._id}:${followUp.attempt ?? 0}`, stage: "queued", kind: followUp.topic, data: { cleanerId: cleaner._id } });
+  }
   return { ok: true, detail: "Sent." };
 }
 

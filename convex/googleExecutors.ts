@@ -6,7 +6,8 @@
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { Executor } from "./googleWork";
-import { campaignByName, createPausedCampaign, customerId, localServicesLeads, performance, setCampaignStatus } from "./lib/google/ads";
+import { campaignProblem, draftCopy } from "./lib/google/adDrafts";
+import { campaignByName, campaignGaps, createPausedCampaign, customerId, localServicesLeads, lsaSince, performance, setCampaignStatus, suggestGeoTargets } from "./lib/google/ads";
 import { getReview, reply, reviewParent, reviews as listReviews, starsOf } from "./lib/google/business";
 import { deleteEvent, draftHash, upsertEvent } from "./lib/google/calendar";
 import { ingest } from "./lib/google/datamanager";
@@ -102,8 +103,11 @@ const calendarSync: Executor = async (ctx, { job, token }) => {
     const link = links.get(draft.id);
     const { subject, ...event } = draft;
     const hash = draftHash(event);
-    if (link?.externalChange) {
-      held += 1; // A person decides first; Selestial does not overwrite a change someone made in Google.
+    if (link?.externalChange && link.writtenHash === hash) {
+      // A person decides first; Selestial does not overwrite a change someone made in Google. Once the visit is
+      // changed again in Selestial (its hash differs from what was last written), Selestial's version is written
+      // and the change is settled (googleCalendar.saveLink).
+      held += 1;
       continue;
     }
     if (link && link.writtenHash === hash) continue;
@@ -155,17 +159,43 @@ const reviewsSync: Executor = async (ctx, { job, token }) => {
   return { result: { locations: locations.length, reviews: seen } };
 };
 
+/** A Google refusal that will not change on retry (a bad field, no access): the Owner is told, and nothing is retried. */
+const final = (error: unknown) => error instanceof GoogleError && (error.kind === "invalid" || error.kind === "forbidden" || error.kind === "not_found");
+
 const adsCampaign: Executor = async (ctx, { token, payload }) => {
   const t = need(token);
   const dev = developer();
   const draft = await ctx.runQuery(internal.googleAds.draftFor, { draftId: str(payload.draftId, "a draft") as Id<"googleAdDrafts"> });
   if (!draft || draft.state !== "approved" || draft.approvedBudgetCents !== draft.dailyBudgetCents) return { outcome: "cancelled", error: "The campaign is no longer approved as drafted." };
   const login = draft.loginCustomerId ?? undefined;
-  // Never two campaigns for one draft: look it up by its unique name first.
+  const fail = async (problem: string) => {
+    await ctx.runMutation(internal.googleAds.campaignFailed, { draftId: draft._id, problem });
+    return { outcome: "failed" as const, error: problem };
+  };
+  // Nothing is created that could not run as drafted: an empty campaign is never made.
+  const problem = campaignProblem(draft);
+  if (problem) return fail(`Not created: ${problem}`);
+  // Never two campaigns for one draft: look it up by its unique name first. Creation is one atomic request,
+  // so a campaign found here has its ad group, keywords, ad and locations too.
   const already = await campaignByName(t, dev, draft.accountId, draft.name, login);
-  const resourceName = already?.resourceName ?? (await createPausedCampaign(t, dev, draft.accountId, { name: draft.name, dailyBudgetMicros: draft.dailyBudgetCents * 10_000 }, login));
-  await ctx.runMutation(internal.googleAds.campaignCreated, { draftId: draft._id, resourceName });
-  return { result: { campaign: resourceName, status: "PAUSED" }, providerRef: resourceName };
+  if (already) {
+    await ctx.runMutation(internal.googleAds.campaignCreated, { draftId: draft._id, resourceName: already.resourceName });
+    return { result: { campaign: already.resourceName, status: already.status, reconciled: true }, providerRef: already.resourceName };
+  }
+  const areas = [...draft.postalCodes, ...(draft.cities ?? [])];
+  const places = await suggestGeoTargets(t, dev, areas);
+  const missed = areas.filter((term) => !places.some((p) => p.term === term));
+  if (places.length === 0) return fail(`Not created: Google Ads didn’t recognize any of the draft’s ZIP codes or cities (${areas.slice(0, 5).join(", ")}).`);
+  const copy = draftCopy(draft);
+  try {
+    const resourceName = await createPausedCampaign(t, dev, draft.accountId, { name: draft.name, dailyBudgetMicros: draft.dailyBudgetCents * 10_000, keywords: draft.keywords, matchType: draft.keywordMatch === "exact" ? "EXACT" : "PHRASE", headlines: copy.headlines, descriptions: copy.descriptions, finalUrl: draft.finalUrl, geoTargets: [...new Set(places.map((p) => p.resourceName))] }, login);
+    const note = missed.length ? `Created paused. Google Ads didn’t recognize ${missed.slice(0, 5).join(", ")}${missed.length > 5 ? " and others" : ""}, so the ads don’t target ${missed.length === 1 ? "it" : "them"}.` : undefined;
+    await ctx.runMutation(internal.googleAds.campaignCreated, { draftId: draft._id, resourceName, note });
+    return { result: { campaign: resourceName, status: "PAUSED", locations: places.length, unmatched: missed }, providerRef: resourceName };
+  } catch (error) {
+    if (final(error)) await ctx.runMutation(internal.googleAds.campaignFailed, { draftId: draft._id, problem: `Google Ads refused the campaign: ${(error as GoogleError).message}` });
+    throw error;
+  }
 };
 
 const adsActivate: Executor = async (ctx, { token, payload }) => {
@@ -176,7 +206,16 @@ const adsActivate: Executor = async (ctx, { token, payload }) => {
   const login = draft.loginCustomerId ?? undefined;
   const live = await campaignByName(t, dev, draft.accountId, draft.name, login);
   if (!live) return { outcome: "failed", error: "The campaign is not in Google Ads any more." };
-  if (live.status !== "ENABLED") await setCampaignStatus(t, dev, draft.accountId, live.resourceName, "ENABLED", login);
+  if (live.status !== "ENABLED") {
+    // A campaign without an ad, keywords or locations would spend on nothing useful: it stays paused, and the Owner is told why.
+    const gaps = await campaignGaps(t, dev, draft.accountId, live.resourceName, login);
+    if (gaps.length) {
+      const problem = `Not turned on: in Google Ads this campaign is missing ${gaps.join(", ")}. It stays paused. Make a new draft, or add ${gaps.length === 1 ? "it" : "them"} in Google Ads.`;
+      await ctx.runMutation(internal.googleAds.campaignNotActivated, { draftId: draft._id, problem });
+      return { outcome: "failed", error: problem };
+    }
+    await setCampaignStatus(t, dev, draft.accountId, live.resourceName, "ENABLED", login);
+  }
   await ctx.runMutation(internal.googleAds.campaignActivated, { draftId: draft._id });
   return { result: { campaign: live.resourceName, status: "ENABLED" }, providerRef: live.resourceName };
 };
@@ -192,14 +231,18 @@ const adsSnapshot: Executor = async (ctx, { job, token, payload }) => {
 const lsaPoll: Executor = async (ctx, { job, token, payload }) => {
   const t = need(token);
   const account = str(payload.accountId, "an ad account");
-  const since = typeof payload.since === "string" ? payload.since : new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 19).replace("T", " ");
+  const since = typeof payload.since === "string" ? payload.since : lsaSince(undefined, Date.now());
   const leads = await localServicesLeads(t, developer(), account, since, typeof payload.loginCustomerId === "string" ? payload.loginCustomerId : undefined);
   let added = 0;
-  for (const lead of leads.slice(0, 200)) {
-    const outcome = await ctx.runMutation(internal.googleAds.ingestLead, { companyId: job.companyId, source: "local_services", externalId: lead.id, name: lead.name, phone: lead.phone, email: lead.email, campaign: lead.type });
+  const taken = leads.slice(0, 200);
+  for (const lead of taken) {
+    const outcome = await ctx.runMutation(internal.googleAds.ingestLead, { companyId: job.companyId, source: "local_services", externalId: lead.id, name: lead.name, phone: lead.phone, campaign: lead.type });
     if (outcome.created) added += 1;
   }
-  return { result: { seen: leads.length, added } };
+  // Oldest first, so the cursor only moves past leads that were actually taken.
+  const newest = taken.map((lead) => lead.createdAt).filter(Boolean).sort().at(-1);
+  if (newest) await ctx.runMutation(internal.googleAds.advanceLsaCursor, { companyId: job.companyId, accountId: account, newest });
+  return { result: { seen: leads.length, added, since } };
 };
 
 const conversion: Executor = async (ctx, { token, payload, reconcile }) => {
@@ -210,8 +253,20 @@ const conversion: Executor = async (ctx, { token, payload, reconcile }) => {
     return { outcome: "cancelled", error: plan.why };
   }
   // Data Manager dedupes on the transaction id, so sending again after a lost answer does not count twice.
-  const answer = await ingest(t, plan.destination, [plan.event]);
-  await ctx.runMutation(internal.googleAds.conversionResult, { conversionId: plan.conversionId, status: "sent", diagnostics: JSON.stringify({ requestId: answer.requestId, reconciled: reconcile }) });
+  let answer: Awaited<ReturnType<typeof ingest>>;
+  try {
+    answer = await ingest(t, plan.destination, [plan.event]);
+  } catch (error) {
+    if (!final(error) && !(error instanceof GoogleError && error.kind === "auth")) throw error;
+    const message = (error as GoogleError).message;
+    await ctx.runMutation(internal.googleAds.conversionResult, { conversionId: plan.conversionId, status: "rejected", reason: "Google did not accept this report.", diagnostics: JSON.stringify({ kind: (error as GoogleError).kind, message }) });
+    // No access to the conversion action: nothing more is sent there until the Owner fixes it and chooses it again.
+    if ((error as GoogleError).kind === "forbidden" || (error as GoogleError).kind === "not_found") await ctx.runMutation(internal.google.setResourceAccess, { resourceId: plan.destinationId, access: "lost", note: `Google refused a report: ${message}`.slice(0, 300) });
+    return { outcome: "failed", error: message };
+  }
+  await ctx.runMutation(internal.googleAds.conversionResult, { conversionId: plan.conversionId, status: "sent", diagnostics: JSON.stringify({ requestId: answer.requestId, warnings: answer.warnings.slice(0, 5), reconciled: reconcile }) });
+  // A destination that could not be looked up beforehand is confirmed by Google accepting a report.
+  if (!plan.destinationVerified) await ctx.runMutation(internal.google.setResourceAccess, { resourceId: plan.destinationId, access: "verified", note: "Ready. Google accepted a booked-visit report." });
   return { result: { requestId: answer.requestId }, providerRef: answer.requestId ?? undefined };
 };
 

@@ -361,15 +361,24 @@ export const noteVisit = companyMutation({
   },
 });
 
-/** The daily sweep: makes visits to each active plan's horizon, ends plans past their last date, and drafts monthly invoices. */
+const SWEEP_PAGE = 100;
+
+/**
+ * The sweep: makes visits to each active plan's horizon, ends plans past their last date, and drafts
+ * monthly invoices. Every active plan of every company is reached: it reads a bounded page, hands each
+ * plan to its own step, and schedules itself for the next page until none are left. Only plans last
+ * changed before the sweep began are read, so a plan this sweep already touched is never read twice.
+ */
 export const sweep = internalMutation({
-  args: {},
-  handler: async (ctx) => {
-    const plans = await ctx.db
+  args: { cursor: v.optional(v.union(v.string(), v.null())), before: v.optional(v.number()), pageSize: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const before = args.before ?? Date.now();
+    const numItems = Math.min(Math.max(Math.round(args.pageSize ?? SWEEP_PAGE), 1), SWEEP_PAGE);
+    const page = await ctx.db
       .query("recurringPlans")
-      .withIndex("by_status", (q) => q.eq("status", "active"))
-      .take(200);
-    for (const plan of plans) {
+      .withIndex("by_status", (q) => q.eq("status", "active").lte("updatedAt", before))
+      .paginate({ numItems, cursor: args.cursor ?? null });
+    for (const plan of page.page) {
       if (plan.endDate && plan.endDate < todayIn(plan.timezone)) {
         await ctx.db.patch(plan._id, { status: "ended", endedReason: "Reached its last date", updatedAt: Date.now() });
         await refreshClient(ctx, plan.customerId);
@@ -378,7 +387,8 @@ export const sweep = internalMutation({
       // Each plan in its own step, so one plan's problem never stops the others.
       await ctx.scheduler.runAfter(0, internal.plans.generateOne, { planId: plan._id });
     }
-    return null;
+    if (!page.isDone) await ctx.scheduler.runAfter(0, internal.plans.sweep, { cursor: page.continueCursor, before, ...(args.pageSize ? { pageSize: args.pageSize } : {}) });
+    return { plans: page.page.length, more: !page.isDone };
   },
 });
 
@@ -387,6 +397,9 @@ export const generateOne = internalMutation({
   handler: async (ctx, args) => {
     const plan = await ctx.db.get(args.planId);
     if (!plan) return null;
+    // A company being deleted makes no new visits or invoices (convex/companyDeletion.ts).
+    const company = await ctx.db.get(plan.companyId);
+    if (!company || company.closingAt !== undefined || company.deletedAt !== undefined) return null;
     await generateVisits(ctx, plan, { kind: "system" });
     await draftMonthlyInvoice(ctx, (await ctx.db.get(plan._id))!);
     return null;

@@ -62,6 +62,8 @@ export const messagingControlsValidator = v.object({
     authorizedAt: v.optional(v.number()),
     authorizedBy: v.optional(v.id("members")),
     wording: v.optional(v.string()),
+    /** The Owner turned it off and Autumn has not confirmed that yet. It stays shown as on until Autumn does. */
+    turningOffAt: v.optional(v.number()),
   }),
 });
 
@@ -73,6 +75,8 @@ export const billingTables = {
     customerId: v.string(),
     /** The verified plan: an active Operate or Expand subscription in Autumn. Null: none. */
     plan: v.union(planValidator, v.null()),
+    /** Autumn's own id for that plan: "operate_early" is the early-user price of Operate. Missing on older rows. */
+    autumnPlanId: v.optional(v.union(v.string(), v.null())),
     subscription: v.object({
       pastDue: v.boolean(),
       startedAt: v.union(v.number(), v.null()),
@@ -81,6 +85,8 @@ export const billingTables = {
       endsAt: v.union(v.number(), v.null()),
       scheduledPlan: v.union(planValidator, v.null()),
       scheduledAt: v.union(v.number(), v.null()),
+      /** Autumn's own id for the scheduled plan, so the early-user move to "operate" is told apart. */
+      scheduledAutumnPlanId: v.optional(v.union(v.string(), v.null())),
     }),
     credits: v.union(
       v.object({
@@ -96,7 +102,7 @@ export const billingTables = {
     controls: spendingControlsValidator,
     /** The alert thresholds already sent for the current period. */
     alertsSent: v.object({ period: v.string(), percents: v.array(v.number()) }),
-    notices: v.array(v.object({ kind: v.union(v.literal("zero_balance"), v.literal("usage_alert"), v.literal("billing_unavailable"), v.literal("past_due"), v.literal("low_balance"), v.literal("messaging_low"), v.literal("messaging_empty"), v.literal("messaging_overdraft"), v.literal("messaging_topup_failed"), v.literal("messaging_held")), at: v.number(), text: v.string() })),
+    notices: v.array(v.object({ kind: v.union(v.literal("zero_balance"), v.literal("usage_alert"), v.literal("billing_unavailable"), v.literal("past_due"), v.literal("low_balance"), v.literal("messaging_low"), v.literal("messaging_empty"), v.literal("messaging_overdraft"), v.literal("messaging_topup_failed"), v.literal("messaging_held"), v.literal("price_change")), at: v.number(), text: v.string() })),
     /** The messaging balance as Autumn last reported it, in units of $0.0001. Purchased and promotional funds are kept apart. */
     messaging: v.optional(
       v.object({
@@ -215,7 +221,9 @@ export const billingTables = {
     customerId: v.optional(v.string()),
     companyId: v.optional(v.id("companies")),
     receivedAt: v.number(),
-  }).index("by_env_delivery", ["env", "deliveryId"]),
+  })
+    .index("by_env_delivery", ["env", "deliveryId"])
+    .index("by_type_received", ["type", "receivedAt"]),
 
   /**
    * A plan change, cancellation, top-up or billing-portal visit the Owner started. Its id is the
@@ -246,9 +254,61 @@ export const billingTables = {
     /** Where to send the Owner: Stripe Checkout, a payment page, or the billing portal. */
     url: v.optional(v.string()),
     problem: v.optional(v.string()),
+    /** Times the purchase was sent again, with the same Idempotency-Key, because its outcome was not known. */
+    attempts: v.optional(v.number()),
+    /** The purchase was sent and billing never said whether it went through. It is closed if Autumn later shows it. */
+    unconfirmed: v.optional(v.boolean()),
+    /** Autumn's paid invoice that closed a purchase paid on the payment page, so one invoice closes one purchase. */
+    invoiceId: v.optional(v.string()),
+    /** The Owner closed the dialog for it. It is no longer reopened; the purchase itself is unchanged. */
+    dismissedAt: v.optional(v.number()),
+    /**
+     * A first Operate purchase at the early-user price (convex/earlyOffer.ts): previewed and attached as
+     * Autumn's "operate_early" plan. Set when the preview is asked for; cleared if no place can be reserved
+     * when the Owner confirms, and the purchase is previewed again at the full price.
+     */
+    offer: v.optional(v.literal("early")),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_company_created", ["companyId", "createdAt"]),
+
+  /**
+   * The early-user offer (convex/earlyOffer.ts): one row per company that ever held or reserved a place,
+   * kept after cancellation so a company that held one never gets the price again. A place counts while
+   * the row is reserved (and not past reservedUntil), claimed or ended. Released rows never paid and use no place.
+   */
+  earlyOffers: defineTable({
+    companyId: v.id("companies"),
+    env: envValidator,
+    state: v.union(v.literal("reserved"), v.literal("claimed"), v.literal("ended"), v.literal("released")),
+    /** The purchase that reserved it, if any. */
+    intentId: v.optional(v.id("billingIntents")),
+    reservedAt: v.number(),
+    /** A reservation lasts as long as its payment page can still be paid. */
+    reservedUntil: v.number(),
+    /** When Autumn's record first showed the plan active at $199: the first plan payment succeeded. */
+    claimedAt: v.optional(v.number()),
+    /** The subscription's start, as Autumn reported it; the 12 months count from here. */
+    startedAt: v.optional(v.number()),
+    /** The end of the 12th month: the price is $299 from here. */
+    offerEndsAt: v.optional(v.number()),
+    /** The move to "operate" at the end of the 12th billing period: asked of Autumn, then seen on its record. */
+    switchRequestedAt: v.optional(v.number()),
+    switchConfirmedAt: v.optional(v.number()),
+    switchAttempts: v.optional(v.number()),
+    switchNextAt: v.optional(v.number()),
+    switchProblem: v.optional(v.string()),
+    /** The one email and in-app notice about 30 days before the price changes. */
+    reminderSentAt: v.optional(v.number()),
+    endedAt: v.optional(v.number()),
+    endReason: v.optional(v.union(v.literal("moved_to_full_price"), v.literal("cancelled"))),
+    releasedAt: v.optional(v.number()),
+    releaseReason: v.optional(v.string()),
+    releasedBy: v.optional(v.union(v.id("staff"), v.literal("system"))),
+    updatedAt: v.number(),
+  })
+    .index("by_company_env", ["companyId", "env"])
+    .index("by_env_state", ["env", "state"]),
 };
 
 export const DEFAULT_CONTROLS = { alertPercents: [50, 80, 100], autoTopUp: { enabled: false } };

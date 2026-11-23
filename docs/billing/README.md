@@ -312,6 +312,75 @@ environment (`billingAccounts.env`), so sandbox data never counts in production.
 - **Creative Studio's monthly caps** are now a provider-cost ceiling (150 images, 15 videos), with credits
   as the main limit.
 
+## Early-user offer
+
+The Owner's terms of November 22, 2026: **$199 a month for the first 12 months, for the first 25 companies
+whose first plan payment succeeds, then $299.** No trial. Code: `convex/lib/billing/earlyOffer.ts` (the rule),
+`convex/earlyOffer.ts` (sweep, month-12 move, Owner and staff views).
+
+**Why a separate plan, not a coupon.** Autumn rewards (coupons with `duration: { type: "months", length: 12 }`,
+applied through `discounts` on attach) would also work, but the customer record Selestial reads does not
+report discounts, so the app could not check from Autumn's record that $199 is what is billed, and a Stripe
+promotion code could leak. A plan id is on every subscription and invoice (`plan_ids`), so what Autumn holds
+and what the app shows are the same fact. `operate_early` is in the same group (`selestial`) with the same
+items as `operate`; `planIdFromAutumn` maps it to `operate`, so every entitlement check is unchanged.
+`billingAccounts.autumnPlanId` keeps the real id for prices, cancellation and the switch.
+
+**The rule, exactly.**
+
+1. *Preview.* An Owner with no plan, whose company has no paid invoice and never held a place, opens the
+   purchase while fewer than 25 places are used: the intent is marked `offer: "early"` and previewed as
+   `operate_early`. Otherwise it is `operate` at $299. Previewing reserves nothing.
+2. *Confirm.* `confirmIntent` reserves a place. Convex mutations are serializable, so this is the one point
+   where two companies racing for the last place are decided. The loser's purchase is **not sent**; it is
+   previewed again at $299 with "The last early-user place was just taken…", and the Owner confirms again.
+   Nobody is attached at $199 without a place, and nobody is charged a price they were not shown.
+3. *Pay.* The place is **claimed** when `storeAccount` sees `operate_early` active on Autumn's record (after the
+   attach, a webhook or a refresh). The 12 months count from the subscription's `started_at`.
+4. *Fail or abandon.* A refused purchase releases its place at once. A payment page that is never paid keeps the
+   place for 24 hours (`RESERVE_MS`, the payment page's lifetime), then the hourly sweep releases it.
+
+Used places = claimed + ended + reservations not yet expired. "15" is 15 ever granted: a cancelled company's
+row becomes `ended` and still counts, and that company is quoted $299 if it returns. A payment Autumn reports
+for `operate_early` is always honored, even after a reservation was released.
+
+**The data.** `earlyOffers`: one row per company and environment, states `reserved → claimed → ended`, or
+`reserved → released`. It holds `offerEndsAt`, the month-12 move (`switchRequestedAt`, `switchConfirmedAt`,
+`switchAttempts`, `switchProblem`) and `reminderSentAt`. `billingIntents.offer` marks a $199 purchase.
+
+**Month 12.** In the 12th billing period (Autumn's period end within a day of `offerEndsAt`), the hourly sweep
+attaches `operate` with `plan_schedule: "end_of_cycle"` under the key `early-switch:<row>:<attempt>`, then reads
+Autumn back; the move counts only when the scheduled `operate` subscription is on the record. Refusals are
+retried after 1, 3 and 6 hours under a new key. From 7 days before month 12 ends (or at once on a failure),
+an `early_offer_switch` incident is open for staff; after month 12 it is critical. The Owner cannot undo the
+move (`resumePlan` refuses it). After the period ends Autumn bills $299 and the row becomes `ended`.
+
+**The reminder.** About 30 days before `offerEndsAt`, once: an in-app notice on Plan & Usage (`price_change`)
+and one email (`plan_price_change`, Account category, owner audience; Selestial's own mail, never the messaging
+balance), each with the date and $299. Keyed so it is planned once however often the sweep runs; not sent if
+the plan is ending.
+
+**What staff can do.** Staff › Operations › Billing shows places used of 25, each company, when it moves to
+$299 and whether that is on Autumn's record. A staff member with `billing.adjust` can release a place that was
+reserved and never paid, with a reason. A claimed place can never be released.
+
+**Not yet exercised against Autumn** (each is also marked in the code):
+
+- That `plan_schedule: "end_of_cycle"` holds back an attach that is an upgrade by price (Operate after
+  `operate_early`) until the period ends. The API reference lists the field; the lifecycle guide only
+  describes the default (upgrades immediate). If Autumn ignores it, $299 would be charged early: verify first.
+- That the scheduled plan shows as a `scheduled` subscription with `plan_id: "operate"`.
+- That `started_at` is the start of the first paid period, and that monthly periods stay anchored to it.
+- That a plan becomes `active` only on payment (`enable_plan` default `on_payment`).
+- That Stripe Checkout pages Autumn opens expire within 24 hours.
+- That `billing.update` cancels by `plan_id: "operate_early"`. The unpaid-plan cancel in
+  `convex/billingLock.ts` still passes `account.plan` ("operate") and should pass `account.autumnPlanId ?? account.plan`.
+
+**Before it can go live (Owner):** run `cd billing && npx atmn push` against the sandbox with the approved
+credit values (the config keeps `operate` and `expand`, and adds `operate_early`), check in the Autumn
+dashboard that `operate_early` is $199/month, in group `selestial`, with no trial and Operate's items, run one
+purchase, a month-12 move (advance the test clock) and a cancellation, then push to production.
+
 ## Known limits
 
 - Plan access in mutations reads Selestial's copy of Autumn's record. It is refreshed by webhooks, by the
@@ -329,3 +398,16 @@ environment (`billingAccounts.env`), so sandbox data never counts in production.
 - Automatic top-ups, outside-service pricing and the Expand customer portal are not built.
 - The landing page's pre-existing agent copy describes Sales and Retention in the present tense. The pricing
   section labels them unreleased; the rest of that page was left as it was.
+
+### Switching the early-user offer on
+
+The public pricing card always shows the offer ($299 struck through, $199 for the first 12 months, 25 places), by
+the Owner's decision of November 22, 2026. **Checkout charges $199 only once the offer is switched on**; until
+then a company that signs up is offered Operate at $299 in the app. So before announcing the offer:
+
+1. `cd billing && npx atmn push` against the sandbox, then against production. The config keeps `operate` and
+   `expand` and adds `operate_early`. Check in the Autumn dashboard that `operate_early` is $199/month, in group
+   `selestial`, with no trial and Operate's items.
+2. Convex Dashboard › `stoic-gazelle-731` › Settings › Environment Variables: `EARLY_OFFER` = `on`.
+
+Removing `EARLY_OFFER` stops new places at once; places already held keep working.

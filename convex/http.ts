@@ -4,9 +4,12 @@
  *
  * POST /webhooks/resend         delivery reports, bounces and complaints for email, and email that arrived for the Sales agent. Needs RESEND_WEBHOOK_SECRET.
  * POST /webhooks/telnyx         delivery reports for texts, texts coming in, and 10DLC registration updates. Needs TELNYX_PUBLIC_KEY.
+ * POST /webhooks/quo/<id>       a company's own Quo account: replies, delivery updates, registration changes, signed with that connection's secret.
  * POST /webhooks/autumn         plan, purchase and balance changes from Autumn. Needs AUTUMN_WEBHOOK_SECRET.
  * GET  /oauth/google/callback   where Google sends an Owner back after they allowed access: the company's
  *                               Google connection (convex/google.ts) or a Gmail hiring inbox, told apart by the state.
+ * GET  /oauth/highlevel/callback  where HighLevel sends an Owner back after installing Selestial's app (Quality reads it).
+ * POST /webhooks/highlevel      the Selestial HighLevel app's signed events.
  * GET  /oauth/jobber/callback   where Jobber sends an Owner back after they allowed Selestial to read their clients.
  * POST /webhooks/google/calendar  Calendar push notifications, checked against each channel's own secret token.
  * POST /webhooks/google/pubsub    Gmail and Business Profile notifications through Pub/Sub, with Google's signed OIDC token.
@@ -16,15 +19,19 @@
  */
 import { httpRouter } from "convex/server";
 
+import { qualityFileRequestValid } from "./lib/quality/fileLinks";
+
 import { internal } from "./_generated/api";
-import { oauthCallback, oneClickUnsubscribe, providerWebhook, signedFileRoute } from "./lib/builders";
+import { oauthCallback, oneClickUnsubscribe, providerWebhook, selfCheckRoute, signedFileRoute } from "./lib/builders";
 import { evidenceRequestValid } from "./lib/texting/evidence";
 import { siteOrigin } from "./lib/dispatch/links";
 import { exchangeCode, googleApp } from "./lib/recruiter/gmail";
-import { hashToken, seal } from "./lib/recruiter/secrets";
-import { afterConnect, googleRedirectUri } from "./recruiterMailbox";
-import { afterGoogle } from "./google";
+import { hashToken, randomToken, seal, unseal } from "./lib/recruiter/secrets";
+import { afterConnect, googleRedirectUri, pendingBinding } from "./recruiterMailbox";
+import { afterGoogle, pendingBinding as googlePendingBinding } from "./google";
 import { jobberCallback } from "./connectors";
+import { highLevelCallback } from "./qualityHighLevel";
+import { verifyHighLevel } from "./lib/quality/comms/highlevel";
 import { exchange as googleExchange, googleApp as googleConnectApp, identityFrom, redirectUri as googleConnectRedirect } from "./lib/google/oauth";
 import { endpoints as googleEndpoints } from "./lib/google/platform";
 import { googleKeys, pushData, tokenKid, verifyOidc } from "./lib/google/pubsub";
@@ -34,6 +41,7 @@ import { photoRequestValid } from "./lib/dispatch/photoLinks";
 import { telnyxEvent, verifyTelnyx } from "./lib/messaging/telnyx";
 import { parseEvent as parseStripeEvent, verifyStripeSignature } from "./lib/finance/stripe";
 import { parseInvoiceEvent } from "./lib/billing/lock";
+import { verifySignature } from "./lib/quo/api";
 
 const http = httpRouter();
 
@@ -212,6 +220,30 @@ http.route({
 });
 
 /**
+ * GET /quality-files/<file id>?exp=…&sig=…  one file uploaded through a Quality link, for an address this
+ * deployment signed for someone allowed to see its case. Anything else is a plain 404.
+ */
+http.route({
+  pathPrefix: "/quality-files/",
+  method: "GET",
+  handler: signedFileRoute({
+    verify: async (request, now) => {
+      const url = new URL(request.url);
+      const fileId = url.pathname.slice("/quality-files/".length);
+      return /^[a-z0-9]{10,64}$/i.test(fileId) && qualityFileRequestValid(fileId, url.searchParams.get("exp"), url.searchParams.get("sig"), now);
+    },
+    handler: async (ctx, request, now) => {
+      const url = new URL(request.url);
+      const storageId = await ctx.runQuery(internal.qualityLinks.fileStorage, { fileId: url.pathname.slice("/quality-files/".length) });
+      const file = storageId ? await ctx.storage.get(storageId) : null;
+      if (!file) return null;
+      const seconds = Math.max(0, Math.floor((Number(url.searchParams.get("exp")) - now) / 1000));
+      return new Response(file, { status: 200, headers: { "content-type": file.type || "application/octet-stream", "cache-control": `private, max-age=${seconds}`, "referrer-policy": "no-referrer", "x-content-type-options": "nosniff", "content-disposition": "inline" } });
+    },
+  }),
+});
+
+/**
  * GET /texting-evidence/<evidence id>?exp=…&sig=…  one texting evidence file, for an address signed by this
  * deployment within the last 15 minutes. Anything else is a plain 404. Never cached beyond its expiry.
  */
@@ -254,6 +286,32 @@ http.route({
 });
 
 /** Where Jobber sends the Owner back after they allowed Selestial to read their clients (convex/connectors.ts). */
+/**
+ * GET /oauth/highlevel/callback  where HighLevel sends the Owner back after installing Selestial's app on a
+ * sub-account. The one-time state names the company; the code is exchanged for tokens, sealed at once.
+ */
+http.route({
+  path: "/oauth/highlevel/callback",
+  method: "GET",
+  handler: oauthCallback({ handler: (ctx, params) => highLevelCallback(ctx, params) }),
+});
+
+/**
+ * POST /webhooks/highlevel  the Selestial app's events from HighLevel (one address for every installation):
+ * InboundMessage, OutboundMessage, INSTALL, UNINSTALL. Accepted only with HighLevel's Ed25519 signature over
+ * the exact body (lib/quality/comms/highlevel.ts); the location in the event names the company.
+ */
+http.route({
+  path: "/webhooks/highlevel",
+  method: "POST",
+  handler: providerWebhook({
+    verify: (request, body) => verifyHighLevel(body, request.headers.get("x-ghl-signature")),
+    handler: async (ctx, body) => {
+      await ctx.runMutation(internal.qualityHighLevel.webhook, { body });
+    },
+  }),
+});
+
 http.route({
   path: "/oauth/jobber/callback",
   method: "GET",
@@ -285,16 +343,18 @@ http.route({
         }
         const who = identityFrom(tokens.idToken);
         if (!who?.email) return afterGoogle("failed", google.returnOrigin, google.features[0]);
-        const done = await ctx.runMutation(internal.google.completeConnect, { companyId: google.companyId, memberId: google.memberId, feature: google.features[0], connectionId: google.connectionId, googleSub: who.sub, email: who.email, scopes: tokens.scopes, hasRefreshToken: Boolean(tokens.refreshToken) });
-        if (!done.ok) return afterGoogle(done.reason, google.returnOrigin, google.features[0]);
+        // As for the Gmail inbox below: this request has no session, so nothing is connected here. The
+        // authorization waits, sealed to the state record, until the signed-in Owner who started confirms the
+        // Google account in the app (google.confirmConnect). Unconfirmed, it is deleted after fifteen minutes.
+        let sealed: string | null = null;
         if (tokens.refreshToken) {
-          const sealed = await seal(tokens.refreshToken, done.connectionId);
+          sealed = await seal(tokens.refreshToken, googlePendingBinding(google.stateId));
           if (!sealed) return afterGoogle("failed", google.returnOrigin, google.features[0]);
-          await ctx.runMutation(internal.google.storeCredential, { connectionId: done.connectionId, sealedRefreshToken: sealed });
         }
-        // Partial consent is kept as it is: only what Google actually granted is switched on.
-        const missing = google.features.filter((f) => !done.enabled.includes(f));
-        return afterGoogle(missing.length ? `partial:${missing.join(",")}` : "connected", google.returnOrigin, google.features[0]);
+        const confirm = await randomToken();
+        const held = await ctx.runMutation(internal.google.holdPending, { stateId: google.stateId, googleSub: who.sub, email: who.email, scopes: tokens.scopes, sealedRefreshToken: sealed, confirmHash: await hashToken(confirm) });
+        if (!held.ok) return afterGoogle(held.reason, google.returnOrigin, google.features[0]);
+        return afterGoogle("confirm", google.returnOrigin, google.features[0], confirm);
       }
       const taken = await ctx.runMutation(internal.recruiterMailbox.takeState, { stateHash });
       if (!taken) return afterConnect("expired");
@@ -312,11 +372,15 @@ http.route({
         .then((response) => (response.ok ? (response.json() as Promise<{ emailAddress?: string }>) : null))
         .catch(() => null);
       if (!profile?.emailAddress) return afterConnect("failed", taken.returnOrigin, shared);
-      const connectionId = await ctx.runMutation(internal.recruiterMailbox.completeConnect, { companyId: taken.companyId, memberId: taken.memberId, address: profile.emailAddress, folder: taken.folder, sources: taken.sources, processFrom: taken.processFrom, canSend: taken.canSend, scopes, purposes: taken.purposes });
-      const sealed = await seal(tokens.refreshToken, connectionId);
+      // This request has no session: the state proves who STARTED, not whose browser came back from Google.
+      // So nothing is connected here. The authorization waits, sealed to the state record, and the browser
+      // goes on to the app with a one-time value; there the signed-in member who started sees the address
+      // and confirms it (recruiterMailbox.confirmConnect). Unconfirmed, it is deleted after fifteen minutes.
+      const sealed = await seal(tokens.refreshToken, pendingBinding(taken.stateId));
       if (!sealed) return afterConnect("failed", taken.returnOrigin, shared);
-      await ctx.runMutation(internal.recruiterMailbox.storeCredential, { companyId: taken.companyId, connectionId, sealedRefreshToken: sealed, scopes });
-      return afterConnect("connected", taken.returnOrigin, shared);
+      const confirm = await randomToken();
+      const held = await ctx.runMutation(internal.recruiterMailbox.holdPending, { stateId: taken.stateId, address: profile.emailAddress, sealedRefreshToken: sealed, scopes, confirmHash: await hashToken(confirm) });
+      return held ? afterConnect("confirm", taken.returnOrigin, shared, confirm) : afterConnect("failed", taken.returnOrigin, shared);
     },
   }),
 });
@@ -391,6 +455,38 @@ http.route({
       const event = parseEvent(body);
       if (!provider || !event) return;
       await ctx.runMutation(internal.agreementSigning.receipt, { provider: provider.name, event });
+    },
+  }),
+});
+
+/**
+ * GET /health  for an outside uptime monitor (docs/operations/06-heartbeat.md): 200 {"ok":true} only while
+ * the operations checks are finishing and staff alerts are reaching someone; 503 with reason codes otherwise.
+ * It answers for this backend itself and is never forwarded.
+ */
+http.route({ path: "/health", method: "GET", handler: selfCheckRoute({ handler: (ctx) => ctx.runQuery(internal.operations.health, {}) }) });
+
+/**
+ * A company's own Quo account (convex/quo.ts). The address names the connection; the event must carry a signature
+ * made with that connection's own webhook secret (lib/quo/api.ts `verifySignature`), so no company's events can be
+ * delivered as another's. A verified event is handled once, in one transaction: if handling fails, Quo is answered
+ * with an error and sends it again (it retries for about a day), so a temporary failure loses no reply.
+ */
+http.route({
+  pathPrefix: "/webhooks/quo/",
+  method: "POST",
+  handler: providerWebhook({
+    verify: async (request, body) => body.length > 0 && body.length < 256 * 1024 && request.headers.get("webhook-id") !== null,
+    handler: async (ctx, body, request) => {
+      const raw = new URL(request.url).pathname.slice("/webhooks/quo/".length);
+      const connectionId = await ctx.runQuery(internal.quoWebhook.connectionFor, { raw });
+      if (!connectionId) return 404;
+      const row = await ctx.runQuery(internal.quo.sealedFor, { connectionId });
+      const secret = row?.sealedWebhookSecret ? await unseal(row.sealedWebhookSecret, connectionId) : null;
+      if (!secret) return 401;
+      const ok = await verifySignature({ secret, id: request.headers.get("webhook-id"), timestamp: request.headers.get("webhook-timestamp"), signature: request.headers.get("webhook-signature"), body, nowMs: Date.now() });
+      if (!ok) return 401;
+      await ctx.runMutation(internal.quo.ingest, { connectionId, eventId: request.headers.get("webhook-id")!, event: body });
     },
   }),
 });

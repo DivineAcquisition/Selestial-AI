@@ -28,6 +28,11 @@ export function neverReached(message: Doc<"messages"> | null): boolean {
 /** Refusals that are about this one cleaner. The others stop every text the company sends. */
 const ABOUT_THE_CLEANER = new Set(["no_address", "suppressed", "no_permission", "frequency"]);
 
+/** The sending policy refused this text for a reason that stops every text the company sends. */
+export function blockedForEveryone(message: Doc<"messages">): boolean {
+  return message.status === "not_sent" && message.refusal !== undefined && !ABOUT_THE_CLEANER.has(message.refusal);
+}
+
 export const sendingBlockedKey = (companyId: string) => `dispatch.sending_blocked:${companyId}`;
 
 /**
@@ -116,6 +121,19 @@ export async function afterMessageFailed(ctx: MutationCtx, message: Doc<"message
 /** An offer's deadline passed. If its text never reached the cleaner, that is not their silence. */
 export async function expireOffer(ctx: MutationCtx, assignment: Doc<"assignments">) {
   const message = await messageByKey(ctx, assignment.companyId, `offer:${assignment._id}`);
+  if (message && blockedForEveryone(message)) {
+    // Nothing was wrong with this cleaner: the company's texts were not going out at all. Ending the offer as
+    // undelivered would rule the cleaner out and move to the next one, and so on through the whole team, leaving
+    // nobody to ask once texts work again. The offer ends without counting against anyone, and the visit waits
+    // on the one "texts are not going out" task (coverJob holds while that task is open).
+    await endAssignment(ctx, assignment, "cancelled", SYSTEM, {
+      endReason: `The offer was never texted: ${message.problem ?? "the company's texts were not going out."}`.slice(0, 500),
+      endCause: "sending_blocked",
+      data: { cause: "sending_blocked", policy: message.refusal ?? "" },
+    });
+    await coverJob(ctx, assignment.jobId);
+    return;
+  }
   if (message && neverReached(message)) return endUndelivered(ctx, assignment, message);
   await endAssignment(ctx, assignment, "expired", SYSTEM, {
     endReason: "The response deadline passed.",

@@ -17,10 +17,22 @@ export function googleApp(): GoogleApp | null {
   return clientId && clientSecret ? { clientId, clientSecret } : null;
 }
 
-/** The one redirect address Google returns to, shared with the Gmail inbox connection. */
-export function redirectUri(): string | null {
-  const site = process.env.CONVEX_SITE_URL?.trim().replace(/\/+$/, "");
-  return site ? `${site}/oauth/google/callback` : null;
+export const GOOGLE_CALLBACK_PATH = "/oauth/google/callback";
+
+/**
+ * The one redirect address Google returns to, shared with the Gmail inbox connection.
+ *
+ * Google verifies an app only when every redirect address is on a domain the app's owner has proven they
+ * own, and *.convex.site cannot be. GOOGLE_OAUTH_REDIRECT_URI moves it onto Selestial's own domain
+ * (https://app.selestial.io/oauth/google/callback), which the site passes straight through to this backend
+ * (next.config.ts). It must be the exact address registered on the OAuth client, so it is only used when it
+ * is an https address ending in the callback path; otherwise the deployment's own site address is used.
+ */
+export function redirectUri(env: Record<string, string | undefined> = process.env): string | null {
+  const set = env.GOOGLE_OAUTH_REDIRECT_URI?.trim();
+  if (set && /^https:\/\/[a-z0-9.-]+\/oauth\/google\/callback$/i.test(set)) return set;
+  const site = env.CONVEX_SITE_URL?.trim().replace(/\/+$/, "");
+  return site ? `${site}${GOOGLE_CALLBACK_PATH}` : null;
 }
 
 export function consentUrl(app: GoogleApp, input: { redirectUri: string; state: string; scopes: string[]; loginHint?: string; selectAccount?: boolean }): string {

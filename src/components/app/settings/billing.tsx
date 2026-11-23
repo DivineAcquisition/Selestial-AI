@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { AiFeatures } from "@/components/app/billing/ai-features";
+import { EarlyOfferConfirmNote, EarlyOfferNote, EarlyPriceLine } from "@/components/app/billing/early-offer";
 import { MessagingTab, ThreeBalances } from "@/components/app/billing/messaging";
 import { UsageDashboard } from "@/components/app/billing/usage";
 import { AvatarStack, CreditRing, HeroCard, HeroStat, Motion, SegmentedTabs } from "@/components/app/billing/visuals";
@@ -148,9 +149,13 @@ function CurrentPlan({ data, onIntent }: { data: Connected; onIntent: (id: Id<"b
   const change = useMutation(api.billing.startPlanChange);
   const { busy, error, run } = useRun();
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const offer = useQuery(api.earlyOffer.mine, { companyId });
   const account = data.account;
   const plan = account?.plan ?? null;
   const sub = account?.subscription;
+  const early = offer?.kind === "active" ? offer : null;
+  // The move to the full price after the early-user year is part of the offer: shown, never offered to undo.
+  const earlyMove = !!early && sub?.scheduledAutumnPlanId === "operate";
   const name = plan ? data.catalog.plans.find((row) => row.id === plan)! : null;
   const credits = account?.credits ?? null;
   const onPlan = plan ? data.catalog.agents.filter((row) => (plan === "expand" ? row.expand : row.operate)) : [];
@@ -164,7 +169,7 @@ function CurrentPlan({ data, onIntent }: { data: Connected; onIntent: (id: Id<"b
             <div>
               <p className="text-xs font-semibold tracking-[0.14em] text-brand-600 uppercase">Your plan</p>
               <h2 className="mt-1 font-heading text-2xl tracking-tight text-strong">No active plan yet</h2>
-              <p className="mt-1 text-sm text-muted-foreground">Agents and AI work need the Operate or Expand plan. Compare them below.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Agents and AI work need an active plan. See what it includes below.</p>
             </div>
           ) : (
             <div>
@@ -173,13 +178,14 @@ function CurrentPlan({ data, onIntent }: { data: Connected; onIntent: (id: Id<"b
                 {sub?.pastDue ? "Payment overdue" : sub?.endsAt ? "Ending" : "Active plan"}
               </p>
               <h2 className="mt-1 font-heading text-3xl tracking-tight text-strong">
-                {name.name} <span className="text-lg font-normal text-muted-foreground">· {money(name.monthlyCents)} a month</span>
+                {name.name} <span className="text-lg font-normal text-muted-foreground">· {money(early ? early.monthlyCents : name.monthlyCents)} a month</span>
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {sub?.pastDue ? "Update your payment method on the Billing tab to keep agents working. " : ""}
                 {sub?.endsAt ? `Ends ${day(sub.endsAt)} and won't renew.` : `Renews ${day(sub?.periodEnd)}.`}
-                {sub?.scheduledPlan ? ` Changes to ${sub.scheduledPlan === "operate" ? "Operate" : "Expand"} on ${day(sub.scheduledAt ?? sub.periodEnd)}.` : ""}
+                {earlyMove ? ` Operate's full price starts ${day(sub?.scheduledAt ?? sub?.periodEnd)}.` : sub?.scheduledPlan ? ` Changes to ${sub.scheduledPlan === "operate" ? "Operate" : "Expand"} on ${day(sub.scheduledAt ?? sub.periodEnd)}.` : ""}
               </p>
+              <EarlyPriceLine offer={offer} />
             </div>
           )}
           {working.length > 0 ? (
@@ -211,16 +217,12 @@ function CurrentPlan({ data, onIntent }: { data: Connected; onIntent: (id: Id<"b
       </div>
       {plan ? (
         <div className="mt-5 flex flex-wrap gap-2 border-t border-border pt-4">
-          {plan === "operate" ? (
-            <Button size="sm" variant="primary" loading={busy} onClick={() => void run(async () => onIntent(await change({ companyId, plan: "expand" })))}>
-              Upgrade to Expand
-            </Button>
-          ) : !sub?.scheduledPlan ? (
+          {plan === "operate" ? null : !sub?.scheduledPlan ? (
             <Button size="sm" variant="outline" loading={busy} onClick={() => void run(async () => onIntent(await change({ companyId, plan: "operate" })))}>
               Move to Operate at renewal
             </Button>
           ) : null}
-          {sub?.endsAt || sub?.scheduledPlan ? (
+          {sub?.endsAt || (sub?.scheduledPlan && !earlyMove) ? (
             <Button size="sm" variant="outline" loading={busy} onClick={() => void run(async () => onIntent(await resume({ companyId })))}>
               {sub?.endsAt ? "Keep this plan" : "Keep the current plan"}
             </Button>
@@ -323,56 +325,107 @@ function Comparison({ catalog, current, canBuy }: { catalog: Data["catalog"]; cu
   const change = useMutation(api.billing.startPlanChange);
   const { busy, error, run } = useRun();
   const [intentId, setIntentId] = useState<Id<"billingIntents"> | null>(null);
+  // Asked only where a purchase can be made; the server answers "none" unless $199 would be honored.
+  const offer = useQuery(api.earlyOffer.mine, canBuy && !current ? { companyId } : "skip");
   return (
     <Panel title="Plans">
-      <p className="mb-3 text-sm text-muted-foreground">Start with four essential agents. Expand into a complete team as your operation grows.</p>
+      <p className="mb-3 text-sm text-muted-foreground">{catalog.plans.length > 1 ? "Your plan, and the plan Selestial offers today." : "One plan, with four agents that work today."}</p>
       {intentId ? <IntentDialog intentId={intentId} onClose={() => setIntentId(null)} /> : null}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className={catalog.plans.length > 1 ? "grid gap-4 md:grid-cols-2" : "grid max-w-2xl gap-4"}>
         {catalog.plans.map((plan) => {
           const mine = current === plan.id;
+          const buying = canBuy && !current && plan.onSale;
           const agents = catalog.agents.filter((row) => (plan.id === "expand" ? row.expand : row.operate));
+          const working = agents.filter((row) => row.released);
+          const later = agents.filter((row) => !row.released);
           return (
-            <section key={plan.id} className={`relative flex flex-col overflow-hidden rounded-2xl border bg-card p-5 ${mine ? "border-brand-500/50" : "border-border"}`}>
-              {mine ? <BorderBeam size={90} duration={8} colorFrom="#6838ef" colorTo="#b39eff" borderWidth={2} /> : null}
-              {plan.id === "expand" ? <div aria-hidden className="pointer-events-none absolute -top-16 -right-12 size-40 rounded-full bg-brand-500/10 blur-3xl" /> : null}
-              <div className="relative flex items-start justify-between gap-2">
-                <h3 className="font-heading text-xl tracking-tight text-strong">{plan.name}</h3>
-                {mine ? <span className="rounded-full bg-brand-500/10 px-2 py-0.5 text-xs font-medium text-brand-600 ring-1 ring-brand-500/25">Your plan</span> : null}
+            <section
+              key={plan.id}
+              aria-labelledby={`plan-card-${plan.id}`}
+              className={`relative flex flex-col overflow-hidden rounded-3xl border bg-card shadow-[0_24px_60px_-36px_rgba(104,56,239,0.5)] ${mine || buying ? "border-brand-500/40" : "border-border"}`}
+            >
+              {mine || buying ? <BorderBeam size={110} duration={9} colorFrom="#6838ef" colorTo="#b39eff" borderWidth={1.5} /> : null}
+              {/* Header: name, price and what it is for, on a soft brand wash. */}
+              <div className="relative overflow-hidden border-b border-brand-500/15 bg-gradient-to-br from-brand-500/[0.13] via-brand-500/[0.04] to-transparent p-5 sm:p-6">
+                <div aria-hidden className="pointer-events-none absolute -top-20 -right-16 size-52 rounded-full bg-brand-500/15 blur-3xl" />
+                <div className="relative flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-semibold tracking-[0.14em] text-brand-600 uppercase">{plan.onSale ? "Early-user plan" : "Your current plan"}</p>
+                    <h3 id={`plan-card-${plan.id}`} className="mt-1 font-heading text-2xl tracking-tight text-strong">
+                      {plan.name}
+                    </h3>
+                  </div>
+                  {mine ? <span className="rounded-full bg-brand-500/10 px-2.5 py-1 text-xs font-medium text-brand-600 ring-1 ring-brand-500/25">Your plan</span> : null}
+                </div>
+                {buying && (offer?.kind === "available" || offer?.kind === "reserved") ? (
+                  <div className="relative mt-3">
+                    <p className="flex flex-wrap items-baseline gap-x-3 text-strong">
+                      <span className="text-xl text-muted-foreground line-through decoration-2 decoration-brand-500/70">
+                        <span className="sr-only">Regular price </span>
+                        {money(plan.monthlyCents)}
+                      </span>
+                      <span className="font-heading text-5xl tracking-tight">{money(offer.monthlyCents)}</span>
+                      <span className="text-sm text-muted-foreground">a month</span>
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-strong">For your first {offer.months} months, then {money(offer.fullCents)}.</p>
+                  </div>
+                ) : (
+                  <p className="relative mt-3 flex items-baseline gap-1 text-strong">
+                    <span className="font-heading text-5xl tracking-tight">{money(plan.monthlyCents)}</span>
+                    <span className="text-sm text-muted-foreground">a month</span>
+                  </p>
+                )}
+                <p className="relative mt-2 text-sm text-muted-foreground">{plan.summary}</p>
               </div>
-              <p className="relative mt-1 text-3xl font-semibold tracking-tight text-strong">
-                {money(plan.monthlyCents)}
-                <span className="text-sm font-normal text-muted-foreground"> a month</span>
-              </p>
-              <p className="relative mt-1 text-sm text-muted-foreground">{plan.summary}</p>
-              <div className="relative mt-4">
-                <AvatarStack agents={agents.map((row) => ({ id: row.agent, label: row.name }))} />
-                <ul className="mt-3 grid gap-1 text-sm">
-                  {agents.map((row) => (
-                    <li key={row.agent} className="flex items-center gap-2">
-                      <Check aria-hidden className={`size-4 shrink-0 ${row.released ? "text-success" : "text-muted-foreground"}`} />
-                      <span className={row.released ? "text-strong" : "text-muted-foreground"}>{row.name}</span>
-                      {!row.released ? <span className="text-xs text-muted-foreground">when released</span> : null}
+              {/* Body: the agents that work today, and what comes later. */}
+              <div className="relative flex flex-1 flex-col gap-4 p-5 sm:p-6">
+                <div className="flex items-center gap-3">
+                  <AvatarStack agents={working.map((row) => ({ id: row.agent, label: row.name }))} />
+                  <p className="text-sm text-muted-foreground">
+                    <span className="font-medium text-strong">{working.length} agents</span> working today
+                  </p>
+                </div>
+                <ul className="grid gap-2 sm:grid-cols-2">
+                  {working.map((row) => (
+                    <li key={row.agent} className="flex items-center gap-2.5 rounded-xl border border-border bg-background/60 px-3 py-2 text-sm">
+                      <span aria-hidden className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-success/15 text-success-foreground">
+                        <Check className="size-3.5" />
+                      </span>
+                      <span className="font-medium text-strong">{row.name}</span>
                     </li>
                   ))}
                 </ul>
+                {later.length ? (
+                  <p className="text-xs text-muted-foreground">
+                    Not released yet: {later.map((row) => row.name).join(", ")}. {plan.id === "expand" ? "Included when released." : "No plan or purchase makes one available sooner."}
+                  </p>
+                ) : null}
+                {buying ? (
+                  <div className="mt-auto grid gap-3 pt-1">
+                    <EarlyOfferNote offer={offer} />
+                    <Button className="w-full" size="lg" variant="gradient" loading={busy} onClick={() => void run(async () => setIntentId(await change({ companyId, plan: plan.id })))}>
+                      Choose {plan.name}
+                    </Button>
+                    <p className="text-center text-xs text-muted-foreground">You&rsquo;ll see the exact charge before you pay.</p>
+                  </div>
+                ) : null}
               </div>
-              {canBuy && !current ? (
-                <Button className="relative mt-4 self-start" size="sm" variant="primary" loading={busy} onClick={() => void run(async () => setIntentId(await change({ companyId, plan: plan.id })))}>
-                  Choose {plan.name}
-                </Button>
-              ) : null}
             </section>
           );
         })}
       </div>
       <details className="group mt-4">
-        <summary className="cursor-pointer text-sm font-medium text-brand-600 focus-visible:outline-2 focus-visible:outline-brand-500">Compare everything in each plan</summary>
-      <table className="mt-4 w-full text-sm">
+        <summary className="cursor-pointer text-sm font-medium text-brand-600 focus-visible:outline-2 focus-visible:outline-brand-500">{catalog.plans.length > 1 ? "Compare everything in each plan" : "See everything in the plan, and what isn't released yet"}</summary>
+      <div className="mt-4 overflow-x-auto">
+      <table className="w-full min-w-[32rem] text-sm">
         <thead>
           <tr className="text-left text-xs text-muted-foreground">
             <th className="py-1 font-medium">Agent</th>
-            <th className="py-1 font-medium">Operate</th>
-            <th className="py-1 font-medium">Expand</th>
+            {catalog.plans.map((plan) => (
+              <th key={plan.id} className="py-1 font-medium">
+                {plan.name}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
@@ -381,8 +434,11 @@ function Comparison({ catalog, current, canBuy }: { catalog: Data["catalog"]; cu
               <td className="py-1.5 text-strong">
                 {row.name} {!row.released ? <span className="text-xs text-muted-foreground">· not released yet</span> : null}
               </td>
-              <td className="py-1.5 text-muted-foreground">{row.operate ? (row.released ? "Included" : "Included when released") : "—"}</td>
-              <td className="py-1.5 text-muted-foreground">{row.expand ? (row.released ? "Included" : "Included when released") : "—"}</td>
+              {catalog.plans.map((plan) => (
+                <td key={plan.id} className="py-1.5 text-muted-foreground">
+                  {(plan.id === "expand" ? row.expand : row.operate) ? (row.released ? "Included" : "Included when released") : "—"}
+                </td>
+              ))}
             </tr>
           ))}
           {catalog.features.map((row) => (
@@ -390,14 +446,18 @@ function Comparison({ catalog, current, canBuy }: { catalog: Data["catalog"]; cu
               <td className="py-1.5 text-strong">
                 {row.name} {!row.built ? <span className="text-xs text-muted-foreground">· not available yet</span> : null}
               </td>
-              <td className="py-1.5 text-muted-foreground">{row.expandOnly ? "—" : "Included"}</td>
-              <td className="py-1.5 text-muted-foreground">{row.built ? "Included" : "Included when available"}</td>
+              {catalog.plans.map((plan) => (
+                <td key={plan.id} className="py-1.5 text-muted-foreground">
+                  {plan.id === "expand" ? (row.built ? "Included" : "Included when available") : row.expandOnly ? "—" : "Included"}
+                </td>
+              ))}
             </tr>
           ))}
         </tbody>
       </table>
+      </div>
       </details>
-      <p className="mt-3 text-xs text-muted-foreground">Both plans include: {catalog.bothInclude.join("; ")}. Expand includes a larger monthly credit allowance. Bespoke implementation, migration and custom development are scoped separately.</p>
+      <p className="mt-3 text-xs text-muted-foreground">Also included: {catalog.bothInclude.join("; ")}. Bespoke implementation, migration and custom development are scoped separately.</p>
       <FormError message={error} />
     </Panel>
   );
@@ -408,7 +468,14 @@ function IntentDialog({ intentId, onClose }: { intentId: Id<"billingIntents">; o
   const { companyId } = useCompany();
   const intent = useQuery(api.billing.intent, { companyId, intentId });
   const confirm = useMutation(api.billing.confirmIntent);
+  const dismiss = useMutation(api.billing.dismissIntent);
+  const offer = useQuery(api.earlyOffer.mine, { companyId });
   const { busy, error, run } = useRun();
+  // Closing is remembered, so a purchase that was closed is not put back in front of the Owner on the next visit.
+  const close = () => {
+    void dismiss({ companyId, intentId }).catch(() => undefined);
+    onClose();
+  };
   if (intent === undefined) return null;
   if (intent === null) return null;
   const preview = intent.preview;
@@ -416,9 +483,16 @@ function IntentDialog({ intentId, onClose }: { intentId: Id<"billingIntents">; o
   return (
     <div role="dialog" aria-label={what} className="rounded-2xl border border-brand-500/40 bg-card p-4">
       <h3 className="text-base font-semibold text-strong">{what}</h3>
-      {intent.stage === "previewing" || intent.stage === "submitting" ? <p className="mt-1 text-sm text-muted-foreground">Asking billing…</p> : null}
+      {intent.stage === "previewing" || (intent.stage === "submitting" && !intent.problem) ? <p className="mt-1 text-sm text-muted-foreground">Asking billing…</p> : null}
+      {(intent.stage === "submitting" || intent.stage === "payment_needed") && intent.problem ? <p role="status" className="mt-1 text-sm text-strong">{intent.problem}</p> : null}
       {intent.stage === "awaiting_confirmation" && preview ? (
         <div className="mt-2 grid gap-1 text-sm">
+          {intent.problem ? (
+            <p role="status" className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-strong">
+              {intent.problem}
+            </p>
+          ) : null}
+          <EarlyOfferConfirmNote early={intent.offer === "early"} offer={offer} />
           <p className="text-strong">
             Charged now: {money(preview.dueNowCents)} {preview.currency.toUpperCase()}
           </p>
@@ -430,7 +504,7 @@ function IntentDialog({ intentId, onClose }: { intentId: Id<"billingIntents">; o
             <Button size="sm" variant="primary" loading={busy} onClick={() => void run(() => confirm({ companyId, intentId }))}>
               Confirm and pay
             </Button>
-            <Button size="sm" variant="ghost" onClick={onClose}>
+            <Button size="sm" variant="ghost" onClick={close}>
               Not now
             </Button>
           </div>
@@ -446,8 +520,8 @@ function IntentDialog({ intentId, onClose }: { intentId: Id<"billingIntents">; o
       ) : null}
       {intent.stage === "done" && !intent.url ? <p className="mt-2 text-sm text-strong">Done. This page updates when billing confirms it.</p> : null}
       {intent.stage === "failed" ? <p className="mt-2 text-sm text-destructive-foreground">{intent.problem}</p> : null}
-      {intent.stage === "done" || intent.stage === "failed" ? (
-        <Button className="mt-2" size="sm" variant="ghost" onClick={onClose}>
+      {intent.stage !== "awaiting_confirmation" || !preview ? (
+        <Button className="mt-2" size="sm" variant="ghost" onClick={close}>
           Close
         </Button>
       ) : null}

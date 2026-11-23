@@ -71,8 +71,20 @@ export const ACTIONS: readonly ActionDef[] = [
   action("retention.hand_off", "retention", "Hand work on a case to Dispatch, Sales, Quality or Finance", "execute", { outsider: false }),
   action("retention.draft_review_reply", "retention", "Draft replies to Google reviews (a person approves before anything is posted)", "execute", { outsider: false }),
 
+  // Quality (convex/lib/quality). A finding, a disciplinary decision, a pay change or a serious-incident
+  // decision is never an action here: findings are suggested and reviewed by a person, and the rest is PERSON_ONLY.
+  action("quality.review_completion", "quality", "Review a completed visit against the standard that applied and recommend approval, a request or an investigation (the manager still closes the visit)", "execute", { outsider: false }),
+  action("quality.request_cleaner_evidence", "quality", "Ask a cleaner for a missing photo, a short answer, or their account of what happened, through a private link", "execute_and_report"),
+  action("quality.remind_outstanding", "quality", "Remind the person responsible about a quality request they have not answered", "execute_and_report"),
+  action("quality.open_case", "quality", "Open a quality case from a review, a report, a conversation or a confirmed pattern", "execute", { outsider: false }),
+  action("quality.prepare_correction", "quality", "Prepare a correction's scope and acceptance criteria and hand it to Retention to arrange with the customer", "execute_and_report", { outsider: false }),
+  action("quality.customer_clarification", "quality", "Prepare a focused question for a customer and hand it to Retention, which owns the conversation", "propose", { ceiling: "execute_and_report" }),
+  action("quality.verify_correction", "quality", "Verify a correction visit's record against the acceptance criteria", "execute", { outsider: false }),
+  action("quality.propose_improvement", "quality", "Propose a change to a checklist, booking question, scope wording, training or inspection frequency (a person decides)", "execute", { ceiling: "execute", outsider: false }),
+
   action("recruiter.acknowledge_and_collect", "recruiter", "Acknowledge, answer questions, request missing details", "execute"),
-  action("recruiter.decline_fixed_requirement", "recruiter", "Decline on a published fixed requirement", "execute_and_report"),
+  // An owner opt-in (decided November 15 and confirmed November 22, 2026): only a published fixed requirement, decided in code from the answers.
+  action("recruiter.decline_fixed_requirement", "recruiter", "Decline an applicant who doesn't meet a published fixed requirement (decided from their answers, never on judgment)", "execute_and_report"),
   action("recruiter.run_interview", "recruiter", "Coordinate and run the interview", "execute"),
   action("recruiter.advance_candidate", "recruiter", "Move a candidate forward, mark a cleaner ready", "propose", { ceiling: "propose", outsider: false }),
   action("recruiter.send_invitation", "recruiter", "Email an applicant the application link", "execute"),
@@ -84,6 +96,10 @@ export const ACTIONS: readonly ActionDef[] = [
 
 /** These need a person at any setting. They are not permissions, so nothing can switch them on. */
 export const PERSON_ONLY: readonly { key: string; label: string }[] = [
+  // This label is the published wording of the Terms and the Security Overview (src/lib/trust/documents), and a
+  // test holds them equal. It changes only with a new published version, which the Owner dates. Declining an
+  // applicant on a published fixed requirement (recruiter.decline_fixed_requirement) is an Owner opt-in that
+  // Agent Controls shows with a legal-review caution; nothing decided on judgment is ever an agent's.
   { key: "person.cleaner_consequence", label: "Any consequence for a cleaner, including rejecting or ending a worker" },
   { key: "person.after_background_check", label: "Any decision that follows a background check" },
   { key: "person.pay_run", label: "Paying out a pay run" },

@@ -11,7 +11,7 @@ export function literals<const T extends readonly [string, string, ...string[]]>
   return v.union(...values.map((value) => v.literal(value))) as unknown as Validator<T[number]>;
 }
 
-export const AGENTS = ["sales", "recruiter", "dispatch", "retention"] as const;
+export const AGENTS = ["sales", "recruiter", "dispatch", "retention", "quality"] as const;
 export type Agent = (typeof AGENTS)[number];
 export const agentValidator = literals(AGENTS);
 
@@ -92,7 +92,7 @@ export const WAITING_ON = ["customer", "cleaner", "applicant", "owner", "other"]
 export const waitingOnValidator = literals(WAITING_ON);
 
 /** Why an assignment that ended as cancelled ended. Only some causes count against asking the same cleaner again. */
-export const END_CAUSES = ["released", "job_covered", "job_cancelled", "job_moved", "dropped", "no_show", "undelivered"] as const;
+export const END_CAUSES = ["released", "job_covered", "job_cancelled", "job_moved", "dropped", "no_show", "undelivered", "sending_blocked"] as const;
 export type EndCause = (typeof END_CAUSES)[number];
 export const endCauseValidator = literals(END_CAUSES);
 
@@ -120,7 +120,8 @@ export const MESSAGE_CHANGES: Record<MessageStatus, readonly MessageStatus[]> = 
   delivered: [],
   failed: [],
   // "queued" only when a text is checked with the provider under its own idempotency key (convex/lib/operations/reconcile.ts).
-  unconfirmed: ["delivered", "failed", "queued"],
+  // "sent" and "not_sent": a Quo text whose answer never came, settled from Quo's own message list (lib/quo/send.ts).
+  unconfirmed: ["delivered", "failed", "queued", "sent", "not_sent"],
   not_sent: [],
 };
 

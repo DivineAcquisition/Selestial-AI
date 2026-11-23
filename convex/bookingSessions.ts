@@ -15,6 +15,7 @@ import type { MutationCtx } from "./_generated/server";
 import { localParts } from "./lib/availability";
 import { bookingMutation, bookingQuery } from "./lib/builders";
 import { acquireHold, candidateStarts, dayStartOf, loadSupply, occupied, releaseHolds, slotOf, spareCrew, hasSupply } from "./lib/booking/capacity";
+import { calendarBusy, isBusy } from "./lib/google/busy";
 import { checkAnswer, plain } from "./lib/booking/definition";
 import { cancelStartedPayments } from "./finance";
 import { funnel } from "./lib/booking/funnel";
@@ -73,10 +74,13 @@ export const days = bookingQuery({
     const tz = company.timezone;
     const supply = n && L.settings.scheduling.mode === "capacity" ? await loadSupply(ctx, company, earliest, until) : null;
     const capacity = Boolean(supply && hasSupply(supply)) && requestReason(session, L, session.quote ?? null) === null;
+    // Busy times on the Owner's Google calendars are not offered (convex/lib/google/busy.ts).
+    const busy = await calendarBusy(ctx, company._id, earliest, until);
+    const elapsed = n?.elapsedMinutes ?? 60;
     const out: { date: string; available: boolean }[] = [];
     for (let day = startOfLocalDay(earliest, tz); day < until; day = addLocalDays(day, 1, tz)) {
       const date = localParts(day + 12 * HOUR, tz).day;
-      const starts = candidateStarts({ date, hours: L.business.hours, slotMinutes: L.settings.scheduling.slotMinutes, earliest, need: { elapsedMinutes: n?.elapsedMinutes ?? 60 }, timezone: tz });
+      const starts = candidateStarts({ date, hours: L.business.hours, slotMinutes: L.settings.scheduling.slotMinutes, earliest, need: { elapsedMinutes: elapsed }, timezone: tz }).filter((at) => !isBusy(busy, { startsAt: at, endsAt: at + elapsed * 60_000 }));
       const available = starts.length > 0 && (!capacity || !n || starts.some((at) => spareCrew(supply!, occupied(at, n), n, session.schedule?.holdId) >= n.crew));
       out.push({ date, available });
     }
@@ -99,7 +103,10 @@ export const slots = bookingQuery({
     const capacity = L.settings.scheduling.mode === "capacity" && requestReason(session, L, session.quote ?? null) === null;
     const supply = capacity ? await loadSupply(ctx, company, starts[0] ?? earliest, (starts[starts.length - 1] ?? earliest) + 24 * HOUR) : null;
     const counting = Boolean(supply && hasSupply(supply));
-    return starts.map((at) => slotOf(at, n.windowMinutes, tz, !counting || spareCrew(supply!, occupied(at, n), n, session.schedule?.holdId) >= n.crew)).map((slot) => ({ ...slot, preferredOnly: !counting }));
+    // A time on a busy block of the Owner's Google Calendar is shown as taken (convex/lib/google/busy.ts).
+    const busy = starts.length ? await calendarBusy(ctx, company._id, starts[0]!, starts[starts.length - 1]! + n.elapsedMinutes * 60_000) : [];
+    const free = (at: number) => !isBusy(busy, { startsAt: at, endsAt: at + n.elapsedMinutes * 60_000 });
+    return starts.map((at) => slotOf(at, n.windowMinutes, tz, free(at) && (!counting || spareCrew(supply!, occupied(at, n), n, session.schedule?.holdId) >= n.crew))).map((slot) => ({ ...slot, preferredOnly: !counting }));
   },
 });
 
@@ -297,6 +304,8 @@ export const chooseTime = bookingMutation({
     const date = localParts(args.startsAt, tz).day;
     const starts = candidateStarts({ date, hours: L.business.hours, slotMinutes: L.settings.scheduling.slotMinutes, earliest, need: n, timezone: tz });
     if (!starts.includes(args.startsAt) || args.startsAt >= until) throw userError("That time can't be booked. Please choose another.");
+    const span = { startsAt: args.startsAt, endsAt: args.startsAt + n.elapsedMinutes * 60_000 };
+    if (isBusy(await calendarBusy(ctx, ctx.companyId, span.startsAt, span.endsAt), span)) return { ok: false, why: "That time was just taken. Please choose another." };
     const supply = L.settings.scheduling.mode === "capacity" ? await loadSupply(ctx, ctx.company, args.startsAt - HOUR, args.startsAt + 24 * HOUR) : null;
     const counting = Boolean(supply && hasSupply(supply)) && requestReason(ctx.session, L, ctx.session.quote ?? null) === null;
     if (!counting) {

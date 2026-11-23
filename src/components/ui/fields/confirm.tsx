@@ -91,8 +91,8 @@ export function ConfirmDialog({ open, options, busy = false, error = null, onCon
   return (
     <AlertDialog.Root open={open} onOpenChange={(next: boolean) => (next ? undefined : onCancel())}>
       <AlertDialog.Portal>
-        <AlertDialog.Backdrop className="fixed inset-0 z-[90] bg-black/40 transition-opacity duration-150 data-[ending-style]:opacity-0 data-[starting-style]:opacity-0 motion-reduce:transition-none" />
-        <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-[91] grid w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-xl outline-none transition-[opacity,scale] duration-150 data-[ending-style]:scale-[0.98] data-[ending-style]:opacity-0 data-[starting-style]:scale-[0.98] data-[starting-style]:opacity-0 motion-reduce:transition-none sm:p-6">
+        <AlertDialog.Backdrop className="fixed inset-0 z-alert bg-black/40 transition-opacity duration-150 data-[ending-style]:opacity-0 data-[starting-style]:opacity-0 motion-reduce:transition-none" />
+        <AlertDialog.Popup className="fixed top-1/2 left-1/2 z-alert grid w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-xl outline-none transition-[opacity,scale] duration-150 data-[ending-style]:scale-[0.98] data-[ending-style]:opacity-0 data-[starting-style]:scale-[0.98] data-[starting-style]:opacity-0 motion-reduce:transition-none sm:p-6">
           {options ? (
             <>
               <div className="grid gap-1.5">

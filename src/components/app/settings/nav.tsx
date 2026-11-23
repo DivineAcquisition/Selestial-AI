@@ -109,8 +109,8 @@ export function SettingsNav() {
 
   return (
     <>
-      {/* Phone and tablet: one bar. */}
-      <div className="flex items-center justify-between gap-2 rounded-xl border border-border bg-card px-3 py-2 lg:hidden">
+      {/* Without room beside the form: one bar. */}
+      <div className="flex items-center justify-between gap-2 rounded-xl border border-border bg-card px-3 py-2 @4xl/main:hidden">
         <div className="min-w-0">
           <Link href={SETTINGS_ROOT} className="text-xs text-muted-foreground hover:text-strong">
             Settings
@@ -130,7 +130,7 @@ export function SettingsNav() {
       </div>
 
       {open ? (
-        <div className="fixed inset-0 z-50 lg:hidden">
+        <div className="fixed inset-0 z-modal @4xl/main:hidden">
           <button type="button" aria-label="Close settings menu" className="absolute inset-0 bg-black/30" onClick={close} />
           <div
             ref={sheet}
@@ -161,8 +161,8 @@ export function SettingsNav() {
         </div>
       ) : null}
 
-      {/* Desktop: a grouped sidebar. */}
-      <nav aria-label="Settings" className="hidden rounded-2xl border border-border bg-card p-3 lg:sticky lg:top-20 lg:block lg:max-h-[calc(100dvh-6rem)] lg:self-start lg:overflow-y-auto">
+      {/* With room beside the form: a grouped menu. */}
+      <nav aria-label="Settings" className="hidden rounded-2xl border border-border bg-card p-3 @4xl/main:sticky @4xl/main:top-app-sticky @4xl/main:block @4xl/main:max-h-app-sticky @4xl/main:self-start @4xl/main:overflow-y-auto">
         <SearchBox id={`${id}-search`} value={query} onChange={setQuery} />
         <Link
           href={SETTINGS_ROOT}

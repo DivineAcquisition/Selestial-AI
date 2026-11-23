@@ -57,7 +57,7 @@ export type Priority = "critical" | "high" | "normal" | "digest";
 /** Who gets it, by role. "connector" adds the member who connected the thing it's about. */
 export type Audience = "owner" | "managers" | "everyone";
 
-export const NOTICE_EVENTS = ["welcome", "security_change", "approval_needed", "approval_expiring", "agent_acted", "dispatch_escalation", "weekly_digest", "plan_payment_failed", "credits_exhausted", "customer_payment_failed", "inbox_reconnect", "retention_serious", "retention_attention", "retention_outcome", "texting_progress", "texting_attention", "activation_result", "activation_summary", "support_summary", "service_attention", "plan_access", "worker_ready"] as const;
+export const NOTICE_EVENTS = ["welcome", "security_change", "approval_needed", "approval_expiring", "agent_acted", "dispatch_escalation", "weekly_digest", "plan_payment_failed", "credits_exhausted", "customer_payment_failed", "inbox_reconnect", "retention_serious", "retention_attention", "retention_outcome", "quality_serious", "quality_attention", "texting_progress", "texting_attention", "activation_result", "activation_summary", "support_summary", "service_attention", "plan_access", "worker_ready", "plan_price_change", "quo_attention", "migration_complete"] as const;
 export type NoticeEvent = (typeof NOTICE_EVENTS)[number];
 export const noticeEventValidator = v.union(...NOTICE_EVENTS.map((e) => v.literal(e)));
 
@@ -86,13 +86,18 @@ export const EVENT_INFO: Record<NoticeEvent, EventInfo> = {
   retention_serious: { category: "escalations", priority: "critical", audience: "managers", owner: "selestial", when: "A customer reports a safety, damage, theft or staff-conduct concern." },
   retention_attention: { category: "escalations", priority: "high", audience: "managers", owner: "selestial", when: "A customer case needs a person's decision and no approval is already waiting, or a commitment to a customer has passed its deadline." },
   retention_outcome: { category: "activity", priority: "normal", audience: "managers", owner: "selestial", when: "A recovery, plan-change, renewal or return case closes with its recorded outcome." },
-  texting_progress: { category: "account", priority: "normal", audience: "owner", owner: "selestial", when: "Business texting: Selestial received the setup, the carriers approved it while the number is still connecting, or texting is ready." },
-  texting_attention: { category: "account", priority: "high", audience: "owner", owner: "selestial", when: "Business texting needs the Owner (a correction, a confirmation code or another number), or the carriers paused it." },
+  quality_serious: { category: "escalations", priority: "critical", audience: "owner", owner: "selestial", when: "A visit's record, a report or a conversation shows a possible safety, damage, theft, injury or conduct concern. Only the Owner sees the case." },
+  quality_attention: { category: "escalations", priority: "high", audience: "managers", owner: "selestial", when: "A quality case needs a person's decision, or a correction's record did not meet its acceptance criteria." },
+  texting_progress: { category: "account", priority: "normal", audience: "owner", owner: "selestial", when: "Business texting: Selestial received the setup, the carriers approved it while the number is still connecting, texting is ready, or a number is being released or moved." },
+  texting_attention: { category: "account", priority: "high", audience: "owner", owner: "selestial", when: "Business texting needs the Owner (a correction, a confirmation code or another number), the carriers paused it, or the setup was turned down or stopped by a problem." },
   activation_result: { category: "activity", priority: "normal", audience: "owner", owner: "selestial", when: "The first useful result of the agent work the Owner started is ready: a draft, a form, prepared follow-ups or a decision." },
   activation_summary: { category: "activity", priority: "normal", audience: "owner", owner: "selestial", when: "The first batch of agent work the Owner started has settled: what was made, what waits on them, and anything blocked." },
   service_attention: { category: "account", priority: "high", audience: "owner", owner: "selestial", when: "Something in Selestial needs the Owner to act (reconnect an app, retry work, update an address), or a serious interruption begins. One email per problem, never one per retry." },
   plan_access: { category: "account", priority: "critical", audience: "owner", owner: "selestial", when: "The Selestial plan is unpaid: the first failed payment, the account locking after the second, a reminder 7 days before the plan is canceled, the cancellation, and the account reopening once paid." },
+  migration_complete: { category: "activity", priority: "normal", audience: "owner", owner: "selestial", when: "An import in Bring your business to Selestial finished: what came in, what needs a look, and that nothing goes live until you release it." },
   support_summary: { category: "security", priority: "high", audience: "owner", owner: "selestial", when: "Selestial Support finished a session in which it changed something: what it changed, and why it was there." },
+  plan_price_change: { category: "account", priority: "high", audience: "owner", owner: "selestial", when: "Once, about 30 days before the early-user price ends: the date the plan moves to the full price, and the new price." },
+  quo_attention: { category: "account", priority: "high", audience: "owner", owner: "selestial", when: "The connected Quo account stops working (a rejected key, no credits, registration, an outage) or is disconnected." },
   worker_ready: { category: "activity", priority: "normal", audience: "managers", owner: "selestial", when: "A new cleaner's onboarding was approved as complete, so Dispatch can consider them for visits." },
 };
 

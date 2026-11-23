@@ -131,8 +131,10 @@ export type OutboundPlan =
  * plan), held (funds, limits, billing unreachable), or reserved: priced on the card in force now, with its
  * charge recorded and a hold to ask Autumn for.
  */
-export async function planOutbound(ctx: Ctx, message: Message, input: { body: string; viaGmail: boolean; agent?: string; memberId?: Id<"members">; origin?: string }): Promise<OutboundPlan> {
+export async function planOutbound(ctx: Ctx, message: Message, input: { body: string; viaGmail: boolean; viaQuo?: boolean; agent?: string; memberId?: Id<"members">; origin?: string }): Promise<OutboundPlan> {
   if (!meteringOn()) return { kind: "free" };
+  // A text through the company's own Quo account is paid for in Quo, not from Selestial's messaging balance.
+  if (input.viaQuo) return { kind: "free" };
   if (billingClassOf(message.purpose) === "included") return { kind: "free" };
   const channel = message.channel ?? "sms";
   if (channel === "email" && input.viaGmail) return { kind: "free" };
@@ -140,7 +142,7 @@ export async function planOutbound(ctx: Ctx, message: Message, input: { body: st
   const state = billingState();
   if (!state.connected) return { kind: "hold", reason: "billing_unavailable", words: "Messaging billing isn't connected yet, so this message is waiting. Nothing was charged." };
   const company = (await ctx.db.get(message.companyId))!;
-  if (!verifiedPlan(company)) return { kind: "refuse", code: "no_plan", words: "Sending business messages needs an active Operate or Expand plan. Unused messaging funds stay on the account." };
+  if (!verifiedPlan(company)) return { kind: "refuse", code: "no_plan", words: "Sending business messages needs an active plan. Unused messaging funds stay on the account." };
 
   // Agent-written texts use plain punctuation, so a curly quote never doubles the price. A person's words are sent as written.
   let body = input.body;

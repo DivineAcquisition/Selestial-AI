@@ -9,19 +9,21 @@
  * agents never answer the same customer at once. The same checks run again as the message goes, and its
  * private link is made only then.
  */
+import { textingProvider } from "../quo/route";
 import { internal } from "../../_generated/api";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import { readProfile } from "../compliance/profile";
 import type { Category, Origin } from "../compliance/schema";
 import { recordEvent, type Actor } from "../events";
+import { reviewLinkFor } from "../google/reviewLink";
 import { addressFor, type Channel } from "../finance/outbox";
 import { emailProvider } from "../messaging/email";
 import { messageByKey, type SendIntent } from "../messaging/outbox";
 import { checkSend, type PolicyAnswer, type PolicyCode } from "../messaging/policy";
-import { messagingProvider } from "../messaging/provider";
 import { ownMailbox } from "../sales/outbox";
 import { careLinkState, careLinkUrl } from "./links";
+import { requestLinkState, requestUrl } from "../quality/outbox";
 
 type Ctx = QueryCtx | MutationCtx;
 export type CarePurpose = "feedback_request" | "care_update" | "return_offer";
@@ -58,7 +60,7 @@ export const MESSAGING_BALANCE = { metered: false as const, words: "Messaging us
 /** Whether a Retention message could reach this customer on this channel now, and if not, why. */
 export async function canReach(ctx: Ctx, customer: Doc<"customers">, channel: Channel, purpose: CarePurpose, actor: Actor): Promise<PolicyAnswer & { address: string | null }> {
   const address = addressFor(customer, channel);
-  const connected = channel === "sms" ? messagingProvider() !== null : (await ownMailbox(ctx, customer.companyId)) !== undefined || emailProvider() !== null;
+  const connected = channel === "sms" ? (await textingProvider(ctx, customer.companyId, address)) !== null : (await ownMailbox(ctx, customer.companyId)) !== undefined || emailProvider() !== null;
   if (!connected) return { ok: false, code: "sender_not_ready", words: channel === "email" ? "Email isn't connected for Selestial yet." : "Texting isn't connected for Selestial yet.", address };
   const answer = await checkSend(ctx, { companyId: customer.companyId, channel, to: address ?? "", now: Date.now(), ...careIntent(customer, purpose, actor) });
   if (!answer.ok) return { ...answer, words: answer.words.replace(/\bwork (emails|texts)\b/, "service $1"), address };
@@ -103,7 +105,7 @@ export async function queueCareMessage(ctx: MutationCtx, planned: PlannedCareMes
   const { company, customer, channel } = planned;
   const email = channel === "email";
   const to = addressFor(customer, channel);
-  const provider = email ? ((await ownMailbox(ctx, company._id)) ? { name: "gmail" } : emailProvider()) : messagingProvider();
+  const provider = email ? ((await ownMailbox(ctx, company._id)) ? { name: "gmail" } : emailProvider()) : await textingProvider(ctx, company._id, to);
   const intent = careIntent(customer, planned.purpose, planned.actor);
   const now = Date.now();
   let problem: string | null = null;
@@ -156,6 +158,11 @@ export async function queueCareMessage(ctx: MutationCtx, planned: PlannedCareMes
   await recordEvent(ctx, { companyId: company._id, type: `message.${status}`, actor: planned.actor, subject: { table: "messages", id: messageId }, data: { purpose: planned.purpose, channel, ...(code ? { policy: code } : {}), ...(refusal ? { refusal } : {}) } });
   if (status === "queued") await ctx.scheduler.runAfter(0, internal.messaging.deliver, { messageId });
   if (status === "held") await ctx.scheduler.runAt(retryAt!, internal.messaging.deliver, { messageId });
+  // The feedback page carries the same public review invitation for everyone (convex/lib/google/reviewLink.ts):
+  // the customer counts as asked for a review, whatever they go on to answer.
+  if (planned.purpose === "feedback_request" && status !== "not_sent" && (await reviewLinkFor(ctx, company))) {
+    await recordEvent(ctx, { companyId: company._id, type: "google.review_requested", actor: planned.actor, subject: { table: "customers", id: customer._id }, data: { channel, via: "feedback_page" } });
+  }
   return (await ctx.db.get(messageId))!;
 }
 
@@ -184,6 +191,17 @@ export async function careClaim(ctx: MutationCtx, message: Doc<"messages">): Pro
     const url = await careLinkUrl(link);
     if (!url) return { problem: "Links aren't set up, so there was no link to send." };
     body = body.replaceAll("{link}", url);
+  }
+  if (body.includes("{qualityLink}")) {
+    // A customer question Quality handed to Retention: Quality's page, made now and never stored.
+    const request = await ctx.db
+      .query("qualityRequests")
+      .withIndex("by_company_retention_action", (q) => q.eq("companyId", message.companyId).eq("retentionActionId", action._id))
+      .first();
+    if (!request || requestLinkState(request, Date.now()) !== "active") return { problem: "Quality's question was closed before the message went out." };
+    const url = await requestUrl(request);
+    if (!url) return { problem: "Links aren't set up, so there was no link to send." };
+    body = body.replaceAll("{qualityLink}", url);
   }
   const company = await ctx.db.get(message.companyId);
   const profile = await readProfile(ctx, message.companyId);

@@ -19,13 +19,16 @@ type Call = { method: string; path: string; body: Record<string, unknown> | null
  * exist once created, can be listed by their references, and answer "pending" until checked again. Every
  * call is recorded, so a test can see that nothing paid for happened twice.
  */
-export function fakeTelnyx(options: { brand?: (checks: number) => Record<string, unknown>; campaign?: (checks: number) => string; assignment?: (checks: number) => string; available?: () => boolean; loseFirstOrderAnswer?: boolean } = {}) {
+export function fakeTelnyx(options: { brand?: (checks: number) => Record<string, unknown>; campaign?: (checks: number) => string; assignment?: (checks: number) => string; available?: () => boolean; loseFirstOrderAnswer?: boolean; /** The number has left the account (a completed port-out). */ portedOut?: () => boolean; /** A write Telnyx refuses, by "METHOD /path". */ refuse?: (call: string) => boolean } = {}) {
   const calls: Call[] = [];
   const counts: Record<string, number> = {};
   const orders: { id: string; reference: string; checks: number }[] = [];
   const campaigns: { campaignId: string; referenceId: string }[] = [];
   let brandMade = false;
   let lostOne = false;
+  const released = new Set<string>();
+  const unassigned = new Set<string>();
+  const deletedCampaigns = new Set<string>();
   const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
   const count = (key: string) => (counts[key] = (counts[key] ?? 0) + 1);
   const fetcher = async (input: string | URL, init: RequestInit = {}) => {
@@ -35,6 +38,31 @@ export function fakeTelnyx(options: { brand?: (checks: number) => Record<string,
     const method = init.method ?? "GET";
     const body = init.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : null;
     calls.push({ method, path: `${path}${url.search ? decodeURIComponent(url.search) : ""}`, body });
+    if (method !== "GET" && options.refuse?.(`${method} ${path}`)) return json({ errors: [{ code: "10007", title: "Unexpected error" }] }, 422);
+    // Giving a number up: the account's own numbers, an assignment removed, a number or a campaign deleted. Each answers 404 once it is gone.
+    if (method === "GET" && path === "/phone_numbers") {
+      const number = url.searchParams.get("filter[phone_number]") ?? "";
+      const bought = orders.some((row) => row.reference.endsWith(number.replace(/\D/g, "")));
+      return json({ data: bought && !released.has(number) && !options.portedOut?.() ? [{ id: `num-${number.slice(-4)}`, phone_number: number, status: "active" }] : [] });
+    }
+    if (method === "DELETE" && path.startsWith("/phone_numbers/")) {
+      const number = [NUMBER, OTHER].find((row) => `num-${row.slice(-4)}` === path.split("/")[2]);
+      if (!number || released.has(number)) return json({ errors: [{ code: "10005", title: "Resource not found" }] }, 404);
+      released.add(number);
+      return json({ data: { id: path.split("/")[2], status: "deleted" } });
+    }
+    if (method === "DELETE" && path.startsWith("/10dlc/phone_number_campaigns/")) {
+      const number = path.split("/")[3];
+      if (unassigned.has(number)) return json({ errors: [{ code: "10005", title: "Resource not found" }] }, 404);
+      unassigned.add(number);
+      return json({ phoneNumber: number, assignmentStatus: "PENDING_DELETION" });
+    }
+    if (method === "DELETE" && path.startsWith("/10dlc/campaign/")) {
+      const id = path.split("/")[3];
+      if (deletedCampaigns.has(id)) return json({ errors: [{ code: "10005", title: "Resource not found" }] }, 404);
+      deletedCampaigns.add(id);
+      return new Response(null, { status: 204 });
+    }
     if (method === "GET" && path === "/available_phone_numbers") {
       const endsWith = url.searchParams.get("filter[phone_number][ends_with]");
       const all = [

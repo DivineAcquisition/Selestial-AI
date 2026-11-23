@@ -51,6 +51,8 @@ type QueryDef<V extends AnyValidators, R> = {
   args: V;
   /** Still answers while the company is locked for an unpaid plan (convex/billingLock.ts). Default: refused. */
   whileLocked?: boolean;
+  /** Still answers while the company is being deleted (convex/companyDeletion.ts): the Owner's status only. Default: refused. */
+  whileClosing?: boolean;
   handler: (ctx: QueryCtx & MemberAccess, args: ObjectType<V>) => R;
 };
 type MutationDef<V extends AnyValidators, R> = {
@@ -78,6 +80,27 @@ function refuseWhileLocked(company: Doc<"companies">, whileLocked: boolean | und
   }
 }
 
+/** A company Selestial staff are deleting, or have deleted (convex/companyDeletion.ts). */
+export function isClosing(company: Pick<Doc<"companies">, "closingAt" | "deletedAt">): boolean {
+  return company.closingAt !== undefined || company.deletedAt !== undefined;
+}
+
+export const CLOSING_WORDS = "This company is being deleted at its Owner's request, so nothing in it can be opened or changed.";
+export const GONE_WORDS = "This page is no longer available.";
+
+/**
+ * While a company is being deleted nothing acts for it: no member, no support session, no link. Writes are
+ * always refused; a read only when it is the Owner's deletion status (`whileClosing`).
+ */
+function refuseWhileClosing(company: Doc<"companies">, allowed: boolean | undefined) {
+  if (isClosing(company) && !allowed) throw userError(CLOSING_WORDS, "gone");
+}
+
+/** A link's company being deleted: the page says it is no longer available. */
+function refuseGone(company: Doc<"companies"> | null | undefined) {
+  if (company && isClosing(company)) throw userError(GONE_WORDS, "gone");
+}
+
 /** A read inside a company. Any active member, or Selestial staff in a support session for it. */
 export function companyQuery<V extends AnyValidators, R>(def: QueryDef<V, R>): RegisteredQuery<"public", CompanyArgs<V>, R> {
   return query({
@@ -86,11 +109,13 @@ export function companyQuery<V extends AnyValidators, R>(def: QueryDef<V, R>): R
       const { companyId, supportSessionId, ...rest } = args;
       if (supportSessionId) {
         const { support, ...access } = await requireSupport(ctx, companyId, supportSessionId);
+        refuseWhileClosing(access.company, false);
         // What the preview role would see, with customer words hidden unless revealed.
         const db = support.revealed ? ctx.db : redactingDb(ctx.db);
         return def.handler({ ...ctx, db, ...access, role: support.session.previewRole, support }, rest as ObjectType<V>);
       }
       const access = await requireMember(ctx, companyId);
+      refuseWhileClosing(access.company, def.whileClosing);
       refuseWhileLocked(access.company, def.whileLocked);
       return def.handler({ ...ctx, ...access, role: roleOf(access.member.role), support: null }, rest as ObjectType<V>);
     },
@@ -105,6 +130,7 @@ export function companyMutation<V extends AnyValidators, R>(def: MutationDef<V, 
       const { companyId, supportSessionId, ...rest } = args;
       if (supportSessionId) {
         const { support, ...access } = await requireSupport(ctx, companyId, supportSessionId);
+        refuseWhileClosing(access.company, false);
         if (support.session.mode !== "manage") throw userError("This support session is view only. Switch to Manage to make changes.", "not_allowed");
         if (!def.support) throw userError("A support session can't do this. The owner can, or it can be prepared for them.", "not_allowed");
         if (!support.capabilities.has(def.support.capability)) notAllowed();
@@ -115,6 +141,8 @@ export function companyMutation<V extends AnyValidators, R>(def: MutationDef<V, 
         return result;
       }
       const access = await requireMember(ctx, companyId);
+      // No write runs for a company being deleted, not even one allowed while locked.
+      refuseWhileClosing(access.company, false);
       refuseWhileLocked(access.company, def.whileLocked);
       return def.handler({ ...ctx, ...access, role: roleOf(access.member.role), support: null }, rest as ObjectType<V>);
     },
@@ -126,6 +154,7 @@ export function managerQuery<V extends AnyValidators, R>(def: QueryDef<V, R>) {
   return companyQuery({
     args: def.args,
     whileLocked: def.whileLocked,
+    whileClosing: def.whileClosing,
     handler: async (ctx, args) => {
       if (!isManager(ctx.role)) notAllowed();
       return def.handler(ctx, args);
@@ -150,6 +179,7 @@ export function ownerQuery<V extends AnyValidators, R>(def: QueryDef<V, R>) {
   return companyQuery({
     args: def.args,
     whileLocked: def.whileLocked,
+    whileClosing: def.whileClosing,
     handler: async (ctx, args) => {
       if (!isOwner(ctx.role)) notAllowed();
       return def.handler(ctx, args);
@@ -343,7 +373,9 @@ export function inviteQuery<V extends AnyValidators, R>(def: {
     handler: async (ctx: QueryCtx, args: { token: string }) => {
       const { token, ...rest } = args;
       const invitation = await invitationForToken(ctx, token);
-      const company = invitation ? await ctx.db.get(invitation.companyId) : null;
+      const found = invitation ? await ctx.db.get(invitation.companyId) : null;
+      // An invitation to a company being deleted names nothing.
+      const company = found && !isClosing(found) ? found : null;
       return def.handler({ ...ctx, invite: invitation && company ? { invitation, company } : null }, rest as ObjectType<V>);
     },
   } as any);
@@ -363,6 +395,7 @@ async function linkAccess(ctx: QueryCtx | MutationCtx, token: string): Promise<L
   const company = link ? await ctx.db.get(link.companyId) : null;
   // A token that names nothing gets the same "Not found." whatever was wrong with it.
   if (!link || !company) notFound();
+  refuseGone(company);
   return { link, linkState: linkState(link, Date.now()), company, companyId: link.companyId };
 }
 
@@ -424,6 +457,7 @@ export type PayAccess = {
 async function payAccess(ctx: QueryCtx | MutationCtx, token: string): Promise<PayAccess> {
   const invoice = await invoiceForToken(ctx, token);
   const company = invoice ? await ctx.db.get(invoice.companyId) : null;
+  refuseGone(company);
   return { pay: invoice && company ? { invoice, company } : null };
 }
 
@@ -484,6 +518,7 @@ export function statementQuery<V extends AnyValidators, R>(def: {
       const link = await linkForStatementToken(ctx, token);
       const cleaner = link ? await ctx.db.get(link.cleanerId) : null;
       const company = link ? await ctx.db.get(link.companyId) : null;
+      refuseGone(company);
       const statement = link && cleaner && company && cleaner.companyId === company._id ? { link, cleaner, company } : null;
       return def.handler({ ...ctx, statement }, rest as ObjectType<V>);
     },
@@ -508,6 +543,7 @@ async function applicantAccess(ctx: QueryCtx | MutationCtx, token: string, purpo
   const applicant = link ? await ctx.db.get(link.applicantId) : null;
   // A token for another kind of page, or one whose records left its company, names nothing.
   if (!link || !company || !application || !applicant || link.purpose !== purpose) notFound();
+  refuseGone(company);
   if (application.companyId !== link.companyId || applicant.companyId !== link.companyId || application.applicantId !== applicant._id) notFound();
   return { link, linkState: applicantLinkState(link, Date.now()), company, companyId: link.companyId, application, applicant };
 }
@@ -663,6 +699,22 @@ export function signedFileRoute(def: { verify: (request: Request, now: number) =
   });
 }
 
+/**
+ * A public GET that says whether THIS backend is alive (GET /health). It is never passed on to another
+ * backend, takes nothing from the request, and its handler must answer with reason codes only.
+ */
+export function selfCheckRoute(def: { handler: (ctx: ActionCtx) => Promise<{ ok: boolean; reasons: string[] }> }): PublicHttpAction {
+  return httpAction(async (ctx) => {
+    const headers = { "Content-Type": "application/json", "Cache-Control": "no-store" };
+    try {
+      const answer = await def.handler(ctx);
+      return new Response(JSON.stringify(answer.ok ? { ok: true } : { ok: false, reasons: answer.reasons }), { status: answer.ok ? 200 : 503, headers });
+    } catch {
+      return new Response(JSON.stringify({ ok: false, reasons: ["check_failed"] }), { status: 503, headers });
+    }
+  });
+}
+
 // ── Portal links: a cleaner, or a subcontractor company's contact, acting on their own records ────
 
 export type PortalAccess = {
@@ -683,6 +735,7 @@ async function portalAccess(ctx: QueryCtx | MutationCtx, token: string): Promise
   const subcontractor = link?.subcontractorId ? await ctx.db.get(link.subcontractorId) : null;
   // A token that names nothing, or whose person left its company, gets the same "Not found." whatever was wrong.
   if (!link || !company) notFound();
+  refuseGone(company);
   if (link.holder === "cleaner" && (!cleaner || cleaner.companyId !== link.companyId)) notFound();
   if (link.holder === "subcontractor" && (!subcontractor || subcontractor.companyId !== link.companyId)) notFound();
   return { link, linkState: portalLinkState(link, Date.now()), company, companyId: link.companyId, cleaner, subcontractor };
@@ -758,7 +811,9 @@ export function bookingQuery<V extends AnyValidators, R>(def: {
       const { token, ...rest } = args;
       const found = await sessionForToken(ctx, token);
       const company = found ? await ctx.db.get(found.session.companyId) : null;
-      return def.handler({ ...ctx, booking: found && company ? { session: found.session, company, open: found.open } : null }, rest as ObjectType<V>);
+      // A company being deleted: the booking link has ended, the same as a revoked one.
+      const live = company && !isClosing(company) ? company : null;
+      return def.handler({ ...ctx, booking: found && live ? { session: found.session, company: live, open: found.open } : null }, rest as ObjectType<V>);
     },
   } as any);
 }
@@ -783,6 +838,7 @@ export function bookingMutation<V extends AnyValidators, R>(def: {
       const found = await sessionForToken(ctx, token);
       const company = found ? await ctx.db.get(found.session.companyId) : null;
       if (!found || !company) notFound();
+      refuseGone(company);
       if (!found.open) throw userError("This booking link has ended. Start a new booking, or contact the company.", "not_allowed");
       const closed = found.session.status === "confirmed" || found.session.status === "requested" || found.session.status === "cancelled" || found.session.status === "needs_attention";
       if (closed && !def.afterConfirmation) throw userError("This booking is already sent, so it can't be changed here.", "not_allowed");
@@ -793,6 +849,12 @@ export function bookingMutation<V extends AnyValidators, R>(def: {
 }
 
 // ── Sales links: a customer opening a proposal or a signing request, or an assessor their findings ──
+
+/** Every Sales link resolver returns the company with the record it names. */
+function companyOfLink(link: unknown): Doc<"companies"> | null {
+  const company = link && typeof link === "object" ? (link as { company?: Doc<"companies"> }).company : undefined;
+  return company ?? null;
+}
 
 /**
  * A read or action through a Sales link (convex/lib/sales/links.ts). `resolve` turns the verified public
@@ -812,6 +874,7 @@ export function salesLinkQuery<V extends AnyValidators, R, T>(def: {
       const { token, ...rest } = args;
       const publicId = await publicIdFor(def.kind, token);
       const link = publicId ? await def.resolve(ctx, publicId) : null;
+      refuseGone(companyOfLink(link));
       return def.handler({ ...ctx, link }, rest as ObjectType<V>);
     },
   } as any);
@@ -831,6 +894,7 @@ export function salesLinkMutation<V extends AnyValidators, R, T>(def: {
       const publicId = await publicIdFor(def.kind, token);
       const link = publicId ? await def.resolve(ctx, publicId) : null;
       if (!link) notFound();
+      refuseGone(companyOfLink(link));
       return def.handler({ ...ctx, link }, rest as ObjectType<V>);
     },
   } as any);

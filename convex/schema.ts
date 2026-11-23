@@ -19,6 +19,7 @@ import { caseTables } from "./lib/texting/caseSchema";
 import { financeTables } from "./lib/finance/schema";
 import { clientsTables, communicationValidator, propertyDetailsValidator, propertyKindValidator, relationshipValidator } from "./lib/clients/schema";
 import { trustTables } from "./lib/trust/schema";
+import { approverValidator, controlsTables } from "./lib/controls/schema";
 import { staffTables } from "./lib/trust/staffSchema";
 import { v } from "convex/values";
 
@@ -34,12 +35,14 @@ import { activationTables } from "./lib/activation/schema";
 import { operationsTables } from "./lib/operations/schema";
 import { supportTables } from "./lib/support/schema";
 import { connectorTables } from "./lib/connectors/schema";
+import { migrationMarkValidator, migrationTables } from "./lib/migration/schema";
 import { retentionSettingsValidator, retentionTables } from "./lib/retention/schema";
+import { qualitySettingsValidator, qualityTables } from "./lib/quality/schema";
 import { servicesTables } from "./lib/services/schema";
 import { tutorialTables } from "./lib/tutorials/schema";
-import { migrationTables } from "./lib/migration/schema";
 import { noticeEventValidator, noticeFactsValidator } from "./lib/notify/catalog";
 import { notifyTables } from "./lib/notify/schema";
+import { quoTables } from "./lib/quo/schema";
 import {
   agentValidator,
   approvalStatusValidator,
@@ -101,6 +104,8 @@ export const aboutValidator = v.union(
   v.object({ table: v.literal("bookingSessions"), id: v.id("bookingSessions") }),
   v.object({ table: v.literal("salesOpportunities"), id: v.id("salesOpportunities") }),
   v.object({ table: v.literal("retentionCases"), id: v.id("retentionCases") }),
+  v.object({ table: v.literal("qualityCases"), id: v.id("qualityCases") }),
+  v.object({ table: v.literal("qualityReviews"), id: v.id("qualityReviews") }),
 );
 
 /**
@@ -147,6 +152,11 @@ export const proposalValidator = v.union(
   // Retention (convex/lib/retention/approvals.ts carries it out).
   /** Carry out one action prepared on a retention case, exactly as prepared, if the case has not moved on since. */
   v.object({ kind: v.literal("retention_action"), actionId: v.id("retentionActions"), stamp: v.string() }),
+  // Quality (convex/lib/quality/approvals.ts carries these out).
+  /** Send one request Quality prepared (to a cleaner), exactly as prepared, if the evidence has not moved on since. */
+  v.object({ kind: v.literal("quality_request"), requestId: v.id("qualityRequests"), stamp: v.string() }),
+  /** Adopt one improvement Quality proposed: the change named, carried out by the record's owner. */
+  v.object({ kind: v.literal("quality_improvement"), improvementId: v.id("qualityImprovements") }),
 );
 
 /** How Dispatch works for this company. Every value is the owner's, with a default in code. */
@@ -254,6 +264,8 @@ export default defineSchema({
     timezone: v.string(),
     /** Agents the owner has paused. Pausing all four pauses everything. */
     pausedAgents: v.array(agentValidator),
+    /** Counts every change to the agent policy (permissions, routing, pauses), so a stale preview or tab cannot overwrite a newer one. */
+    controlsRevision: v.optional(v.number()),
     dispatch: v.optional(dispatchSettingsValidator),
     dispatchPolicy: v.optional(dispatchPolicyValidator),
     recruiter: v.optional(recruiterSettingsValidator),
@@ -261,6 +273,8 @@ export default defineSchema({
     cleaners: v.optional(cleanersSettingsValidator),
     /** How Retention works for this company: feedback, the guarantee in the company's words, links and renewals (convex/lib/retention/settings.ts). */
     retention: v.optional(retentionSettingsValidator),
+    /** How Quality works for this company: request timing and limits, link length, what it may read (convex/lib/quality/settings.ts). */
+    quality: v.optional(qualitySettingsValidator),
     /** The Sales Playbook: voice, what the agent handles, approved answers, follow-up timing, deposits and quote terms (convex/lib/sales/settings.ts). */
     sales: v.optional(salesSettingsValidator),
     /** Where the company works, when appointments may be, and its services (convex/lib/settings/business.ts). */
@@ -279,6 +293,13 @@ export default defineSchema({
     /** Set only by Selestial staff. While set, nothing is sent for this company. */
     suspendedAt: v.optional(v.number()),
     /**
+     * Set when Selestial staff start deleting the company (convex/companyDeletion.ts). From then on no
+     * member, support session, agent or link page can act for it; the deletion run is the only writer.
+     */
+    closingAt: v.optional(v.number()),
+    /** Set when the deletion finished. The row stays as a tombstone so retained financial records point at something. */
+    deletedAt: v.optional(v.number()),
+    /**
      * Set while the Selestial plan is unpaid after two failed payment attempts (convex/billingLock.ts).
      * The team can't open the workspace and every agent is paused; customer-facing pages keep working.
      * Cleared when the invoice is paid, Selestial lifts it, or the plan is canceled after 30 days.
@@ -290,6 +311,12 @@ export default defineSchema({
      * billing.clearLegacyPlans.
      */
     plan: v.optional(v.union(v.literal("operate"), v.literal("expand"), v.literal("growth"), v.literal("scale"))),
+    /**
+     * Agents a company has beyond its plan, and why. Today only Quality, for a company that claimed an
+     * early-user place: kept for good, also after its 12 months at $199 (the Owner's decision of November 23,
+     * 2026). It still needs an active plan; written only by billing sync (lib/billing/earlyOffer.ts).
+     */
+    agentBonuses: v.optional(v.array(v.object({ agent: v.literal("quality"), reason: v.literal("early_user"), since: v.number() }))),
     /** The Owner's named pay tiers (Finance › Team Pay). A job keeps the share that applied when it was worked. */
     payTiers: v.optional(v.array(payTierValidator)),
     /** AI features the Owner switched off. Absent means on, within the plan's allowances. */
@@ -456,6 +483,8 @@ export default defineSchema({
     /** Their last answer to a check-in: still available, fewer jobs, a break until a date, or wanting to stop. */
     checkIn: v.optional(v.object({ answer: v.union(v.literal("available"), v.literal("fewer"), v.literal("break"), v.literal("stop")), at: v.number(), until: v.optional(v.number()), note: v.optional(v.string()) })),
     updatedAt: v.optional(v.number()),
+    /** Added by a migration and not released yet: no onboarding follow-up or offer reaches them until the Owner releases the team (convex/migration.ts). */
+    migration: v.optional(migrationMarkValidator),
   })
     .index("by_company_status", ["companyId", "status"])
     .index("by_company_subcontractor", ["companyId", "subcontractorId"]),
@@ -514,6 +543,8 @@ export default defineSchema({
     completionReview: v.optional(v.object({ decision: v.union(v.literal("closed"), v.literal("closed_without_review")), by: v.id("members"), at: v.number(), note: v.optional(v.string()) })),
     /** How many times the crew's report was sent back for correction. */
     completionReturns: v.optional(v.number()),
+    /** The latest note sent back with the report, shown to the crew on the job page until they report again. */
+    completionReturn: v.optional(v.object({ note: v.string(), at: v.number() })),
     /** The checklist template version this visit's checklist was copied from, if any. */
     checklistTemplate: v.optional(v.object({ templateId: v.id("checklistTemplates"), version: v.number() })),
     /** The service plan that booked this visit, and the day of the series it is. */
@@ -528,6 +559,10 @@ export default defineSchema({
     recovery: v.optional(v.object({ caseId: v.id("retentionCases"), originalJobId: v.optional(v.id("jobs")) })),
     /** Cleaners a person agreed not to send to this visit, for example after a customer asked for someone else. Dispatch does not offer it to them. */
     avoidCleanerIds: v.optional(v.array(v.id("cleaners"))),
+    /** Cleaners to ask first when they qualify, such as the cleaner the customer had in the old system. */
+    preferredCleanerIds: v.optional(v.array(v.id("cleaners"))),
+    /** Written by a migration. While held, Dispatch doesn't offer it and no confirmation is sent (convex/migration.ts). */
+    migration: v.optional(migrationMarkValidator),
     createdAt: v.number(),
   })
     .index("by_company_start", ["companyId", "startsAt"])
@@ -625,6 +660,14 @@ export default defineSchema({
     /** Money actions only. */
     perActionCents: v.optional(v.number()),
     perDayCents: v.optional(v.number()),
+    /**
+     * Who decides this action's approvals (Agent Controls). Absent: any Owner or Manager. "owner": Owners only.
+     * A member: that person (an Owner or Manager), with `backupMemberId` and any Owner able to decide too.
+     */
+    approver: v.optional(approverValidator),
+    backupMemberId: v.optional(v.id("members")),
+    /** A level above Ask me first is temporary until this instant; after it, the action asks first (convex/lib/authority.ts). */
+    until: v.optional(v.number()),
     updatedBy: v.id("members"),
     updatedAt: v.number(),
   }).index("by_company_action", ["companyId", "action"]),
@@ -718,6 +761,9 @@ export default defineSchema({
       v.literal("feedback_request"),
       v.literal("care_update"),
       v.literal("return_offer"),
+      // Quality, to a cleaner: a focused request for evidence, an answer or an account, with its private link (convex/lib/quality/outbox.ts).
+      v.literal("quality_request"),
+      v.literal("quality_reminder"),
       // Selestial, to a member of the company: a notification (convex/lib/notify).
       v.literal("member_notice"),
     ),
@@ -743,6 +789,8 @@ export default defineSchema({
     salesLinks: v.optional(v.array(v.object({ placeholder: v.string(), kind: v.union(v.literal("pay"), v.literal("proposal"), v.literal("sign"), v.literal("assess"), v.literal("quote")), id: v.string() }))),
     /** Retention messages: the action the message carries out. Its link, if any, is made at the moment of sending. */
     retentionActionId: v.optional(v.id("retentionActions")),
+    /** Quality messages: the request the message carries. Its link is made at the moment of sending. */
+    qualityRequestId: v.optional(v.id("qualityRequests")),
     /** A message in a Sales conversation: the opportunity it belongs to. */
     opportunityId: v.optional(v.id("salesOpportunities")),
     /** Finance messages: the customer and the invoice whose pay link the message carries as "{link}". */
@@ -793,6 +841,8 @@ export default defineSchema({
     refusal: v.optional(v.string()),
     queuedAt: v.number(),
     attemptedAt: v.optional(v.number()),
+    /** The first attempt's time. Telnyx's 24-hour replay window runs from here, whatever later attempts did. */
+    firstAttemptedAt: v.optional(v.number()),
     sentAt: v.optional(v.number()),
     deliveredAt: v.optional(v.number()),
     failedAt: v.optional(v.number()),
@@ -819,6 +869,7 @@ export default defineSchema({
     .index("by_company_opportunity", ["companyId", "opportunityId", "queuedAt"])
     .index("by_company_member", ["companyId", "memberId", "queuedAt"])
     .index("by_provider_message", ["provider", "providerMessageId"])
+    .index("by_company_to", ["companyId", "to", "queuedAt"])
     .index("by_status_attempted", ["status", "attemptedAt"])
     .index("by_company_hold", ["companyId", "holdReason", "heldAt"]),
 
@@ -935,7 +986,9 @@ export default defineSchema({
     uploadedAt: v.number(),
   })
     .index("by_company_job", ["companyId", "jobId"])
-    .index("by_company_assignment_key", ["companyId", "assignmentId", "clientKey"]),
+    .index("by_company_assignment_key", ["companyId", "assignmentId", "clientKey"])
+    // So an upload already kept as evidence is never deleted through another link (lib/uploads.ts).
+    .index("by_storage", ["storageId"]),
 
   /**
    * Something a cleaner reported from the job: an unexpected condition, work left incomplete, or a
@@ -997,6 +1050,8 @@ export default defineSchema({
     applicationId: v.optional(v.id("applications")),
     /** A Retention tool: the case it was run on. */
     caseId: v.optional(v.id("retentionCases")),
+    /** A Quality tool: the case it was run on. */
+    qualityCaseId: v.optional(v.id("qualityCases")),
     at: v.number(),
   })
     .index("by_company_case", ["companyId", "caseId", "at"])
@@ -1012,6 +1067,8 @@ export default defineSchema({
   ...agreementTables,
   ...googleTables,
   ...connectorTables,
+  ...quoTables,
+  ...migrationTables,
   // ── Cleaners: subcontractors, requirements, crews, portal, follow-ups, coaching, personnel ──────
   ...cleanersTables,
   ...clientsTables,
@@ -1036,13 +1093,17 @@ export default defineSchema({
   ...activationTables,
   // ── Retention: signals, cases, actions, feedback and customer links (convex/lib/retention/schema.ts) ─
   ...retentionTables,
+  // ── Quality: standards, reviews, cases, findings, requests, corrections, improvements, runs, communications (convex/lib/quality/schema.ts) ─
+  ...qualityTables,
   // ── Migration: tutorials for moving in, and records brought from another system (convex/lib/tutorials, lib/migration) ─
   ...tutorialTables,
-  ...migrationTables,
   // ── Operations: incidents, their history, and when each monitoring check last ran (convex/lib/operations) ─
   ...operationsTables,
   // ── Admin Support Sessions: staff inside a company, for a reason and a time (convex/lib/support) ─────
   ...supportTables,
+
+  // ── Agent Controls: policy history and money allowances (convex/lib/controls/schema.ts) ─────────
+  ...controlsTables,
 
   // ── Events: append-only ────────────────────────────────────────────────────────────────────────
   events: defineTable({

@@ -94,12 +94,12 @@ export function SessionActions({ row, onDeleted }: { row: SessionRow; onDeleted?
         <EllipsisVertical className="size-4" aria-hidden />
       </button>
       {notice ? (
-        <p role="status" className="absolute top-full right-0 z-30 mt-1 w-64 rounded-lg border border-border bg-card p-2 text-xs text-muted-foreground shadow-lg">
+        <p role="status" className="absolute top-full right-0 z-popover mt-1 w-64 rounded-lg border border-border bg-card p-2 text-xs text-muted-foreground shadow-lg">
           {notice}
         </p>
       ) : null}
       {open ? (
-        <div id={menu} className="live-enter absolute top-full right-0 z-30 mt-1 w-64 rounded-xl border border-border bg-card p-1.5 shadow-xl">
+        <div id={menu} className="live-enter absolute top-full right-0 z-popover mt-1 w-64 rounded-xl border border-border bg-card p-1.5 shadow-xl">
           {mode === "rename" ? (
             <form
               className="grid gap-2 p-1.5"
@@ -230,7 +230,7 @@ export function SessionSwitcher({ current, onPick, onNew, compact, label }: { cu
         <ChevronDown className="size-4 shrink-0 text-muted-foreground" aria-hidden />
       </button>
       {open ? (
-        <ul id={menu} role="menu" aria-label="Chats" className="live-enter absolute top-full left-0 z-40 mt-1 grid max-h-[24rem] w-full min-w-[16rem] overflow-y-auto rounded-xl border border-border bg-card p-1 shadow-xl">
+        <ul id={menu} role="menu" aria-label="Chats" className="live-enter absolute top-full left-0 z-popover mt-1 grid max-h-[24rem] w-full min-w-[16rem] overflow-y-auto rounded-xl border border-border bg-card p-1 shadow-xl">
           <li role="none">
             <button
               type="button"

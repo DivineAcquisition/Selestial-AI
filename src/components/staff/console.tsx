@@ -26,6 +26,7 @@ import type { Id } from "../../../convex/_generated/dataModel";
 import { Checkbox, Select } from "@/components/ui/selection";
 import { Disclosure, EmailInput, NumberField } from "@/components/ui/fields";
 import { TextingCasePanel, TextingReadiness } from "@/components/staff/texting-case";
+import { CompanyDeletionPanel } from "@/components/staff/company-deletion";
 
 /**
  * Selestial's own staff console: the public request queues, the trust records the public pages are
@@ -99,7 +100,7 @@ function StaffShell({ role, children }: { role: "admin" | "support" | "reviewer"
   const pathname = usePathname();
   return (
     <div className="min-h-dvh bg-muted/50">
-      <header className="sticky top-0 z-20 border-b border-border bg-card/95 backdrop-blur">
+      <header className="sticky top-0 z-header border-b border-border bg-card/95 backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-5 gap-y-2 px-4 py-2.5 sm:px-6">
           <Link href="/staff/operations" className="flex items-center gap-2 font-heading text-base text-strong">
             <LogoMark className="size-7" />
@@ -231,6 +232,7 @@ export function RequestDetail() {
             {request.questions ? <Body label="Questions" text={request.questions} /> : null}
             {request.details ? <Body label="Details" text={request.details} /> : null}
           </Panel>
+          {request.kind === "privacy" && request.subtype === "deletion" && request.companyId ? <CompanyDeletionPanel requestId={requestId} /> : null}
           <Panel title="History">
             <ol className="grid gap-2 text-sm">
               {[...request.actions.map((row) => ({ ...row, kind: "action" as const })), ...request.notes.map((row) => ({ ...row, action: "note", detail: row.text, kind: "note" as const }))]
@@ -994,6 +996,7 @@ const TEXTING_STATUS: Record<string, { label: string; variant: "info" | "warning
   needs_you: { label: "Waiting on the owner", variant: "outline" },
   failed: { label: "Stopped", variant: "error" },
   interrupted: { label: "Suspended by carriers", variant: "error" },
+  active: { label: "Active · number being given up", variant: "warning" },
 };
 
 /**
@@ -1395,7 +1398,7 @@ function UnpaidItem({ row }: { row: UnpaidRow }) {
 
 // ── Early access to coming-soon agents ──────────────────────────────────────────────────────────────
 
-const AGENT_LABEL: Record<string, string> = { marketing: "Marketing", quality: "Quality", "customer-care": "Customer Care", "team-coordinator": "Team Coordinator" };
+const AGENT_LABEL: Record<string, string> = { marketing: "Marketing", quality: "Quality", "customer-care": "Care", "team-coordinator": "Team Coordinator" };
 const REQUEST_STATUS: Record<string, { label: string; variant: "info" | "success" | "outline" }> = {
   requested: { label: "Asked", variant: "info" },
   invited: { label: "Invited", variant: "success" },

@@ -7,6 +7,7 @@
  * checks in googleChecks.ts are what prove that.
  */
 import { publicApiOrigin } from "../environment";
+import { redirectUri } from "./oauth";
 
 export type PlatformItem = { key: string; label: string; where: "convex" | "vercel"; configured: boolean; unlocks: string };
 
@@ -33,7 +34,7 @@ export const mapsServerKey = () => process.env.GOOGLE_MAPS_SERVER_KEY?.trim() ||
 export function endpoints(): { oauthCallback: string | null; calendarWebhook: string | null; pubsubPush: string | null; leadFormWebhook: string | null } {
   const site = process.env.CONVEX_SITE_URL?.trim().replace(/\/+$/, "") || null;
   return {
-    oauthCallback: site && `${site}/oauth/google/callback`,
+    oauthCallback: redirectUri(),
     calendarWebhook: site && `${site}/webhooks/google/calendar`,
     pubsubPush: site && `${site}/webhooks/google/pubsub`,
     // Shown to the owner to paste into Google Ads: the public address people see (api.selestial.io on the live backend).

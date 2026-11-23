@@ -133,6 +133,21 @@ describe("the company export", () => {
     expect(await t.run(async (ctx) => (await ctx.db.get(exportId))?.storageId ?? null)).toBeNull();
   });
 
+  it("still lets the Owner of an account locked for an unpaid plan export and download, and nothing else", async () => {
+    const { t, a, manager } = await twoCompanies();
+    await t.run((ctx) => ctx.db.patch(a.companyId, { billingLockedAt: Date.now() }));
+    // Locked: ordinary work is refused...
+    expect(await refusal(a.as.query(api.dataRights.deletions, { companyId: a.companyId }))).toMatch(/locked because the Selestial plan is unpaid/);
+    // ...but the records can still be taken, as the Terms say to do before the plan is cancelled.
+    const { exportId } = await a.as.mutation(api.dataRights.requestExport, { companyId: a.companyId });
+    await flush(t);
+    expect((await a.as.query(api.dataRights.exports, { companyId: a.companyId }))[0]).toMatchObject({ id: exportId, status: "ready" });
+    const { url } = await a.as.mutation(api.dataRights.downloadUrl, { companyId: a.companyId, exportId });
+    expect(url).toMatch(/^https?:\/\//);
+    // Still the Owner's alone.
+    expect(await refusal(manager.mutation(api.dataRights.requestExport, { companyId: a.companyId }))).toBe(NOT_ALLOWED);
+  });
+
   it("makes one export at a time and a few a day", async () => {
     const { t, a } = await twoCompanies();
     const first = await a.as.mutation(api.dataRights.requestExport, { companyId: a.companyId });

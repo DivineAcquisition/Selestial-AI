@@ -7,6 +7,7 @@
  * delay, not silence. A crew reporting completion hands the visit to Quality: it approves nothing and
  * pays nobody.
  */
+import { qualityOnCompletionReported } from "../quality/hooks";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import { requestApproval } from "../approvalQueue";
@@ -123,7 +124,7 @@ async function remind(ctx: MutationCtx, loaded: Loaded, policy: DispatchPolicy, 
   }
   const message = await queueReminder(ctx, loaded, DISPATCH);
   if (authority.level === "execute_and_report") {
-    await recordEvent(ctx, { companyId: company._id, type: "dispatch.reported", actor: DISPATCH, subject: { table: "messages", id: message._id }, data: { action: SEND_REMINDER, jobId: job._id, cleanerId: cleaner._id } });
+    await recordEvent(ctx, { companyId: company._id, type: "dispatch.reported", actor: DISPATCH, subject: { table: "messages", id: message._id }, data: { action: SEND_REMINDER, jobId: job._id, cleanerId: cleaner._id, ref: message._id, stage: "queued" } });
   }
 }
 
@@ -401,7 +402,7 @@ async function watchOverrun(ctx: MutationCtx, loaded: Loaded, now: number) {
 /** Looks at one job's accepted crew: reminder due, arrival overdue, running over. Safe to run again. */
 export async function watchJob(ctx: MutationCtx, jobId: Id<"jobs">): Promise<void> {
   const job = await ctx.db.get(jobId);
-  if (!job || (job.status !== "scheduled" && job.status !== "in_progress")) return;
+  if (!job || job.migration?.held || (job.status !== "scheduled" && job.status !== "in_progress")) return;
   const company = await ctx.db.get(job.companyId);
   if (!company) return;
   const policy = dispatchPolicy(company);
@@ -508,6 +509,8 @@ export async function submitCompletion(ctx: MutationCtx, assignmentId: Id<"assig
       about: { table: "jobs", id: job._id },
       actor: DISPATCH,
     });
+    // Quality reviews the visit against the standard that applied. A manager still closes it.
+    await qualityOnCompletionReported(ctx, (await ctx.db.get(job._id))!);
   }
   return { status: "submitted_for_review" as const, submittedAt: now, waitingOnCrew: waitingOn.length };
 }

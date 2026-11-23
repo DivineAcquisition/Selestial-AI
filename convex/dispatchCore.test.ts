@@ -162,11 +162,22 @@ describe("Dispatch: one staffing count, a reviewed completion, and a guided move
     expect(state.job).toMatchObject({ status: "in_progress", completionReturns: 1 });
     expect(state.job.completionReportedAt).toBeUndefined();
     expect(state.assignments[0].completion).toBeUndefined();
-    expect((await s.tasks("needs_decision")).filter((task) => task.handoffTo === "quality")).toEqual([]);
-    expect((await s.tasks("done")).find((task) => task.handoffTo === "quality")!.outcome).toBe("Sent back for correction: The oven was missed.");
+    expect((await s.tasks("needs_decision", "quality")).filter((task) => task.handoffTo === "quality")).toEqual([]);
+    expect((await s.tasks("done", "quality")).find((task) => task.handoffTo === "quality")!.outcome).toBe("Sent back for correction: The oven was missed.");
     expect(await refusal(review(s.as, "close"))).toContain("nothing to review");
+    // The crew is told: the note is kept for the job page, and a text with a fresh job link is on its way.
+    expect(state.job.completionReturn).toMatchObject({ note: "The oven was missed." });
+    const texts = await s.t.run(async (ctx) => (await ctx.db.query("messages").collect()).filter((row) => row.dedupeKey?.startsWith("returned:")));
+    expect(texts).toHaveLength(1);
+    expect(texts[0].body).toContain("sent back with a note");
+    const links = await s.t.run(async (ctx) => (await ctx.db.query("actionLinks").collect()).filter((row) => row.purpose === "job"));
+    const live = links.filter((row) => row.revokedAt === undefined);
+    expect(live).toHaveLength(2);
+    expect(Math.max(...live.map((row) => row.expiresAt))).toBeGreaterThanOrEqual(JOB_START + 24 * HOUR);
+    expect((await s.t.query(api.links.job, { token: a.jobToken })).detail?.returned).toMatchObject({ note: "The oven was missed." });
     expect(await submit()).toMatchObject({ status: "submitted_for_review" });
-    expect((await s.tasks("needs_decision")).filter((task) => task.handoffTo === "quality")).toHaveLength(1);
+    expect((await s.t.query(api.links.job, { token: a.jobToken })).detail?.returned).toBeNull();
+    expect((await s.tasks("needs_decision", "quality")).filter((task) => task.handoffTo === "quality")).toHaveLength(1);
 
     // A report from the job that nobody decided stops the visit from being closed.
     const detail = await s.as.query(api.details.get, { companyId: s.companyId, ref: { kind: "job", id: a.jobId }, asOf: JOB_START });
@@ -177,7 +188,7 @@ describe("Dispatch: one staffing count, a reviewed completion, and a guided move
     expect(await review(s.as, "close", "Checked the photos.")).toEqual({ status: "closed" });
     state = await s.job(a.jobId);
     expect(state.job).toMatchObject({ status: "completed", completionReview: { decision: "closed", note: "Checked the photos." } });
-    expect((await s.tasks("needs_decision")).filter((task) => task.handoffTo === "quality")).toEqual([]);
+    expect((await s.tasks("needs_decision", "quality")).filter((task) => task.handoffTo === "quality")).toEqual([]);
     const types = (await s.as.query(api.events.forSubject, { companyId: s.companyId, subject: { table: "jobs", id: a.jobId } })).map((event) => event.type);
     expect(types).toEqual(expect.arrayContaining(["job.completion_reported", "job.completion_returned", "job.completed"]));
     expect(types).not.toContain("job.closed_without_review");

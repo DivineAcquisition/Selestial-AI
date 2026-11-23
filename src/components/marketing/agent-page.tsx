@@ -184,8 +184,8 @@ export function AgentStrip({ except }: { except?: AgentPageId }) {
 /** /agents: the whole team, the ones working today first. */
 export function AgentsIndex() {
   const groups = [
-    { title: "Working today", lead: "Included in Operate and Expand.", ids: AGENT_PAGE_IDS.filter((id) => AGENT_PAGES[id].status === "live") },
-    { title: "Coming soon", lead: "Included in Expand when each is released.", ids: AGENT_PAGE_IDS.filter((id) => AGENT_PAGES[id].status === "coming_soon") },
+    { title: "Working today", lead: "Included in the Selestial plan.", ids: AGENT_PAGE_IDS.filter((id) => AGENT_PAGES[id].status === "live") },
+    { title: "Coming soon", lead: "Not released yet. No plan or purchase makes one available sooner.", ids: AGENT_PAGE_IDS.filter((id) => AGENT_PAGES[id].status === "coming_soon") },
   ];
   return (
     <section className={cn(marketingPageGutter, "pt-10 pb-20 sm:pt-16 sm:pb-28")}>

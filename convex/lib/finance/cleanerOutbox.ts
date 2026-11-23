@@ -4,6 +4,7 @@
  * usable address, the do-not-contact list, recorded permission, quiet hours). The link is "{link}"
  * until the moment of sending, when it is made from the cleaner's open statement link.
  */
+import { textingProvider } from "../quo/route";
 import { internal } from "../../_generated/api";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
@@ -13,7 +14,6 @@ import { recordEvent, type Actor } from "../events";
 import { emailProvider } from "../messaging/email";
 import { messageByKey, type SendIntent } from "../messaging/outbox";
 import { checkSend, type PolicyCode } from "../messaging/policy";
-import { messagingProvider } from "../messaging/provider";
 import { isEmail } from "../text";
 import { liveStatementLink, statementToken, statementUrl } from "./statementLinks";
 
@@ -26,7 +26,7 @@ const addressOf = (cleaner: Pick<Doc<"cleaners">, "email" | "phone">, channel: C
 /** Whether the statement link could go to this cleaner on this channel now, in the policy's words. */
 export async function canSendTo(ctx: Ctx, companyId: Id<"companies">, cleaner: Doc<"cleaners">, channel: Channel): Promise<{ ok: boolean; words: string | null; address: string | null }> {
   const address = addressOf(cleaner, channel);
-  if (!(channel === "email" ? emailProvider() : messagingProvider())) return { ok: false, words: channel === "email" ? "Email isn't connected for Selestial yet." : "Texting isn't connected for Selestial yet.", address };
+  if (!(channel === "email" ? emailProvider() : await textingProvider(ctx, companyId, address))) return { ok: false, words: channel === "email" ? "Email isn't connected for Selestial yet." : "Texting isn't connected for Selestial yet.", address };
   const answer = await checkSend(ctx, { companyId, channel, to: address ?? "", now: Date.now(), ...intentFor(cleaner) });
   return answer.ok ? { ok: true, words: null, address } : { ok: false, words: answer.words, address };
 }
@@ -39,7 +39,7 @@ export async function queueCleanerStatement(
   if (existing) return existing;
   const { company, cleaner, channel } = input;
   const to = addressOf(cleaner, channel);
-  const provider = channel === "email" ? emailProvider() : messagingProvider();
+  const provider = channel === "email" ? emailProvider() : await textingProvider(ctx, company._id, to);
   let problem: string | null = !to ? (channel === "email" ? "There is no valid email address for this cleaner." : "There is no valid phone number for this cleaner.") : !provider ? (channel === "email" ? "Email isn't connected for Selestial yet." : "Texting isn't connected for Selestial yet.") : null;
   const now = Date.now();
   const intent = intentFor(cleaner);

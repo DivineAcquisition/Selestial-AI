@@ -39,6 +39,8 @@ export const URGENT_HIRE = "dispatch.request_urgent_hire";
 
 export type CoverState =
   | "gone"
+  /** Imported by a migration and not released yet: Dispatch leaves it alone until the owner releases it. */
+  | "held"
   | "closed"
   | "covered"
   | "underway"
@@ -230,6 +232,7 @@ export async function coverJob(ctx: MutationCtx, jobId: Id<"jobs">): Promise<Cov
   if (!job) return "gone";
   const company = await ctx.db.get(job.companyId);
   if (!company) return "gone";
+  if (job.migration?.held) return "held";
   const settings = dispatchSettings(company);
   const policy = dispatchPolicy(company);
   const now = Date.now();
@@ -284,6 +287,14 @@ export async function coverJob(ctx: MutationCtx, jobId: Id<"jobs">): Promise<Cov
 
   if (task.withPersonSince !== undefined) {
     if (task.status !== "needs_decision") await setTaskState(ctx, task, "needs_decision", { openQuestion: WITH_YOU, dueAt: job.startsAt }, DISPATCH);
+    return "with_person";
+  }
+
+  // An offer for this visit ended because the company's texts were not going out, and the task that says so is
+  // still open: asking again would only record another offer nobody is texted about. Wait until a person closes
+  // that task (sending fixed, or the offers made by hand); the next sweep then asks the same cleaners again.
+  if (assignments.some((row) => row.status === "cancelled" && row.endCause === "sending_blocked" && (row.jobStartsAt ?? job.startsAt) === job.startsAt) && (await liveTaskByKey(ctx, job.companyId, `dispatch.sending_blocked:${job.companyId}`))) {
+    await setTaskState(ctx, task, "needs_decision", { openQuestion: "Dispatch's texts to cleaners are not going out, so nobody has been asked about this visit. Fix sending, or reach a cleaner yourself.", dueAt: job.startsAt }, DISPATCH, same);
     return "with_person";
   }
 
@@ -392,7 +403,7 @@ export async function coverJob(ctx: MutationCtx, jobId: Id<"jobs">): Promise<Cov
     const assignmentId = await placeOffer(ctx, { company, job, cleaner, respondBy, payCents, rules: DISPATCH_RULES, afterStart: lateCover }, DISPATCH, { action }, { kind: offerKindFor(action), coverageRequestId: request?._id });
     assignments.push((await ctx.db.get(assignmentId))!);
     if (authority.level === "execute_and_report") {
-      await recordEvent(ctx, { companyId: job.companyId, type: "dispatch.reported", actor: DISPATCH, subject: { table: "assignments", id: assignmentId }, data: { action, jobId: job._id, cleanerId: cleaner._id } });
+      await recordEvent(ctx, { companyId: job.companyId, type: "dispatch.reported", actor: DISPATCH, subject: { table: "assignments", id: assignmentId }, data: { action, jobId: job._id, cleanerId: cleaner._id, ref: assignmentId, stage: "queued" } });
     }
     offered += 1;
   }

@@ -9,6 +9,7 @@ import { useCompany } from "@/components/app/company";
 import { DetailActions } from "@/components/app/detail-actions";
 import { AgreementsForRecord } from "@/components/app/agreements/record";
 import { DetailView } from "@/components/app/detail-view";
+import { QualityOnJob } from "@/components/app/screens/quality/context";
 import { useNow } from "@/components/app/use-now";
 import { Check, LinkIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ import { Sheet, SheetPopup, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import { api } from "../../../convex/_generated/api";
+import type { Id } from "../../../convex/_generated/dataModel";
 import type { EventRef } from "../../../convex/lib/eventWords";
 
 type Open = (ref: EventRef) => void;
@@ -116,7 +118,7 @@ function Body({ target, onOpen }: { target: EventRef; onOpen: Open }) {
   }
   return (
     <>
-      <DetailView detail={detail} now={now} timezone={company.timezone} onOpen={onOpen} actions={<DetailActions detail={detail} now={now} timezone={company.timezone} />} />
+      <DetailView detail={detail} now={now} timezone={company.timezone} onOpen={onOpen} actions={<DetailActions detail={detail} now={now} timezone={company.timezone} />} quality={detail.job && target.kind === "job" ? <QualityOnJob jobId={target.id as Id<"jobs">} completed={detail.job.status === "completed"} /> : null} />
       {target.kind === "job" ? (
         <div className="border-t border-border px-5 py-4 sm:px-6">
           <AgreementsForRecord table="jobs" id={target.id} />

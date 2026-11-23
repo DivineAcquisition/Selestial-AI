@@ -113,8 +113,8 @@ export function SalesOverviewScreen() {
   const { openId, open, close } = useOpportunityParam();
   const overview = useQuery(api.salesInquiries.overview, now ? { companyId, asOf: now } : "skip");
   const readiness = useQuery(api.salesInquiries.readiness, { companyId });
-  const permissions = useQuery(api.permissions.list, { companyId });
-  const setPaused = useMutation(api.companies.setPausedAgents);
+  const pauseAgent = useMutation(api.companies.pauseAgent);
+  const resumeAgent = useMutation(api.companies.resumeAgent);
   const { busy, error, run } = useRun();
 
   if (!overview) {
@@ -131,7 +131,6 @@ export function SalesOverviewScreen() {
   }
 
   const counts = overview.counts;
-  const pausedAgents = permissions?.pausedAgents ?? [];
   const gaps = (readiness ?? []).filter((row) => !row.ok);
   const blockers = gaps.filter((row) => row.key === "services" || row.key === "texting" || row.key === "email");
   const first = overview.attention[0] ?? null;
@@ -140,7 +139,7 @@ export function SalesOverviewScreen() {
   const briefing = [
     counts.open === 0 ? "No inquiry is open." : `${plural(counts.open, "open opportunity", "open opportunities")}: ${counts.needsYou} waiting on you, ${counts.awaitingDetails} waiting on details from the customer, ${counts.quotesWithCustomer} with a quote in the customer’s hands, ${counts.bookingPending} accepted and being booked.`,
     counts.followUpsDue > 0 ? `${plural(counts.followUpsDue, "follow-up")} due in the next day.` : null,
-    overview.reader === "rules" ? null : "An AI reader reads customer messages; your rules decide everything that is sent, priced or booked.",
+    overview.reader === "ai" ? "An AI reader reads customer messages; your rules decide everything that is sent, priced or booked." : "Your company’s rules read customer messages and decide everything that is sent, priced or booked. No AI credits are used for reading.",
   ].filter((line): line is string => Boolean(line));
 
   const next = overview.paused
@@ -162,8 +161,8 @@ export function SalesOverviewScreen() {
         lead={LEAD}
         actions={
           <>
-            {role === "owner" && permissions ? (
-              <Button variant="outline" size="sm" loading={busy} onClick={() => void run(() => setPaused({ companyId, agents: overview.paused ? pausedAgents.filter((agent) => agent !== "sales") : [...pausedAgents, "sales"] }))}>
+            {role === "owner" ? (
+              <Button variant="outline" size="sm" loading={busy} onClick={() => void run(() => (overview.paused ? resumeAgent : pauseAgent)({ companyId, agent: "sales" }))}>
                 {overview.paused ? <Play aria-hidden /> : <PauseCircleIcon aria-hidden />}
                 {overview.paused ? "Resume Sales" : "Pause Sales"}
               </Button>

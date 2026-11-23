@@ -15,6 +15,7 @@ import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import { localParts } from "../availability";
 import { whoIsFree } from "../cleaners/free";
+import { BUSY_WARNING, calendarBusy, isBusy } from "../google/busy";
 import { businessSettingsOf } from "../settings/business";
 import { ACTIVE_ASSIGNMENT } from "../statuses";
 import { addLocalDays, startOfLocalDay } from "../time";
@@ -29,6 +30,12 @@ export type CapacityAnswer = {
   /** Plain words for the person booking. */
   why: string;
   blockers: string[];
+  /**
+   * The time overlaps a busy time on a Google calendar the Owner chose for availability. Not a blocker: a
+   * person may still book it (with `calendarNote` shown); times Selestial offers on its own skip it.
+   */
+  calendarBusy: boolean;
+  calendarNote: string | null;
 };
 
 const HOLD_MINUTES_DEFAULT = 60 * 24;
@@ -40,6 +47,18 @@ export async function checkCapacity(
   crew: number,
   ignoreBooking?: Id<"bookings">,
 ): Promise<CapacityAnswer> {
+  const answer = await checkCrew(ctx, company, span, crew, ignoreBooking);
+  const busy = isBusy(await calendarBusy(ctx, company._id, span.startsAt, span.endsAt), span);
+  return { ...answer, calendarBusy: busy, calendarNote: busy ? BUSY_WARNING : null };
+}
+
+async function checkCrew(
+  ctx: QueryCtx | MutationCtx,
+  company: Doc<"companies">,
+  span: { startsAt: number; endsAt: number },
+  crew: number,
+  ignoreBooking?: Id<"bookings">,
+): Promise<Omit<CapacityAnswer, "calendarBusy" | "calendarNote">> {
   const tz = company.timezone;
   const settings = businessSettingsOf(company);
   const blockers: string[] = [];

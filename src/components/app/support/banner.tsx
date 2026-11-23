@@ -44,8 +44,8 @@ export function SupportBanner({ session, onExit }: { session: SupportSession; on
   const exit = useMutation(api.support.exit);
   const { busy, error, run } = useRun();
   return (
-    <div role="region" aria-label="Admin support session" className={cn("sticky top-14 z-10 border-b-2 bg-strong px-3 py-2 text-sm text-card sm:px-6", manage ? "border-warning" : "border-brand-500")}>
-      <div className="mx-auto flex w-full max-w-[1500px] flex-wrap items-center gap-x-4 gap-y-1.5">
+    <div role="region" aria-label="Admin support session" className={cn("relative border-b-2 bg-strong px-app-gutter py-2 text-sm text-card", manage ? "border-warning" : "border-brand-500")}>
+      <div className="mx-auto flex w-full max-w-(--app-width-wide) flex-wrap items-center gap-x-4 gap-y-1.5">
         <p className="flex min-w-0 items-center gap-2">
           <ShieldCheck aria-hidden className={cn("size-4 shrink-0", manage ? "text-warning" : "text-brand-400")} />
           <span className="font-semibold whitespace-nowrap">

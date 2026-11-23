@@ -13,10 +13,21 @@
  * only what was added since that id. If Gmail no longer has that history (it keeps about a week), the run
  * scans again from `processFrom`; filing ignores what it already has.
  *
+ * Received mail only: the mailbox's own sent mail and drafts are never handed over (the search leaves
+ * them out, and a message Gmail labels SENT or DRAFT is dropped whichever way it was found). Archived
+ * mail is still read, because an Owner who files applications out of the inbox still wants them seen.
+ *
+ * Oldest first, across the whole scan: Gmail lists newest first, so a scan lists the ids of the window
+ * (ids only, in chunks of at most `scanCap`), turns them round, and walks them from the oldest. An
+ * application is then filed before the reply to it.
+ *
  * NOT VERIFIED against Gmail itself in this build: no Google OAuth app exists yet. Request and response
- * shapes follow the Gmail API v1 reference as understood when this was written.
+ * shapes follow the Gmail API v1 reference as understood when this was written. In the same way, the
+ * Indeed and ZipRecruiter senders and subjects this mail is judged by (mail.ts) are invented from general
+ * knowledge and not yet checked against real notifications (docs/recruiter/07-real-samples.md).
  */
-import { sendBlocked } from "../environment";
+import { isNonProduction, sendBlocked } from "../environment";
+import { NOT_RUN_ON_TEST } from "../google/http";
 import { MailboxAuthError, MailboxProviderError, type ListResult, type MailboxConnector, type MailboxScope } from "./mailbox";
 import type { MessageAttachment, MessageBody, MessageHeader } from "./mail";
 
@@ -27,7 +38,16 @@ const TOKEN = "https://oauth2.googleapis.com/token";
 const MAX_TEXT_ATTACHMENT = 200_000;
 
 type Fetch = typeof fetch;
-type Cursor = { mode: "scan"; historyId: string; pageToken?: string } | { mode: "history"; historyId: string; pageToken?: string; startHistoryId?: string };
+/**
+ * scan: `offset` messages of the current chunk, counted from its oldest, are done. `until` (seconds) pins
+ * the chunk's newest edge once a window is larger than one chunk. `pageToken` is from an older build and ignored.
+ */
+type Cursor = { mode: "scan"; historyId: string; offset?: number; until?: number; pageToken?: string } | { mode: "history"; historyId: string; pageToken?: string; startHistoryId?: string };
+/** How many message ids one scan chunk lists. Larger windows are walked chunk by chunk, newest chunk first. */
+const SCAN_CAP = 10_000;
+const LIST_PAGE = 500;
+/** Gmail's own labels for mail the mailbox wrote rather than received. */
+const NOT_RECEIVED = ["SENT", "DRAFT"];
 
 export type GoogleApp = { clientId: string; clientSecret: string };
 
@@ -120,7 +140,7 @@ export async function rateLimited(response: Response): Promise<boolean> {
 
 type Header = { name: string; value: string };
 type Part = { mimeType?: string; filename?: string; headers?: Header[]; body?: { data?: string; size?: number; attachmentId?: string }; parts?: Part[] };
-type GmailMessage = { id: string; threadId?: string; internalDate?: string; payload?: Part };
+type GmailMessage = { id: string; threadId?: string; internalDate?: string; labelIds?: string[]; payload?: Part };
 
 function header(headers: Header[] | undefined, name: string): string | undefined {
   return headers?.find((row) => row.name.toLowerCase() === name.toLowerCase())?.value;
@@ -150,8 +170,9 @@ function labelQuery(folder: string | undefined): string {
   return folder ? ` label:"${folder.replace(/"/g, "")}"` : "";
 }
 
-export function gmailConnector(input: { token: string; fetch?: Fetch }): MailboxConnector {
+export function gmailConnector(input: { token: string; fetch?: Fetch; /** For tests: a smaller scan chunk. */ scanCap?: number }): MailboxConnector {
   const fetcher = input.fetch ?? fetch;
+  const scanCap = Math.max(1, input.scanCap ?? SCAN_CAP);
   const token = input.token;
   const labelIds = new Map<string, string | null>();
 
@@ -168,6 +189,8 @@ export function gmailConnector(input: { token: string; fetch?: Fetch }): Mailbox
     for (const id of ids) {
       try {
         const message = await call<GmailMessage>(fetcher, token, `/messages/${encodeURIComponent(id)}?format=metadata&metadataHeaders=From&metadataHeaders=Reply-To&metadataHeaders=Subject`);
+        // The mailbox's own sent mail and drafts are not received mail. No labels in the answer: kept.
+        if ((message.labelIds ?? []).some((label) => NOT_RECEIVED.includes(label))) continue;
         const row = toHeader(message);
         if (row.receivedAt >= scope.after) out.push(row);
       } catch (error) {
@@ -179,11 +202,36 @@ export function gmailConnector(input: { token: string; fetch?: Fetch }): Mailbox
   }
 
   async function scan(scope: MailboxScope, cursor: Extract<Cursor, { mode: "scan" }>, limit: number): Promise<ListResult> {
-    const q = `after:${Math.floor(scope.after / 1000)}${labelQuery(scope.folder)}`;
-    const page = await call<{ messages?: { id: string }[]; nextPageToken?: string }>(fetcher, token, `/messages?${new URLSearchParams({ q, maxResults: String(limit), ...(cursor.pageToken ? { pageToken: cursor.pageToken } : {}) })}`);
-    const headers = await headersFor((page.messages ?? []).map((row) => row.id), scope);
-    const next: Cursor = page.nextPageToken ? { mode: "scan", historyId: cursor.historyId, pageToken: page.nextPageToken } : { mode: "history", historyId: cursor.historyId };
-    return { headers, cursor: JSON.stringify(next), more: Boolean(page.nextPageToken) };
+    const q = `after:${Math.floor(scope.after / 1000)}${cursor.until ? ` before:${cursor.until}` : ""}${labelQuery(scope.folder)} -in:sent -in:draft`;
+    // Ids only, newest first as Gmail gives them, up to one chunk.
+    const ids: string[] = [];
+    let pageToken: string | undefined;
+    do {
+      const page: { messages?: { id: string }[]; nextPageToken?: string } = await call(fetcher, token, `/messages?${new URLSearchParams({ q, maxResults: String(Math.min(LIST_PAGE, scanCap - ids.length)), ...(pageToken ? { pageToken } : {}) })}`);
+      ids.push(...(page.messages ?? []).map((row) => row.id));
+      pageToken = page.nextPageToken;
+    } while (pageToken && ids.length < scanCap);
+    const capped = Boolean(pageToken);
+    ids.reverse();
+    const offset = Math.min(Math.max(0, cursor.offset ?? 0), ids.length);
+    const slice = ids.slice(offset, offset + limit);
+    const headers = await headersFor(slice, scope);
+    const done = offset + slice.length;
+    // A window larger than one chunk is pinned at its newest edge, so mail arriving meanwhile cannot shift
+    // the count (it is picked up afterwards through history, from the id taken before the scan began).
+    const until = cursor.until ?? (capped ? Math.ceil(Date.now() / 1000) + 1 : undefined);
+    if (done < ids.length) return { headers, cursor: JSON.stringify({ mode: "scan", historyId: cursor.historyId, offset: done, ...(until ? { until } : {}) } satisfies Cursor), more: true };
+    if (capped && ids.length > 0) {
+      // This chunk is done and older mail remains: the next chunk ends where this one began.
+      const oldest = await call<GmailMessage>(fetcher, token, `/messages/${encodeURIComponent(ids[0])}?format=minimal`).catch((error) => {
+        // Deleted since it was listed: the scan ends here and history takes over. Any other failure fails the run, which is retried.
+        if (error instanceof NotFound) return null;
+        throw error;
+      });
+      const edge = oldest?.internalDate ? Math.floor(Number(oldest.internalDate) / 1000) + 1 : 0;
+      if (edge > 0 && (until === undefined || edge < until)) return { headers, cursor: JSON.stringify({ mode: "scan", historyId: cursor.historyId, offset: 0, until: edge } satisfies Cursor), more: true };
+    }
+    return { headers, cursor: JSON.stringify({ mode: "history", historyId: cursor.historyId } satisfies Cursor), more: false };
   }
 
   return {
@@ -382,8 +430,12 @@ export async function revokeToken(token: string, fetcher: Fetch = fetch): Promis
 /**
  * Asks Gmail to tell Selestial's Pub/Sub topic when the mailbox changes. A notification only says
  * "look again": the regular read still decides what is new, so a missed one is caught by the timer.
+ *
+ * It changes the mailbox's settings at Google, so a backend that is not production never asks: the same rule
+ * as every other Google write (convex/lib/google/http.ts, convex/lib/environment.ts).
  */
 export async function watchMailbox(input: { token: string; topic: string; label?: string; fetch?: Fetch }): Promise<{ historyId: string; expiration: number }> {
+  if (isNonProduction()) throw new Error(NOT_RUN_ON_TEST);
   const response = await (input.fetch ?? fetch)("https://gmail.googleapis.com/gmail/v1/users/me/watch", {
     method: "POST",
     headers: { Authorization: `Bearer ${input.token}`, "Content-Type": "application/json" },

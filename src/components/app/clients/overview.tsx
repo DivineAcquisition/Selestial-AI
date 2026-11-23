@@ -10,6 +10,7 @@ import { useState } from "react";
 
 import { useCompany } from "@/components/app/company";
 import { Modal } from "@/components/app/modal";
+import { QualityOnCustomer } from "@/components/app/screens/quality/context";
 import { Plus } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -34,7 +35,7 @@ export function OverviewTab({ profile, onBook, compact }: { profile: Profile; on
   const properties = profile.properties.filter((p) => p.status === "active");
   const nextAt = (propertyId: string) => summary?.upcoming.find((v) => v.propertyId === propertyId)?.startsAt ?? null;
   return (
-    <div className={compact ? "grid gap-4" : "grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)]"}>
+    <div className={compact ? "grid gap-4" : "grid gap-5 @4xl/main:grid-cols-[minmax(0,1fr)_minmax(0,20rem)]"}>
       <div className="grid min-w-0 content-start gap-5">
         {summary === undefined ? (
           <Skeleton className="h-40 rounded-2xl" />
@@ -127,6 +128,9 @@ export function OverviewTab({ profile, onBook, compact }: { profile: Profile; on
           </Card>
         ) : null}
         <SalesCard profile={profile} />
+        <Card title="Quality">
+          <QualityOnCustomer customerId={profile.id} />
+        </Card>
         <Card
           title="Contacts"
           action={

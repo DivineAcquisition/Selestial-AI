@@ -1,9 +1,11 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { canManage, useCompany } from "@/components/app/company";
+import { ConfirmGoogle } from "@/components/app/integrations/confirm-google";
 import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { Panel } from "@/components/app/shell";
 import { Button } from "@/components/ui/button";
@@ -20,6 +22,7 @@ const PURPOSES = ["photos", "resumes", "agreements", "reports", "creative", "doc
 /** What Google sent the Owner back with, in words. */
 export function googleResultWords(result: string): string {
   if (result === "connected") return "Connected. Now choose what Selestial may use below.";
+  if (result === "confirm") return "Google answered. Confirm the account below to finish connecting.";
   if (result.startsWith("partial:")) return "Google granted only part of what this tool needs, so it stays off. Reconnect and allow everything Google asks for.";
   if (result === "different_account") return "You signed in with a different Google account than the one this tool uses. Nothing changed. To switch, choose “Use a different Google account”.";
   if (result === "no_refresh_token") return "Google did not give lasting access, so nothing was connected. Try again and allow access.";
@@ -63,6 +66,8 @@ export function useConnectGoogle(feature: Feature) {
 export function GoogleToolPanel({ feature, result }: { feature: Feature; result: string | null }) {
   const { companyId, role } = useCompany();
   const status = useQuery(api.google.status, { companyId });
+  // Back from Google with ?result=confirm&pending=<one-time value>: the account waits to be confirmed.
+  const pending = useSearchParams().get("pending");
   if (!status) return <Skeleton className="h-40 rounded-xl" />;
   const tool = status.tools.find((t) => t.feature === feature)!;
   const owner = status.canManage;
@@ -70,7 +75,9 @@ export function GoogleToolPanel({ feature, result }: { feature: Feature; result:
   const conversions = status.tools.find((t) => t.feature === "conversions")!;
   return (
     <div className="grid gap-4">
-      {result ? (
+      {result === "confirm" && pending ? (
+        <ConfirmGoogle token={pending} describe={googleResultWords} />
+      ) : result ? (
         <p role="status" className="rounded-lg border border-border bg-muted px-3 py-2 text-sm text-strong">
           {googleResultWords(result)}
         </p>
@@ -80,7 +87,7 @@ export function GoogleToolPanel({ feature, result }: { feature: Feature; result:
       {tool.feature === "calendar" && tool.granted ? <CalendarPanel companyId={companyId} manager={manager} /> : null}
       {tool.feature === "business_profile" && tool.granted ? <ReviewsPanel companyId={companyId} manager={manager} /> : null}
       {tool.feature === "ads" ? <LeadsPanel companyId={companyId} owner={owner} /> : null}
-      {tool.feature === "ads" && tool.granted ? <AdsPanel companyId={companyId} owner={owner} /> : null}
+      {tool.feature === "ads" && tool.granted ? <AdsPanel companyId={companyId} owner={owner} manager={manager} accounts={tool.resources.filter((r) => r.kind === "ads_account" && r.access !== "lost").map((r) => ({ id: r.externalId, label: r.label }))} /> : null}
       {tool.feature === "ads" ? (
         <div className="grid gap-3 rounded-lg border border-border p-3">
           <span className="text-sm font-medium text-strong">{conversions.label}</span>
@@ -159,7 +166,7 @@ function Resources({ tool, owner, companyId }: { tool: Tool; owner: boolean; com
               <span className="text-sm font-medium text-strong">
                 {r.label} <span className="font-normal text-muted-foreground">· {USE_WORDS[r.kind](r.purpose)}</span>
               </span>
-              <span className="text-xs text-muted-foreground">{r.access === "verified" ? ACCESS_WORDS.verified : r.accessNote && r.access === "lost" ? r.accessNote : ACCESS_WORDS[r.access]}</span>
+              <span className="text-xs text-muted-foreground">{r.access === "verified" ? ACCESS_WORDS.verified : r.accessNote ? r.accessNote : ACCESS_WORDS[r.access]}</span>
             </span>
             {owner ? (
               <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => void run(() => remove({ companyId, resourceId: r.id }))}>
@@ -193,26 +200,40 @@ function ChooseDrive({ companyId, email }: { companyId: Id<"companies">; email?:
     run(async () => {
       for (const item of items) await add({ companyId, kind: purpose === "knowledge" ? "drive_source" : "drive_output", externalId: item.id, label: item.name, purpose: purpose === "knowledge" ? undefined : purpose, detail: item.mimeType });
     });
+  // Google lets Selestial use only files picked in Google's own chooser (the drive.file scope). Without the
+  // chooser a pasted link could only end as "can't reach it", so nothing is offered until it is set up.
+  if (!picker)
+    return (
+      <div className="grid gap-1 rounded-lg border border-border p-3">
+        <span className="text-sm font-medium text-strong">Add files or folders</span>
+        <p className="text-xs text-muted-foreground">Choosing files and folders from Google Drive is still being set up by Selestial’s team. Google only lets Selestial use files you pick in Google’s own chooser, so pasting a link can’t work until then. Nothing else is needed from you.</p>
+      </div>
+    );
+  const pick = (fileIds?: string[]) =>
+    void pickFromDrive({ folders: purpose !== "knowledge", loginHint: email, fileIds })
+      .then(async (items) => {
+        if (items.length) await save(items);
+        if (fileIds) setLink("");
+      })
+      .catch((e: Error) => setError(e.message));
   return (
     <div className="grid gap-2 rounded-lg border border-border p-3">
       <span className="text-sm font-medium text-strong">Add files or folders</span>
-      <p className="text-xs text-muted-foreground">Selestial only sees what you add here. Adding a folder doesn’t include the files already in it, so add those files too.</p>
+      <p className="text-xs text-muted-foreground">Selestial only sees what you pick in Google’s chooser. Picking a folder doesn’t include the files already in it, so pick those files too.</p>
       <div className="flex flex-wrap items-end gap-2">
         <Field label="Add" className="min-w-48">
           <Select value={purpose} onValueChange={(next) => setPurpose(next ?? "")} options={[{ value: "knowledge", label: "Information your team can ask about" }, ...PURPOSES.map((p) => ({ value: p, label: `A folder to save ${p} in` }))]} searchable="auto" />
         </Field>
-        {picker ? (
-          <Button type="button" variant="outline" disabled={busy} onClick={() => void pickFromDrive({ folders: purpose !== "knowledge", loginHint: email }).then((items) => (items.length ? save(items) : undefined)).catch((e: Error) => setError(e.message))}>
-            Pick from Google Drive
-          </Button>
-        ) : null}
+        <Button type="button" variant="outline" disabled={busy} onClick={() => pick()}>
+          Pick from Google Drive
+        </Button>
       </div>
       <div className="flex flex-wrap items-end gap-2">
-        <Field label={picker ? "Or paste a Google Drive link" : "Paste a Google Drive link"} className="min-w-64 flex-1">
+        <Field label="Or paste a Google Drive link" hint="Google’s chooser opens on that file or folder. Pick it there to let Selestial use it." className="min-w-64 flex-1">
           <TextInput value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://drive.google.com/drive/folders/…" />
         </Field>
-        <Button type="button" variant="outline" disabled={busy || !driveIdFrom(link)} onClick={() => void save([{ id: driveIdFrom(link)!, name: "From Google Drive" }]).then(() => setLink(""))}>
-          Add
+        <Button type="button" variant="outline" disabled={busy || !driveIdFrom(link)} onClick={() => pick([driveIdFrom(link)!])}>
+          Find it in Google Drive
         </Button>
       </div>
       <FormError message={error} />
@@ -253,7 +274,7 @@ function ChooseFromList({ companyId, kind, title, empty, options }: { companyId:
         {(choices?.items ?? []).map((item) => (
           <li key={item.id} className="flex items-center justify-between gap-2 text-sm">
             <span className="min-w-0 truncate">{item.label}</span>
-            <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void run(() => add({ companyId, kind: target, externalId: item.id, label: item.label, detail: kind === "locations" || kind === "conversion_actions" ? item.detail : undefined }))}>
+            <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void run(() => add({ companyId, kind: target, externalId: item.id, label: item.label, detail: kind === "locations" || kind === "conversion_actions" || kind === "ads_accounts" ? item.detail : undefined }))}>
               Use
             </Button>
           </li>
@@ -279,7 +300,7 @@ function DrivePanel({ companyId, manager }: { companyId: Id<"companies">; manage
             <li key={s.resourceId} className="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-border px-3 py-2">
               <span className="grid gap-0.5">
                 <span className="text-sm font-medium text-strong">{s.label}</span>
-                <span className="text-xs text-muted-foreground">{s.files.length ? s.files.map((f) => f.name).join(", ") : "Being read…"}</span>
+                <span className="text-xs text-muted-foreground">{s.files.length ? s.files.map((f) => f.name).join(", ") : s.reading ? "Being read…" : (s.note ?? "Nothing readable here yet.")}</span>
               </span>
               {role === "owner" ? (
                 <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => { await read({ companyId, resourceId: s.resourceId }); setNote("Reading it again now."); })}>
@@ -296,7 +317,7 @@ function DrivePanel({ companyId, manager }: { companyId: Id<"companies">; manage
             </Button>
           </div>
         ) : null}
-        <p className="text-xs text-muted-foreground">Agreements are exported as Google Docs from each agreement’s page. An export is a copy for reading: it never signs or changes the agreement.</p>
+        <p className="text-xs text-muted-foreground">Visit photos and signed agreements are saved to the folders you chose once they are final. Save an agreement as a Google Doc from its page (“Save as a Google Doc”); it is a copy for reading and never signs or changes the agreement.</p>
         {note ? <p role="status" className="text-sm text-strong">{note}</p> : null}
         <FormError message={error} />
       </div>
@@ -308,13 +329,56 @@ function CalendarPanel({ companyId, manager }: { companyId: Id<"companies">; man
   const sync = useMutation(api.googleCalendar.syncNow);
   const [from] = useState(() => Date.now());
   const busyTimes = useQuery(api.googleCalendar.busy, { companyId, from, to: from + 7 * 86_400_000 });
+  const changed = useQuery(api.googleCalendar.changed, { companyId });
+  const overBusy = useQuery(api.googleCalendar.overBusy, { companyId });
+  const keep = useMutation(api.googleCalendar.keepSelestial);
   const { busy, error, run } = useRun();
   const [note, setNote] = useState<string | null>(null);
+  const when = (at: number | null) => (at === null ? "no time" : new Date(at).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }));
   return (
     <Panel title="Your calendar">
       <div className="grid gap-3 px-4 py-4 sm:px-5">
-        <p className="text-sm text-muted-foreground">Visits and interviews stay up to date on your calendar. If one is moved or deleted in Google, Selestial asks you before changing anything.</p>
+        <p className="text-sm text-muted-foreground">Visits and interviews stay up to date on your calendar. If one is moved or deleted in Google, Selestial asks you before changing anything. Busy times on the calendars you chose are avoided when Selestial offers times, and flagged when someone schedules over them.</p>
         {(busyTimes ?? []).some((row) => row.problem) ? <p className="text-xs text-muted-foreground">One of your calendars couldn’t be read. Check it’s still shared with this Google account.</p> : null}
+        {overBusy && overBusy.length > 0 ? (
+          <div className="grid gap-1 rounded-lg border border-border p-3">
+            <span className="text-sm font-medium text-strong">Scheduled over a busy time</span>
+            <p className="text-xs text-muted-foreground">These were set by a person at a time your calendar shows as busy. Nothing was changed; move them if they clash.</p>
+            <ul className="grid gap-0.5 text-sm">
+              {overBusy.map((row) => (
+                <li key={row.id}>
+                  {row.what === "visit" ? "Visit" : "Interview"} · {when(row.startsAt)}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {changed && changed.length > 0 ? (
+          <div className="grid gap-2 rounded-lg border border-border p-3">
+            <span className="text-sm font-medium text-strong">Changed in Google, waiting for you</span>
+            <p className="text-xs text-muted-foreground">To keep Google’s time, change the {changed.some((c) => c.what === "visit") ? "visit" : "interview"} in Selestial to match; the calendar then follows. Otherwise put Selestial’s time back.</p>
+            <ul className="grid gap-2">
+              {changed.map((c) => (
+                <li key={c.linkId} className="flex flex-wrap items-start justify-between gap-2 text-sm">
+                  <span className="grid gap-0.5">
+                    <span className="text-strong">
+                      A {c.what} was {c.change} in Google
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      Selestial: {when(c.selestial.startsAt)}
+                      {c.google ? ` · Google: ${when(c.google.startsAt)}` : ""}
+                    </span>
+                  </span>
+                  {manager ? (
+                    <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => { await keep({ companyId, linkId: c.linkId }); setNote("Putting Selestial’s time back on your calendar."); })}>
+                      Put Selestial’s time back
+                    </Button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         {manager ? (
           <div>
             <Button type="button" variant="outline" disabled={busy} onClick={() => void run(async () => { const r = await sync({ companyId }); setNote(r.repeated ? "Already updating." : "Updating your calendar now."); })}>
@@ -339,7 +403,7 @@ function ReviewsPanel({ companyId, manager }: { companyId: Id<"companies">; mana
   return (
     <Panel title="Your reviews" action={manager ? <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void run(() => syncNow({ companyId }))}>Check for new reviews</Button> : undefined}>
       <div className="grid gap-3 px-4 py-4 sm:px-5">
-        <p className="text-xs text-muted-foreground">A reply is posted publicly only after an Owner or Manager approves its exact text. Review requests treat every customer with a finished visit the same, whatever they thought of it.</p>
+        <p className="text-xs text-muted-foreground">Retention drafts a reply to each new review. A reply is posted publicly only after an Owner or Manager approves its exact text. The review invitation on Retention’s feedback page is shown to every customer the same way, whatever they thought of the visit.</p>
         {reviews?.length === 0 ? <p className="text-sm text-muted-foreground">No reviews read yet.</p> : null}
         <ul className="grid gap-3">
           {(reviews ?? []).slice(0, 30).map((r) => {
@@ -352,7 +416,7 @@ function ReviewsPanel({ companyId, manager }: { companyId: Id<"companies">; mana
                 </span>
                 {r.comment ? <p className="text-sm">{r.comment}</p> : null}
                 {r.existingReply ? <p className="text-xs text-muted-foreground">Reply on Google: {r.existingReply}</p> : null}
-                <span className="text-xs text-muted-foreground">{r.state === "publishing" ? "Publishing…" : r.state === "failed" ? `Not published: ${r.problem ?? "Google refused it."}` : r.state === "published" ? "Replied" : r.state === "drafted" ? "Draft saved, not posted" : "No reply yet"}</span>
+                <span className="text-xs text-muted-foreground">{r.state === "publishing" ? "Publishing…" : r.state === "failed" ? `Not published: ${r.problem ?? "Google refused it."}` : r.state === "published" ? "Replied" : r.state === "drafted" ? (r.draftBy === "assistant" ? "Retention drafted a reply below. It is not posted until you approve it." : "Draft saved, not posted") : "No reply yet"}</span>
                 {manager && r.state !== "publishing" ? (
                   <>
                     <TextArea rows={3} value={text} onChange={(e) => setTexts((now) => ({ ...now, [r._id]: e.target.value }))} placeholder="Write a reply" />
@@ -417,15 +481,91 @@ function LeadsPanel({ companyId, owner }: { companyId: Id<"companies">; owner: b
   );
 }
 
-function AdsPanel({ companyId, owner }: { companyId: Id<"companies">; owner: boolean }) {
+const lines = (value: string) => value.split(/[\n,]/).map((part) => part.trim()).filter(Boolean);
+const perLine = (value: string) => value.split("\n").map((part) => part.trim()).filter(Boolean);
+
+/** A Manager drafts a campaign here, the same draft Chat makes. It costs nothing and creates nothing in Google Ads. */
+function DraftCampaign({ companyId, accounts }: { companyId: Id<"companies">; accounts: { id: string; label: string }[] }) {
+  const draft = useMutation(api.googleAds.draftCampaign);
+  const { busy, error, run } = useRun();
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({ accountId: accounts[0]?.id ?? "", name: "", budget: "20", keywords: "", zips: "", cities: "", headlines: "", descriptions: "", finalUrl: "" });
+  const [note, setNote] = useState<string | null>(null);
+  const set = (key: keyof typeof form) => (e: { target: { value: string } }) => setForm((now) => ({ ...now, [key]: e.target.value }));
+  if (accounts.length === 0) return <p className="text-xs text-muted-foreground">To draft a campaign, the Owner first chooses an ad account above.</p>;
+  if (!open)
+    return (
+      <div>
+        <Button type="button" size="sm" variant="outline" onClick={() => setOpen(true)}>
+          Draft a campaign
+        </Button>
+        {note ? <p role="status" className="mt-2 text-sm text-strong">{note}</p> : null}
+      </div>
+    );
+  const submit = () =>
+    void run(async () => {
+      const headlines = perLine(form.headlines);
+      const descriptions = perLine(form.descriptions);
+      await draft({ companyId, accountId: form.accountId, name: form.name, dailyBudgetCents: Math.round(Number(form.budget) * 100), keywords: lines(form.keywords), postalCodes: lines(form.zips), cities: perLine(form.cities), headline: headlines[0] ?? "", description: descriptions[0] ?? "", headlines: headlines.slice(1), descriptions: descriptions.slice(1), finalUrl: form.finalUrl.trim() || undefined });
+      setOpen(false);
+      setNote("Draft saved. Nothing was created in Google Ads; the Owner approves it below.");
+    });
+  return (
+    <div className="grid gap-2 rounded-lg border border-border p-3">
+      <span className="text-sm font-medium text-strong">Draft a campaign</span>
+      {accounts.length > 1 ? (
+        <Field label="Ad account">
+          <Select value={form.accountId} onValueChange={(next) => setForm((now) => ({ ...now, accountId: next ?? "" }))} options={accounts.map((a) => ({ value: a.id, label: a.label }))} searchable="auto" />
+        </Field>
+      ) : null}
+      <Field label="Name">
+        <TextInput value={form.name} onChange={set("name")} placeholder="Spring cleaning" />
+      </Field>
+      <Field label="Daily budget, dollars">
+        <TextInput inputMode="decimal" value={form.budget} onChange={set("budget")} />
+      </Field>
+      <Field label="Keywords, one per line or separated by commas">
+        <TextArea rows={2} value={form.keywords} onChange={set("keywords")} placeholder="house cleaning, maid service" />
+      </Field>
+      <Field label="ZIP codes you serve">
+        <TextInput value={form.zips} onChange={set("zips")} placeholder="78701, 78702" />
+      </Field>
+      <Field label="Cities you serve, one per line (optional)">
+        <TextArea rows={2} value={form.cities} onChange={set("cities")} placeholder="Austin, TX" />
+      </Field>
+      <Field label="Headlines, one per line: at least 3, up to 30 characters each">
+        <TextArea rows={3} value={form.headlines} onChange={set("headlines")} />
+      </Field>
+      <Field label="Descriptions, one per line: at least 2, up to 90 characters each">
+        <TextArea rows={2} value={form.descriptions} onChange={set("descriptions")} />
+      </Field>
+      <Field label="Landing page (leave empty for your booking page)">
+        <TextInput value={form.finalUrl} onChange={set("finalUrl")} placeholder="https://" />
+      </Field>
+      <div className="flex gap-2">
+        <Button type="button" size="sm" variant="primary" disabled={busy || !form.name.trim()} onClick={submit}>
+          Save draft
+        </Button>
+        <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => setOpen(false)}>
+          Cancel
+        </Button>
+      </div>
+      <FormError message={error} />
+    </div>
+  );
+}
+
+function AdsPanel({ companyId, owner, manager, accounts }: { companyId: Id<"companies">; owner: boolean; manager: boolean; accounts: { id: string; label: string }[] }) {
   const drafts = useQuery(api.googleAds.drafts, { companyId });
   const snapshots = useQuery(api.googleAds.snapshots, { companyId });
   const approve = useMutation(api.googleAds.approveCampaign);
   const activate = useMutation(api.googleAds.activateCampaign);
+  const refresh = useMutation(api.googleAds.refreshResults);
   const { busy, error, run } = useRun();
   return (
-    <Panel title="Google Ads">
+    <Panel title="Google Ads" action={manager && accounts.length ? <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => { for (const a of accounts) await refresh({ companyId, accountId: a.id }); })}>Read results now</Button> : undefined}>
       <div className="grid gap-3 px-4 py-4 sm:px-5">
+        {accounts.length > 0 && snapshots?.length === 0 ? <p className="text-xs text-muted-foreground">Results are read every six hours. None have been read yet.</p> : null}
         {(snapshots ?? []).map((s) => (
           <div key={s.accountId} className="text-sm">
             <span className="font-medium text-strong">Account {s.accountId}</span> <span className="text-xs text-muted-foreground">· last 30 days, read {new Date(s.fetchedAt).toLocaleString()}</span>
@@ -438,7 +578,8 @@ function AdsPanel({ companyId, owner }: { companyId: Id<"companies">; owner: boo
             </ul>
           </div>
         ))}
-        <p className="text-xs text-muted-foreground">Campaign drafts are made in Chat or here by a Manager and cost nothing. The Owner approves a draft and its daily budget to create it paused, and turns it on separately.</p>
+        <p className="text-xs text-muted-foreground">Campaign drafts are made in Chat or here by a Manager and cost nothing. The Owner approves a draft and its daily budget to create it paused in Google Ads, with its keywords, ad and service area, and turns it on separately.</p>
+        {manager ? <DraftCampaign companyId={companyId} accounts={accounts} /> : null}
         <ul className="grid gap-2">
           {(drafts ?? []).map((d) => (
             <li key={d._id} className="grid gap-1 rounded-lg border border-border p-3 text-sm">

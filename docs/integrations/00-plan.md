@@ -52,6 +52,9 @@ What Selestial connects to, why, and the order it is built in. The list itself i
     symbols only, because the wordmarks are too wide for a tile.
   - Jobber, Checkr, Housecall Pro, ZenMaid and Launch27: the app icon each company publishes on its own
     website (Launch27's is a wordmark).
+  - Quo (formerly OpenPhone): the app icon Quo publishes on quo.com (its apple-touch-icon,
+    `quo-ios-256.png`, black QUO on Quo yellow), added November 22, 2026. Quo's header wordmark is the
+    same lettering; the square icon is used because it fits a tile.
   - ZipRecruiter (on the public site's home section): the app icon ZipRecruiter publishes at
     ziprecruiter.com/apple-touch-icon.png (added November 21, 2026).
   - The public site uses these same files (`/integrations` and the home page's integrations section);

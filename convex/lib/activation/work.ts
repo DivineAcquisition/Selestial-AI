@@ -236,7 +236,9 @@ async function inquiryFollowThrough(env: Env, phase: "start" | "check"): Promise
   if (pending.length && now < (task.watching?.until ?? 0)) {
     return { kind: "watch", statusLine: `Reviewing imported inquiries: ${runs.length - pending.length} of ${runs.length} done.`, steps: [], outputs: task.outputs, watching: task.watching!, checkAfterMs: 20_000 };
   }
-  const steps: Step[] = [step(now, `Sales reviewed ${plural(runs.length - pending.length, "inquiry", "inquiries")} that were missing a next step.`)];
+  // Only a run that finished counts as reviewed: skipped, failed and unfinished runs are each said separately below.
+  const reviewed = runs.filter((row) => row.status === "done").length;
+  const steps: Step[] = [step(now, reviewed ? `Sales reviewed ${plural(reviewed, "inquiry", "inquiries")} that ${reviewed === 1 ? "was" : "were"} missing a next step.` : "Sales did not finish reviewing any inquiry in this pass.", reviewed ? "done" : "info")];
   for (const run of runs.filter((row) => row.status === "skipped").slice(0, 3)) steps.push(step(now, run.result ?? "Sales skipped one inquiry.", "info"));
   const failed = runs.filter((row) => row.status === "failed");
   if (failed.length) steps.push(step(now, `${plural(failed.length, "inquiry", "inquiries")} could not be reviewed: ${failed[0].result ?? "Sales stopped."}`, "failed"));
@@ -404,8 +406,8 @@ async function applicantReview(env: Env, phase: "start" | "check"): Promise<Resu
   const steps: Step[] = [step(now, finished ? "Read your hiring inbox." : "Your hiring inbox did not finish reading in time; Recruiter's routine check continues.", finished ? "done" : "info")];
   for (const problem of problems) steps.push(step(now, problem, "failed"));
   if (!fresh.length) {
-    steps.push(step(now, "No new applications were in the inbox. Recruiter keeps checking every 10 minutes.", "info"));
-    return { kind: "done", state: "completed", statusLine: "No new applicants yet. Recruiter keeps checking your inbox.", steps, outputs: [] };
+    steps.push(step(now, finished ? "No new applications were in the inbox. Recruiter keeps checking every 10 minutes." : "No applications have been filed yet. Recruiter keeps reading your inbox every 10 minutes.", "info"));
+    return { kind: "done", state: "completed", statusLine: finished ? "No new applicants yet. Recruiter keeps checking your inbox." : "Your hiring inbox is still being read. Recruiter keeps checking it.", steps, outputs: [] };
   }
   steps.push(step(now, `Filed ${plural(fresh.length, "application")} from the people who applied.`));
   if (!openNeeds.length) steps.push(step(now, "Nobody was invited: no role is open yet.", "info"));
@@ -424,6 +426,7 @@ const COVER_GROUP: Record<CoverState, "covered" | "offered" | "decision" | "gap"
   covered: "covered",
   underway: "skip",
   gone: "skip",
+  held: "skip",
   closed: "skip",
   offer_out: "offered",
   offered: "offered",
@@ -449,11 +452,19 @@ async function coverageReview(env: Env): Promise<Result> {
   if (groups.gap.length) steps.push(step(now, `${plural(groups.gap.length, "visit")} still ${groups.gap.length === 1 ? "has" : "have"} no cleaner Dispatch can offer.`, "waiting"));
   if (env.snapshot.dispatch.uncoveredJobs > ids.length) steps.push(step(now, `Dispatch's routine check works the other ${env.snapshot.dispatch.uncoveredJobs - ids.length}.`, "info"));
   const needs = groups.gap.length + groups.decision.length;
-  const outputs: Output[] = [{ kind: "coverage_plan", ref: { table: "jobs", id: ids[0] ?? "schedule", label: "Coverage for the next two weeks", href: "/app/schedule" }, state: needs ? `${needs} need coverage` : "covered or offered", created: true, count: needs }];
+  const outputs: Output[] = [{ kind: "coverage_plan", ref: { table: "jobs", id: ids[0] ?? env.snapshot.dispatch.uncoveredJobIds[0] ?? "schedule", label: "Coverage for the next two weeks", href: "/app/schedule" }, state: needs ? `${needs} need coverage` : "covered or offered", created: true, count: needs }];
   return {
     kind: "done",
     state: needs ? "ready_for_review" : "completed",
-    statusLine: needs ? `${plural(needs, "upcoming job")} ${needs === 1 ? "needs" : "need"} coverage.` : ids.length ? `Every uncovered visit now has an offer out.` : "Every upcoming visit is covered.",
+    statusLine: needs
+      ? `${plural(needs, "upcoming job")} ${needs === 1 ? "needs" : "need"} coverage.`
+      : !ids.length
+        ? "Every upcoming visit is covered."
+        : groups.offered.length === ids.length
+          ? "Every uncovered visit now has an offer out."
+          : groups.offered.length
+            ? `${plural(groups.offered.length, "visit")} now ${groups.offered.length === 1 ? "has" : "have"} an offer out. The rest are covered or already with a person.`
+            : "Dispatch checked your upcoming visits. The uncovered ones are already covered or with a person.",
     steps,
     outputs,
   };
@@ -508,10 +519,19 @@ async function retentionReview(env: Env, phase: "start" | "check"): Promise<Resu
     .query("retentionCases")
     .withIndex("by_company_status", (q) => q.eq("companyId", company._id).eq("status", "needs_attention"))
     .take(200);
-  const steps: Step[] = [step(now, run?.status === "failed" ? "Retention could not finish reconciling; its routine check tries again." : "Reconciled your visits, plans, billing and agreements.", run?.status === "failed" ? "failed" : "done")];
+  // Only a run that finished reconciled anything. A run still waiting (Retention paused after the start), replaced by
+  // Retention's own routine run, or missing, is said as such: the routine check does the reconciling.
+  const reconciled = run?.status === "done";
+  const steps: Step[] = [
+    reconciled
+      ? step(now, "Reconciled your visits, plans, billing and agreements.")
+      : run?.status === "failed"
+        ? step(now, "Retention could not finish reconciling; its routine check tries again.", "failed")
+        : step(now, "Retention has not finished reconciling yet; its routine check continues.", "info"),
+  ];
   if (!signals.length && !attention.length) {
-    steps.push(step(now, "Nothing needs follow-through right now.", "info"));
-    return { kind: "done", state: "completed", statusLine: "Retention found nothing that needs follow-through right now.", steps, outputs: [] };
+    steps.push(step(now, reconciled ? "Nothing needs follow-through right now." : "Nothing is waiting on you so far.", "info"));
+    return { kind: "done", state: "completed", statusLine: reconciled ? "Retention found nothing that needs follow-through right now." : "Retention is still checking your completed visits and plans.", steps, outputs: [] };
   }
   if (signals.length) steps.push(step(now, `Found ${plural(signals.length, "signal")} worth a look.`));
   if (attention.length) steps.push(step(now, `${plural(attention.length, "customer case")} ${attention.length === 1 ? "needs" : "need"} your decision.`, "waiting"));
@@ -537,7 +557,7 @@ async function careSetup(env: Env): Promise<Result> {
   const s = env.snapshot;
   const outputs: Output[] = [];
   if (!s.retention.guaranteeWritten) outputs.push(await gapTask(env, "retention", "activation.care:guarantee", "Write your service guarantee in your own words", "Add the guarantee Retention may offer when a visit falls short, in the Retention Playbook.", "The guarantee is written in the Retention Playbook."));
-  if (!s.retention.reviewLink) outputs.push(await gapTask(env, "retention", "activation.care:review_link", "Add the link where customers leave reviews", "Add your review link in the Retention Playbook, so happy customers can be pointed to it.", "A review link is set in the Retention Playbook."));
+  if (!s.retention.reviewLink) outputs.push(await gapTask(env, "retention", "activation.care:review_link", "Add the link where customers leave reviews", "Add your review link in the Retention Playbook, so every customer's feedback invitation can point to it.", "A review link is set in the Retention Playbook."));
   const feedback: Output = {
     kind: "feedback_request",
     ref: { table: "companies", id: env.company._id, label: "Feedback request after a customer's first visit", href: "/app/agents/retention/playbook" },
