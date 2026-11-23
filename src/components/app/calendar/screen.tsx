@@ -22,9 +22,11 @@ import { linkTo } from "@/lib/app/navigation-helpers";
 import { cn } from "@/lib/utils";
 
 import { api } from "../../../../convex/_generated/api";
+import type { Id } from "../../../../convex/_generated/dataModel";
 import { InterviewForm, MemberHoursForm, TaskForm } from "./create-forms";
 import { EVENT_KIND_LABEL, EventForm, type EventKind } from "./event-form";
 import { ItemPanel, ITEM_PARAM } from "./item-panel";
+import { MoveEventDialog, MoveVisitDialog } from "./move-dialog";
 import { itemLabel, LAYER_LOOK, timeLabel, TimingMark, type CalendarData, type Item } from "./look";
 import { Agenda, MonthGrid, TeamLanes, TimeGrid } from "./views";
 
@@ -243,6 +245,15 @@ export function CalendarScreen() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [railOpen, setRailOpen] = useState(true);
   const [creating, setCreating] = useState<Creating | null>(null);
+  const [moving, setMoving] = useState<{ item: Item; to: { startsAt: number; endsAt: number } } | null>(null);
+  /**
+   * What can be dragged: a visit that has not started, and Calendar's own events that are still on, for
+   * Owners and Managers. Projected visits, other records and anything private to someone else cannot.
+   */
+  const canMove = (item: Item) =>
+    manager &&
+    ((item.source.table === "jobs" && item.timing === "appointment" && ["booked", "offer_sent", "partly_staffed", "fully_staffed"].includes(item.status)) ||
+      (item.source.table === "calendarEvents" && item.title !== "Busy" && !["completed", "cancelled"].includes(item.status)));
 
   // New things start on the day being looked at, or today.
   const createDay = state.date ?? (now ? localDate(now, timezone) : null);
@@ -423,7 +434,7 @@ export function CalendarScreen() {
           ) : state.view === "team" ? (
             <TeamLanes data={data} range={range} items={visible} timezone={timezone} onOpen={onOpen} cleanerIds={state.cleaner ? new Set(data.resources.crews.find((crew) => crew.id === state.cleaner)?.cleanerIds ?? [state.cleaner]) : null} />
           ) : (
-            <TimeGrid range={range} items={visible} timezone={timezone} now={now} onOpen={onOpen} dense={state.view === "week"} />
+            <TimeGrid range={range} items={visible} timezone={timezone} now={now} onOpen={onOpen} dense={state.view === "week"} canMove={canMove} onMove={(item, to) => setMoving({ item, to })} />
           )}
           {data && visible.length === 0 && state.view !== "agenda" ? (
             <p className="border-t border-border px-5 py-3 text-center text-xs text-muted-foreground">Nothing is scheduled here with the layers and filters chosen.</p>
@@ -462,6 +473,13 @@ export function CalendarScreen() {
 
       <ItemPanel item={selected} missing={Boolean(selectedKey) && data !== undefined && selected === null} timezone={timezone} onClose={closeItem} />
 
+      <Modal open={moving !== null} onClose={() => setMoving(null)} title={moving?.item.source.table === "jobs" ? "Move the visit" : "Move the event"} description="Nothing is saved until you confirm.">
+        {moving?.item.source.table === "jobs" ? (
+          <MoveVisitDialog item={moving.item} proposed={moving.to} onDone={() => setMoving(null)} />
+        ) : moving ? (
+          <MoveEventDialog eventId={moving.item.source.id as Id<"calendarEvents">} proposed={moving.to} onDone={() => setMoving(null)} />
+        ) : null}
+      </Modal>
       <Modal open={creating === "visit"} onClose={() => setCreating(null)} title="Add a visit" description="A visit is a promise to the customer. It is staffed only when every cleaner it needs has accepted.">
         <NewVisitForm onDone={() => setCreating(null)} />
       </Modal>

@@ -64,18 +64,20 @@ type Form = {
 const MEMBER = "m:";
 const CLEANER = "c:";
 
-function initialForm(kind: EventKind, existing: Existing | undefined, me: string | undefined, timezone: string, day: string | null): Form {
+function initialForm(kind: EventKind, existing: Existing | undefined, me: string | undefined, timezone: string, day: string | null, moveTo?: { startsAt: number; endsAt: number }): Form {
   if (existing) {
+    const startsAt = moveTo?.startsAt ?? existing.startsAt;
+    const endsAt = moveTo?.endsAt ?? existing.endsAt;
     const handoffCleaners = new Set(existing.handoffs.map((row) => row.cleanerId as string));
     return {
       title: existing.title,
       notes: existing.notes ?? "",
       location: existing.location ?? "",
-      date: existing.allDay?.from ?? localDate(existing.startsAt, timezone),
-      from: localTime(existing.startsAt, timezone),
-      to: localTime(existing.endsAt, timezone),
-      allDay: existing.allDay !== null,
-      through: existing.allDay?.through ?? localDate(existing.startsAt, timezone),
+      date: moveTo ? localDate(startsAt, timezone) : (existing.allDay?.from ?? localDate(startsAt, timezone)),
+      from: localTime(startsAt, timezone),
+      to: localTime(endsAt, timezone),
+      allDay: !moveTo && existing.allDay !== null,
+      through: moveTo ? localDate(startsAt, timezone) : (existing.allDay?.through ?? localDate(startsAt, timezone)),
       private: existing.private,
       members: kind === "inspection" ? [] : existing.members.map((row) => row.id),
       cleaners: existing.cleaners.map((row) => row.id as string).filter((id) => !handoffCleaners.has(id)),
@@ -93,13 +95,13 @@ function initialForm(kind: EventKind, existing: Existing | undefined, me: string
  * Makes or changes one of Calendar's own events. What saving would run into is shown as the form is
  * filled in, checked against the people the event takes; the same check runs again on save.
  */
-export function EventForm({ kind, existing, day, onDone }: { kind: EventKind; existing?: Existing; day?: string | null; onDone: () => void }) {
+export function EventForm({ kind, existing, day, moveTo, onDone }: { kind: EventKind; existing?: Existing; day?: string | null; /** A new time chosen by dragging, to review before saving. */ moveTo?: { startsAt: number; endsAt: number }; onDone: () => void }) {
   const { companyId, timezone } = useCompany();
   const options = useQuery(api.calendarEvents.options, { companyId });
   const create = useMutation(api.calendarEvents.create);
   const update = useMutation(api.calendarEvents.update);
   const { busy, error, run, setError } = useRun();
-  const [form, setForm] = useState<Form>(() => initialForm(kind, existing, undefined, timezone, day ?? null));
+  const [form, setForm] = useState<Form>(() => initialForm(kind, existing, undefined, timezone, day ?? null, moveTo));
   const [touchedPeople, setTouchedPeople] = useState(Boolean(existing));
   const set = <K extends keyof Form>(key: K, value: Form[K]) => setForm((current) => ({ ...current, [key]: value }));
 

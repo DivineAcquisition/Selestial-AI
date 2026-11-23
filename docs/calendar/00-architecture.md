@@ -147,8 +147,38 @@ Create offers a cleaning booking, one visit, an estimate or walkthrough (a Sales
 an interview for an applicant Recruiter is waiting to interview, a training session, unavailable time, a
 business event, an appointment, a dated task and working hours.
 
-Not yet: drag, resize and the reschedule preview with notifications for visits (phase 4); Ask Selestial,
-Needs attention actions, Google mirroring of Calendar's events and the sync gaps (phase 5).
+**Phase 4 (built).** Moving things from Calendar.
+
+- Week and Day: an Owner or Manager drags a visit that has not started, or one of Calendar's own events,
+  to another time or day, or drags its bottom edge to change its length, in 15-minute steps. With the
+  keyboard, Alt with the arrows does the same. Dragging saves nothing: it opens the move.
+- A visit's move (`convex/calendarMoves.ts`) is Dispatch's own `planMove`/`commitMove`, with the company's
+  area and hours, what the client was promised (arrival window, finish-by time, the time they were told),
+  each cleaner and what happens to them, the client notice, the travel caveat and the plan the visit
+  belongs to, all shown first. The day, time and length can be typed in the same dialog.
+- Notices: a cleaner asked again always gets the new offer (it is how they accept). A cleaner whose offer
+  is withdrawn or whose place reopens is texted unless the person turns it off and tells them
+  themselves; `commitMove` takes the skipped ones and records how many. The client notice goes through
+  the client-message path (`convex/lib/calendar/customerNotice.ts`): the client's own phone, else
+  email, under the sending policy (permission, quiet hours, a ready sender), once per move. The move is
+  saved first; a notice that cannot go is reported separately and recorded
+  (`job.move_notice_not_sent`), never undoing the move.
+- Recurring visits: "this visit only" is the move above. "This and following" and "every upcoming visit"
+  go through the plan's own change: `servicePlans.affected` then `changeSeries` (Clients' plans), or
+  `plans.changePreview` then `changeFuture` (Sales' plans), with the visits they replace listed first.
+  From Calendar the series can change its time of day, not its weekday (`changeSeries` restarts the series
+  on the day of the change); a weekday change is made on the plan itself. Completed visits and their
+  prices are untouched.
+- Calendar's own events move through their edit form, opened at the new time, with the same conflict
+  check (`calendarEvents.update`).
+- Concurrency: a visit's move is refused if the visit changed since the preview (Dispatch's version); a
+  plan change is refused if the plan or its booked visits changed (its revision and the shown visits); an
+  event's change is refused on a stale revision.
+
+Team view is read-only: reassigning a cleaner stays in the visit's record panel (Dispatch's offers).
+
+Not yet: Ask Selestial, Needs attention actions, Google mirroring of Calendar's events and the sync gaps
+(phase 5).
 
 ## Open questions
 
