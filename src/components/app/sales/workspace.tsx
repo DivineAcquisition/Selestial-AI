@@ -134,7 +134,7 @@ export function SalesWorkspace({ draftId }: { draftId: Id<"salesDrafts"> }) {
   const booking = summary?.mode === "booking" ? summary : null;
   const sectionDone = (section: string) => Boolean(summary && !summary.needs.some((n) => n.section === section && n.blocking));
   const name = data.customer && data.customer._id === working.customerId ? data.customer.name : (data.opportunity?.title ?? "New customer");
-  const back = data.draft.entry?.from === "dispatch" ? "/app/agents/dispatch/schedule" : data.draft.entry?.from === "customer" ? "/app/customers" : "/app/agents/sales/quotes-proposals";
+  const back = data.draft.entry?.from === "dispatch" ? "/app/agents/dispatch/schedule" : data.draft.entry?.from === "calendar" ? "/app/calendar" : data.draft.entry?.from === "customer" ? "/app/customers" : "/app/agents/sales/quotes-proposals";
   // Chat opens in a new tab with this draft as its context, so the call in progress is never lost.
   const askChat = () => {
     setChatError(null);

@@ -22,6 +22,7 @@ import {
   InsightsIcon,
   LightningIcon,
   PriceTagIcon,
+  ScheduleIcon,
   Search,
   SirenIcon,
   Sparkles,
@@ -51,6 +52,7 @@ import { cn } from "@/lib/utils";
 const ITEM_ICON: Record<NavItemId, LucideIcon> = {
   home: DashboardIcon,
   approvals: Hand,
+  calendar: ScheduleIcon,
   inbox: ChatIcon,
   search: Search,
   chat: Sparkles,

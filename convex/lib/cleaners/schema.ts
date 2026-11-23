@@ -255,7 +255,10 @@ export const cleanersTables = {
     note: v.optional(v.string()),
     by: byValidator,
     createdAt: v.number(),
-  }).index("by_company_cleaner_date", ["companyId", "cleanerId", "date"]),
+  })
+    .index("by_company_cleaner_date", ["companyId", "cleanerId", "date"])
+    /** Calendar reads everyone's date exceptions in a range through this. */
+    .index("by_company_date", ["companyId", "date"]),
 
   /** A skill a cleaner says they have. Dispatch reads only the skills a person confirmed (on the cleaner). */
   skillClaims: defineTable({

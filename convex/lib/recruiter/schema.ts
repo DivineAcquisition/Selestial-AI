@@ -547,7 +547,9 @@ export const recruiterTables = {
   })
     .index("by_company_application", ["companyId", "applicationId"])
     .index("by_status_start", ["status", "startsAt"])
-    .index("by_company_status", ["companyId", "status"]),
+    .index("by_company_status", ["companyId", "status"])
+    /** Calendar reads a date range of interviews through this. */
+    .index("by_company_start", ["companyId", "startsAt"]),
 
   hiringOffers: defineTable({
     companyId: v.id("companies"),
