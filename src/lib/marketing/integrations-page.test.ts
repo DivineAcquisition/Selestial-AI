@@ -10,7 +10,9 @@ import { INTEGRATIONS as HOME } from "./content";
 import { hubNodes, HUB_IDS } from "@/components/marketing/integration-hub";
 import { integrationsByCategory } from "./integrations-page";
 
-const SELESTIAL_OWN = new Set(["texting-number"]);
+// Selestial's own number has no logo of its own. Quo's official mark isn't in the repository yet (its developer terms
+// require "Powered by OpenPhone" attribution, and the asset should come from Quo): its card shows a plain glyph until then.
+const SELESTIAL_OWN = new Set(["texting-number", "quo"]);
 const logoExists = (id: string) => {
   const file = logoFile(id);
   return file !== null && existsSync(join(process.cwd(), "public", "integrations", file));
@@ -49,8 +51,13 @@ describe("the public Integrations page", () => {
       expect(logoExists(node.id), node.id).toBe(true);
       expect(node.live, node.id).toBe((BUILT as readonly string[]).includes(node.id));
     }
-    // Quo is on the hub, with Quo's own logo, and says it is coming soon until it is built.
-    expect(nodes.find((node) => node.id === "quo")).toMatchObject({ name: "Quo (formerly OpenPhone)", live: false });
+    // Each agent on the inner ring sits halfway between two tools' lines, so no line runs through a face.
+    expect(HUB_IDS).toHaveLength(10);
+    // Field-service platforms are import sources, not tools the agents work in: they stay off the hub.
+    expect(nodes.map((node) => node.id)).not.toContain("jobber");
+    expect(nodes.map((node) => node.id)).not.toContain("housecall-pro");
+    // Quo is on the hub, with Quo's own logo, and live now that it is built.
+    expect(nodes.find((node) => node.id === "quo")).toMatchObject({ name: "Quo (formerly OpenPhone)", live: true });
     expect(logoFile("quo")).toBe("quo.png");
   });
 });

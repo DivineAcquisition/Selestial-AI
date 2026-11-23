@@ -75,7 +75,7 @@ and the communications set (connections, credentials, webhook deliveries, comms,
 | **Finance** | Financial records, credits and refunds, cleaner earnings and pay, actual movement of money. |
 | **Owner** | Company policy, exceptional remedies, serious-incident decisions, consequential personnel decisions, anything outside delegated authority. |
 
-There is no Team Coordinator. Marketing and Customer Care have no part in this flow.
+There is no Team Coordinator. Marketing and Care have no part in this flow.
 
 **One conversation owner per recovery episode.** When a customer is involved, the Retention case is the
 episode. Quality may prepare a focused customer question, but it is handed to Retention

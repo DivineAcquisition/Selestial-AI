@@ -115,7 +115,7 @@ Existing tests updated for Quality being built:
 - the Overview's department and sidebar facts
 - billing: Quality is allowed on Expand and blocked on Operate
 - activation
-- Early access: now uses Customer Care as the not-built agent
+- Early access: now uses Care as the not-built agent
 - the photo-review AI test: now seeds the Operate plan explicitly
 - the dispatch harness: Quality's review task is filed under Quality
 
@@ -126,6 +126,6 @@ Existing tests updated for Quality being built:
 - **The Claude reader against the live API**, and the evaluation's live pass.
 - **Real texts** to a real cleaner's phone, the link opened on iOS and Android, and camera upload on poor
   connectivity.
-- A **live deployment**: schema push, the 10-minute crons, the `/webhooks/quo/` and `/quality-files/`
+- A **live deployment**: schema push, the 10-minute crons, the `/webhooks/quality-quo/` and `/quality-files/`
   routes.
 - **Company Chat choosing Quality's tools** in a real conversation. The tools are tested only as functions.

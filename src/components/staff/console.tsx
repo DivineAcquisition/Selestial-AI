@@ -100,7 +100,7 @@ function StaffShell({ role, children }: { role: "admin" | "support" | "reviewer"
   const pathname = usePathname();
   return (
     <div className="min-h-dvh bg-muted/50">
-      <header className="sticky top-0 z-20 border-b border-border bg-card/95 backdrop-blur">
+      <header className="sticky top-0 z-header border-b border-border bg-card/95 backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-5 gap-y-2 px-4 py-2.5 sm:px-6">
           <Link href="/staff/operations" className="flex items-center gap-2 font-heading text-base text-strong">
             <LogoMark className="size-7" />
@@ -1398,7 +1398,7 @@ function UnpaidItem({ row }: { row: UnpaidRow }) {
 
 // ── Early access to coming-soon agents ──────────────────────────────────────────────────────────────
 
-const AGENT_LABEL: Record<string, string> = { marketing: "Marketing", quality: "Quality", "customer-care": "Customer Care", "team-coordinator": "Team Coordinator" };
+const AGENT_LABEL: Record<string, string> = { marketing: "Marketing", quality: "Quality", "customer-care": "Care", "team-coordinator": "Team Coordinator" };
 const REQUEST_STATUS: Record<string, { label: string; variant: "info" | "success" | "outline" }> = {
   requested: { label: "Asked", variant: "info" },
   invited: { label: "Invited", variant: "success" },

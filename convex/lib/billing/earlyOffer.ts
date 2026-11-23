@@ -1,14 +1,14 @@
 /**
  * The early-user offer (the Owner's approval of November 22, 2026; docs/billing/README.md, "Early-user offer").
  *
- *   $199 a month for the first 12 months, for the first 15 companies whose FIRST plan payment succeeds.
+ *   $199 a month for the first 12 months, for the first 25 companies whose FIRST plan payment succeeds.
  *   Then $299, moved automatically at the end of the 12th billing period. A company that ever held a place
  *   never gets the price again, and its place is never handed to anyone else: 15 means 15 ever granted.
  *
  * How a place is used, exactly:
  *
  *   1. Preview. An Owner with no plan, whose company never had a paid plan and never held a place, opens the
- *      purchase while fewer than 15 places are used: the purchase is previewed as Autumn's "operate_early"
+ *      purchase while fewer than 25 places are used: the purchase is previewed as Autumn's "operate_early"
  *      plan ($199). Otherwise it is previewed as "operate" ($299). Nothing is reserved yet.
  *   2. Confirm. When the Owner confirms, the confirming mutation reserves a place. Convex runs mutations
  *      serializably, so this is the one point where two companies racing for the last place are decided:

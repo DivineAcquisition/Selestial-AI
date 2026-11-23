@@ -343,7 +343,7 @@ function ThisMonth({ data }: { data: Live }) {
   const top = Math.max(1, ...data.month.byAgent.map((row) => row.amount));
   return (
     <Panel title={`This month, since ${day(data.month.from)}`}>
-      <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
+      <div className="grid gap-6 @4xl/main:grid-cols-[3fr_2fr]">
         <div>
           <table className="w-full text-sm">
             <thead className="text-left text-xs text-muted-foreground">

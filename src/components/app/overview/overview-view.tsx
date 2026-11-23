@@ -88,8 +88,8 @@ export function OverviewView({
         </div>
       )}
 
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
-        <section id="decisions" className="order-1 scroll-mt-20 xl:order-2" aria-labelledby="decisions-title">
+      <div className="grid items-start gap-5 @4xl/main:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+        <section id="decisions" className="order-1 scroll-mt-20 @4xl/main:order-2" aria-labelledby="decisions-title">
           <div className="mb-3 flex items-end justify-between gap-3">
             <div>
               <p className={eyebrow}>Where you decide</p>
@@ -128,7 +128,7 @@ export function OverviewView({
           </div>
         </section>
 
-        <div id="schedule" className="order-2 grid scroll-mt-20 gap-5 xl:order-1">
+        <div id="schedule" className="order-2 grid scroll-mt-20 gap-5 @4xl/main:order-1">
           <Panel title="Service schedule" action={<ViewSwitch view={view} onChange={onView} />} flush>
             {schedule ? (
               <ScheduleTable

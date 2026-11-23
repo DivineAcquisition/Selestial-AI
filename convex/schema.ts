@@ -19,6 +19,7 @@ import { caseTables } from "./lib/texting/caseSchema";
 import { financeTables } from "./lib/finance/schema";
 import { clientsTables, communicationValidator, propertyDetailsValidator, propertyKindValidator, relationshipValidator } from "./lib/clients/schema";
 import { trustTables } from "./lib/trust/schema";
+import { approverValidator, controlsTables } from "./lib/controls/schema";
 import { staffTables } from "./lib/trust/staffSchema";
 import { v } from "convex/values";
 
@@ -34,13 +35,14 @@ import { activationTables } from "./lib/activation/schema";
 import { operationsTables } from "./lib/operations/schema";
 import { supportTables } from "./lib/support/schema";
 import { connectorTables } from "./lib/connectors/schema";
+import { migrationMarkValidator, migrationTables } from "./lib/migration/schema";
 import { retentionSettingsValidator, retentionTables } from "./lib/retention/schema";
 import { qualitySettingsValidator, qualityTables } from "./lib/quality/schema";
 import { servicesTables } from "./lib/services/schema";
 import { tutorialTables } from "./lib/tutorials/schema";
-import { migrationTables } from "./lib/migration/schema";
 import { noticeEventValidator, noticeFactsValidator } from "./lib/notify/catalog";
 import { notifyTables } from "./lib/notify/schema";
+import { quoTables } from "./lib/quo/schema";
 import {
   agentValidator,
   approvalStatusValidator,
@@ -262,6 +264,8 @@ export default defineSchema({
     timezone: v.string(),
     /** Agents the owner has paused. Pausing all four pauses everything. */
     pausedAgents: v.array(agentValidator),
+    /** Counts every change to the agent policy (permissions, routing, pauses), so a stale preview or tab cannot overwrite a newer one. */
+    controlsRevision: v.optional(v.number()),
     dispatch: v.optional(dispatchSettingsValidator),
     dispatchPolicy: v.optional(dispatchPolicyValidator),
     recruiter: v.optional(recruiterSettingsValidator),
@@ -468,6 +472,8 @@ export default defineSchema({
     /** Their last answer to a check-in: still available, fewer jobs, a break until a date, or wanting to stop. */
     checkIn: v.optional(v.object({ answer: v.union(v.literal("available"), v.literal("fewer"), v.literal("break"), v.literal("stop")), at: v.number(), until: v.optional(v.number()), note: v.optional(v.string()) })),
     updatedAt: v.optional(v.number()),
+    /** Added by a migration and not released yet: no onboarding follow-up or offer reaches them until the Owner releases the team (convex/migration.ts). */
+    migration: v.optional(migrationMarkValidator),
   })
     .index("by_company_status", ["companyId", "status"])
     .index("by_company_subcontractor", ["companyId", "subcontractorId"]),
@@ -542,6 +548,10 @@ export default defineSchema({
     recovery: v.optional(v.object({ caseId: v.id("retentionCases"), originalJobId: v.optional(v.id("jobs")) })),
     /** Cleaners a person agreed not to send to this visit, for example after a customer asked for someone else. Dispatch does not offer it to them. */
     avoidCleanerIds: v.optional(v.array(v.id("cleaners"))),
+    /** Cleaners to ask first when they qualify, such as the cleaner the customer had in the old system. */
+    preferredCleanerIds: v.optional(v.array(v.id("cleaners"))),
+    /** Written by a migration. While held, Dispatch doesn't offer it and no confirmation is sent (convex/migration.ts). */
+    migration: v.optional(migrationMarkValidator),
     createdAt: v.number(),
   })
     .index("by_company_start", ["companyId", "startsAt"])
@@ -639,6 +649,14 @@ export default defineSchema({
     /** Money actions only. */
     perActionCents: v.optional(v.number()),
     perDayCents: v.optional(v.number()),
+    /**
+     * Who decides this action's approvals (Agent Controls). Absent: any Owner or Manager. "owner": Owners only.
+     * A member: that person (an Owner or Manager), with `backupMemberId` and any Owner able to decide too.
+     */
+    approver: v.optional(approverValidator),
+    backupMemberId: v.optional(v.id("members")),
+    /** A level above Ask me first is temporary until this instant; after it, the action asks first (convex/lib/authority.ts). */
+    until: v.optional(v.number()),
     updatedBy: v.id("members"),
     updatedAt: v.number(),
   }).index("by_company_action", ["companyId", "action"]),
@@ -840,6 +858,7 @@ export default defineSchema({
     .index("by_company_opportunity", ["companyId", "opportunityId", "queuedAt"])
     .index("by_company_member", ["companyId", "memberId", "queuedAt"])
     .index("by_provider_message", ["provider", "providerMessageId"])
+    .index("by_company_to", ["companyId", "to", "queuedAt"])
     .index("by_status_attempted", ["status", "attemptedAt"])
     .index("by_company_hold", ["companyId", "holdReason", "heldAt"]),
 
@@ -1037,6 +1056,8 @@ export default defineSchema({
   ...agreementTables,
   ...googleTables,
   ...connectorTables,
+  ...quoTables,
+  ...migrationTables,
   // ── Cleaners: subcontractors, requirements, crews, portal, follow-ups, coaching, personnel ──────
   ...cleanersTables,
   ...clientsTables,
@@ -1065,11 +1086,13 @@ export default defineSchema({
   ...qualityTables,
   // ── Migration: tutorials for moving in, and records brought from another system (convex/lib/tutorials, lib/migration) ─
   ...tutorialTables,
-  ...migrationTables,
   // ── Operations: incidents, their history, and when each monitoring check last ran (convex/lib/operations) ─
   ...operationsTables,
   // ── Admin Support Sessions: staff inside a company, for a reason and a time (convex/lib/support) ─────
   ...supportTables,
+
+  // ── Agent Controls: policy history and money allowances (convex/lib/controls/schema.ts) ─────────
+  ...controlsTables,
 
   // ── Events: append-only ────────────────────────────────────────────────────────────────────────
   events: defineTable({

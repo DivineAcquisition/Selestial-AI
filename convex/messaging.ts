@@ -10,6 +10,8 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalAction, internalMutation, type ActionCtx, type MutationCtx } from "./_generated/server";
+import { ensureConversation, smsRouteFor } from "./lib/quo/route";
+import { sendThroughQuo } from "./lib/quo/send";
 import { readProfile } from "./lib/compliance/profile";
 import { afterMessageFailed } from "./lib/dispatch/delivery";
 import { afterSalesMessage, salesClaim } from "./lib/sales/outbox";
@@ -284,7 +286,10 @@ export const claim = internalMutation({
     // Messaging billing, once the route is known: free (included, or the company's own Gmail), refused (no rate
     // for the route), held (funds, limits, billing unreachable; the message and its words are kept) or reserved.
     const sendIntent = await intentOf(ctx, message);
-    const billed = await planOutbound(ctx, message, { body, viaGmail: via !== null, agent: message.agent ?? sendIntent.agent, memberId: message.authorId, origin: sendIntent.origin });
+    // A text goes by its conversation's route (lib/quo/route.ts): the company's own Selestial number or its Quo account.
+    const route = channel === "sms" ? await smsRouteFor(ctx, message.companyId, message.to ?? "") : null;
+    const quo = route?.kind === "quo" && route.connection ? { connectionId: route.connection._id, senderId: route.senderId, sender: route.sender } : null;
+    const billed = await planOutbound(ctx, message, { body, viaGmail: via !== null, viaQuo: quo !== null, agent: message.agent ?? sendIntent.agent, memberId: message.authorId, origin: sendIntent.origin });
     if (billed.kind === "refuse") {
       // Refused while checking with the provider: still not known whether the first attempt went, so it stays unconfirmed.
       if (message.reconcile) return backToUnconfirmed(ctx, message, `Not checked with the provider: ${billed.words}`);
@@ -319,12 +324,15 @@ export const claim = internalMutation({
     }
     const attempt = message.attempts + 1;
     // The provider is the one this send really uses, so its delivery reports find the message.
-    const provider = channel === "email" ? (via ? "gmail" : (emailProvider()?.name ?? message.provider)) : (messagingProvider()?.name ?? message.provider);
+    const provider = channel === "email" ? (via ? "gmail" : (emailProvider()?.name ?? message.provider)) : quo ? "quo" : (messagingProvider()?.name ?? message.provider);
     const attemptedAt = Date.now();
     await ctx.db.patch(message._id, { status: "sending", attempts: attempt, attemptedAt, ...(message.firstAttemptedAt === undefined ? { firstAttemptedAt: message.attemptedAt ?? attemptedAt } : {}), provider, sentVia: provider, holdReason: undefined });
-    // A text goes from the company's own number. The send policy has already checked it is set and approved.
-    const from = channel === "sms" ? ((await readProfile(ctx, message.companyId)).messaging.smsNumber ?? "") : "";
-    return { to: message.to, from, body, attempt, channel, subject: message.subject ?? "", replyTo: message.replyTo ?? "", fromName, via, email, threadId, notice: false, billing: billed.kind === "reserve" ? { chargeId: billed.chargeId, needsLock: billed.needsLock } : null };
+    // A text goes from the conversation's number. The send policy has already checked the route is ready.
+    const from = channel === "sms" ? (quo ? quo.sender : ((await readProfile(ctx, message.companyId)).messaging.smsNumber ?? "")) : "";
+    // The conversation's route is fixed by its first text, so a later change of default doesn't move it.
+    if (channel === "sms" && message.to && from) await ensureConversation(ctx, message.companyId, message.to, quo ? { provider: "quo", sender: quo.sender, connectionId: quo.connectionId, senderId: quo.senderId } : { provider: "native", sender: from });
+    const agentWritten = sendIntent.agent !== undefined && sendIntent.origin !== "integration" && sendIntent.origin !== "manual";
+    return { to: message.to, from, body, attempt, channel, subject: message.subject ?? "", replyTo: message.replyTo ?? "", fromName, via, email, threadId, notice: false, billing: billed.kind === "reserve" ? { chargeId: billed.chargeId, needsLock: billed.needsLock } : null, quo: quo ? { connectionId: quo.connectionId, senderId: quo.senderId, queuedAt: message.queuedAt, agentWritten, operational: sendIntent.category === "operational" } : null };
   },
 });
 
@@ -534,6 +542,13 @@ export const deliver = internalAction({
       await ctx.runMutation(internal.messaging.settle, { messageId: args.messageId, result: sent });
       return null;
     }
+    if (claimed.quo) {
+      // Through the company's own Quo account (lib/quo/send.ts): rechecks the conversation, then sends once.
+      const result = await sendThroughQuo(ctx, args.messageId, { ...claimed.quo, to: claimed.to ?? "", body: claimed.body });
+      await ctx.runMutation(internal.messaging.settle, { messageId: args.messageId, result });
+      if (!result.ok && result.uncertain) await ctx.scheduler.runAfter(60_000, internal.quoSend.reconcile, { messageId: args.messageId });
+      return null;
+    }
     const provider = messagingProvider();
     if (!provider) {
       await ctx.runMutation(internal.messaging.settle, { messageId: args.messageId, result: { ok: false, retryable: false, problem: "Text messaging is not connected." } });
@@ -554,44 +569,49 @@ export const deliver = internalAction({
  * failed (it didn't go, for a reason that says nothing about the address); delayed (still trying).
  * A complaint can come after "delivered", so it is accepted then too, and the delivery stands.
  */
+const receiptArgs = {
+  provider: v.string(),
+  eventId: v.string(),
+  providerMessageId: v.string(),
+  outcome: v.union(v.literal("delivered"), v.literal("failed"), v.literal("bounced"), v.literal("complained"), v.literal("suppressed"), v.literal("delayed")),
+  problem: v.optional(v.string()),
+  /** What the provider charged Selestial for it, in units of $0.0001, when it says. */
+  providerCost: v.optional(v.number()),
+  errorCode: v.optional(v.string()),
+};
+
 export const receipt = internalMutation({
-  args: {
-    provider: v.string(),
-    eventId: v.string(),
-    providerMessageId: v.string(),
-    outcome: v.union(v.literal("delivered"), v.literal("failed"), v.literal("bounced"), v.literal("complained"), v.literal("suppressed"), v.literal("delayed")),
-    problem: v.optional(v.string()),
-    /** What the provider charged Selestial for it, in units of $0.0001, when it says. */
-    providerCost: v.optional(v.number()),
-    errorCode: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const seen = await ctx.db
-      .query("providerReceipts")
-      .withIndex("by_provider_event", (q) => q.eq("provider", args.provider).eq("eventId", args.eventId))
-      .first();
-    if (seen) return "duplicate" as const;
-    const receiptId = await ctx.db.insert("providerReceipts", { provider: args.provider, eventId: args.eventId, receivedAt: Date.now() });
-    const message = await ctx.db
-      .query("messages")
-      .withIndex("by_provider_message", (q) => q.eq("provider", args.provider).eq("providerMessageId", args.providerMessageId))
-      .first();
-    if (!message) {
-      // Out of order: the report beat the send's own answer, which is what records the provider's id. Kept, and
-      // applied when that send settles (a later retry of this report would be a duplicate and dropped).
-      await ctx.db.patch(receiptId, { early: { providerMessageId: args.providerMessageId, outcome: args.outcome, problem: args.problem, providerCost: args.providerCost, errorCode: args.errorCode } });
-      return "early" as const;
-    }
-    // Reconciliation: what the provider charged Selestial, and no charge to the company for a text the provider did not charge for.
-    await reconcileCharge(ctx, message._id, { providerCost: args.providerCost, errorCode: args.errorCode });
-    if (message.status === "sending" && (args.outcome === "delivered" || args.outcome === "failed" || args.outcome === "bounced")) {
-      // The report beat the send's own answer. Kept, and applied when the send settles.
-      await ctx.db.patch(message._id, { earlyReceipt: { outcome: args.outcome, problem: args.problem, at: Date.now() } });
-      return "deferred" as const;
-    }
-    return applyOutcome(ctx, message, args.outcome, args.problem);
-  },
+  args: receiptArgs,
+  handler: async (ctx, args) => applyReceipt(ctx, args),
 });
+
+/** The receipt's logic, shared with Quo's events (lib/quo/events.ts). */
+export async function applyReceipt(ctx: MutationCtx, args: { provider: string; eventId: string; providerMessageId: string; outcome: "delivered" | "failed" | "bounced" | "complained" | "suppressed" | "delayed"; problem?: string; providerCost?: number; errorCode?: string }) {
+  const seen = await ctx.db
+    .query("providerReceipts")
+    .withIndex("by_provider_event", (q) => q.eq("provider", args.provider).eq("eventId", args.eventId))
+    .first();
+  if (seen) return "duplicate" as const;
+  const receiptId = await ctx.db.insert("providerReceipts", { provider: args.provider, eventId: args.eventId, receivedAt: Date.now() });
+  const message = await ctx.db
+    .query("messages")
+    .withIndex("by_provider_message", (q) => q.eq("provider", args.provider).eq("providerMessageId", args.providerMessageId))
+    .first();
+  if (!message) {
+    // Out of order: the report beat the send's own answer, which is what records the provider's id. Kept, and
+    // applied when that send settles (a later retry of this report would be a duplicate and dropped).
+    await ctx.db.patch(receiptId, { early: { providerMessageId: args.providerMessageId, outcome: args.outcome, problem: args.problem, providerCost: args.providerCost, errorCode: args.errorCode } });
+    return "early" as const;
+  }
+  // Reconciliation: what the provider charged Selestial, and no charge to the company for a text the provider did not charge for.
+  await reconcileCharge(ctx, message._id, { providerCost: args.providerCost, errorCode: args.errorCode });
+  if (message.status === "sending" && (args.outcome === "delivered" || args.outcome === "failed" || args.outcome === "bounced")) {
+    // The report beat the send's own answer. Kept, and applied when the send settles.
+    await ctx.db.patch(message._id, { earlyReceipt: { outcome: args.outcome, problem: args.problem, at: Date.now() } });
+    return "deferred" as const;
+  }
+  return applyOutcome(ctx, message, args.outcome, args.problem);
+}
 
 /** Telnyx does not charge for a text that expired in its own queue before it was sent (40014). */
 const PROVIDER_NOT_CHARGED = new Set(["40014"]);
@@ -683,6 +703,8 @@ export const sweepStuck = internalMutation({
         .first();
       if (charge) await markPending(ctx, charge._id);
       await logStep(ctx, message, { type: "message.unconfirmed", data: { purpose: message.purpose } });
+      // A Quo text is checked against Quo's own message list (convex/quoSend.ts), never sent again blindly.
+      if (message.provider === "quo") await ctx.scheduler.runAfter(0, internal.quoSend.reconcile, { messageId: message._id });
       if (message.purpose === "member_notice") continue;
       if (message.applicationId) await afterApplicantMessage(ctx, (await ctx.db.get(message._id))!, "failed");
       else if (message.retentionActionId) await afterCareMessage(ctx, { ...message, status: "unconfirmed", problem });

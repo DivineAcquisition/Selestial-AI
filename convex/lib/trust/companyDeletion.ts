@@ -209,6 +209,22 @@ export const DELETION_PLAN: readonly TablePlan[] = [
   del("toolRuns", "Agent tool calls."),
   del("hiringNeeds", "Open roles."),
   del("mailboxConnections", "Connected inboxes, disconnected and revoked first."),
+  // Quo (convex/quo.ts): the company's own phone account. What was sent is kept in messages.
+  del("quoConnections", "The connected Quo account: its sealed API key and webhook secret, and which numbers agents may use."),
+  del("smsConversations", "Which number each texting conversation runs on. The messages themselves are kept in messages."),
+  del("smsInbound", "Texts received through Quo. Opt-outs they carried are kept in contactPermissions and suppressions."),
+  // Bringing a business to Selestial (convex/migration.ts): working import data, with the uploaded files.
+  del("migrations", "Imports from a previous system: the working record of what was brought in."),
+  del("migrationFiles", "Files uploaded for an import, with the stored files."),
+  del("migrationRows", "Rows read from those files while the import was reviewed."),
+  del("migrationRuns", "Each import run and its counts."),
+  del("migrationLinks", "Which record each imported row became, kept for undo."),
+  del("importedHistory", "Past visits imported from a previous system, for reference only; they were never invoiced here."),
+  keep("openingBalances", "Amounts customers already owed when the company moved to Selestial: part of the record of money owed. Notes are removed.", { personal: ["notes"], counsel: true }),
+  // Agent Controls (convex/lib/controls): settings and their history.
+  del("controlChanges", "Changes the company made to agent settings."),
+  del("allowanceDays", "Daily counts of agent work against the company's own limits."),
+  del("allowanceReservations", "Holds on those daily limits for work in progress."),
   del("mailboxCredentials", "Sealed mailbox authorizations (deleted when the inbox is disconnected; any left are deleted here)."),
   del("oauthStates", "Ten-minute mailbox sign-in records."),
   del("sourceMessages", "Emails read from the company's inbox."),

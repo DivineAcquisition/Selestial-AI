@@ -42,17 +42,17 @@ export function OverviewTab({ nav }: { nav: FinanceNav & { set: (c: Record<strin
       <TeamPayRow data={data} onOpen={(filter) => nav.showTeamPay(filter)} />
       <ExpensesRow data={data} onOpen={(filter) => nav.showExpenses(filter)} />
 
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_22.5rem]">
-        <div className="order-2 grid min-w-0 gap-5 lg:order-1">
+      <div className="grid items-start gap-5 @4xl/main:grid-cols-[minmax(0,1fr)_22.5rem]">
+        <div className="order-2 grid min-w-0 gap-5 @4xl/main:order-1">
           <Section title="Invoiced and collected" description="Last eight weeks. Collected counts payments that arrived; processing payments are not included.">
             <TrendChart weeks={data.trend} />
           </Section>
-          <div className="grid items-start gap-5 xl:grid-cols-2">
+          <div className="grid items-start gap-5 @5xl/main:grid-cols-2">
             <Upcoming rows={data.upcoming} onOpen={nav.openInvoice} />
             <Activity rows={data.activity} onOpen={nav.openInvoice} />
           </div>
         </div>
-        <div className="order-1 grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5 lg:sticky lg:top-20 lg:order-2">
+        <div className="order-1 grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5 @4xl/main:sticky @4xl/main:top-app-sticky @4xl/main:order-2">
           <ReadyForYou onReview={() => nav.set({ queue: "1" }, true)} onOpenInvoice={nav.openInvoice} />
           <Attention findings={data.findings} checkedAt={data.checkedAt} nav={nav} hasInvoices={data.hasInvoices} />
         </div>
@@ -66,7 +66,7 @@ function OverviewSkeleton() {
     <div className="grid gap-5" aria-busy="true" aria-label="Loading Finance">
       <Skeleton className="h-9 w-48 rounded-lg" />
       <Skeleton className="h-36 rounded-2xl" />
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_22.5rem]">
+      <div className="grid gap-5 @4xl/main:grid-cols-[minmax(0,1fr)_22.5rem]">
         <Skeleton className="h-72 rounded-2xl" />
         <Skeleton className="h-72 rounded-2xl" />
       </div>
@@ -123,7 +123,7 @@ function MoneyStrip({ data, onOverdue, onOutstanding }: { data: Overview; onOver
                   <button type="button" aria-label={`How ${cell.label.toLowerCase()} is counted`} className="grid size-5 place-items-center rounded-full text-muted-foreground/70 hover:text-strong focus-visible:outline-2 focus-visible:outline-brand-500" onClick={(event) => event.stopPropagation()}>
                     <Info className="size-3.5" aria-hidden />
                   </button>
-                  <span role="tooltip" className={cn("pointer-events-none absolute top-6 z-20 hidden w-60 max-w-[70vw] rounded-lg border border-border bg-popover p-2.5 text-left text-xs leading-relaxed font-normal tracking-normal text-muted-foreground normal-case shadow-lg group-focus-within/def:block group-hover/def:block", i % 2 === 1 ? "right-0" : "left-0")}>
+                  <span role="tooltip" className={cn("pointer-events-none absolute top-6 z-popover hidden w-60 max-w-[70vw] rounded-lg border border-border bg-popover p-2.5 text-left text-xs leading-relaxed font-normal tracking-normal text-muted-foreground normal-case shadow-lg group-focus-within/def:block group-hover/def:block", i % 2 === 1 ? "right-0" : "left-0")}>
                     {cell.define}
                   </span>
                 </span>

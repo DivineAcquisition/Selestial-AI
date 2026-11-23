@@ -94,7 +94,7 @@ export function InterviewsScreen() {
           })}
         </section>
 
-        <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+        <div className="grid items-start gap-5 @4xl/main:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
           <Panel title="The days ahead">
             {agenda.length === 0 ? (
               <p className="text-sm text-muted-foreground">No interviews booked and no open times. Add times so applicants can pick one.</p>

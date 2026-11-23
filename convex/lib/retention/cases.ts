@@ -6,6 +6,7 @@
  * A case is closed only with an outcome. Sending a message, booking a visit or handing work to another
  * agent moves a case; none of them closes it.
  */
+import { allowanceToday, reserve } from "../controls/allowance";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import { authorityFor } from "../authority";
@@ -362,25 +363,12 @@ export type Permit =
   | { mode: "ask"; label: string; why: string }
   | { mode: "refuse"; label: string; why: string };
 
-/** The cost of what Retention has carried out under one money permission since the start of the company's day. */
-async function spentToday(ctx: Ctx, companyId: Id<"companies">, permission: string, since: number): Promise<number> {
-  const rows = await ctx.db
-    .query("retentionActions")
-    .withIndex("by_company_status", (q) => q.eq("companyId", companyId).eq("status", "underway").gte("updatedAt", since))
-    .take(200);
-  const done = await ctx.db
-    .query("retentionActions")
-    .withIndex("by_company_status", (q) => q.eq("companyId", companyId).eq("status", "done").gte("updatedAt", since))
-    .take(200);
-  return [...rows, ...done].filter((row) => row.permission === permission && row.authorization?.includes("without asking")).reduce((sum, row) => sum + (row.estimatedCostCents ?? row.money?.amountCents ?? 0), 0);
-}
-
 /**
  * What Retention may do with one action right now. An action at "Ask me first" goes to the approvals
  * queue. A money action acts without asking only inside both of the Owner's limits, and only when its
  * cost is known: an unknown cost is never treated as zero.
  */
-export async function permitFor(ctx: Ctx, companyId: Id<"companies">, permission: string, cost?: { cents: number | null }): Promise<Permit> {
+export async function permitFor(ctx: Ctx, companyId: Id<"companies">, permission: string, cost?: { cents: number | null }, spend?: { key: string; source: { table: string; id: string } }): Promise<Permit> {
   const def = actionDef(permission);
   const authority = await authorityFor(ctx, companyId, permission);
   if (authority.kind === "paused") return { mode: "refuse", label: `${permission}: Retention is paused`, why: "Retention is paused, so it does nothing. A person can still act." };
@@ -391,9 +379,16 @@ export async function permitFor(ctx: Ctx, companyId: Id<"companies">, permission
     if (!cost || cost.cents === null) return { mode: "ask", label: `${permission}: cost unknown`, why: "There is no reliable cost for this, so a person decides." };
     if (authority.perActionCents === undefined || authority.perDayCents === undefined) return { mode: "ask", label: `${permission}: no limit set`, why: "No spending limit is set for this, so a person decides." };
     if (cost.cents > authority.perActionCents) return { mode: "ask", label: `${permission}: over the per-action limit`, why: "This is over the limit set for one action." };
-    const now = Date.now();
-    const spent = await spentToday(ctx, companyId, permission, now - DAY);
-    if (spent + cost.cents > authority.perDayCents) return { mode: "ask", label: `${permission}: over the daily limit`, why: "This would go over the limit set for one day." };
+    // Today's allowance, on the company's calendar day (convex/lib/controls/allowance.ts). In a mutation the
+    // spend is reserved here, in the same transaction as the check; a read only looks.
+    const company = (await ctx.db.get(companyId))!;
+    if (spend && "insert" in ctx.db) {
+      const reserved = await reserve(ctx as MutationCtx, company, { action: permission, key: spend.key, amountCents: cost.cents, perDayCents: authority.perDayCents, source: spend.source });
+      if (!reserved.ok) return { mode: "ask", label: `${permission}: over the daily limit`, why: "This would go over today's limit. The limit resets at midnight." };
+    } else {
+      const today = await allowanceToday(ctx, company, permission, Date.now());
+      if (today.usedCents + cost.cents > authority.perDayCents) return { mode: "ask", label: `${permission}: over the daily limit`, why: "This would go over today's limit. The limit resets at midnight." };
+    }
   }
   return { mode: "act", level: authority.level, label: `${permission} at ${authority.level}, without asking` };
 }

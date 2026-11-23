@@ -26,6 +26,7 @@ import { api } from "../../../../../convex/_generated/api";
 import { ReadinessPanel } from "./shared";
 import { Checkbox, Select } from "@/components/ui/selection";
 import { MoneyField } from "@/components/ui/fields";
+import { StickyBar } from "@/components/app/layout";
 
 type Playbook = FunctionReturnType<typeof api.salesInquiries.playbook>;
 type Settings = Playbook["settings"];
@@ -306,7 +307,7 @@ function Editor({ playbook, justSaved, onSaved }: { playbook: Playbook; justSave
       </Panel>
 
       {can ? (
-        <div className="sticky bottom-3 z-10 flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-card/95 px-4 py-3 shadow-[0_18px_40px_-24px_rgba(27,14,69,0.5)] backdrop-blur">
+        <StickyBar className="flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-card/95 px-4 py-3 shadow-[0_18px_40px_-24px_rgba(27,14,69,0.5)] backdrop-blur">
           <Button variant="primary" loading={busy} disabled={!dirty} onClick={() => void submit()}>
             Save the Playbook
           </Button>
@@ -320,7 +321,7 @@ function Editor({ playbook, justSaved, onSaved }: { playbook: Playbook; justSave
           <div className="w-full empty:hidden">
             <FormError message={error} />
           </div>
-        </div>
+        </StickyBar>
       ) : (
         <p className="text-sm text-muted-foreground">Only the Owner changes the Playbook.</p>
       )}

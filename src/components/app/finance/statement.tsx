@@ -75,7 +75,7 @@ function Body({ customerId, onOpenInvoice }: { customerId: Id<"customers">; onOp
       {data.lines.length === 0 ? (
         <Empty icon={FileText} title="Nothing on the statement yet" body="Issued invoices, payments, refunds and credits for this customer will appear here." />
       ) : (
-        <div className="overflow-hidden rounded-xl border border-border">
+        <div className="overflow-x-auto rounded-xl border border-border">
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
               <tr>

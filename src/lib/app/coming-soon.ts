@@ -59,7 +59,7 @@ export const COMING_SOON: Record<ComingSoonAgent["id"], ComingSoonAgent> = {
   },
   "customer-care": {
     id: "customer-care",
-    name: "Customer Care",
+    name: "Care",
     department: "Operations",
     pitch: "Answers customers the way your best office person would: reschedules, sets up new homes, takes service requests and keeps every promise visible to the team.",
     scene: {

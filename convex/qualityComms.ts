@@ -106,7 +106,7 @@ export const check = internalAction({
       const summaries = page.calls.some((c) => c.summary?.status === "completed") ? "available" : page.calls.length && page.calls.every((c) => !c.summary || c.summary.status === "absent") ? "unavailable" : "unknown";
       const site = process.env.CONVEX_SITE_URL?.trim().replace(/\/+$/, "");
       let webhook: { id: string; key: string } | null = null;
-      if (site && !found.connection.webhookId) webhook = await api.createWebhook(`${site}/webhooks/quo/${found.connection.publicId}`, QUO_EVENTS);
+      if (site && !found.connection.webhookId) webhook = await api.createWebhook(`${site}/webhooks/quality-quo/${found.connection.publicId}`, QUO_EVENTS);
       const sealedWebhookKey = webhook ? await seal(webhook.key, args.connectionId) : null;
       await ctx.runMutation(internal.qualityComms.checked, {
         connectionId: args.connectionId,

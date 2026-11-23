@@ -7,6 +7,7 @@ import { userError } from "./lib/errors";
 import { byMember, recordEvent } from "./lib/events";
 import { roleOf } from "./lib/roles";
 import { agentValidator } from "./lib/statuses";
+import { applyPolicy } from "./lib/controls/policy";
 import { text } from "./lib/text";
 import { startSetup } from "./setup";
 import { currentVersion } from "./lib/trust/documents";
@@ -117,9 +118,13 @@ export const update = ownerMutation({
   },
 });
 
-/** The owner can pause one agent or all of them (brief, section 7). */
+/**
+ * The owner can pause one agent or all of them (brief, section 7). The whole list form is kept for older
+ * callers, but it now refuses to overwrite a newer change: pass `expectedRevision`, or use pauseAgent /
+ * resumeAgent, which change one agent on the server's current list and can't undo someone else's change.
+ */
 export const setPausedAgents = ownerMutation({
-  args: { agents: v.array(agentValidator) },
+  args: { agents: v.array(agentValidator), expectedRevision: v.optional(v.number()) },
   support: { capability: "agents.recover", summary: "paused agents" },
   handler: async (ctx, args) => {
     const pausedAgents = [...new Set(args.agents)];
@@ -127,14 +132,48 @@ export const setPausedAgents = ownerMutation({
     if (ctx.support && ctx.company.pausedAgents.some((agent) => !pausedAgents.includes(agent))) {
       throw userError("Only the company can resume an agent. Selestial Support can pause one.", "not_allowed");
     }
-    await ctx.db.patch(ctx.companyId, { pausedAgents });
-    await recordEvent(ctx, {
-      companyId: ctx.companyId,
-      type: "company.agents_paused_changed",
-      actor: byMember(ctx),
-      subject: { table: "companies", id: ctx.companyId },
-      data: { paused: pausedAgents.join(",") },
-    });
+    const resuming = ctx.company.pausedAgents.some((agent) => !pausedAgents.includes(agent));
+    await applyPolicy(ctx, ctx.company, { kind: resuming ? "resume" : "pause", summary: pausedAgents.length ? `Paused: ${pausedAgents.join(", ")}` : "Every agent resumed", paused: pausedAgents, expectedRevision: args.expectedRevision, by: ctx.member._id, actor: byMember(ctx) });
     return null;
+  },
+});
+
+/**
+ * Pauses one agent, at once, on the list as it stands on the server. It stops new work the agent would do
+ * on its own; inbound texts, delivery reports, opt-outs and billing reconciliation keep working. Work a
+ * provider already accepted can't be recalled. Pausing twice is harmless.
+ */
+export const pauseAgent = ownerMutation({
+  args: { agent: agentValidator },
+  support: { capability: "agents.recover", summary: "paused an agent" },
+  handler: async (ctx, args) => {
+    if (ctx.company.pausedAgents.includes(args.agent)) return { changed: false };
+    await applyPolicy(ctx, ctx.company, { kind: "pause", summary: `Paused ${args.agent}`, paused: [...ctx.company.pausedAgents, args.agent], by: ctx.member._id, actor: byMember(ctx) });
+    return { changed: true };
+  },
+});
+
+/**
+ * Resumes one agent. Nothing that was refused while it was paused is sent now (refusals are final), and
+ * every piece of new work is checked again against the current settings as it runs.
+ */
+export const resumeAgent = ownerMutation({
+  args: { agent: agentValidator },
+  handler: async (ctx, args) => {
+    if (!ctx.company.pausedAgents.includes(args.agent)) return { changed: false };
+    await applyPolicy(ctx, ctx.company, { kind: "resume", summary: `Resumed ${args.agent}`, paused: ctx.company.pausedAgents.filter((agent) => agent !== args.agent), by: ctx.member._id, actor: byMember(ctx) });
+    return { changed: true };
+  },
+});
+
+/** Pauses every agent at once: the emergency stop. */
+export const pauseAll = ownerMutation({
+  args: {},
+  support: { capability: "agents.recover", summary: "paused every agent" },
+  handler: async (ctx) => {
+    const all = ["dispatch", "sales", "recruiter", "retention"] as const;
+    if (all.every((agent) => ctx.company.pausedAgents.includes(agent))) return { changed: false };
+    await applyPolicy(ctx, ctx.company, { kind: "pause", summary: "Paused every agent", paused: [...new Set([...ctx.company.pausedAgents, ...all])], by: ctx.member._id, actor: byMember(ctx) });
+    return { changed: true };
   },
 });

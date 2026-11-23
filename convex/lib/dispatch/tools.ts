@@ -243,7 +243,7 @@ export async function runTool(ctx: MutationCtx, company: Doc<"companies">, tool:
       if (!draft || draft.length < 3) return refused("none", "The update's text is required.");
       const may = await allowed(ctx, company, "dispatch.notify_running_late");
       if (!may.ok) return refused(may.label, "The Owner's settings do not allow this right now.", { jobId: job._id });
-      // Dispatch has no channel to customers here. The draft goes to Customer Care's queue for a person to send.
+      // Dispatch has no channel to customers here. The draft goes to Care's queue for a person to send.
       const customer = await ctx.db.get(job.customerId);
       const task = await handOff(ctx, { companyId: company._id, to: "customer_care", key: `customer_care.update:${job._id}:${draft.length}:${draft.slice(0, 24)}`, title: `Update ${customer?.name ?? "the customer"} about their visit`, question: `Draft from Dispatch: "${draft.slice(0, 700)}". Send it, change it, or decide not to.`, trigger: "Dispatch prepared a customer update.", completionCondition: "The customer was told, or a person decided not to", escalation: "Nothing is sent to the customer until a person sends it.", dueAt: Math.max(Date.now() + 15 * MINUTE, Math.min(job.startsAt, Date.now() + 24 * 60 * MINUTE)), about: { table: "jobs", id: job._id }, actor: DISPATCH });
       return { outcome: "proposed", authorization: may.label, jobId: job._id, result: { taskId: task._id, sent: false } };

@@ -99,12 +99,12 @@ export function EmailPreviews() {
   ];
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4 @5xl/main:grid-cols-[240px_minmax(0,1fr)]">
       {/* On a phone, one menu instead of a long list. */}
-      <Field label="Email" className="lg:hidden">
+      <Field label="Email" className="@5xl/main:hidden">
         <Select value={id} onValueChange={(next) => next && setId(next)} options={groups.flatMap((g) => PREVIEWS.filter((p) => p.kind === g.kind).map((p) => ({ value: p.id, label: p.name, group: g.label })))} searchable="auto" />
       </Field>
-      <nav aria-label="Emails" className="hidden content-start gap-4 lg:grid">
+      <nav aria-label="Emails" className="hidden content-start gap-4 @5xl/main:grid">
         {groups.map((g) => (
           <div key={g.kind}>
             <p className="mb-1.5 px-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">{g.label}</p>

@@ -151,7 +151,7 @@ function PropertyDetail({ profile, propertyId }: { profile: Profile; propertyId:
       <FormError message={error} />
       {busy ? <p className="text-sm text-muted-foreground">Archiving…</p> : null}
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
+      <div className="grid gap-5 @4xl/main:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
         <div className="grid min-w-0 content-start gap-5">
           <Card title={str ? "The rental" : site ? "The site" : "The home"}>
             <dl className="grid gap-3 text-sm sm:grid-cols-3">

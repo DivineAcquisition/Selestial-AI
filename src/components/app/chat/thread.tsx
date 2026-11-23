@@ -38,6 +38,7 @@ import { cn } from "@/lib/utils";
 
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
+import { useDockLift } from "@/components/app/layout";
 
 type Thread = FunctionReturnType<typeof api.chat.thread>;
 type Message = Thread["messages"][number];
@@ -562,7 +563,7 @@ export function ChatThread({ conversationId, compact, onStarted, autoFocus }: { 
           <EmptyChat compact={compact} onPick={(starter) => setDraft(starter)} />
         )}
       </div>
-      <div className={cn("sticky bottom-0 z-10 bg-gradient-to-t from-background via-background to-transparent pt-4", compact ? "px-3 pb-3" : "pb-2")}>
+      <StickyComposer compact={compact}>
         <Composer
           key={conversationId ?? "new"}
           compact={compact}
@@ -579,7 +580,21 @@ export function ChatThread({ conversationId, compact, onStarted, autoFocus }: { 
           }}
           onStop={() => (conversationId ? stop({ companyId, conversationId }).then(() => undefined) : Promise.resolve())}
         />
-      </div>
+      </StickyComposer>
+    </div>
+  );
+}
+
+/**
+ * The composer, stuck to the bottom of the conversation. On the full Chat page the team console rises
+ * above it, so it never covers the send button. In the side panel the console is closed anyway.
+ */
+function StickyComposer({ compact, children }: { compact?: boolean; children: React.ReactNode }) {
+  const box = useRef<HTMLDivElement>(null);
+  useDockLift(box, !compact);
+  return (
+    <div ref={box} className={cn("sticky bottom-0 z-raised bg-gradient-to-t from-background via-background to-transparent pt-4", compact ? "px-3 pb-3" : "pb-[max(0.5rem,env(safe-area-inset-bottom))]")}>
+      {children}
     </div>
   );
 }

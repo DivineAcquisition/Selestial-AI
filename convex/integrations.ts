@@ -56,6 +56,12 @@ export const overview = companyQuery({
         .order("desc")
         .take(1)
     )[0];
+    // Quo: connected only when ready (a number chosen, replies verified, registration shown or confirmed).
+    const quo = await ctx.db
+      .query("quoConnections")
+      .withIndex("by_company", (q) => q.eq("companyId", ctx.companyId))
+      .first();
+    const quoCard: { state: LiveState; detail: string | null } = !quo || quo.status === "disconnected" ? { state: "ready", detail: quo ? "Disconnected" : null } : quo.status === "ready" ? { state: "connected", detail: quo.selected.map((row) => row.phoneNumber).join(", ") } : { state: "in_progress", detail: quo.status === "degraded" ? "Needs attention" : "Setup incomplete" };
     const textingState: LiveState = !texting || ["failed", "rejected", "cancelled"].includes(texting.status) ? "ready" : texting.status === "active" ? "connected" : "in_progress";
 
     // A Google card is connected only when its permission was granted and something it needs was checked with Google.
@@ -97,6 +103,7 @@ export const overview = companyQuery({
         jobber: await connectorCard(ctx, "jobber", jobberApp() !== null && jobberRedirect() !== null && (await secretsConfigured())),
         "housecall-pro": await connectorCard(ctx, "housecall_pro", await secretsConfigured()),
         "texting-number": { state: textingState, detail: texting?.status === "active" ? (texting.phoneNumber ?? null) : null },
+        quo: quoCard,
       },
       requested: requests.map((row) => ({ integrationId: row.integrationId, requestedAt: row.requestedAt })),
     };

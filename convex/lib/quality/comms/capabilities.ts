@@ -76,7 +76,7 @@ export async function communicationSources(ctx: QueryCtx, company: Doc<"companie
         { label: "Quo's summaries", state: c.readSummaries, note: "Shown as Quo's summary, never as anyone's words." },
         { label: "Texts", state: c.readMessages, note: "Incoming texts on Quo numbers, through Quo's signed notices." },
         { label: "Recordings", state: "not_used", note: "Selestial never copies recordings or changes recording settings." },
-        { label: "Send", state: "not_used", note: "Quality does not send through Quo." },
+        { label: "Send", state: "not_used", note: "This reading connection sends nothing. Quality's requests to cleaners follow each conversation's own route, which is your Quo texting number only where you allowed Quality on it." },
       ],
       action: live.status === "expired" ? { label: "Reconnect Quo", href: "/app/agents/quality/playbook" } : !reading ? { label: "Turn on reading", href: "/app/agents/quality/playbook" } : null,
     });

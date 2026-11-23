@@ -11,6 +11,7 @@
  * 4. Carrying it out uses the same functions as the cleaner's own link, so every check they make (the
  *    offer still open, places left, no clash, not checked in) runs again at that moment.
  */
+import { reportAction } from "./lib/controls/report";
 import { v } from "convex/values";
 
 import { internal } from "./_generated/api";
@@ -192,6 +193,7 @@ export const decide = internalMutation({
       const done = await carryOut(ctx, proposed, DISPATCH, company.timezone);
       await ctx.db.patch(reading._id, { status: done.ok ? "applied" : "not_applied", outcome: done.words });
       await recordEvent(ctx, { companyId: company._id, type: done.ok ? "dispatch.reply_applied" : "dispatch.reply_not_applied", actor: DISPATCH, subject: { table: "assignments", id: option.assignmentId }, data: { intent: args.answer.intent, reader: args.answer.reader, readingId: reading._id } });
+      if (done.ok && authority.kind === "level") await reportAction(ctx, { companyId: company._id, agent: "dispatch", action: ACT_ON_REPLY, level: authority.level, subject: { table: "assignments", id: option.assignmentId }, ref: reading._id, stage: "completed", kind: args.answer.intent, data: { cleanerId: proposed.cleanerId ?? null } });
       if (done.ok) {
         await settleTask(ctx, proposed, `Dispatch read "${reading.excerpt}" as: ${proposalWords(proposed, visit)}. ${done.words}`, DISPATCH);
         return null;

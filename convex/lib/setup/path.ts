@@ -222,6 +222,7 @@ export const CONNECTIONS: Connection[] = [
   { id: "gmail", title: "Gmail hiring inbox", does: "Find applicants who already applied by email.", href: "/app/agents/recruiter", for: ["recruiter"] },
   { id: "google-business", title: "Google Business Profile", does: "Read and answer your Google reviews.", href: "/app/integrations", for: ["retention", "sales"] },
   { id: "google-ads", title: "Google Ads lead forms", does: "Read incoming customer inquiries from your ads.", href: "/app/integrations", for: ["sales"] },
+  { id: "quo", title: "Quo (formerly OpenPhone)", does: "Already text from Quo? Let agents text and receive replies through your own numbers, instead of a new Selestial number.", href: "/app/settings/integrations/quo", for: ["dispatch", "sales", "retention", "recruiter"] },
   { id: "stripe", title: "Stripe", does: "Collect customer payments and deposits.", href: "/app/finance", for: ["booking", "sales"] },
   { id: "google-drive", title: "Google Drive", does: "Bring in price lists and documents you already keep.", href: "/app/integrations", for: ["pricing", "booking"] },
 ];

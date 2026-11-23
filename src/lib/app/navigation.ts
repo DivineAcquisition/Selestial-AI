@@ -72,8 +72,11 @@ export const tabPath = (agent: AgentId, tab: string) => `${agentPath(agent)}/${t
 
 // ── Sidebar layout ──────────────────────────────────────────────────────────────────────────────────
 
-/** The sidebar's sections, top to bottom. The order is fixed. */
-export const SIDEBAR_SECTIONS = ["business", "departments", "persistent", "agents", "shared", "footer"] as const;
+/**
+ * The sidebar's sections, top to bottom. The order is fixed. The company-wide shortcuts come before the
+ * department tabs, so the tabs sit directly above the agents they choose between (November 21, 2026).
+ */
+export const SIDEBAR_SECTIONS = ["business", "persistent", "departments", "agents", "shared", "footer"] as const;
 export type SidebarSection = (typeof SIDEBAR_SECTIONS)[number];
 
 /** A new workspace opens with Operations selected in the sidebar, on the Home page. */
@@ -121,7 +124,7 @@ export const PERSISTENT_ITEMS: readonly NavItem[] = [
     section: "persistent",
     purpose: "Customer and cleaner communications. Conversations with AI agents are not here.",
     path: `${APP_ROOT}/inbox`,
-    availability: { status: "planned", notice: true },
+    availability: LIVE,
     minimumRole: "office",
   },
   { id: "search", label: "Search", section: "persistent", purpose: "Find business records, jobs, conversations and tasks.", path: `${APP_ROOT}/search`, availability: PLANNED, minimumRole: "office" },
@@ -224,6 +227,11 @@ export const NAV_ITEMS: readonly NavItem[] = [...PERSISTENT_ITEMS, ...SHARED_ITE
 /** Pages inside Settings. They have no sidebar entry: Settings links to them. They are derived from the settings catalog (settings.ts), the one place they are defined. */
 export const SETTINGS_PAGES: readonly { path: string; label: string; purpose: string }[] = SETTINGS_SECTIONS.map(({ path, label, purpose }) => ({ path, label, purpose }));
 
+/** Pages inside Settings › Integrations, reached from their card there. They have no navigation entry of their own. */
+export const INTEGRATION_PAGES: readonly { path: string; label: string; purpose: string }[] = [
+  { path: `${APP_ROOT}/settings/integrations/quo`, label: "Quo", purpose: "Connect the company's own Quo (formerly OpenPhone) account: numbers, agents, the test text and recovery." },
+];
+
 /** Pages inside Agreements. The first six are its navigation; the rest are reached from them. They have no sidebar entry of their own. */
 export const AGREEMENT_PAGES: readonly { path: string; label: string; purpose: string }[] = [
   { path: `${APP_ROOT}/agreements/all`, label: "All Agreements", purpose: "Every agreement the person may read, searchable and filterable." },
@@ -241,6 +249,7 @@ export const AGREEMENT_PAGES: readonly { path: string; label: string; purpose: s
 export const SETUP_PAGES: readonly { path: string; label: string; purpose: string }[] = [
   { path: `${APP_ROOT}/setup`, label: "Set up your company", purpose: "The Owner confirms the company's details, chooses what Selestial helps with first, and opens the workspace." },
   { path: `${APP_ROOT}/first-work`, label: "Your first work", purpose: "Where setup lands: what is prepared, what waits for a decision, what agents sent, and one next step." },
+  { path: `${APP_ROOT}/migration`, label: "Bring your business to Selestial", purpose: "Owners and Managers move customers, properties and upcoming work in from another system or a spreadsheet, review every record, and release the schedule when ready. Opened from setup, Settings, Clients and Home." },
   { path: `${APP_ROOT}/texting`, label: "Set up business texting", purpose: "The Owner gets the company its own number and texting registration, step by step, and follows it to ready. Opened from settings, agent pages and setup." },
   { path: `${APP_ROOT}/help`, label: "Moving your records", purpose: "A searchable directory of the published migration tutorials: exporting from Jobber, Housecall Pro or BookingKoala, preparing spreadsheets and checking imports. Opened from setup and import screens." },
 ];
@@ -347,7 +356,7 @@ function agent(spec: { id: AgentId; label: string; department: DepartmentId; res
  * Cleaners workspace holds the shared record. Its old pages lead to Recruiter and Dispatch.
  *
  * Two pairs of names are close on purpose and must stay distinct:
- * - Customer Setup (Customer Care) is about customers. Onboarding & Readiness (Recruiter) is about cleaners.
+ * - Customer Setup (Care) is about customers. Onboarding & Readiness (Recruiter) is about cleaners.
  * - Offers & Agreements (Recruiter) is about hiring. Offers & Coverage (Dispatch) is about job assignments.
  */
 export const AGENTS: readonly AgentNav[] = [
@@ -441,7 +450,7 @@ export const AGENTS: readonly AgentNav[] = [
   }),
   agent({
     id: "customer-care",
-    label: "Customer Care",
+    label: "Care",
     department: "operations",
     responsibility: "Handles customer communications, setup, requests, and scheduling changes.",
     backendAgent: null,

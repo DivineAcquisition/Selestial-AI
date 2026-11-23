@@ -54,7 +54,7 @@ export function UserMenu() {
         <span className="sr-only">Account menu for {name}</span>
       </button>
       {open ? (
-        <div role="menu" className="absolute right-0 z-50 mt-2 w-64 rounded-xl border border-border bg-card p-1.5 shadow-lg">
+        <div role="menu" className="absolute right-0 z-popover mt-2 w-64 rounded-xl border border-border bg-card p-1.5 shadow-lg">
           <div className="px-2.5 py-2">
             <p className="truncate text-sm font-medium text-strong">{name}</p>
             {email && email !== name ? <p className="truncate text-xs text-muted-foreground">{email}</p> : null}

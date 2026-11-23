@@ -135,7 +135,7 @@ export function AgreementDetail({ agreementId }: { agreementId: string }) {
 
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
         {tab === "document" ? (
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_26rem]">
+          <div className="grid gap-5 @4xl/main:grid-cols-[minmax(0,1fr)_22rem] @6xl/main:grid-cols-[minmax(0,1fr)_26rem]">
             <DocumentPane detail={detail} editable={editable} />
             <GuidePanel detail={detail} editable={editable} />
           </div>

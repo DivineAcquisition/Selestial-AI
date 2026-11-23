@@ -9,6 +9,7 @@
  * agents never answer the same customer at once. The same checks run again as the message goes, and its
  * private link is made only then.
  */
+import { textingProvider } from "../quo/route";
 import { internal } from "../../_generated/api";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
@@ -19,7 +20,6 @@ import { addressFor, type Channel } from "../finance/outbox";
 import { emailProvider } from "../messaging/email";
 import { messageByKey, type SendIntent } from "../messaging/outbox";
 import { checkSend, type PolicyAnswer, type PolicyCode } from "../messaging/policy";
-import { messagingProvider } from "../messaging/provider";
 import { ownMailbox } from "../sales/outbox";
 import { careLinkState, careLinkUrl } from "./links";
 import { requestLinkState, requestUrl } from "../quality/outbox";
@@ -59,7 +59,7 @@ export const MESSAGING_BALANCE = { metered: false as const, words: "Messaging us
 /** Whether a Retention message could reach this customer on this channel now, and if not, why. */
 export async function canReach(ctx: Ctx, customer: Doc<"customers">, channel: Channel, purpose: CarePurpose, actor: Actor): Promise<PolicyAnswer & { address: string | null }> {
   const address = addressFor(customer, channel);
-  const connected = channel === "sms" ? messagingProvider() !== null : (await ownMailbox(ctx, customer.companyId)) !== undefined || emailProvider() !== null;
+  const connected = channel === "sms" ? (await textingProvider(ctx, customer.companyId, address)) !== null : (await ownMailbox(ctx, customer.companyId)) !== undefined || emailProvider() !== null;
   if (!connected) return { ok: false, code: "sender_not_ready", words: channel === "email" ? "Email isn't connected for Selestial yet." : "Texting isn't connected for Selestial yet.", address };
   const answer = await checkSend(ctx, { companyId: customer.companyId, channel, to: address ?? "", now: Date.now(), ...careIntent(customer, purpose, actor) });
   if (!answer.ok) return { ...answer, words: answer.words.replace(/\bwork (emails|texts)\b/, "service $1"), address };
@@ -104,7 +104,7 @@ export async function queueCareMessage(ctx: MutationCtx, planned: PlannedCareMes
   const { company, customer, channel } = planned;
   const email = channel === "email";
   const to = addressFor(customer, channel);
-  const provider = email ? ((await ownMailbox(ctx, company._id)) ? { name: "gmail" } : emailProvider()) : messagingProvider();
+  const provider = email ? ((await ownMailbox(ctx, company._id)) ? { name: "gmail" } : emailProvider()) : await textingProvider(ctx, company._id, to);
   const intent = careIntent(customer, planned.purpose, planned.actor);
   const now = Date.now();
   let problem: string | null = null;

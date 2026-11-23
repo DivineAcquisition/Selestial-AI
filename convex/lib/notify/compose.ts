@@ -170,6 +170,17 @@ async function agentActed(ctx: MutationCtx, company: Doc<"companies">, facts: No
     about.push({ label: "Customer", value: customer?.name ?? null }, { label: "Case", value: careCase.title });
     path ??= casePath(careCase);
   }
+  const applicationId = str(facts, "applicationId") ? ctx.db.normalizeId("applications", str(facts, "applicationId")!) : null;
+  const application = applicationId ? await ctx.db.get(applicationId) : null;
+  if (application && application.companyId === company._id) {
+    const applicant = await ctx.db.get(application.applicantId);
+    about.push({ label: "Applicant", value: applicant?.name ?? null });
+    path ??= `/app/agents/recruiter/applicants?open=${application._id}`;
+  }
+  // How far it got, so the email never claims more than happened (convex/lib/controls/report.ts).
+  const STAGE: Record<string, string> = { prepared: "Prepared, not sent", queued: "Queued to send; it is checked again before it goes", submitted: "Accepted by the provider", delivered: "Delivered", completed: "Done" };
+  const stage = str(facts, "stage");
+  if (stage && STAGE[stage]) about.push({ label: "Where it stands", value: STAGE[stage] });
   return agentActedEmail({ ...c, agent, did, at: num(facts, "at") ?? at, about, path });
 }
 
@@ -295,6 +306,22 @@ async function retentionCase(ctx: MutationCtx, company: Doc<"companies">, event:
     button,
     because: "urgent operations alerts are on",
   });
+}
+
+/** Written from the connection as it is when the notice goes: a problem already fixed sends nothing. */
+async function quoAttention(ctx: MutationCtx, company: Doc<"companies">, ref: string | undefined, facts: NoticeFacts | undefined, c: Context): Promise<Built> {
+  const id = ref ? ctx.db.normalizeId("quoConnections", ref) : null;
+  const connection = id ? await ctx.db.get(id) : null;
+  if (!connection || connection.companyId !== company._id) return { problem: "The Quo connection no longer exists." };
+  const kind = str(facts, "kind");
+  const base = { ...c, eyebrow: "Quo", essential: true, because: "you're the Owner, and the Quo connection is part of your account" };
+  const button = { label: "Open the Quo connection", path: "/app/settings/integrations/quo" };
+  if (kind === "disconnected") {
+    if (connection.status !== "disconnected") return { problem: "Quo was connected again." };
+    return alertEmail({ ...base, tone: "warning", subject: "Quo was disconnected from Selestial", heading: "Quo was disconnected", body: "Nothing is sent through your Quo numbers now. Conversations and history are kept, and texts that were waiting won't be sent later. Connect again whenever you're ready.", button });
+  }
+  if (!connection.problem || connection.status === "ready") return { problem: "The Quo problem was already fixed." };
+  return alertEmail({ ...base, tone: "warning", subject: "Quo needs your attention", heading: "Texts through Quo are waiting", body: `${connection.problem.words} Texts through your Quo numbers wait until it's fixed; nothing is sent through another number instead.`, button });
 }
 
 /** Written only while it is still true: the worker is active and their onboarding was approved. */
@@ -454,6 +481,8 @@ async function build(ctx: MutationCtx, message: Doc<"messages">, company: Doc<"c
       return customerPaymentFailed(ctx, notice.ref, c);
     case "worker_ready":
       return workerReady(ctx, company, notice.ref, c);
+    case "quo_attention":
+      return quoAttention(ctx, company, notice.ref, facts, c);
     case "inbox_reconnect":
       return inboxReconnect(ctx, notice.ref, facts, c);
     case "dispatch_escalation":
@@ -492,6 +521,31 @@ async function build(ctx: MutationCtx, message: Doc<"messages">, company: Doc<"c
         button: { label: str(facts, "actionLabel") ?? "Open Selestial", path: str(facts, "actionPath") ?? "/app" },
         essential: true,
         because: "Selestial tells the Owner when something stops working and needs them, once per problem.",
+      });
+    }
+    case "migration_complete": {
+      const id = notice.ref ? ctx.db.normalizeId("migrations", notice.ref) : null;
+      const migration = id ? await ctx.db.get(id) : null;
+      if (!migration || migration.companyId !== company._id) return { problem: "The migration no longer exists." };
+      const failed = num(facts, "failed") ?? 0;
+      const attention = Object.values(migration.summary ?? {}).reduce((n, s) => n + (s.awaiting ?? 0) + (s.error ?? 0), 0) + failed;
+      return alertEmail({
+        ...c,
+        eyebrow: "Your migration",
+        subject: attention ? "Your import is ready to review" : "Your import is in: everything is accounted for",
+        heading: "Your import is ready to review",
+        body: attention ? "Customers, properties and upcoming work have been imported. Some records need attention before your agents can use them." : "Everything in your files was imported, matched to a record you already had, or skipped by your choice.",
+        tone: attention ? "warning" : "info",
+        note: "Nothing has been sent to customers or cleaners. Imported visits, recurring services and team members wait until you release them.",
+        facts: [
+          { label: "Created", value: String(num(facts, "created") ?? 0) },
+          { label: "Updated", value: String(num(facts, "updated") ?? 0) },
+          { label: "Matched to existing records", value: String(num(facts, "linked") ?? 0) },
+          { label: "Skipped", value: String(num(facts, "skipped") ?? 0) },
+          { label: "Failed", value: String(failed) },
+          ...(attention ? [{ label: "Need your attention", value: String(attention) }] : []),
+        ],
+        button: { label: "Review your import", path: "/app/migration?step=verify" },
       });
     }
     case "support_summary":

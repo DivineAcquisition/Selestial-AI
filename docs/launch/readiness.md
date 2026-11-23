@@ -297,7 +297,8 @@ These are what the code assumes. Each is from documentation and a fake, not from
 
 ## Actions that need you
 
-0. **Early-user offer is off until you switch it on** (docs/billing/README.md, "Switching the early-user offer on"): push `operate_early` to Autumn, then set `EARLY_OFFER=on` on Convex and `NEXT_PUBLIC_EARLY_OFFER=on` on Vercel.
+0. **Early-user offer: one step left.** The `operate_early` plan ($199/month, no trial, 5,000 credits, the four agents plus `agent_quality`) was created in **live** Autumn on November 22, 2026 and read back. Set `EARLY_OFFER=on` on `stoic-gazelle-731` (Convex Dashboard › Settings › Environment Variables) to start charging $199.
+0. **Messaging funds can now be bought.** The `messaging_balance` feature and the `messaging_top_up` add-on ($1 per 10,000 units, one-off, any quantity) were created in **live** Autumn on November 22, 2026 and read back. To start charging messages (decided: all users), set `MESSAGING_BILLING=on` on `stoic-gazelle-731`.
 In priority order. The first six are required before the first pilot company.
 
 1. **Stripe webhooks (you've added one; confirm both).** Stripe Dashboard › the Selestial account › Developers › Webhooks. Confirm two live endpoints exist and are enabled: `https://stoic-gazelle-731.convex.site/webhooks/stripe-billing` (events `invoice.payment_failed`, `invoice.paid`, `invoice.voided`, `invoice.marked_uncollectible`, `charge.refunded`) and `https://stoic-gazelle-731.convex.site/webhooks/stripe` with "Listen to events on connected accounts" (payment intent, charge, refund, dispute and `account.updated` events). Copy each signing secret to the matching setting on `stoic-gazelle-731` (`STRIPE_BILLING_WEBHOOK_SECRET`, and the Connect webhook secret). Tell me which Stripe account it is; the one I could reach has neither.

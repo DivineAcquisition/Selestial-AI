@@ -66,7 +66,7 @@ function ScreeningCard({ row }: { row: NonNullable<ReturnType<typeof useQuery<ty
   const tally = screening ? { meets: screening.results.filter((r) => r.outcome === "meets").length, total: screening.results.filter((r) => r.outcome !== "not_applicable").length } : null;
   return (
     <Panel>
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
+      <div className="grid gap-4 @3xl/main:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
         <div className="grid content-start gap-3">
           <div>
             <Link href={`/app/agents/recruiter/applicants?open=${row.applicationId}`} className="font-heading text-lg tracking-tight text-strong hover:underline">

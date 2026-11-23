@@ -5,6 +5,7 @@
  * open. Being prepared, sent, delivered and acted on are four separate facts: the message's status says the
  * first three, and the link's last action says the fourth.
  */
+import { textingProvider } from "../quo/route";
 import { internal } from "../../_generated/api";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
@@ -13,7 +14,7 @@ import { recordEvent, type Actor } from "../events";
 import { emailProvider } from "../messaging/email";
 import { originOf, type SendIntent } from "../messaging/outbox";
 import { checkSend, type PolicyCode } from "../messaging/policy";
-import { messagingProvider, sendablePhone } from "../messaging/provider";
+import { sendablePhone } from "../messaging/provider";
 import { isEmail } from "../text";
 import { followUpBlocker } from "./followUps";
 import { portalLinkState, portalTokenFor } from "./portal";
@@ -61,7 +62,7 @@ export async function queueCleanerMessage(ctx: MutationCtx, planned: PlannedClea
   const email = planned.channel === "email";
   const raw = email ? (planned.to?.email ?? planned.cleaner?.email) : (planned.to?.sms ?? planned.cleaner?.phone);
   const to = email ? (raw && isEmail(raw.trim().toLowerCase()) ? raw.trim().toLowerCase() : null) : sendablePhone(raw);
-  const provider = email ? emailProvider() : messagingProvider();
+  const provider = email ? emailProvider() : await textingProvider(ctx, planned.company._id, to);
   let problem: string | null = null;
   if (!raw) problem = email ? "No email address on file." : "No mobile number on file.";
   else if (!to) problem = email ? "The email address on file is not valid." : "The mobile number on file is not valid.";

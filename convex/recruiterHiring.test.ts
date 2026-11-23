@@ -222,8 +222,8 @@ describe("Recruiter: screening, interviews, offers and the handoff to onboarding
     expect(drafted).toMatchObject({ outcome: "done", result: { status: "draft", pay: "45% of each job's price", sent: false } });
     // There is no tool that sends an offer, and the permission cannot be raised past Propose.
     expect(TOOL_NAMES.filter((name) => /offer/.test(name))).toEqual(["prepare_offer"]);
-    expect(await refusal(s.allow("recruiter.send_offer", "execute"))).toContain("cannot be set higher than Propose");
-    expect(await refusal(s.allow("recruiter.advance_candidate", "execute"))).toContain("cannot be set higher than Propose");
+    expect(await refusal(s.allow("recruiter.send_offer", "execute"))).toContain("can't be set above Ask me first");
+    expect(await refusal(s.allow("recruiter.advance_candidate", "execute"))).toContain("never moves a candidate forward");
     const offerId = drafted.result.offerId as Id<"hiringOffers">;
     const office = await s.office();
     expect(await refusal(office.mutation(api.hiringOffers.requestSend, { companyId: s.companyId, offerId }))).toBe("Not allowed.");

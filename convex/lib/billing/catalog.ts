@@ -41,8 +41,8 @@ export const AUTUMN = {
   earlyPlan: "operate_early",
 } as const;
 
-/** The early-user offer: the first 15 companies whose first plan payment succeeds pay $199 a month for 12 months. */
-export const EARLY_OFFER = { places: 15, monthlyCents: 199_00, months: 12, plan: "operate" as PlanId } as const;
+/** The early-user offer: the first 25 companies whose first plan payment succeeds pay $199 a month for 12 months (raised from 15 by the Owner on November 22, 2026). */
+export const EARLY_OFFER = { places: 25, monthlyCents: 199_00, months: 12, plan: "operate" as PlanId } as const;
 
 export const AGENT_IDS = ["sales", "retention", "recruiter", "dispatch", "marketing", "quality", "customer-care"] as const;
 export type AgentId = (typeof AGENT_IDS)[number];
@@ -64,7 +64,7 @@ export const AGENT_CATALOG: Record<AgentId, { name: string; department: "growth"
   dispatch: { name: "Dispatch", department: "operations", plans: ["operate", "expand"] },
   marketing: { name: "Marketing", department: "growth", plans: ["expand"] },
   quality: { name: "Quality", department: "operations", plans: ["expand"] },
-  "customer-care": { name: "Customer Care", department: "operations", plans: ["expand"] },
+  "customer-care": { name: "Care", department: "operations", plans: ["expand"] },
 };
 
 /**
@@ -119,7 +119,7 @@ export const PLANS: Record<PlanId, { name: string; monthlyCents: number; positio
     name: "Expand",
     monthlyCents: 499_00,
     positioning: "Everything in Operate, with advanced approval routing, template governance and Creative Studio.",
-    summary: "Not open to new companies. Marketing, Quality and Customer Care join it when each is released.",
+    summary: "Not open to new companies. Marketing, Quality and Care join it when each is released.",
   },
 };
 

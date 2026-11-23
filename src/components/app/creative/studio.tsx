@@ -340,7 +340,7 @@ function Composer({ assets, initial }: { assets: Asset[]; initial: string | null
     </label>
   );
   return (
-    <div className="grid gap-4 lg:grid-cols-[22rem_1fr]">
+    <div className="grid gap-4 @4xl/main:grid-cols-[22rem_minmax(0,1fr)]">
       <Panel title="Compose a real-job creative">
         <div className="grid gap-3">
           {picker("Before", before, setBefore)}

@@ -6,7 +6,7 @@ import { loadPublicTrust } from "@/lib/trust/public";
 
 export const metadata: Metadata = {
   title: "The agents",
-  description: "Selestial's AI team for cleaning companies: Sales, Recruiter, Dispatch and Retention work today; Marketing, Quality and Customer Care are coming.",
+  description: "Selestial's AI team for cleaning companies: Sales, Recruiter, Dispatch and Retention work today; Marketing, Quality and Care are coming.",
   alternates: { canonical: "/agents" },
 };
 

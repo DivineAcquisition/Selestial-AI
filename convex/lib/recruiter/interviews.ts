@@ -7,6 +7,7 @@
  * slot and every other booking of that interviewer, so two applicants picking the same time cannot both
  * get it. Nothing here records or transcribes an interview.
  */
+import { reportAction } from "../controls/report";
 import { internal } from "../../_generated/api";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
@@ -102,6 +103,7 @@ export async function startInterview(ctx: MutationCtx, application: Doc<"applica
   if (authority.level !== "propose" || actor.kind === "member") {
     // A person who just chose to interview this applicant has authorized asking them for a time.
     await sendInterviewInvite(ctx, interviewId, actor);
+    if (actor.kind === "agent") await reportAction(ctx, { companyId: company._id, agent: "recruiter", action: RUN_INTERVIEW, level: authority.level, subject: { table: "interviews", id: interviewId }, ref: interviewId, stage: "queued", kind: "interview_invite", data: { applicationId: application._id } });
     return interviewId;
   }
   const decideBy = Date.now() + settings.decideWithinHours * HOUR;
@@ -242,6 +244,7 @@ export async function reminderSweep(ctx: MutationCtx, now: number): Promise<numb
       await queueApplicantMessage(ctx, { company: loaded.company, application: loaded.application, applicant: loaded.applicant, purpose: "interview_reminder", channel: "sms", body: interviewReminderText(parts), link, dedupeKey: `${key}:sms`, actor: RECRUITER, immediate: true });
     }
     await ctx.db.patch(interview._id, { reminderQueuedAt: now });
+    await reportAction(ctx, { companyId: loaded.company._id, agent: "recruiter", action: RUN_INTERVIEW, level: authority.level, subject: { table: "interviews", id: interview._id }, ref: key, stage: "queued", kind: "interview_reminder", data: { applicationId: loaded.application._id } });
     sent += 1;
   }
   return sent;

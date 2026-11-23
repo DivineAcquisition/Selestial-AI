@@ -5,7 +5,7 @@
  * which renewal decisions are coming, and what recent cases actually came to. Every number is a count of
  * records with its denominator and period; where Selestial does not hold the data, the page says so.
  */
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import Link from "next/link";
 
 import { useCompany } from "@/components/app/company";
@@ -87,8 +87,8 @@ export function RetentionOverviewScreen() {
   const { openId, open, close } = useCaseParam();
   const overview = useStableQuery(api.retentionAgent.overview, now ? { companyId, asOf: now } : "skip");
   const report = useStableQuery(api.retentionAgent.outcomes, now ? { companyId, asOf: now } : "skip");
-  const permissions = useQuery(api.permissions.list, { companyId });
-  const setPaused = useMutation(api.companies.setPausedAgents);
+  const pauseAgent = useMutation(api.companies.pauseAgent);
+  const resumeAgent = useMutation(api.companies.resumeAgent);
   const reconcile = useMutation(api.retentionAgent.reconcileNow);
   const { busy, error, run } = useRun();
   const reading = useRun();
@@ -107,7 +107,6 @@ export function RetentionOverviewScreen() {
   }
 
   const counts = overview.counts;
-  const pausedAgents = permissions?.pausedAgents ?? [];
   const { briefing, next } = briefingOf(overview);
   const first = overview.needsOwner[0];
 
@@ -124,8 +123,8 @@ export function RetentionOverviewScreen() {
                 Check the records now
               </Button>
             ) : null}
-            {role === "owner" && permissions ? (
-              <Button variant="outline" size="sm" loading={busy} onClick={() => void run(() => setPaused({ companyId, agents: overview.paused ? pausedAgents.filter((agent) => agent !== "retention") : [...pausedAgents, "retention"] }))}>
+            {role === "owner" ? (
+              <Button variant="outline" size="sm" loading={busy} onClick={() => void run(() => (overview.paused ? resumeAgent : pauseAgent)({ companyId, agent: "retention" }))}>
                 {overview.paused ? <Play aria-hidden /> : <PauseCircleIcon aria-hidden />}
                 {overview.paused ? "Resume Retention" : "Pause Retention"}
               </Button>

@@ -131,8 +131,13 @@ of the evidence it was approved on and is re-checked at the moment it would run.
 - **Quo (formerly OpenPhone)**, connected by the Owner with an API key that is stored sealed.
   - Selestial checks what the workspace actually allows (numbers, call details, transcripts, Quo's
     summaries, signed webhooks) and shows each capability as checked.
-  - Recordings and sending through Quo are "Not used". Quality never starts a recording or changes recording
-    settings.
+  - Recordings are "Not used": Quality never starts a recording or changes recording settings. This reading
+    connection sends nothing. Its deliveries arrive at `/webhooks/quality-quo/<id>`, apart from the Quo
+    texting connection's `/webhooks/quo/<id>`.
+  - Quality's texts to cleaners follow each conversation's own route (`convex/lib/quo/route.ts`). Where a
+    cleaner's conversation runs through the company's Quo texting number, Quality's request goes that way
+    only if the Owner allowed Quality on that connection (Settings › Integrations › Quo); otherwise it is
+    reported blocked, never moved to another number.
   - Signed webhooks are verified against the connection's own key, inside a five-minute window. Bounded
     polling (three pages a sync) catches what webhooks missed. Repeated, out-of-order, late and revised
     transcripts are handled.

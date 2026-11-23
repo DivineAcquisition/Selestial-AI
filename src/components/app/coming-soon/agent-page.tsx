@@ -25,7 +25,7 @@ import { Checkbox } from "@/components/ui/selection";
 
 export function ComingSoonAgentPage({ agent }: { agent: ComingSoonAgent }) {
   return (
-    <div className="mx-auto grid w-full max-w-6xl min-w-0 gap-6 [&>*]:min-w-0">
+    <div className="mx-auto grid w-full max-w-(--app-width-detail) min-w-0 gap-6 [&>*]:min-w-0">
       <Hero agent={agent} />
       <AgentScene agent={agent} footer="Like every Selestial agent, it will work under the permissions you set in Settings, and its work shows in Approvals and Activity." />
       <section aria-labelledby="capabilities" className="grid gap-3">
@@ -127,7 +127,7 @@ function RequestAccess({ agent }: { agent: ComingSoonAgent }) {
   const asked = mine?.requested && mine.mine && !editing;
   return (
     <section id="early-access" aria-labelledby="early-access-title" className="scroll-mt-24 rounded-2xl border border-brand-500/30 bg-card p-4 sm:p-6">
-      <div className="grid gap-5 lg:grid-cols-[1fr_1.3fr]">
+      <div className="grid gap-5 @3xl/main:grid-cols-[1fr_1.3fr]">
         <div>
           <p className={eyebrow}>Early access</p>
           <h2 id="early-access-title" className="mt-1 font-heading text-xl tracking-tight text-strong">

@@ -314,7 +314,7 @@ environment (`billingAccounts.env`), so sandbox data never counts in production.
 
 ## Early-user offer
 
-The Owner's terms of November 22, 2026: **$199 a month for the first 12 months, for the first 15 companies
+The Owner's terms of November 22, 2026: **$199 a month for the first 12 months, for the first 25 companies
 whose first plan payment succeeds, then $299.** No trial. Code: `convex/lib/billing/earlyOffer.ts` (the rule),
 `convex/earlyOffer.ts` (sweep, month-12 move, Owner and staff views).
 
@@ -329,7 +329,7 @@ items as `operate`; `planIdFromAutumn` maps it to `operate`, so every entitlemen
 **The rule, exactly.**
 
 1. *Preview.* An Owner with no plan, whose company has no paid invoice and never held a place, opens the
-   purchase while fewer than 15 places are used: the intent is marked `offer: "early"` and previewed as
+   purchase while fewer than 25 places are used: the intent is marked `offer: "early"` and previewed as
    `operate_early`. Otherwise it is `operate` at $299. Previewing reserves nothing.
 2. *Confirm.* `confirmIntent` reserves a place. Convex mutations are serializable, so this is the one point
    where two companies racing for the last place are decided. The loser's purchase is **not sent**; it is
@@ -360,7 +360,7 @@ and one email (`plan_price_change`, Account category, owner audience; Selestial'
 balance), each with the date and $299. Keyed so it is planned once however often the sweep runs; not sent if
 the plan is ending.
 
-**What staff can do.** Staff › Operations › Billing shows places used of 15, each company, when it moves to
+**What staff can do.** Staff › Operations › Billing shows places used of 25, each company, when it moves to
 $299 and whether that is on Autumn's record. A staff member with `billing.adjust` can release a place that was
 reserved and never paid, with a reason. A claimed place can never be released.
 
@@ -401,17 +401,13 @@ purchase, a month-12 move (advance the test clock) and a cancellation, then push
 
 ### Switching the early-user offer on
 
-The offer is **off by default**, so merging the code changes nothing a customer sees or pays. While it is off,
-every company is offered Operate at $299, no screen mentions $199, and the public pricing card has no offer box.
-Places already held keep working (claims, the month-12 move and the reminder still run).
-
-To switch it on, in this order:
+The public pricing card always shows the offer ($299 struck through, $199 for the first 12 months, 25 places), by
+the Owner's decision of November 22, 2026. **Checkout charges $199 only once the offer is switched on**; until
+then a company that signs up is offered Operate at $299 in the app. So before announcing the offer:
 
 1. `cd billing && npx atmn push` against the sandbox, then against production. The config keeps `operate` and
    `expand` and adds `operate_early`. Check in the Autumn dashboard that `operate_early` is $199/month, in group
    `selestial`, with no trial and Operate's items.
 2. Convex Dashboard › `stoic-gazelle-731` › Settings › Environment Variables: `EARLY_OFFER` = `on`.
-3. Vercel › selestial-ai › Settings › Environment Variables: `NEXT_PUBLIC_EARLY_OFFER` = `on` (Production), then
-   redeploy so the public pricing card shows the offer.
 
-Switching off is the reverse (step 2 alone stops new places at once; step 3 removes the public line).
+Removing `EARLY_OFFER` stops new places at once; places already held keep working.

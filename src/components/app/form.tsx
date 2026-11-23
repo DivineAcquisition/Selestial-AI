@@ -48,26 +48,32 @@ const control =
  * composite control from the selection system (Select, SearchableSelect, MultiSelect, RadioGroup) is
  * not: its focusable element is inside it, so it reads the ids from context and names itself. `aside`
  * sits under the control, outside the label, for a source chip or a suggestion with its own buttons.
+ *
+ * Every field has the same three parts: the label, the control, and the words beneath it (error, hint,
+ * aside). The words sit outside the label, so they are not read as part of the field's name. In a grid
+ * made only of fields the three parts line up across the row (globals.css, "Fields in a row line up").
  */
 export function Field({ label, hint, error, children, className, aside, required }: { label: string; hint?: string; error?: string | null; children: React.ReactNode; className?: string; aside?: React.ReactNode; required?: boolean }) {
   const id = useId();
   const described = joinIds(error ? `${id}-error` : null, hint ? `${id}-hint` : null);
   const context = { controlId: `${id}-control`, labelId: `${id}-label`, describedBy: described, invalid: Boolean(error), required };
   const composite = isValidElement(children) && isComposite(children.type);
-  const words = (
-    <>
-      {error ? (
-        <span id={`${id}-error`} className="text-xs font-medium text-destructive-foreground">
-          {error}
-        </span>
-      ) : null}
-      {hint ? (
-        <span id={`${id}-hint`} className="text-xs text-muted-foreground">
-          {hint}
-        </span>
-      ) : null}
-    </>
-  );
+  const words =
+    error || hint || aside ? (
+      <div className="grid min-w-0 gap-1 pt-1.5">
+        {error ? (
+          <span id={`${id}-error`} className="text-xs font-medium text-destructive-foreground">
+            {error}
+          </span>
+        ) : null}
+        {hint ? (
+          <span id={`${id}-hint`} className="text-xs text-muted-foreground">
+            {hint}
+          </span>
+        ) : null}
+        {aside}
+      </div>
+    ) : null;
   const title = (
     <>
       {label}
@@ -81,13 +87,13 @@ export function Field({ label, hint, error, children, className, aside, required
   if (composite) {
     return (
       <FieldControlContext.Provider value={context}>
-        <div className={cn("grid content-start gap-1.5 text-sm", className)}>
-          <label id={context.labelId} htmlFor={context.controlId} className="font-medium text-strong">
+        <div data-field className={cn("grid min-w-0 content-start text-sm", className)}>
+          <label id={context.labelId} htmlFor={context.controlId} className="pb-1.5 font-medium text-strong">
             {title}
           </label>
-          {children}
+          {/* One box for the control, however many elements it draws (a searchable select adds its own status lines). */}
+          <div className="grid min-w-0 content-start gap-1.5">{children}</div>
           {words}
-          {aside}
         </div>
       </FieldControlContext.Provider>
     );
@@ -95,27 +101,14 @@ export function Field({ label, hint, error, children, className, aside, required
   const linked = isValidElement<Record<string, unknown>>(children)
     ? cloneElement(children, { "aria-describedby": joinIds(children.props["aria-describedby"] as string | undefined, described), ...(error ? { "aria-invalid": true } : {}), ...(required ? { required: true } : {}) })
     : children;
-  // Without an aside the markup is exactly what it always was: one label around the control.
-  if (!aside) {
-    return (
-      <FieldControlContext.Provider value={context}>
-        <label className={cn("grid content-start gap-1.5 text-sm", className)}>
-          <span className="font-medium text-strong">{title}</span>
-          {linked}
-          {words}
-        </label>
-      </FieldControlContext.Provider>
-    );
-  }
   return (
     <FieldControlContext.Provider value={context}>
-      <div className={cn("grid content-start gap-1.5 text-sm", className)}>
-        <label className="grid content-start gap-1.5">
+      <div data-field className={cn("grid min-w-0 content-start text-sm", className)}>
+        <label data-field-label className="grid min-w-0 content-start gap-1.5">
           <span className="font-medium text-strong">{title}</span>
-          {linked}
-          {words}
+          <span className="grid min-w-0 content-start gap-1.5">{linked}</span>
         </label>
-        {aside}
+        {words}
       </div>
     </FieldControlContext.Provider>
   );
