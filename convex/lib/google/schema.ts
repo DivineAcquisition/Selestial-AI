@@ -131,6 +131,8 @@ export const googleTables = {
     externalChange: v.optional(v.union(v.literal("moved"), v.literal("deleted"), v.literal("edited"))),
     /** The time the event had in Google when the change was noticed, so a person can see what was moved. */
     externalTimes: v.optional(v.object({ startsAt: v.number(), endsAt: v.number() })),
+    /** The task opened for that change, closed when the change is resolved. */
+    externalTaskId: v.optional(v.id("tasks")),
     updatedAt: v.number(),
   })
     .index("by_company_subject", ["companyId", "subjectId"])

@@ -102,8 +102,11 @@ const calendarSync: Executor = async (ctx, { job, token }) => {
     const link = links.get(draft.id);
     const { subject, ...event } = draft;
     const hash = draftHash(event);
-    if (link?.externalChange) {
-      held += 1; // A person decides first; Selestial does not overwrite a change someone made in Google.
+    if (link?.externalChange && link.writtenHash === hash) {
+      // A person decides first; Selestial does not overwrite a change someone made in Google. Once the visit is
+      // changed again in Selestial (its hash differs from what was last written), Selestial's version is written
+      // and the change is settled (googleCalendar.saveLink).
+      held += 1;
       continue;
     }
     if (link && link.writtenHash === hash) continue;

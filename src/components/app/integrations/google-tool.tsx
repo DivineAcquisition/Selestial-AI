@@ -315,13 +315,56 @@ function CalendarPanel({ companyId, manager }: { companyId: Id<"companies">; man
   const sync = useMutation(api.googleCalendar.syncNow);
   const [from] = useState(() => Date.now());
   const busyTimes = useQuery(api.googleCalendar.busy, { companyId, from, to: from + 7 * 86_400_000 });
+  const changed = useQuery(api.googleCalendar.changed, { companyId });
+  const overBusy = useQuery(api.googleCalendar.overBusy, { companyId });
+  const keep = useMutation(api.googleCalendar.keepSelestial);
   const { busy, error, run } = useRun();
   const [note, setNote] = useState<string | null>(null);
+  const when = (at: number | null) => (at === null ? "no time" : new Date(at).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }));
   return (
     <Panel title="Your calendar">
       <div className="grid gap-3 px-4 py-4 sm:px-5">
-        <p className="text-sm text-muted-foreground">Visits and interviews stay up to date on your calendar. If one is moved or deleted in Google, Selestial asks you before changing anything.</p>
+        <p className="text-sm text-muted-foreground">Visits and interviews stay up to date on your calendar. If one is moved or deleted in Google, Selestial asks you before changing anything. Busy times on the calendars you chose are avoided when Selestial offers times, and flagged when someone schedules over them.</p>
         {(busyTimes ?? []).some((row) => row.problem) ? <p className="text-xs text-muted-foreground">One of your calendars couldn’t be read. Check it’s still shared with this Google account.</p> : null}
+        {overBusy && overBusy.length > 0 ? (
+          <div className="grid gap-1 rounded-lg border border-border p-3">
+            <span className="text-sm font-medium text-strong">Scheduled over a busy time</span>
+            <p className="text-xs text-muted-foreground">These were set by a person at a time your calendar shows as busy. Nothing was changed; move them if they clash.</p>
+            <ul className="grid gap-0.5 text-sm">
+              {overBusy.map((row) => (
+                <li key={row.id}>
+                  {row.what === "visit" ? "Visit" : "Interview"} · {when(row.startsAt)}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {changed && changed.length > 0 ? (
+          <div className="grid gap-2 rounded-lg border border-border p-3">
+            <span className="text-sm font-medium text-strong">Changed in Google, waiting for you</span>
+            <p className="text-xs text-muted-foreground">To keep Google’s time, change the {changed.some((c) => c.what === "visit") ? "visit" : "interview"} in Selestial to match; the calendar then follows. Otherwise put Selestial’s time back.</p>
+            <ul className="grid gap-2">
+              {changed.map((c) => (
+                <li key={c.linkId} className="flex flex-wrap items-start justify-between gap-2 text-sm">
+                  <span className="grid gap-0.5">
+                    <span className="text-strong">
+                      A {c.what} was {c.change} in Google
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      Selestial: {when(c.selestial.startsAt)}
+                      {c.google ? ` · Google: ${when(c.google.startsAt)}` : ""}
+                    </span>
+                  </span>
+                  {manager ? (
+                    <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => { await keep({ companyId, linkId: c.linkId }); setNote("Putting Selestial’s time back on your calendar."); })}>
+                      Put Selestial’s time back
+                    </Button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         {manager ? (
           <div>
             <Button type="button" variant="outline" disabled={busy} onClick={() => void run(async () => { const r = await sync({ companyId }); setNote(r.repeated ? "Already updating." : "Updating your calendar now."); })}>

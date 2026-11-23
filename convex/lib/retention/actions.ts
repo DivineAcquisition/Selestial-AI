@@ -183,7 +183,8 @@ export async function correctionSlots(ctx: Ctx, company: Doc<"companies">, input
         if (!hours.some((w) => w.weekday === weekday && w.startMinute <= minute && minute + input.minutes <= w.endMinute)) continue;
       }
       const answer = await checkCapacity(ctx, company, { startsAt, endsAt }, input.crew);
-      if (answer.state === "fits" || answer.state === "tight") {
+      // A time on a busy block of the Owner's Google Calendar is not offered (convex/lib/google/busy.ts).
+      if ((answer.state === "fits" || answer.state === "tight") && !answer.calendarBusy) {
         out.push({ startsAt, endsAt, state: answer.state });
         break;
       }

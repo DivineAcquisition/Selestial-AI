@@ -81,7 +81,9 @@ export async function bookingReadiness(ctx: Ctx, company: Doc<"companies">, oppo
   else {
     const crew = (quote?.snapshot as { crew?: number | null } | null)?.crew ?? 1;
     const answer = await checkCapacity(ctx, company, slot, crew);
-    if (answer.state === "fits" || answer.state === "tight") items.push({ key: "time", label: "Time and capacity", state: "done", detail: `${whenWords(slot, tz)} is open. It is held when the booking is requested.`, by: null });
+    // A time on a busy block of the Owner's Google Calendar waits for the Owner rather than going ahead on its own.
+    if ((answer.state === "fits" || answer.state === "tight") && answer.calendarBusy) items.push({ key: "time", label: "Time and capacity", state: "blocked", detail: `${whenWords(slot, tz)} has crew, but your Google Calendar shows a busy time then. Confirm the time with the customer, or choose another.`, by: "owner" });
+    else if (answer.state === "fits" || answer.state === "tight") items.push({ key: "time", label: "Time and capacity", state: "done", detail: `${whenWords(slot, tz)} is open. It is held when the booking is requested.`, by: null });
     else items.push({ key: "time", label: "Time and capacity", state: "blocked", detail: `${whenWords(slot, tz)} cannot be confirmed. ${answer.why}`, by: "customer" });
   }
 
