@@ -436,7 +436,9 @@ export const salesTables = {
     .index("by_company_status", ["companyId", "status", "updatedAt"])
     .index("by_company_proposal", ["companyId", "proposalId"])
     .index("by_company_draft", ["companyId", "draftId"])
-    .index("by_publicId", ["publicId"]),
+    .index("by_publicId", ["publicId"])
+    /** Calendar reads a date range of walkthroughs through this. */
+    .index("by_company_scheduled", ["companyId", "scheduledAt"]),
 
   serviceSetups: defineTable({
     companyId: v.id("companies"),
