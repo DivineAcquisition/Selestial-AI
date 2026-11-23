@@ -36,6 +36,7 @@ import type * as chat from "../chat.js";
 import type * as chatArtifacts from "../chatArtifacts.js";
 import type * as chatRuns from "../chatRuns.js";
 import type * as cleanerFollowUps from "../cleanerFollowUps.js";
+import type * as cleanerOnboarding from "../cleanerOnboarding.js";
 import type * as cleanerPay from "../cleanerPay.js";
 import type * as cleanerPerformance from "../cleanerPerformance.js";
 import type * as cleanerProfile from "../cleanerProfile.js";
@@ -108,6 +109,7 @@ import type * as lib_agreements_compose from "../lib/agreements/compose.js";
 import type * as lib_agreements_diff from "../lib/agreements/diff.js";
 import type * as lib_agreements_eventSchema from "../lib/agreements/eventSchema.js";
 import type * as lib_agreements_hash from "../lib/agreements/hash.js";
+import type * as lib_agreements_hostedSign from "../lib/agreements/hostedSign.js";
 import type * as lib_agreements_intake from "../lib/agreements/intake.js";
 import type * as lib_agreements_legal from "../lib/agreements/legal.js";
 import type * as lib_agreements_pdf from "../lib/agreements/pdf.js";
@@ -193,7 +195,9 @@ import type * as lib_cleaners_duplicates from "../lib/cleaners/duplicates.js";
 import type * as lib_cleaners_enroll from "../lib/cleaners/enroll.js";
 import type * as lib_cleaners_followUps from "../lib/cleaners/followUps.js";
 import type * as lib_cleaners_free from "../lib/cleaners/free.js";
+import type * as lib_cleaners_guided from "../lib/cleaners/guided.js";
 import type * as lib_cleaners_handoff from "../lib/cleaners/handoff.js";
+import type * as lib_cleaners_onboarding from "../lib/cleaners/onboarding.js";
 import type * as lib_cleaners_outbox from "../lib/cleaners/outbox.js";
 import type * as lib_cleaners_performance from "../lib/cleaners/performance.js";
 import type * as lib_cleaners_personnel from "../lib/cleaners/personnel.js";
@@ -203,6 +207,8 @@ import type * as lib_cleaners_records from "../lib/cleaners/records.js";
 import type * as lib_cleaners_schedule from "../lib/cleaners/schedule.js";
 import type * as lib_cleaners_settings from "../lib/cleaners/settings.js";
 import type * as lib_cleaners_status from "../lib/cleaners/status.js";
+import type * as lib_cleaners_steps from "../lib/cleaners/steps.js";
+import type * as lib_cleaners_tax from "../lib/cleaners/tax.js";
 import type * as lib_cleaners_teams from "../lib/cleaners/teams.js";
 import type * as lib_cleaners_words from "../lib/cleaners/words.js";
 import type * as lib_clients_conversations from "../lib/clients/conversations.js";
@@ -528,6 +534,7 @@ import type * as migration from "../migration.js";
 import type * as migrationImports from "../migrationImports.js";
 import type * as notifications from "../notifications.js";
 import type * as onboarding from "../onboarding.js";
+import type * as onboardingSetup from "../onboardingSetup.js";
 import type * as operations from "../operations.js";
 import type * as overview from "../overview.js";
 import type * as pay from "../pay.js";
@@ -598,8 +605,6 @@ import type * as textingSetup from "../textingSetup.js";
 import type * as trust from "../trust.js";
 import type * as tutorials from "../tutorials.js";
 import type * as workforce from "../workforce.js";
-import type * as cleanerOnboarding from "../cleanerOnboarding.js";
-import type * as onboardingSetup from "../onboardingSetup.js";
 
 import type {
   ApiFromModules,
@@ -608,8 +613,6 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  onboardingSetup: typeof onboardingSetup;
-  cleanerOnboarding: typeof cleanerOnboarding;
   activation: typeof activation;
   agentAccess: typeof agentAccess;
   agreementFiles: typeof agreementFiles;
@@ -638,6 +641,7 @@ declare const fullApi: ApiFromModules<{
   chatArtifacts: typeof chatArtifacts;
   chatRuns: typeof chatRuns;
   cleanerFollowUps: typeof cleanerFollowUps;
+  cleanerOnboarding: typeof cleanerOnboarding;
   cleanerPay: typeof cleanerPay;
   cleanerPerformance: typeof cleanerPerformance;
   cleanerProfile: typeof cleanerProfile;
@@ -710,6 +714,7 @@ declare const fullApi: ApiFromModules<{
   "lib/agreements/diff": typeof lib_agreements_diff;
   "lib/agreements/eventSchema": typeof lib_agreements_eventSchema;
   "lib/agreements/hash": typeof lib_agreements_hash;
+  "lib/agreements/hostedSign": typeof lib_agreements_hostedSign;
   "lib/agreements/intake": typeof lib_agreements_intake;
   "lib/agreements/legal": typeof lib_agreements_legal;
   "lib/agreements/pdf": typeof lib_agreements_pdf;
@@ -795,7 +800,9 @@ declare const fullApi: ApiFromModules<{
   "lib/cleaners/enroll": typeof lib_cleaners_enroll;
   "lib/cleaners/followUps": typeof lib_cleaners_followUps;
   "lib/cleaners/free": typeof lib_cleaners_free;
+  "lib/cleaners/guided": typeof lib_cleaners_guided;
   "lib/cleaners/handoff": typeof lib_cleaners_handoff;
+  "lib/cleaners/onboarding": typeof lib_cleaners_onboarding;
   "lib/cleaners/outbox": typeof lib_cleaners_outbox;
   "lib/cleaners/performance": typeof lib_cleaners_performance;
   "lib/cleaners/personnel": typeof lib_cleaners_personnel;
@@ -805,6 +812,8 @@ declare const fullApi: ApiFromModules<{
   "lib/cleaners/schedule": typeof lib_cleaners_schedule;
   "lib/cleaners/settings": typeof lib_cleaners_settings;
   "lib/cleaners/status": typeof lib_cleaners_status;
+  "lib/cleaners/steps": typeof lib_cleaners_steps;
+  "lib/cleaners/tax": typeof lib_cleaners_tax;
   "lib/cleaners/teams": typeof lib_cleaners_teams;
   "lib/cleaners/words": typeof lib_cleaners_words;
   "lib/clients/conversations": typeof lib_clients_conversations;
@@ -1130,6 +1139,7 @@ declare const fullApi: ApiFromModules<{
   migrationImports: typeof migrationImports;
   notifications: typeof notifications;
   onboarding: typeof onboarding;
+  onboardingSetup: typeof onboardingSetup;
   operations: typeof operations;
   overview: typeof overview;
   pay: typeof pay;
