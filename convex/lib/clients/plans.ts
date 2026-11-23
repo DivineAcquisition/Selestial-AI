@@ -10,9 +10,9 @@
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import { addDays } from "../agreements/store";
-import { localDay } from "../chat/localDay";
 import { recordEvent, type Actor } from "../events";
 import { createVisit } from "../jobs/visits";
+import { localInstant } from "../sales/cadence";
 import { scheduleDates } from "../services/engine";
 import { dayOf } from "../services/propertyPrices";
 import { liveTaskByKey, openTask } from "../taskState";
@@ -21,11 +21,14 @@ import { refreshClient } from "./directory";
 /** How far ahead a running plan keeps its visits booked. */
 export const HORIZON_DAYS = 28;
 
-/** "HH:MM" on the company's clock on that day, as an instant. */
+/**
+ * "HH:MM" on the company's clock on that day, as an instant. A clock change between midnight and the
+ * visit is corrected (localInstant), so a 9:00 visit on the day clocks go forward is at 9:00, not 10:00.
+ */
 export function instantOn(day: string, time: string, timezone: string): number {
   const match = /^(\d{2}):(\d{2})$/.exec(time);
   const minutes = match ? Number(match[1]) * 60 + Number(match[2]) : 9 * 60;
-  return localDay(day, timezone) + minutes * 60_000;
+  return localInstant(day, minutes, timezone);
 }
 
 /** The days of a recurring plan's series from `from` through `through`, without skipped, paused or ended days. */

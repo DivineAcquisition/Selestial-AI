@@ -93,7 +93,7 @@ export const DEPARTMENTS: readonly Department[] = [
 
 // ── Company-wide items ──────────────────────────────────────────────────────────────────────────────
 
-export type NavItemId = "home" | "approvals" | "inbox" | "search" | "chat" | "services" | "customers" | "cleaners" | "agreements" | "finance" | "reports" | "settings";
+export type NavItemId = "home" | "approvals" | "calendar" | "inbox" | "search" | "chat" | "services" | "customers" | "cleaners" | "agreements" | "finance" | "reports" | "settings";
 
 export type NavItem = Destination & {
   id: NavItemId;
@@ -117,6 +117,18 @@ export const PERSISTENT_ITEMS: readonly NavItem[] = [
     availability: LIVE,
     minimumRole: "office",
     accessNote: "Owners and Managers decide approvals. Office sees only the tasks handed to a person.",
+  },
+  {
+    // Directly under Approvals, by the owner's decision of November 23, 2026 (docs/calendar/00-architecture.md).
+    id: "calendar",
+    label: "Calendar",
+    section: "persistent",
+    purpose: "The company's whole schedule in one place: visits and who is on them, interviews, walkthroughs, inspections, training, meetings, time off and due dates.",
+    path: `${APP_ROOT}/calendar`,
+    availability: LIVE,
+    minimumRole: "office",
+    accessNote:
+      "Everyone sees visits and their crews. Interviews, walkthroughs, inspections, training, meetings and members' time are for Owners and Managers. Calendar shows the same records as Dispatch › Schedule, Recruiter › Interviews and the rest; it keeps no copy of its own.",
   },
   {
     id: "inbox",

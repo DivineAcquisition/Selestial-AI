@@ -83,7 +83,8 @@ describe("the navigation definition", () => {
     expect(AGENTS).toHaveLength(7);
     // The department tabs sit directly above the agents they list; the company-wide shortcuts come first.
     expect(SIDEBAR_SECTIONS).toEqual(["business", "persistent", "departments", "agents", "shared", "footer"]);
-    expect(PERSISTENT_ITEMS.map((item) => item.label)).toEqual(["Home", "Approvals", "Inbox", "Search"]);
+    // Calendar sits directly under Approvals (November 23, 2026).
+    expect(PERSISTENT_ITEMS.map((item) => item.label)).toEqual(["Home", "Approvals", "Calendar", "Inbox", "Search"]);
     // Chat leads Company (November 16, 2026). Integrations moved into Settings the same day, on the owner's request.
     // Services & Pricing joined Company on November 16, 2026, moved out of Settings at the owner's request.
     expect(SHARED_ITEMS.map((item) => item.label)).toEqual(["Chat", "Services & Pricing", "Clients & Properties", "Cleaners", "Agreements", "Finance", "Reports"]);
@@ -348,6 +349,11 @@ describe("navigation behavior", () => {
       { label: "Campaigns", href: null },
     ]);
     expect(breadcrumbsFor("/app/approvals")).toEqual([{ label: "Approvals", href: "/app/approvals" }]);
+    expect(breadcrumbsFor("/app/calendar")).toEqual([{ label: "Calendar", href: "/app/calendar" }]);
+    expect(activeFor("/app/calendar")).toEqual({ item: "calendar", agent: null, tab: null, department: null });
+    expect(linkTo("calendar")).toBe("/app/calendar");
+    // The old schedule address still goes to Dispatch's staffing view; Calendar does not take it over.
+    expect(EXISTING_ROUTES.find((row) => row.pattern === "/app/schedule")?.today).toBe("Redirects to Dispatch › Schedule.");
     expect(breadcrumbsFor("/app/unknown")).toEqual([]);
     expect(linkTo("approvals")).toBe("/app/approvals");
     expect(linkTo("dispatch.schedule")).toBe("/app/agents/dispatch/schedule");

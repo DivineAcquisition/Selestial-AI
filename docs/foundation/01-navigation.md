@@ -61,12 +61,13 @@ directly above the agents they choose between.
    whole workspace and its data. There is no client selector: customers and
    properties are records inside a company. No location selector until
    multi-location support exists.
-2. **Persistent navigation.** Home, Approvals, Inbox, Search. Always visible,
-   whichever department is selected.
+2. **Persistent navigation.** Home, Approvals, Calendar, Inbox, Search. Always
+   visible, whichever department is selected. Calendar sits directly under
+   Approvals (the owner's decision of November 23, 2026).
 3. **Department tabs.** Growth | Operations | Team, under an "Agents" heading.
    Choosing one changes which agents are listed directly below. It does not
    change the business, it does not navigate, and it does not filter Home,
-   Approvals, Inbox or the shared records. A small mark on a tab shows which
+   Approvals, Calendar, Inbox or the shared records. A small mark on a tab shows which
    department holds the page that is open.
 4. **The selected department's agents.** Each agent has a name that opens its
    overview, a separate arrow that opens its tabs, the nested work tabs, and
@@ -165,6 +166,7 @@ Three states describe each destination:
 |---|---|---|
 | Home | `/app` | **Live.** The Overview. |
 | Approvals | `/app/approvals` | **Live.** The decision queue. |
+| Calendar | `/app/calendar` | **Live.** The company's whole schedule, read from the records that hold it: visits and crews, interviews, walkthroughs, time off, due dates, connected-calendar busy time. Dispatch › Schedule stays the staffing view over the same jobs. See `docs/calendar/00-architecture.md`. |
 | Inbox | `/app/inbox` | **Planned.** A page exists and says conversations are not built. |
 | Search | `/app/search` | **Planned.** |
 | Chat | `/app/chat` | **Live.** Under Company, for every department. The name opens the conversation workspace; a separate arrow lists New chat, Search chats, pinned and recent chats, and All chats. One conversation is `/app/chat/[id]`; the searchable, paged history is `/app/chats`. Each chat is private to the person who started it. See `docs/chat/00-architecture.md`. |
@@ -233,7 +235,7 @@ does not re-implement it.
    controls. The arrow is a button with its own accessible name ("Show
    Dispatch's work tabs") and `aria-expanded`. An agent with no overview page
    yet has a name that is plain text: it neither navigates nor toggles.
-7. **Approvals and Inbox are reachable from every department.** They are in
+7. **Approvals, Calendar and Inbox are reachable from every department.** They are in
    the persistent section, which department tabs never change.
 8. **Badges state something to act on**, in words: "2 unfilled", "3 to
    review". Never a count of messages sent or a decorative activity number.
@@ -295,6 +297,7 @@ shown, never a guessed one.
 |---|---|---|
 | Everything not listed below | Office, Manager, Owner | Actions inside each page are checked separately. |
 | Approvals | Everyone | Owners and Managers decide. Office sees only tasks handed to a person. |
+| Calendar | Everyone | Office sees visits, crews, cleaners' time off and Dispatch's due dates. Interviews, walkthroughs, members' time and connected calendars are for Owners and Managers. |
 | Cleaners | Everyone | Pay rates are shown to the Owner only. |
 | Settings | Everyone | Only the Owner changes company details, people, authority and billing. |
 | Finance | Owner only | The owner's decision. |
