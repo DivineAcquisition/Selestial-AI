@@ -30,6 +30,7 @@ import { issueCareLink } from "./links";
 import { careChannel, queueCareMessage, type CarePurpose } from "./outbox";
 import { applyPlanChange, CHANGE_OUTCOME, NEEDS_PERSON } from "./planChanges";
 import { retentionSettings } from "./settings";
+import { enqueueQualityRun } from "../quality/runs";
 import type { ActionKind, HandoffTo, LinkPurpose } from "./schema";
 
 type Ctx = QueryCtx | MutationCtx;
@@ -538,7 +539,10 @@ export async function syncHandoff(ctx: MutationCtx, action: Action): Promise<boo
       ? await ctx.db.query("invoiceCredits").withIndex("by_company_customer", (q) => q.eq("companyId", action.companyId).eq("customerId", row.customerId).gte("at", action.createdAt)).take(20)
       : action.money.invoiceId ? await ctx.db.query("refunds").withIndex("by_company_invoice", (q) => q.eq("companyId", action.companyId).eq("invoiceId", action.money!.invoiceId!)).take(20) : [];
     const match = rows.find((r) => r.amountCents === action.money!.amountCents && (!("reversed" in r) || !r.reversed) && (!("createdAt" in r) || (r as Doc<"refunds">).createdAt >= action.createdAt));
-    if (match) return finish(true, `${action.kind === "credit" ? "A credit" : "A refund"} of ${money(action.money.amountCents)} is recorded in Finance.`, { actualCostCents: action.money.amountCents });
+    if (match) {
+      await enqueueQualityRun(ctx, { companyId: action.companyId, kind: "financial_settled", key: `money:${action._id}`, payload: { retentionCaseId: action.caseId } });
+      return finish(true, `${action.kind === "credit" ? "A credit" : "A refund"} of ${money(action.money.amountCents)} is recorded in Finance.`, { actualCostCents: action.money.amountCents });
+    }
   }
   const task = handoff.taskId ? await ctx.db.get(handoff.taskId) : null;
   if (task?.status === "done") return finish(true, task.outcome ?? "Marked done.");

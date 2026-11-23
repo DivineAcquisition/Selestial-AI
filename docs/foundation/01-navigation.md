@@ -88,7 +88,7 @@ Names and order are the owner's. Playbook is always last. Chat is never a tab: i
 | Sales | Pipeline · Quotes & Proposals · Follow-ups · Calls & Messages · Booking Forms · Playbook |
 | Retention | Needs Attention · Recovery · Continuity & Renewals · Re-engagement · Playbook (changed November 18, 2026, when Retention was built: see `docs/retention/00-architecture.md`) |
 | Dispatch | Dispatch Board · Schedule · Offers & Coverage · Live Jobs · Action Links · Playbook |
-| Quality | Completion Review · Checklists & Photos · Service Issues · Re-cleans · Playbook |
+| Quality | Reviews · Cases · Corrections · Standards · Insights · Playbook (changed November 22, 2026, when Quality was built: see `docs/quality/00-architecture.md`) |
 | Customer Care | Conversations · Customer Setup · Service Requests · Rescheduling & Cancellations · Playbook |
 | Recruiter | Hiring Needs · Applicants · Screening · Interviews · Offers & Agreements · Onboarding & Readiness · Playbook |
 
@@ -319,14 +319,15 @@ shown, never a guessed one.
 
 ### The backend
 
-The backend's departments are Growth, Operations and Team, grouping the four
-agents it knows: Sales and Retention, Dispatch, Recruiter. A test keeps that
+The backend's departments are Growth, Operations and Team, grouping the five
+agents it knows: Sales and Retention, Dispatch and Quality, Recruiter. A test keeps that
 grouping in agreement with the sidebar's.
 
 Two gaps remain, and both wait for each new agent to be designed:
 
-1. **Marketing, Quality and Customer Care have no id in the schema**, so they
-   cannot own a task, an approval or a permission.
+1. **Marketing and Customer Care have no id in the schema**, so they
+   cannot own a task, an approval or a permission. (Quality has had one since
+   it was built on November 22, 2026.)
 2. **The permission catalog has no actions for them.**
 
 ## 8. Decisions and open questions

@@ -85,7 +85,8 @@ const RELEASED: Record<AgentId, boolean> = {
   sales: AGENT_PROFILES.sales.built,
   retention: AGENT_PROFILES.retention.built,
   marketing: false,
-  quality: false,
+  // Released with its workflows. Plan access is unchanged: the catalog above still puts Quality on Expand only.
+  quality: AGENT_PROFILES.quality.built,
   "customer-care": false,
 };
 

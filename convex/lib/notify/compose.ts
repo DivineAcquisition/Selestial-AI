@@ -181,6 +181,46 @@ function casePath(row: Doc<"retentionCases">): string {
 }
 
 /**
+ * A quality case that needs a person. Read now: a case someone already took, decided or closed sends nothing.
+ * Nobody's words go in the email, and a serious case says only that one exists.
+ */
+async function qualityCase(ctx: MutationCtx, company: Doc<"companies">, event: "quality_serious" | "quality_attention", ref: string | undefined, facts: NoticeFacts | undefined, c: Context): Promise<Built> {
+  const id = ref ? ctx.db.normalizeId("qualityCases", ref) : null;
+  const row = id ? await ctx.db.get(id) : null;
+  if (!row || row.companyId !== company._id) return { problem: "The case no longer exists." };
+  if (row.stage === "closed") return { problem: "The case was closed before this notice went." };
+  const path = `/app/agents/quality/cases?case=${encodeURIComponent(row._id)}`;
+  if (event === "quality_serious") {
+    if (!row.serious || row.serious.decision) return { problem: "The serious concern was already decided before this notice went." };
+    return alertEmail({
+      ...c,
+      eyebrow: "Quality",
+      subject: "A possible serious concern needs your decision",
+      heading: "A serious concern needs the Owner",
+      body: "A visit's record, a report or a conversation shows a possible safety, damage, theft, injury or conduct concern. Quality has restricted the case to you and preserved the visit's evidence. It has admitted nothing, accused nobody and contacted no one.",
+      tone: "danger",
+      note: "Open the case to read what was reported and decide what happens next. Nothing about anyone's work or pay has changed.",
+      facts: [{ label: "Case", value: "Restricted" }],
+      button: { label: "Open the case", path },
+      because: "urgent operations alerts are on",
+    });
+  }
+  if (row.heldBy) return { problem: "A person took the case before this notice went." };
+  const kind = str(facts, "kind");
+  return alertEmail({
+    ...c,
+    eyebrow: "Quality",
+    subject: kind === "verification" ? "A correction did not meet its acceptance criteria" : "A quality case needs your decision",
+    heading: kind === "verification" ? "A correction was not verified" : "A quality case needs a decision",
+    body: row.restricted ? "A restricted quality case needs a decision." : `"${row.title}": ${row.needs ?? row.doing}`,
+    tone: "warning",
+    facts: row.restricted ? [] : [{ label: "Where it stands", value: row.doing }],
+    button: { label: "Open the case", path },
+    because: "urgent operations alerts are on",
+  });
+}
+
+/**
  * A customer case that needs a person, or how one ended. Read now: a case someone already dealt with
  * sends nothing. The customer's own words are never put in the email; the case holds them.
  */
@@ -422,6 +462,9 @@ async function build(ctx: MutationCtx, message: Doc<"messages">, company: Doc<"c
     case "retention_attention":
     case "retention_outcome":
       return retentionCase(ctx, company, notice.event, notice.ref, facts, c);
+    case "quality_serious":
+    case "quality_attention":
+      return qualityCase(ctx, company, notice.event, notice.ref, facts, c);
     case "texting_progress":
     case "texting_attention":
       return textingNotice(ctx, company, notice.ref, facts, c);

@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import type { AgentState, RecordRef, WorkLine } from "../../../../convex/overview";
 
 export type TeamAgent = {
-  agent: "sales" | "recruiter" | "dispatch" | "retention";
+  agent: "sales" | "recruiter" | "dispatch" | "retention" | "quality";
   name: string;
   responsibility: string;
   state: AgentState;

@@ -35,6 +35,7 @@ import { operationsTables } from "./lib/operations/schema";
 import { supportTables } from "./lib/support/schema";
 import { connectorTables } from "./lib/connectors/schema";
 import { retentionSettingsValidator, retentionTables } from "./lib/retention/schema";
+import { qualitySettingsValidator, qualityTables } from "./lib/quality/schema";
 import { servicesTables } from "./lib/services/schema";
 import { tutorialTables } from "./lib/tutorials/schema";
 import { migrationTables } from "./lib/migration/schema";
@@ -101,6 +102,8 @@ export const aboutValidator = v.union(
   v.object({ table: v.literal("bookingSessions"), id: v.id("bookingSessions") }),
   v.object({ table: v.literal("salesOpportunities"), id: v.id("salesOpportunities") }),
   v.object({ table: v.literal("retentionCases"), id: v.id("retentionCases") }),
+  v.object({ table: v.literal("qualityCases"), id: v.id("qualityCases") }),
+  v.object({ table: v.literal("qualityReviews"), id: v.id("qualityReviews") }),
 );
 
 /**
@@ -147,6 +150,11 @@ export const proposalValidator = v.union(
   // Retention (convex/lib/retention/approvals.ts carries it out).
   /** Carry out one action prepared on a retention case, exactly as prepared, if the case has not moved on since. */
   v.object({ kind: v.literal("retention_action"), actionId: v.id("retentionActions"), stamp: v.string() }),
+  // Quality (convex/lib/quality/approvals.ts carries these out).
+  /** Send one request Quality prepared (to a cleaner), exactly as prepared, if the evidence has not moved on since. */
+  v.object({ kind: v.literal("quality_request"), requestId: v.id("qualityRequests"), stamp: v.string() }),
+  /** Adopt one improvement Quality proposed: the change named, carried out by the record's owner. */
+  v.object({ kind: v.literal("quality_improvement"), improvementId: v.id("qualityImprovements") }),
 );
 
 /** How Dispatch works for this company. Every value is the owner's, with a default in code. */
@@ -261,6 +269,8 @@ export default defineSchema({
     cleaners: v.optional(cleanersSettingsValidator),
     /** How Retention works for this company: feedback, the guarantee in the company's words, links and renewals (convex/lib/retention/settings.ts). */
     retention: v.optional(retentionSettingsValidator),
+    /** How Quality works for this company: request timing and limits, link length, what it may read (convex/lib/quality/settings.ts). */
+    quality: v.optional(qualitySettingsValidator),
     /** The Sales Playbook: voice, what the agent handles, approved answers, follow-up timing, deposits and quote terms (convex/lib/sales/settings.ts). */
     sales: v.optional(salesSettingsValidator),
     /** Where the company works, when appointments may be, and its services (convex/lib/settings/business.ts). */
@@ -722,6 +732,9 @@ export default defineSchema({
       v.literal("feedback_request"),
       v.literal("care_update"),
       v.literal("return_offer"),
+      // Quality, to a cleaner: a focused request for evidence, an answer or an account, with its private link (convex/lib/quality/outbox.ts).
+      v.literal("quality_request"),
+      v.literal("quality_reminder"),
       // Selestial, to a member of the company: a notification (convex/lib/notify).
       v.literal("member_notice"),
     ),
@@ -747,6 +760,8 @@ export default defineSchema({
     salesLinks: v.optional(v.array(v.object({ placeholder: v.string(), kind: v.union(v.literal("pay"), v.literal("proposal"), v.literal("sign"), v.literal("assess"), v.literal("quote")), id: v.string() }))),
     /** Retention messages: the action the message carries out. Its link, if any, is made at the moment of sending. */
     retentionActionId: v.optional(v.id("retentionActions")),
+    /** Quality messages: the request the message carries. Its link is made at the moment of sending. */
+    qualityRequestId: v.optional(v.id("qualityRequests")),
     /** A message in a Sales conversation: the opportunity it belongs to. */
     opportunityId: v.optional(v.id("salesOpportunities")),
     /** Finance messages: the customer and the invoice whose pay link the message carries as "{link}". */
@@ -1005,6 +1020,8 @@ export default defineSchema({
     applicationId: v.optional(v.id("applications")),
     /** A Retention tool: the case it was run on. */
     caseId: v.optional(v.id("retentionCases")),
+    /** A Quality tool: the case it was run on. */
+    qualityCaseId: v.optional(v.id("qualityCases")),
     at: v.number(),
   })
     .index("by_company_case", ["companyId", "caseId", "at"])
@@ -1044,6 +1061,8 @@ export default defineSchema({
   ...activationTables,
   // ── Retention: signals, cases, actions, feedback and customer links (convex/lib/retention/schema.ts) ─
   ...retentionTables,
+  // ── Quality: standards, reviews, cases, findings, requests, corrections, improvements, runs, communications (convex/lib/quality/schema.ts) ─
+  ...qualityTables,
   // ── Migration: tutorials for moving in, and records brought from another system (convex/lib/tutorials, lib/migration) ─
   ...tutorialTables,
   ...migrationTables,

@@ -13,6 +13,7 @@ import { recordEvent, type Actor } from "../events";
 import { actionDef, type Level } from "../permissionCatalog";
 import { liveTaskByKey, openTask, setTaskState } from "../taskState";
 import { revokeCaseLinks } from "./links";
+import { enqueueQualityRun } from "../quality/runs";
 import type { Basis, CaseKind, CaseStatus, Outcome, PlanRef, Segment, Source } from "./schema";
 
 type Ctx = QueryCtx | MutationCtx;
@@ -326,6 +327,8 @@ export async function closeCase(ctx: MutationCtx, row: Doc<"retentionCases">, co
   const fresh = (await ctx.db.get(row._id))!;
   await addEntry(ctx, fresh, { kind: "outcome", text: `${OUTCOME_WORDS[code]}${note ? ` ${note}` : ""}`, actor });
   await recordEvent(ctx, { companyId: row.companyId, type: "retention_case.closed", actor, subject: { table: "retentionCases", id: row._id }, data: { outcome: code } });
+  // A linked Quality case reads the customer's outcome from here, and never records it anywhere else.
+  if (row.kind === "recovery") await enqueueQualityRun(ctx, { companyId: row.companyId, kind: "case_outcome", key: `retention-outcome:${row._id}`, payload: { retentionCaseId: row._id } });
   await revokeCaseLinks(ctx, row.companyId, row._id, "The case was closed.", actor);
   // A step that was prepared and never sent anywhere ends with the case, so it cannot be carried out later.
   const prepared = await ctx.db

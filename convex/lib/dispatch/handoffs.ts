@@ -48,7 +48,8 @@ export async function handOff(ctx: MutationCtx, input: Handoff): Promise<Doc<"ta
     companyId: input.companyId,
     // Recruiter is a known agent. The other queues have no agent yet, so the task is filed under Dispatch,
     // which raised it, and held for a person.
-    agent: input.to === "recruiter" ? "recruiter" : "dispatch",
+    // Quality is built: its queue is its own. Its review tasks are still decided by a person.
+    agent: input.to === "recruiter" ? "recruiter" : input.to === "quality" ? "quality" : "dispatch",
     title: input.title.slice(0, 200),
     nextAction: input.question.slice(0, 500),
     dueAt: input.dueAt,

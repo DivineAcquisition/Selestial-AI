@@ -15,6 +15,7 @@ import { useCompany } from "@/components/app/company";
 import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { Modal } from "@/components/app/modal";
 import { NewVisitForm } from "@/components/app/screens/forms";
+import { QualityOnProperty } from "@/components/app/screens/quality/context";
 import { ArrowLeft, Lock, MapPin, Plus } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -227,6 +228,9 @@ function PropertyDetail({ profile, propertyId }: { profile: Profile; propertyId:
               </ul>
             </Card>
           ) : null}
+          <Card title="Quality">
+            <QualityOnProperty propertyId={p.id as Id<"properties">} />
+          </Card>
           <Card>
             <AgreementsForRecord table="properties" id={p.id} title="Agreements for this property" />
           </Card>

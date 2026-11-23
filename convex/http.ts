@@ -16,12 +16,15 @@
  */
 import { httpRouter } from "convex/server";
 
+import { quoHeadersPlausible, verifyQuo } from "./lib/quality/comms/quo";
+import { qualityFileRequestValid } from "./lib/quality/fileLinks";
+
 import { internal } from "./_generated/api";
 import { oauthCallback, oneClickUnsubscribe, providerWebhook, selfCheckRoute, signedFileRoute } from "./lib/builders";
 import { evidenceRequestValid } from "./lib/texting/evidence";
 import { siteOrigin } from "./lib/dispatch/links";
 import { exchangeCode, googleApp } from "./lib/recruiter/gmail";
-import { hashToken, randomToken, seal } from "./lib/recruiter/secrets";
+import { hashToken, randomToken, seal, unseal } from "./lib/recruiter/secrets";
 import { afterConnect, googleRedirectUri, pendingBinding } from "./recruiterMailbox";
 import { afterGoogle } from "./google";
 import { jobberCallback } from "./connectors";
@@ -188,6 +191,29 @@ http.route({
 });
 
 /**
+ * POST /webhooks/quo/<connection public id>  a Quo delivery for one company's connection. The headers are
+ * checked first; the signature is then checked with that connection's own key (a connection with no key, or
+ * an unknown address, accepts nothing). Deliveries are kept by their id, so a retry changes nothing twice.
+ */
+http.route({
+  pathPrefix: "/webhooks/quo/",
+  method: "POST",
+  handler: providerWebhook({
+    verify: async (request) => quoHeadersPlausible({ id: request.headers.get("webhook-id"), timestamp: request.headers.get("webhook-timestamp"), signature: request.headers.get("webhook-signature") }, Date.now()),
+    handler: async (ctx, body, request) => {
+      const publicId = new URL(request.url).pathname.slice("/webhooks/quo/".length);
+      const found = await ctx.runQuery(internal.qualityComms.webhookKey, { publicId });
+      if (!found) return 401;
+      const key = await unseal(found.sealedWebhookKey, found.connectionId);
+      const id = request.headers.get("webhook-id");
+      const ok = await verifyQuo({ key, id, timestamp: request.headers.get("webhook-timestamp"), signature: request.headers.get("webhook-signature"), body, now: Date.now() });
+      if (!ok || !id) return 401;
+      await ctx.runMutation(internal.qualityComms.webhook, { connectionId: found.connectionId, deliveryId: id.slice(0, 200), body });
+    },
+  }),
+});
+
+/**
  * GET /photos/<evidence id>?exp=…&sig=…  one crew photo, for an address signed by the deployment that
  * has not expired. Anything else is a plain 404, whatever was wrong with it.
  */
@@ -207,6 +233,30 @@ http.route({
       if (!file) return null;
       const seconds = Math.max(0, Math.floor((Number(url.searchParams.get("exp")) - now) / 1000));
       return new Response(file, { status: 200, headers: { "content-type": file.type || "application/octet-stream", "cache-control": `private, max-age=${seconds}`, "referrer-policy": "no-referrer", "x-content-type-options": "nosniff" } });
+    },
+  }),
+});
+
+/**
+ * GET /quality-files/<file id>?exp=…&sig=…  one file uploaded through a Quality link, for an address this
+ * deployment signed for someone allowed to see its case. Anything else is a plain 404.
+ */
+http.route({
+  pathPrefix: "/quality-files/",
+  method: "GET",
+  handler: signedFileRoute({
+    verify: async (request, now) => {
+      const url = new URL(request.url);
+      const fileId = url.pathname.slice("/quality-files/".length);
+      return /^[a-z0-9]{10,64}$/i.test(fileId) && qualityFileRequestValid(fileId, url.searchParams.get("exp"), url.searchParams.get("sig"), now);
+    },
+    handler: async (ctx, request, now) => {
+      const url = new URL(request.url);
+      const storageId = await ctx.runQuery(internal.qualityLinks.fileStorage, { fileId: url.pathname.slice("/quality-files/".length) });
+      const file = storageId ? await ctx.storage.get(storageId) : null;
+      if (!file) return null;
+      const seconds = Math.max(0, Math.floor((Number(url.searchParams.get("exp")) - now) / 1000));
+      return new Response(file, { status: 200, headers: { "content-type": file.type || "application/octet-stream", "cache-control": `private, max-age=${seconds}`, "referrer-policy": "no-referrer", "x-content-type-options": "nosniff", "content-disposition": "inline" } });
     },
   }),
 });

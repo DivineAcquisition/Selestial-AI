@@ -1,0 +1,2977 @@
+{
+ "overview": {
+  "agent": {
+   "code": null,
+   "ok": true,
+   "paused": false,
+   "reason": null
+  },
+  "counts": {
+   "approvals": 0,
+   "associations": 1,
+   "cases": 3,
+   "decisions": 2,
+   "restrictedHidden": 0,
+   "serious": 1,
+   "verifiedRecently": 0,
+   "waiting": 1
+  },
+  "needsAttention": [
+   {
+    "closed": null,
+    "correction": null,
+    "createdAt": 1804185360050,
+    "customerOutcome": "Open with Retention",
+    "doing": "Organising and preserving the evidence for the Owner. Quality proposes no remedy and contacts nobody.",
+    "dueAt": 1804358160050,
+    "escalated": true,
+    "findings": {
+     "reviewed": 0,
+     "suggested": 0
+    },
+    "happened": "Dana Whitfield reported a concern about this visit. A report is not a finding.",
+    "held": false,
+    "id": "00000000000000010241qualityCases",
+    "job": {
+     "customer": {
+      "id": "00000000000000000010006customers",
+      "name": "Dana Whitfield"
+     },
+     "day": "Wed, Mar 3",
+     "id": "0000000000000000000000010208jobs",
+     "isCorrection": false,
+     "operational": "Reported done; waiting for a manager",
+     "property": {
+      "city": "Austin",
+      "id": "0000000000000000010011properties",
+      "name": "12 Elm St"
+     },
+     "service": "standard",
+     "startsAt": 1804089600000,
+     "status": "in_progress"
+    },
+    "needs": "A serious concern: the Owner decides what happens next.",
+    "origin": "Customer feedback",
+    "overdue": false,
+    "owner": null,
+    "restricted": true,
+    "serious": true,
+    "stage": "needs_decision",
+    "stageWords": "Needs decision",
+    "title": "Dana Whitfield: a serious concern (standard, Wed, Mar 3)",
+    "urgency": "urgent"
+   },
+   {
+    "closed": null,
+    "correction": null,
+    "createdAt": 1804185360038,
+    "customerOutcome": "Open with Retention",
+    "doing": "Suggested findings are ready. Accounts are requested where the record and the report disagree.",
+    "dueAt": 1804358160038,
+    "escalated": false,
+    "findings": {
+     "reviewed": 0,
+     "suggested": 1
+    },
+    "happened": "Dana Whitfield reported a concern about the oven on this visit. A report is not a finding.",
+    "held": false,
+    "id": "00000000000000010199qualityCases",
+    "job": {
+     "customer": {
+      "id": "00000000000000000010006customers",
+      "name": "Dana Whitfield"
+     },
+     "day": "Tue, Mar 2",
+     "id": "0000000000000000000000010160jobs",
+     "isCorrection": false,
+     "operational": "Reported done; waiting for a manager",
+     "property": {
+      "city": "Austin",
+      "id": "0000000000000000010011properties",
+      "name": "12 Elm St"
+     },
+     "service": "standard",
+     "startsAt": 1804003200000,
+     "status": "in_progress"
+    },
+    "needs": "Review the suggested findings against the evidence.",
+    "origin": "Customer feedback",
+    "overdue": false,
+    "owner": null,
+    "restricted": false,
+    "serious": false,
+    "stage": "needs_decision",
+    "stageWords": "Needs decision",
+    "title": "Dana Whitfield: oven (standard, Tue, Mar 2)",
+    "urgency": "normal"
+   }
+  ],
+  "outcomes": [],
+  "problems": [],
+  "readiness": {
+   "baseline": false,
+   "sources": [
+    {
+     "id": "texting",
+     "name": "Your business texting number",
+     "state": "connected"
+    },
+    {
+     "id": "email",
+     "name": "Email from Selestial",
+     "state": "not_connected"
+    },
+    {
+     "id": "quo",
+     "name": "Quo (formerly OpenPhone)",
+     "state": "connected"
+    }
+   ],
+   "standards": 1
+  },
+  "reviews": [],
+  "waiting": [
+   {
+    "dueAt": 1804269600002,
+    "id": "00000000000010083qualityRequests",
+    "job": {
+     "customer": {
+      "id": "00000000000000000010006customers",
+      "name": "Dana Whitfield"
+     },
+     "day": "Thu, Mar 4",
+     "id": "0000000000000000000000010066jobs",
+     "isCorrection": false,
+     "operational": "Reported done; waiting for a manager",
+     "property": {
+      "city": "Austin",
+      "id": "0000000000000000010011properties",
+      "name": "12 Elm St"
+     },
+     "service": "standard",
+     "startsAt": 1804176000000,
+     "status": "in_progress"
+    },
+    "overdue": false,
+    "purpose": "Missing evidence",
+    "status": "sent",
+    "statusWords": "Sent",
+    "who": "Lena"
+   }
+  ],
+  "work": {
+   "blockedReason": null,
+   "counts": {
+    "blocked": 0,
+    "failed": 0,
+    "queued": 0,
+    "running": 0
+   },
+   "recent": [
+    {
+     "at": 1804185360063,
+     "attempts": 2,
+     "blockedReason": null,
+     "caseId": null,
+     "checked": [
+      "Who the number belongs to (1 client) and their visits in the two weeks before",
+      "Call details only: no transcript yet"
+     ],
+     "found": [
+      "The client had 5 visits in the window and the words do not settle which one this is about."
+     ],
+     "id": "000000000000000010261qualityRuns",
+     "jobId": null,
+     "kind": "message_received",
+     "next": [
+      "A person decides which visit this conversation is about, in Quality's review queue."
+     ],
+     "result": "Read; not linked to a visit.",
+     "status": "done"
+    },
+    {
+     "at": 1804185360050,
+     "attempts": 1,
+     "blockedReason": null,
+     "caseId": "00000000000000010241qualityCases",
+     "checked": [
+      "The words of the report"
+     ],
+     "found": [
+      "The words include \"broken\". Safety, damage, theft, injury and conduct concerns are handled by a person."
+     ],
+     "id": "000000000000000010239qualityRuns",
+     "jobId": "0000000000000000000000010208jobs",
+     "kind": "feedback_submitted",
+     "next": [
+      "The Owner decides what happens next."
+     ],
+     "result": "A serious concern: restricted to the Owner, evidence preserved.",
+     "status": "done"
+    },
+    {
+     "at": 1804185360044,
+     "attempts": 1,
+     "blockedReason": null,
+     "caseId": null,
+     "checked": [
+      "The standard that applied (Company standard v1)",
+      "2 after photos against \"At least 2 after photos\"",
+      "2 checklist items against \"Every checklist item is marked done, or skipped with a reason\""
+     ],
+     "found": [
+      "2 of 2 required items met",
+      "There is an open quality or recovery case at this property."
+     ],
+     "id": "000000000000000010223qualityRuns",
+     "jobId": "0000000000000000000000010208jobs",
+     "kind": "completion_submitted",
+     "next": [
+      "A manager can close the visit. Quality's review does not close it or approve pay."
+     ],
+     "result": "Approve: the record meets the standard that applied.",
+     "status": "done"
+    },
+    {
+     "at": 1804185360038,
+     "attempts": 1,
+     "blockedReason": null,
+     "caseId": "00000000000000010199qualityCases",
+     "checked": [
+      "The visit's scope, checklist, photos and crew reports",
+      "Earlier cases at the property"
+     ],
+     "found": [
+      "\"Inside the oven\" was listed as not included in the service booked for this visit. The concern about the oven is about work outside the booked scope."
+     ],
+     "id": "000000000000000010191qualityRuns",
+     "jobId": "0000000000000000000000010160jobs",
+     "kind": "feedback_submitted",
+     "next": [
+      "1 suggested finding for a person to review."
+     ],
+     "result": "Opened a case for the concern.",
+     "status": "done"
+    },
+    {
+     "at": 1804185360032,
+     "attempts": 1,
+     "blockedReason": null,
+     "caseId": null,
+     "checked": [
+      "The standard that applied (Company standard v1)",
+      "3 after photos against \"At least 2 after photos\"",
+      "2 checklist items against \"Every checklist item is marked done, or skipped with a reason\""
+     ],
+     "found": [
+      "2 of 2 required items met",
+      "There is an open quality or recovery case at this property."
+     ],
+     "id": "000000000000000010177qualityRuns",
+     "jobId": "0000000000000000000000010160jobs",
+     "kind": "completion_submitted",
+     "next": [
+      "A manager can close the visit. Quality's review does not close it or approve pay."
+     ],
+     "result": "Approve: the record meets the standard that applied.",
+     "status": "done"
+    },
+    {
+     "at": 1804184700014,
+     "attempts": 1,
+     "blockedReason": null,
+     "caseId": "00000000000000010116qualityCases",
+     "checked": [
+      "The standard that applied (Company standard v1)",
+      "3 after photos against \"At least 2 after photos\"",
+      "2 checklist items against \"Every checklist item is marked done, or skipped with a reason\""
+     ],
+     "found": [
+      "2 of 2 required items met",
+      "\"Clean the shower\" was in the booked scope and was skipped: Not done. A skip is the crew's report, not a finding."
+     ],
+     "id": "000000000000000010112qualityRuns",
+     "jobId": "0000000000000000000000010095jobs",
+     "kind": "completion_submitted",
+     "next": [
+      "Opened a case with suggested findings for a person to review."
+     ],
+     "result": "Consider a correction.",
+     "status": "done"
+    },
+    {
+     "at": 1804183200002,
+     "attempts": 1,
+     "blockedReason": null,
+     "caseId": null,
+     "checked": [
+      "The standard that applied (Company standard v1)",
+      "0 after photos against \"At least 2 after photos\"",
+      "2 checklist items against \"Every checklist item is marked done, or skipped with a reason\""
+     ],
+     "found": [
+      "1 of 2 required items met",
+      "1 missing",
+      "No photos were uploaded for this visit."
+     ],
+     "id": "000000000000000010079qualityRuns",
+     "jobId": "0000000000000000000000010066jobs",
+     "kind": "completion_submitted",
+     "next": [
+      "Asked Lena for what is missing, in one request."
+     ],
+     "result": "Ask for what is missing.",
+     "status": "done"
+    },
+    {
+     "at": 1803902400001,
+     "attempts": 1,
+     "blockedReason": null,
+     "caseId": null,
+     "checked": [
+      "The standard that applied (the rules on record)",
+      "2 checklist items against \"Every checklist item is marked done, or skipped with a reason\""
+     ],
+     "found": [
+      "1 of 1 required item met"
+     ],
+     "id": "000000000000000010061qualityRuns",
+     "jobId": "0000000000000000000000010044jobs",
+     "kind": "completion_submitted",
+     "next": [
+      "A manager can close the visit. Quality's review does not close it or approve pay."
+     ],
+     "result": "Approve: the record meets the standard that applied.",
+     "status": "done"
+    }
+   ]
+  }
+ },
+ "reviews": [
+  {
+   "completeness": {
+    "advisoryGaps": 0,
+    "contradictory": 0,
+    "met": 2,
+    "missing": 0,
+    "required": 2,
+    "unverifiable": 0
+   },
+   "decided": null,
+   "flags": [
+    {
+     "code": "open_concern_here",
+     "text": "There is an open quality or recovery case at this property."
+    }
+   ],
+   "historical": false,
+   "id": "000000000000010225qualityReviews",
+   "job": {
+    "customer": {
+     "id": "00000000000000000010006customers",
+     "name": "Dana Whitfield"
+    },
+    "day": "Wed, Mar 3",
+    "id": "0000000000000000000000010208jobs",
+    "isCorrection": false,
+    "operational": "Reported done; waiting for a manager",
+    "property": {
+     "city": "Austin",
+     "id": "0000000000000000010011properties",
+     "name": "12 Elm St"
+    },
+    "service": "standard",
+    "startsAt": 1804089600000,
+    "status": "in_progress"
+   },
+   "recommendation": "approve",
+   "reopened": null,
+   "round": 1,
+   "status": "ready",
+   "statusWords": "Reviewed",
+   "summary": "The visit's record meets the standard that applied. 2 of 2 required items met; There is an open quality or recovery case at this property. A complete record is not proof of how the service looked; it is what was documented.",
+   "updatedAt": 1804185360044,
+   "words": "Approve: the record meets the standard that applied"
+  },
+  {
+   "completeness": {
+    "advisoryGaps": 0,
+    "contradictory": 0,
+    "met": 2,
+    "missing": 0,
+    "required": 2,
+    "unverifiable": 0
+   },
+   "decided": null,
+   "flags": [
+    {
+     "code": "open_concern_here",
+     "text": "There is an open quality or recovery case at this property."
+    }
+   ],
+   "historical": false,
+   "id": "000000000000010179qualityReviews",
+   "job": {
+    "customer": {
+     "id": "00000000000000000010006customers",
+     "name": "Dana Whitfield"
+    },
+    "day": "Tue, Mar 2",
+    "id": "0000000000000000000000010160jobs",
+    "isCorrection": false,
+    "operational": "Reported done; waiting for a manager",
+    "property": {
+     "city": "Austin",
+     "id": "0000000000000000010011properties",
+     "name": "12 Elm St"
+    },
+    "service": "standard",
+    "startsAt": 1804003200000,
+    "status": "in_progress"
+   },
+   "recommendation": "approve",
+   "reopened": null,
+   "round": 1,
+   "status": "ready",
+   "statusWords": "Reviewed",
+   "summary": "The visit's record meets the standard that applied. 2 of 2 required items met; There is an open quality or recovery case at this property. A complete record is not proof of how the service looked; it is what was documented.",
+   "updatedAt": 1804185360032,
+   "words": "Approve: the record meets the standard that applied"
+  },
+  {
+   "completeness": {
+    "advisoryGaps": 0,
+    "contradictory": 0,
+    "met": 2,
+    "missing": 0,
+    "required": 2,
+    "unverifiable": 0
+   },
+   "decided": null,
+   "flags": [
+    {
+     "code": "skipped_in_scope",
+     "text": "\"Clean the shower\" was in the booked scope and was skipped: Not done. A skip is the crew's report, not a finding."
+    }
+   ],
+   "historical": false,
+   "id": "000000000000010114qualityReviews",
+   "job": {
+    "customer": {
+     "id": "00000000000000000010006customers",
+     "name": "Dana Whitfield"
+    },
+    "day": "Mon, Mar 1",
+    "id": "0000000000000000000000010095jobs",
+    "isCorrection": false,
+    "operational": "Reported done; waiting for a manager",
+    "property": {
+     "city": "Austin",
+     "id": "0000000000000000010011properties",
+     "name": "12 Elm St"
+    },
+    "service": "standard",
+    "startsAt": 1803916800000,
+    "status": "in_progress"
+   },
+   "recommendation": "correct",
+   "reopened": null,
+   "round": 1,
+   "status": "case_opened",
+   "statusWords": "Case opened",
+   "summary": "The crew's own record shows work in the booked scope was not done. 2 of 2 required items met; \"Clean the shower\" was in the booked scope and was skipped: Not done. A skip is the crew's report, not a finding. A complete record is not proof of how the service looked; it is what was documented.",
+   "updatedAt": 1804184700014,
+   "words": "Consider a correction"
+  },
+  {
+   "completeness": {
+    "advisoryGaps": 0,
+    "contradictory": 0,
+    "met": 1,
+    "missing": 1,
+    "required": 2,
+    "unverifiable": 0
+   },
+   "decided": null,
+   "flags": [
+    {
+     "code": "no_photos",
+     "text": "No photos were uploaded for this visit."
+    }
+   ],
+   "historical": false,
+   "id": "000000000000010081qualityReviews",
+   "job": {
+    "customer": {
+     "id": "00000000000000000010006customers",
+     "name": "Dana Whitfield"
+    },
+    "day": "Thu, Mar 4",
+    "id": "0000000000000000000000010066jobs",
+    "isCorrection": false,
+    "operational": "Reported done; waiting for a manager",
+    "property": {
+     "city": "Austin",
+     "id": "0000000000000000010011properties",
+     "name": "12 Elm St"
+    },
+    "service": "standard",
+    "startsAt": 1804176000000,
+    "status": "in_progress"
+   },
+   "recommendation": "request_information",
+   "reopened": null,
+   "round": 1,
+   "status": "waiting_on_evidence",
+   "statusWords": "Waiting on evidence",
+   "summary": "Something the standard asks for is not on record yet, and the crew can supply it. 1 of 2 required items met; 1 missing; No photos were uploaded for this visit. A complete record is not proof of how the service looked; it is what was documented.",
+   "updatedAt": 1804183200002,
+   "words": "Ask for what is missing"
+  },
+  {
+   "completeness": {
+    "advisoryGaps": 0,
+    "contradictory": 0,
+    "met": 1,
+    "missing": 0,
+    "required": 1,
+    "unverifiable": 0
+   },
+   "decided": null,
+   "flags": [],
+   "historical": false,
+   "id": "000000000000010063qualityReviews",
+   "job": {
+    "customer": {
+     "id": "00000000000000000010006customers",
+     "name": "Dana Whitfield"
+    },
+    "day": "Sat, Feb 27",
+    "id": "0000000000000000000000010044jobs",
+    "isCorrection": false,
+    "operational": "Reported done; waiting for a manager",
+    "property": {
+     "city": "Austin",
+     "id": "0000000000000000010011properties",
+     "name": "12 Elm St"
+    },
+    "service": "standard",
+    "startsAt": 1803744000000,
+    "status": "in_progress"
+   },
+   "recommendation": "approve",
+   "reopened": null,
+   "round": 1,
+   "status": "ready",
+   "statusWords": "Reviewed",
+   "summary": "The visit's record meets the standard that applied. 1 of 1 required item met. No Quality standard is published yet, so this visit was reviewed against the rules already on record: the checklist, and Dispatch's photo counts. A complete record is not proof of how the service looked; it is what was documented.",
+   "updatedAt": 1803902400001,
+   "words": "Approve: the record meets the standard that applied"
+  }
+ ],
+ "review": {
+  "canClose": true,
+  "case": null,
+  "checked": [
+   "The standard that applied (Company standard v1)",
+   "2 after photos against \"At least 2 after photos\"",
+   "2 checklist items against \"Every checklist item is marked done, or skipped with a reason\""
+  ],
+  "completeness": {
+   "advisoryGaps": 0,
+   "contradictory": 0,
+   "met": 2,
+   "missing": 0,
+   "required": 2,
+   "unverifiable": 0
+  },
+  "crew": [
+   {
+    "cleanerId": "000000000000000000010013cleaners",
+    "name": "Lena"
+   }
+  ],
+  "decision": null,
+  "evidence": [
+   {
+    "gaps": [
+     {
+      "state": "not_found",
+      "what": "No quote is linked to this visit, so add-ons are read from the scope only."
+     },
+     {
+      "state": "not_found",
+      "what": "The property has no access instructions, crew notes or preferences on record."
+     },
+     {
+      "state": "not_found",
+      "what": "No signed agreement governs this customer or property."
+     }
+    ],
+    "id": "promise",
+    "items": [
+     {
+      "at": 1804089600000,
+      "atKind": "scheduled",
+      "basis": "fact",
+      "detail": "standard. 2 listed tasks; not included: Inside the oven.",
+      "label": "Service",
+      "source": {
+       "at": 1804089600000,
+       "id": "0000000000000000000000010208jobs",
+       "label": "standard on Wed, Mar 3",
+       "table": "jobs"
+      }
+     }
+    ],
+    "title": "What was promised"
+   },
+   {
+    "gaps": [],
+    "id": "execution",
+    "items": [
+     {
+      "at": 1804089900000,
+      "atKind": "occurred",
+      "basis": "fact",
+      "detail": "Lena: checked in Wed, Mar 3 at 10:05 AM, submitted as done.",
+      "label": "Crew",
+      "source": {
+       "id": "000000000000000010213assignments",
+       "label": "Lena",
+       "table": "assignments"
+      }
+     },
+     {
+      "basis": "fact",
+      "detail": "2 done, 0 skipped, 0 not marked, of 2.",
+      "label": "Checklist",
+      "source": {
+       "at": 1804089600000,
+       "id": "0000000000000000000000010208jobs",
+       "label": "standard on Wed, Mar 3",
+       "table": "jobs"
+      }
+     },
+     {
+      "basis": "fact",
+      "detail": "0 before, 2 after, 0 of checklist items, 0 of issues. Times are when each reached Selestial; when they were taken is not recorded.",
+      "label": "Photos",
+      "source": {
+       "at": 1804089600000,
+       "id": "0000000000000000000000010208jobs",
+       "label": "standard on Wed, Mar 3",
+       "table": "jobs"
+      }
+     }
+    ],
+    "title": "Who did the work and what they recorded"
+   },
+   {
+    "gaps": [
+     {
+      "state": "not_found",
+      "what": "No texts from the customer or crew near this visit are on record in Selestial."
+     },
+     {
+      "source": {
+       "id": "0000000010264qualityAssociations",
+       "label": "Association review",
+       "table": "qualityAssociations"
+      },
+      "state": "needs_association",
+      "what": "A conversation might be about this visit or another one. A person decides: The client had 5 visits in the window and the words do not settle which one this is about."
+     },
+     {
+      "state": "not_found",
+      "what": "No calls or platform texts are linked to this visit (last read Thu, Mar 4)."
+     },
+     {
+      "state": "no_access",
+      "what": "Email to the company's own mailbox is not read for quality evidence. Sales replies and Care & Retention inbox replies reach Selestial only where those are connected."
+     }
+    ],
+    "id": "communications",
+    "items": [],
+    "title": "Calls, texts and email"
+   },
+   {
+    "gaps": [
+     {
+      "state": "not_found",
+      "what": "No invoice is linked to this visit."
+     }
+    ],
+    "id": "financial",
+    "items": [
+     {
+      "basis": "fact",
+      "detail": "$160.00 from the company's pricing (a price, not a payment).",
+      "label": "Price",
+      "source": {
+       "at": 1804089600000,
+       "id": "0000000000000000000000010208jobs",
+       "label": "standard on Wed, Mar 3",
+       "table": "jobs"
+      }
+     },
+     {
+      "basis": "fact",
+      "detail": "$80.00 across 1 cleaner, as offered.",
+      "label": "Crew pay"
+     }
+    ],
+    "title": "Price, payment and cost"
+   },
+   {
+    "gaps": [],
+    "id": "history",
+    "items": [
+     {
+      "at": 1804185360038,
+      "atKind": "recorded",
+      "basis": "fact",
+      "detail": "Dana Whitfield: oven (standard, Tue, Mar 2): no reviewed findings.",
+      "label": "Open quality case here",
+      "source": {
+       "at": 1804185360038,
+       "id": "00000000000000010199qualityCases",
+       "label": "Quality case",
+       "table": "qualityCases"
+      }
+     },
+     {
+      "at": 1804184700014,
+      "atKind": "recorded",
+      "basis": "fact",
+      "detail": "Dana Whitfield: shower (standard, Mon, Mar 1): 1 reviewed finding.",
+      "label": "Open quality case here",
+      "source": {
+       "at": 1804184700014,
+       "id": "00000000000000010116qualityCases",
+       "label": "Quality case",
+       "table": "qualityCases"
+      }
+     },
+     {
+      "at": 1804185360037,
+      "atKind": "recorded",
+      "basis": "fact",
+      "detail": "Dana Whitfield: oven at 12 Elm St · still open.",
+      "label": "Earlier recovery",
+      "source": {
+       "at": 1804185360037,
+       "id": "000000000000010182retentionCases",
+       "label": "Retention case",
+       "table": "retentionCases"
+      }
+     },
+     {
+      "at": 1804184700020,
+      "atKind": "recorded",
+      "basis": "fact",
+      "detail": "Dana Whitfield: shower (from Quality's review) · still open.",
+      "label": "Earlier recovery",
+      "source": {
+       "at": 1804184700020,
+       "id": "000000000000010129retentionCases",
+       "label": "Retention case",
+       "table": "retentionCases"
+      }
+     }
+    ],
+    "title": "Earlier at this property"
+   }
+  ],
+  "flags": [
+   {
+    "code": "open_concern_here",
+    "sources": [],
+    "text": "There is an open quality or recovery case at this property."
+   }
+  ],
+  "found": [
+   "2 of 2 required items met",
+   "There is an open quality or recovery case at this property."
+  ],
+  "historical": false,
+  "id": "000000000000010225qualityReviews",
+  "job": {
+   "customer": {
+    "id": "00000000000000000010006customers",
+    "name": "Dana Whitfield"
+   },
+   "day": "Wed, Mar 3",
+   "id": "0000000000000000000000010208jobs",
+   "isCorrection": false,
+   "operational": "Reported done; waiting for a manager",
+   "property": {
+    "city": "Austin",
+    "id": "0000000000000000010011properties",
+    "name": "12 Elm St"
+   },
+   "service": "standard",
+   "startsAt": 1804089600000,
+   "status": "in_progress"
+  },
+  "next": [
+   "A manager can close the visit. Quality's review does not close it or approve pay."
+  ],
+  "photos": [
+   {
+    "checklistItemId": null,
+    "expiring": true,
+    "id": "000000000000000000010217evidence",
+    "kind": "after",
+    "uploadedAt": 1804093200000,
+    "url": "https://example.convex.site/photos/000000000000000000010217evidence?exp=1804186800000&sig=ZyqOWfZwz_dUEzvuewfF0ZRXmoiBfk_6JMQMYEJ44EQ"
+   },
+   {
+    "checklistItemId": null,
+    "expiring": true,
+    "id": "000000000000000000010219evidence",
+    "kind": "after",
+    "uploadedAt": 1804093200000,
+    "url": "https://example.convex.site/photos/000000000000000000010219evidence?exp=1804186800000&sig=bpHD5vGTri38OheiGhjeteriXkfOjNJKeYuMHTmFKmE"
+   }
+  ],
+  "recommendation": "approve",
+  "reopened": null,
+  "requests": [],
+  "results": [
+   {
+    "detail": "2 after photos on record.",
+    "from": {
+     "level": "company",
+     "name": "Company standard",
+     "standardId": "0000000000010037qualityStandards",
+     "version": 1
+    },
+    "fromWords": "Company default: Company standard v1",
+    "label": "At least 2 after photos",
+    "level": "required",
+    "outcome": "met",
+    "requirementId": "after-photos",
+    "responsible": "crew",
+    "sources": [
+     {
+      "at": 1804089600000,
+      "id": "0000000000000000000000010208jobs",
+      "label": "This visit",
+      "table": "jobs"
+     }
+    ]
+   },
+   {
+    "detail": "All 2 items marked: 2 done, 0 skipped with a reason.",
+    "from": {
+     "level": "company",
+     "name": "Company standard",
+     "standardId": "0000000000010037qualityStandards",
+     "version": 1
+    },
+    "fromWords": "Company default: Company standard v1",
+    "label": "Every checklist item is marked done, or skipped with a reason",
+    "level": "required",
+    "outcome": "met",
+    "requirementId": "checklist-complete",
+    "responsible": "crew",
+    "sources": [
+     {
+      "at": 1804089600000,
+      "id": "0000000000000000000000010208jobs",
+      "label": "This visit",
+      "table": "jobs"
+     }
+    ]
+   }
+  ],
+  "round": 1,
+  "standard": {
+   "asOf": 1804089600000,
+   "baseline": false,
+   "sources": [
+    {
+     "level": "company",
+     "levelWords": "Company default",
+     "name": "Company standard",
+     "standardId": "0000000000010037qualityStandards",
+     "version": 1
+    }
+   ],
+   "waived": []
+  },
+  "status": "ready",
+  "statusWords": "Reviewed",
+  "summary": "The visit's record meets the standard that applied. 2 of 2 required items met; There is an open quality or recovery case at this property. A complete record is not proof of how the service looked; it is what was documented.",
+  "words": "Approve: the record meets the standard that applied"
+ },
+ "cases": {
+  "cases": [
+   {
+    "closed": null,
+    "correction": null,
+    "createdAt": 1804185360050,
+    "customerOutcome": "Open with Retention",
+    "doing": "Organising and preserving the evidence for the Owner. Quality proposes no remedy and contacts nobody.",
+    "dueAt": 1804358160050,
+    "escalated": true,
+    "findings": {
+     "reviewed": 0,
+     "suggested": 0
+    },
+    "happened": "Dana Whitfield reported a concern about this visit. A report is not a finding.",
+    "held": false,
+    "id": "00000000000000010241qualityCases",
+    "job": {
+     "customer": {
+      "id": "00000000000000000010006customers",
+      "name": "Dana Whitfield"
+     },
+     "day": "Wed, Mar 3",
+     "id": "0000000000000000000000010208jobs",
+     "isCorrection": false,
+     "operational": "Reported done; waiting for a manager",
+     "property": {
+      "city": "Austin",
+      "id": "0000000000000000010011properties",
+      "name": "12 Elm St"
+     },
+     "service": "standard",
+     "startsAt": 1804089600000,
+     "status": "in_progress"
+    },
+    "needs": "A serious concern: the Owner decides what happens next.",
+    "origin": "Customer feedback",
+    "overdue": false,
+    "owner": null,
+    "restricted": true,
+    "serious": true,
+    "stage": "needs_decision",
+    "stageWords": "Needs decision",
+    "title": "Dana Whitfield: a serious concern (standard, Wed, Mar 3)",
+    "urgency": "urgent"
+   },
+   {
+    "closed": null,
+    "correction": {
+     "customer": "Customer not asked",
+     "state": "scheduled",
+     "words": "Scheduled"
+    },
+    "createdAt": 1804184700014,
+    "customerOutcome": "Open with Retention",
+    "doing": "A correction is with Retention and the Owner. Quality verifies the work once it is done.",
+    "dueAt": 1804357500014,
+    "escalated": false,
+    "findings": {
+     "reviewed": 1,
+     "suggested": 0
+    },
+    "happened": "The crew's own record shows work in the booked scope was not done. 2 of 2 required items met; \"Clean the shower\" was in the booked scope and was skipped: Not done. A skip is the crew's report, not a finding. A complete record is not proof of how the service looked; it is what was documented.",
+    "held": false,
+    "id": "00000000000000010116qualityCases",
+    "job": {
+     "customer": {
+      "id": "00000000000000000010006customers",
+      "name": "Dana Whitfield"
+     },
+     "day": "Mon, Mar 1",
+     "id": "0000000000000000000000010095jobs",
+     "isCorrection": false,
+     "operational": "Reported done; waiting for a manager",
+     "property": {
+      "city": "Austin",
+      "id": "0000000000000000010011properties",
+      "name": "12 Elm St"
+     },
+     "service": "standard",
+     "startsAt": 1803916800000,
+     "status": "in_progress"
+    },
+    "needs": null,
+    "origin": "Completion review",
+    "overdue": false,
+    "owner": null,
+    "restricted": false,
+    "serious": false,
+    "stage": "action_underway",
+    "stageWords": "Action underway",
+    "title": "Dana Whitfield: shower (standard, Mon, Mar 1)",
+    "urgency": "normal"
+   },
+   {
+    "closed": null,
+    "correction": null,
+    "createdAt": 1804185360038,
+    "customerOutcome": "Open with Retention",
+    "doing": "Suggested findings are ready. Accounts are requested where the record and the report disagree.",
+    "dueAt": 1804358160038,
+    "escalated": false,
+    "findings": {
+     "reviewed": 0,
+     "suggested": 1
+    },
+    "happened": "Dana Whitfield reported a concern about the oven on this visit. A report is not a finding.",
+    "held": false,
+    "id": "00000000000000010199qualityCases",
+    "job": {
+     "customer": {
+      "id": "00000000000000000010006customers",
+      "name": "Dana Whitfield"
+     },
+     "day": "Tue, Mar 2",
+     "id": "0000000000000000000000010160jobs",
+     "isCorrection": false,
+     "operational": "Reported done; waiting for a manager",
+     "property": {
+      "city": "Austin",
+      "id": "0000000000000000010011properties",
+      "name": "12 Elm St"
+     },
+     "service": "standard",
+     "startsAt": 1804003200000,
+     "status": "in_progress"
+    },
+    "needs": "Review the suggested findings against the evidence.",
+    "origin": "Customer feedback",
+    "overdue": false,
+    "owner": null,
+    "restricted": false,
+    "serious": false,
+    "stage": "needs_decision",
+    "stageWords": "Needs decision",
+    "title": "Dana Whitfield: oven (standard, Tue, Mar 2)",
+    "urgency": "normal"
+   }
+  ],
+  "hidden": 0
+ },
+ "caseDetail": {
+  "areas": [
+   "shower"
+  ],
+  "can": {
+   "manage": true,
+   "owner": true,
+   "statements": true
+  },
+  "card": {
+   "closed": null,
+   "correction": {
+    "customer": "Customer not asked",
+    "state": "scheduled",
+    "words": "Scheduled"
+   },
+   "createdAt": 1804184700014,
+   "customerOutcome": "Open with Retention",
+   "doing": "A correction is with Retention and the Owner. Quality verifies the work once it is done.",
+   "dueAt": 1804357500014,
+   "escalated": false,
+   "findings": {
+    "reviewed": 1,
+    "suggested": 0
+   },
+   "happened": "The crew's own record shows work in the booked scope was not done. 2 of 2 required items met; \"Clean the shower\" was in the booked scope and was skipped: Not done. A skip is the crew's report, not a finding. A complete record is not proof of how the service looked; it is what was documented.",
+   "held": false,
+   "id": "00000000000000010116qualityCases",
+   "job": {
+    "customer": {
+     "id": "00000000000000000010006customers",
+     "name": "Dana Whitfield"
+    },
+    "day": "Mon, Mar 1",
+    "id": "0000000000000000000000010095jobs",
+    "isCorrection": false,
+    "operational": "Reported done; waiting for a manager",
+    "property": {
+     "city": "Austin",
+     "id": "0000000000000000010011properties",
+     "name": "12 Elm St"
+    },
+    "service": "standard",
+    "startsAt": 1803916800000,
+    "status": "in_progress"
+   },
+   "needs": null,
+   "origin": "Completion review",
+   "overdue": false,
+   "owner": null,
+   "restricted": false,
+   "serious": false,
+   "stage": "action_underway",
+   "stageWords": "Action underway",
+   "title": "Dana Whitfield: shower (standard, Mon, Mar 1)",
+   "urgency": "normal"
+  },
+  "comms": [],
+  "corrections": [
+   {
+    "acceptance": {
+     "afterPhotos": 1,
+     "checklistLabels": [
+      "shower"
+     ],
+     "criteria": "The correction visit's record shows \"shower\" done, with at least 1 after photo.",
+     "inspection": false
+    },
+    "actualCostCents": null,
+    "approvalNeeded": "The Owner sets the crew's pay for each correction visit, which books it (Retention's rule). Any credit or refund is the Owner's in Finance.",
+    "areas": [
+     "shower"
+    ],
+    "costBasis": "Estimate: 45 of the original 120 minutes, at what the original crew was paid ($80.00). Other costs, such as supplies or travel, are not included.",
+    "crewConstraints": [],
+    "customer": "not_asked",
+    "customerWords": "Customer not asked",
+    "estimatedCostCents": 3000,
+    "id": "00000000010128qualityCorrections",
+    "minutes": 45,
+    "result": null,
+    "scope": "targeted",
+    "state": "scheduled",
+    "stateWords": "Scheduled",
+    "timeSensitive": null,
+    "verification": null,
+    "visit": {
+     "customer": {
+      "id": "00000000000000000010006customers",
+      "name": "Dana Whitfield"
+     },
+     "day": "Tue, Mar 9",
+     "id": "0000000000000000000000010146jobs",
+     "isCorrection": true,
+     "operational": "scheduled",
+     "property": {
+      "city": "Austin",
+      "id": "0000000000000000010011properties",
+      "name": "12 Elm St"
+     },
+     "service": "Correction visit",
+     "startsAt": 1804608000000,
+     "status": "scheduled"
+    },
+    "why": "\"Clean the shower\" was in the visit's checklist and was skipped (\"Not done\"). The concern about the shower matches the record. A targeted correction of 45 minutes covers shower."
+   }
+  ],
+  "escalated": null,
+  "evidence": [
+   {
+    "gaps": [
+     {
+      "state": "not_found",
+      "what": "No quote is linked to this visit, so add-ons are read from the scope only."
+     },
+     {
+      "state": "not_found",
+      "what": "The property has no access instructions, crew notes or preferences on record."
+     },
+     {
+      "state": "not_found",
+      "what": "No signed agreement governs this customer or property."
+     }
+    ],
+    "id": "promise",
+    "items": [
+     {
+      "at": 1803916800000,
+      "atKind": "scheduled",
+      "basis": "fact",
+      "detail": "standard. 2 listed tasks; not included: Inside the oven.",
+      "label": "Service",
+      "source": {
+       "at": 1803916800000,
+       "id": "0000000000000000000000010095jobs",
+       "label": "standard on Mon, Mar 1",
+       "table": "jobs"
+      }
+     }
+    ],
+    "title": "What was promised"
+   },
+   {
+    "gaps": [],
+    "id": "execution",
+    "items": [
+     {
+      "at": 1803917100000,
+      "atKind": "occurred",
+      "basis": "fact",
+      "detail": "Lena: checked in Mon, Mar 1 at 10:05 AM, submitted as done.",
+      "label": "Crew",
+      "source": {
+       "id": "000000000000000010100assignments",
+       "label": "Lena",
+       "table": "assignments"
+      }
+     },
+     {
+      "basis": "fact",
+      "detail": "1 done, 1 skipped, 0 not marked, of 2.",
+      "label": "Checklist",
+      "source": {
+       "at": 1803916800000,
+       "id": "0000000000000000000000010095jobs",
+       "label": "standard on Mon, Mar 1",
+       "table": "jobs"
+      }
+     },
+     {
+      "atKind": "recorded",
+      "basis": "cleaner_stated",
+      "detail": "\"Clean the shower\": Not done.",
+      "label": "Skipped",
+      "source": {
+       "id": "000000000000010101checklistItems",
+       "label": "Clean the shower",
+       "table": "checklistItems"
+      }
+     },
+     {
+      "basis": "fact",
+      "detail": "0 before, 3 after, 0 of checklist items, 0 of issues. Times are when each reached Selestial; when they were taken is not recorded.",
+      "label": "Photos",
+      "source": {
+       "at": 1803916800000,
+       "id": "0000000000000000000000010095jobs",
+       "label": "standard on Mon, Mar 1",
+       "table": "jobs"
+      }
+     }
+    ],
+    "title": "Who did the work and what they recorded"
+   },
+   {
+    "gaps": [
+     {
+      "state": "not_found",
+      "what": "No texts from the customer or crew near this visit are on record in Selestial."
+     },
+     {
+      "source": {
+       "id": "0000000010264qualityAssociations",
+       "label": "Association review",
+       "table": "qualityAssociations"
+      },
+      "state": "needs_association",
+      "what": "A conversation might be about this visit or another one. A person decides: The client had 5 visits in the window and the words do not settle which one this is about."
+     },
+     {
+      "state": "not_found",
+      "what": "No calls or platform texts are linked to this visit (last read Thu, Mar 4)."
+     },
+     {
+      "state": "no_access",
+      "what": "Email to the company's own mailbox is not read for quality evidence. Sales replies and Care & Retention inbox replies reach Selestial only where those are connected."
+     }
+    ],
+    "id": "communications",
+    "items": [],
+    "title": "Calls, texts and email"
+   },
+   {
+    "gaps": [
+     {
+      "state": "not_found",
+      "what": "No invoice is linked to this visit."
+     }
+    ],
+    "id": "financial",
+    "items": [
+     {
+      "basis": "fact",
+      "detail": "$160.00 from the company's pricing (a price, not a payment).",
+      "label": "Price",
+      "source": {
+       "at": 1803916800000,
+       "id": "0000000000000000000000010095jobs",
+       "label": "standard on Mon, Mar 1",
+       "table": "jobs"
+      }
+     },
+     {
+      "basis": "fact",
+      "detail": "$80.00 across 1 cleaner, as offered.",
+      "label": "Crew pay"
+     }
+    ],
+    "title": "Price, payment and cost"
+   },
+   {
+    "gaps": [],
+    "id": "history",
+    "items": [
+     {
+      "at": 1804185360050,
+      "atKind": "recorded",
+      "basis": "fact",
+      "detail": "Dana Whitfield: a serious concern (standard, Wed, Mar 3): no reviewed findings.",
+      "label": "Open quality case here",
+      "source": {
+       "at": 1804185360050,
+       "id": "00000000000000010241qualityCases",
+       "label": "Quality case",
+       "table": "qualityCases"
+      }
+     },
+     {
+      "at": 1804185360038,
+      "atKind": "recorded",
+      "basis": "fact",
+      "detail": "Dana Whitfield: oven (standard, Tue, Mar 2): no reviewed findings.",
+      "label": "Open quality case here",
+      "source": {
+       "at": 1804185360038,
+       "id": "00000000000000010199qualityCases",
+       "label": "Quality case",
+       "table": "qualityCases"
+      }
+     },
+     {
+      "at": 1804185360049,
+      "atKind": "recorded",
+      "basis": "fact",
+      "detail": "Dana Whitfield: a concern at 12 Elm St · still open.",
+      "label": "Earlier recovery",
+      "source": {
+       "at": 1804185360049,
+       "id": "000000000000010228retentionCases",
+       "label": "Retention case",
+       "table": "retentionCases"
+      }
+     },
+     {
+      "at": 1804185360037,
+      "atKind": "recorded",
+      "basis": "fact",
+      "detail": "Dana Whitfield: oven at 12 Elm St · still open.",
+      "label": "Earlier recovery",
+      "source": {
+       "at": 1804185360037,
+       "id": "000000000000010182retentionCases",
+       "label": "Retention case",
+       "table": "retentionCases"
+      }
+     }
+    ],
+    "title": "Earlier at this property"
+   }
+  ],
+  "findings": [
+   {
+    "areas": [
+     "shower"
+    ],
+    "category": "service_miss",
+    "categoryWords": "Service miss",
+    "conflicting": [],
+    "history": [
+     {
+      "at": 1804184700014,
+      "change": "Suggested by the company's rules",
+      "statement": null
+     },
+     {
+      "at": 1804184700020,
+      "change": "Reviewed and confirmed",
+      "statement": null
+     }
+    ],
+    "id": "00000000000010121qualityFindings",
+    "missing": [],
+    "reviewedAt": 1804184700020,
+    "revision": 2,
+    "state": "reviewed",
+    "statement": "\"Clean the shower\" was in the visit's checklist and was skipped (\"Not done\"). The concern about the shower matches the record.",
+    "suggestedBy": "rules",
+    "supporting": [
+     {
+      "id": "000000000000010114qualityReviews",
+      "label": "Completion review",
+      "table": "qualityReviews"
+     },
+     {
+      "id": "000000000000010101checklistItems",
+      "label": "Clean the shower",
+      "table": "checklistItems"
+     }
+    ]
+   }
+  ],
+  "heldBy": null,
+  "job": {
+   "customer": {
+    "id": "00000000000000000010006customers",
+    "name": "Dana Whitfield"
+   },
+   "day": "Mon, Mar 1",
+   "id": "0000000000000000000000010095jobs",
+   "isCorrection": false,
+   "operational": "Reported done; waiting for a manager",
+   "property": {
+    "city": "Austin",
+    "id": "0000000000000000010011properties",
+    "name": "12 Elm St"
+   },
+   "service": "standard",
+   "startsAt": 1803916800000,
+   "status": "in_progress"
+  },
+  "people": {
+   "crew": [
+    {
+     "id": "000000000000000000010013cleaners",
+     "name": "Lena"
+    }
+   ],
+   "customer": {
+    "id": "00000000000000000010006customers",
+    "name": "Dana Whitfield"
+   },
+   "owner": null,
+   "retention": {
+    "customerAnswer": null,
+    "id": "000000000000010129retentionCases",
+    "outcome": null,
+    "status": "action_underway",
+    "title": "Dana Whitfield: shower (from Quality's review)"
+   }
+  },
+  "photos": [
+   {
+    "checklistItemId": null,
+    "expiring": true,
+    "id": "000000000000000000010104evidence",
+    "kind": "after",
+    "uploadedAt": 1803920400000,
+    "url": "https://example.convex.site/photos/000000000000000000010104evidence?exp=1804186800000&sig=BACMGclmS4c3xINTUEk2TEQ1n3MBN4P9E4zT_bCtcMU"
+   },
+   {
+    "checklistItemId": null,
+    "expiring": true,
+    "id": "000000000000000000010106evidence",
+    "kind": "after",
+    "uploadedAt": 1803920400000,
+    "url": "https://example.convex.site/photos/000000000000000000010106evidence?exp=1804186800000&sig=6gR5jfR3rzTISTJBNx5_jMr0jY-ArVe0f-HlLli14Q0"
+   },
+   {
+    "checklistItemId": null,
+    "expiring": true,
+    "id": "000000000000000000010108evidence",
+    "kind": "after",
+    "uploadedAt": 1803920400000,
+    "url": "https://example.convex.site/photos/000000000000000000010108evidence?exp=1804186800000&sig=t5mn6P7Sk_4HTh9nUJmuSatSQJM3YSC3eMdkcZ8eSHQ"
+   }
+  ],
+  "pinned": [],
+  "reportWords": "\"Clean the shower\" was in the booked scope and was skipped: Not done. A skip is the crew's report, not a finding.",
+  "requests": [],
+  "run": {
+   "at": 1804184700014,
+   "blockedReason": null,
+   "checked": [
+    "The standard that applied (Company standard v1)",
+    "3 after photos against \"At least 2 after photos\"",
+    "2 checklist items against \"Every checklist item is marked done, or skipped with a reason\""
+   ],
+   "found": [
+    "2 of 2 required items met",
+    "\"Clean the shower\" was in the booked scope and was skipped: Not done. A skip is the crew's report, not a finding."
+   ],
+   "next": [
+    "Opened a case with suggested findings for a person to review."
+   ]
+  },
+  "serious": null,
+  "timeline": [
+   {
+    "actor": "agent",
+    "at": 1804184700014,
+    "basis": "fact",
+    "id": "000000000000010118qualityEntries",
+    "kind": "evidence",
+    "quote": "\"Clean the shower\" was in the booked scope and was skipped: Not done. A skip is the crew's report, not a finding.",
+    "source": {
+     "id": "000000000000010114qualityReviews",
+     "label": "Completion review",
+     "table": "qualityReviews"
+    },
+    "text": "What the completion review found:"
+   },
+   {
+    "actor": "agent",
+    "at": 1804184700014,
+    "basis": "analysis",
+    "id": "000000000000010122qualityEntries",
+    "kind": "finding",
+    "quote": null,
+    "source": {
+     "id": "00000000000010121qualityFindings",
+     "label": "Finding",
+     "table": "qualityFindings"
+    },
+    "text": "Suggested finding (Service miss): \"Clean the shower\" was in the visit's checklist and was skipped (\"Not done\"). The concern about the shower matches the record."
+   },
+   {
+    "actor": "member",
+    "at": 1804184700020,
+    "basis": "fact",
+    "id": "000000000000010126qualityEntries",
+    "kind": "finding",
+    "quote": null,
+    "source": {
+     "id": "00000000000010121qualityFindings",
+     "label": "Finding",
+     "table": "qualityFindings"
+    },
+    "text": "Finding reviewed: \"Clean the shower\" was in the visit's checklist and was skipped (\"Not done\"). The concern about the shower matches the record."
+   },
+   {
+    "actor": "member",
+    "at": 1804184700020,
+    "basis": null,
+    "id": "000000000000010141qualityEntries",
+    "kind": "handoff",
+    "quote": null,
+    "source": {
+     "id": "0000000000010135retentionActions",
+     "label": "Remedy on Retention's case",
+     "table": "retentionActions"
+    },
+    "text": "Correction handed to Retention, which arranges it with the customer; the Owner sets the crew's pay to book it, and Dispatch staffs it. Estimated crew cost: $30.00. Estimate: 45 of the original 120 minutes, at what the original crew was paid ($80.00). Other costs, such as supplies or travel, are not included."
+   },
+   {
+    "actor": "system",
+    "at": 1804185360026,
+    "basis": null,
+    "id": "000000000000010159qualityEntries",
+    "kind": "handoff",
+    "quote": null,
+    "source": {
+     "id": "0000000000000000000000010146jobs",
+     "label": "Correction visit",
+     "table": "jobs"
+    },
+    "text": "Correction: Scheduled."
+   }
+  ]
+ },
+ "corrections": [
+  {
+   "acceptance": "The correction visit's record shows \"shower\" done, with at least 1 after photo.",
+   "actualCostCents": null,
+   "areas": [
+    "shower"
+   ],
+   "caseId": "00000000000000010116qualityCases",
+   "caseTitle": "Dana Whitfield: shower (standard, Mon, Mar 1)",
+   "costBasis": "Estimate: 45 of the original 120 minutes, at what the original crew was paid ($80.00). Other costs, such as supplies or travel, are not included.",
+   "customer": "not_asked",
+   "customerWords": "Customer not asked",
+   "estimatedCostCents": 3000,
+   "id": "00000000010128qualityCorrections",
+   "minutes": 45,
+   "original": {
+    "customer": {
+     "id": "00000000000000000010006customers",
+     "name": "Dana Whitfield"
+    },
+    "day": "Mon, Mar 1",
+    "id": "0000000000000000000000010095jobs",
+    "isCorrection": false,
+    "operational": "Reported done; waiting for a manager",
+    "property": {
+     "city": "Austin",
+     "id": "0000000000000000010011properties",
+     "name": "12 Elm St"
+    },
+    "service": "standard",
+    "startsAt": 1803916800000,
+    "status": "in_progress"
+   },
+   "remedy": {
+    "payNeeded": false,
+    "result": "Booked for Tue, Mar 9 at 10:00 AM. Dispatch is staffing it.",
+    "status": "underway"
+   },
+   "scope": "targeted",
+   "state": "scheduled",
+   "stateWords": "Scheduled",
+   "updatedAt": 1804185360026,
+   "verification": null,
+   "visit": {
+    "customer": {
+     "id": "00000000000000000010006customers",
+     "name": "Dana Whitfield"
+    },
+    "day": "Tue, Mar 9",
+    "id": "0000000000000000000000010146jobs",
+    "isCorrection": true,
+    "operational": "scheduled",
+    "property": {
+     "city": "Austin",
+     "id": "0000000000000000010011properties",
+     "name": "12 Elm St"
+    },
+    "service": "Correction visit",
+    "startsAt": 1804608000000,
+    "status": "scheduled"
+   }
+  }
+ ],
+ "standards": {
+  "groups": [
+   {
+    "current": {
+     "id": "0000000000010037qualityStandards",
+     "publishedAt": 1803902400001,
+     "requirements": 2,
+     "version": 1
+    },
+    "draft": null,
+    "history": [
+     {
+      "changeNote": null,
+      "endedAt": null,
+      "id": "0000000000010037qualityStandards",
+      "publishedAt": 1803902400001,
+      "status": "published",
+      "version": 1
+     }
+    ],
+    "key": "company",
+    "level": "company",
+    "levelWords": "Company default",
+    "name": "Company standard",
+    "target": null
+   }
+  ],
+  "precedence": [
+   "Company default",
+   "Service",
+   "Account",
+   "Property",
+   "Visit exception"
+  ],
+  "templates": [
+   {
+    "id": "residential_one_time",
+    "lead": "A first or single visit, where the customer's expectations are least known.",
+    "name": "Residential, one-time",
+    "requirements": [
+     {
+      "id": "checklist-complete",
+      "kind": "checklist_completion",
+      "label": "Every checklist item is marked done, or skipped with a reason",
+      "level": "required",
+      "phase": "completion",
+      "responsible": "crew"
+     },
+     {
+      "evidence": {
+       "minPhotos": 4,
+       "photoKind": "after"
+      },
+      "id": "after-photos",
+      "kind": "required_evidence",
+      "label": "At least 4 after photos",
+      "level": "required",
+      "phase": "completion",
+      "responsible": "crew"
+     },
+     {
+      "evidence": {
+       "minPhotos": 2,
+       "photoKind": "before"
+      },
+      "id": "before-photos",
+      "kind": "required_evidence",
+      "label": "At least 2 before photos",
+      "level": "advisory",
+      "phase": "during",
+      "responsible": "crew"
+     },
+     {
+      "id": "first-visit-check",
+      "kind": "inspection",
+      "label": "A manager looks over the record of a customer's first visit",
+      "level": "advisory",
+      "phase": "after",
+      "responsible": "office",
+      "when": {
+       "firstVisitOnly": true
+      }
+     }
+    ]
+   },
+   {
+    "id": "residential_recurring",
+    "lead": "Regular visits to the same home, where consistency matters most.",
+    "name": "Residential, recurring",
+    "requirements": [
+     {
+      "id": "checklist-complete",
+      "kind": "checklist_completion",
+      "label": "Every checklist item is marked done, or skipped with a reason",
+      "level": "required",
+      "phase": "completion",
+      "responsible": "crew"
+     },
+     {
+      "evidence": {
+       "minPhotos": 2,
+       "photoKind": "after"
+      },
+      "id": "after-photos",
+      "kind": "required_evidence",
+      "label": "At least 2 after photos",
+      "level": "required",
+      "phase": "completion",
+      "responsible": "crew"
+     },
+     {
+      "id": "periodic-inspection",
+      "kind": "inspection",
+      "label": "Inspect the record every 6th visit",
+      "level": "advisory",
+      "phase": "after",
+      "responsible": "office",
+      "when": {
+       "everyNthVisit": 6,
+       "recurringOnly": true
+      }
+     }
+    ]
+   },
+   {
+    "id": "deep_move_out",
+    "lead": "Larger, one-off jobs where detail is checked against a long list.",
+    "name": "Deep and move-out cleaning",
+    "requirements": [
+     {
+      "id": "checklist-complete",
+      "kind": "checklist_completion",
+      "label": "Every checklist item is marked done, or skipped with a reason",
+      "level": "required",
+      "phase": "completion",
+      "responsible": "crew"
+     },
+     {
+      "evidence": {
+       "minPhotos": 8,
+       "photoKind": "after"
+      },
+      "id": "after-photos",
+      "kind": "required_evidence",
+      "label": "At least 8 after photos",
+      "level": "required",
+      "phase": "completion",
+      "responsible": "crew"
+     },
+     {
+      "evidence": {
+       "minPhotos": 4,
+       "photoKind": "before"
+      },
+      "id": "before-photos",
+      "kind": "required_evidence",
+      "label": "At least 4 before photos",
+      "level": "required",
+      "phase": "during",
+      "responsible": "crew"
+     },
+     {
+      "evidence": {
+       "checklistLabels": [
+        "oven",
+        "fridge",
+        "refrigerator"
+       ],
+       "minPhotos": 1,
+       "photoKind": "item"
+      },
+      "id": "appliance-photos",
+      "kind": "required_evidence",
+      "label": "Photos of appliance interiors when they are in scope",
+      "level": "required",
+      "phase": "completion",
+      "responsible": "crew"
+     }
+    ]
+   },
+   {
+    "id": "commercial",
+    "lead": "Sites with a contract scope, access rules and set service windows.",
+    "name": "Commercial",
+    "requirements": [
+     {
+      "id": "checklist-complete",
+      "kind": "checklist_completion",
+      "label": "Every checklist item is marked done, or skipped with a reason",
+      "level": "required",
+      "phase": "completion",
+      "responsible": "crew"
+     },
+     {
+      "evidence": {
+       "minPhotos": 3,
+       "photoKind": "after"
+      },
+      "id": "after-photos",
+      "kind": "required_evidence",
+      "label": "At least 3 after photos",
+      "level": "required",
+      "phase": "completion",
+      "responsible": "crew"
+     },
+     {
+      "evidence": {
+       "checkInWithinMinutes": 30
+      },
+      "id": "on-time",
+      "kind": "timing",
+      "label": "Checked in within 30 minutes of the scheduled start",
+      "level": "advisory",
+      "phase": "during",
+      "responsible": "crew"
+     }
+    ]
+   },
+   {
+    "id": "office",
+    "lead": "Offices cleaned to a recurring task schedule, often out of hours.",
+    "name": "Office",
+    "requirements": [
+     {
+      "id": "checklist-complete",
+      "kind": "checklist_completion",
+      "label": "Every checklist item is marked done, or skipped with a reason",
+      "level": "required",
+      "phase": "completion",
+      "responsible": "crew"
+     },
+     {
+      "evidence": {
+       "minPhotos": 2,
+       "photoKind": "after"
+      },
+      "id": "after-photos",
+      "kind": "required_evidence",
+      "label": "At least 2 after photos",
+      "level": "required",
+      "phase": "completion",
+      "responsible": "crew"
+     },
+     {
+      "id": "secured",
+      "kind": "site_confirmation",
+      "label": "The crew confirms the site was secured on leaving",
+      "level": "advisory",
+      "phase": "completion",
+      "responsible": "crew"
+     }
+    ]
+   },
+   {
+    "id": "str_turnover",
+    "lead": "Turnovers that must be ready before the next guest arrives.",
+    "name": "Short-term rental turnover",
+    "requirements": [
+     {
+      "id": "checklist-complete",
+      "kind": "checklist_completion",
+      "label": "Every checklist item is marked done, or skipped with a reason",
+      "level": "required",
+      "phase": "completion",
+      "responsible": "crew"
+     },
+     {
+      "evidence": {
+       "minPhotos": 6,
+       "photoKind": "after"
+      },
+      "id": "after-photos",
+      "kind": "required_evidence",
+      "label": "At least 6 after photos",
+      "level": "required",
+      "phase": "completion",
+      "responsible": "crew"
+     },
+     {
+      "evidence": {
+       "finishBeforeDeadlineMinutes": 60
+      },
+      "id": "ready-before-checkin",
+      "kind": "timing",
+      "label": "Finished at least 60 minutes before the guest's check-in",
+      "level": "required",
+      "phase": "completion",
+      "responsible": "crew"
+     },
+     {
+      "evidence": {
+       "checklistLabels": [
+        "restock",
+        "supplies"
+       ],
+       "minPhotos": 1,
+       "photoKind": "item"
+      },
+      "id": "restock",
+      "kind": "required_evidence",
+      "label": "Photos of restocked supplies",
+      "level": "advisory",
+      "phase": "completion",
+      "responsible": "crew"
+     }
+    ]
+   }
+  ]
+ },
+ "standard": {
+  "agreement": null,
+  "changeNote": null,
+  "endedAt": null,
+  "id": "0000000000010037qualityStandards",
+  "key": "company",
+  "level": "company",
+  "levelWords": "Company default",
+  "name": "Company standard",
+  "publishedAt": 1803902400001,
+  "remedy": null,
+  "requirements": [
+   {
+    "id": "checklist-complete",
+    "kind": "checklist_completion",
+    "label": "Every checklist item is marked done, or skipped with a reason",
+    "level": "required",
+    "phase": "completion",
+    "responsible": "crew"
+   },
+   {
+    "evidence": {
+     "minPhotos": 2,
+     "photoKind": "after"
+    },
+    "id": "after-photos",
+    "kind": "required_evidence",
+    "label": "At least 2 after photos",
+    "level": "required",
+    "phase": "completion",
+    "responsible": "crew"
+   }
+  ],
+  "status": "published",
+  "template": null,
+  "version": 1
+ },
+ "insights": {
+  "corrections": {
+   "actualCents": 0,
+   "count": 1,
+   "customerConfirmed": 0,
+   "customerDissatisfied": 0,
+   "estimatedCents": 3000,
+   "noResponse": 0,
+   "notVerified": 0,
+   "unknownCost": 0,
+   "verified": 0
+  },
+  "coverage": {
+   "completedVisits": 5,
+   "fullyDocumented": 4,
+   "reviewed": 5,
+   "reviewsCounted": 5,
+   "words": "4 of 5 reviewed visits had every required item on record. That is documentation, not how the service looked."
+  },
+  "days": 90,
+  "improvements": [],
+  "note": "Only 5 visits were reported done in this window: too few to read trends. Counts are shown as they are.",
+  "patterns": [
+   {
+    "area": "shower",
+    "cases": 1,
+    "category": "service_miss",
+    "categoryWords": "Service miss",
+    "denominator": 5,
+    "properties": 1
+   }
+  ],
+  "repeats": [],
+  "timing": {
+   "firstActionCount": 2,
+   "firstActionMs": 0,
+   "verificationCount": 0,
+   "verificationMs": null
+  }
+ },
+ "playbook": {
+  "agent": {
+   "ok": true
+  },
+  "authority": [
+   {
+    "ceiling": "execute",
+    "key": "quality.review_completion",
+    "label": "Review a completed visit against the standard that applied and recommend approval, a request or an investigation (the manager still closes the visit)",
+    "level": "execute",
+    "outsider": false
+   },
+   {
+    "ceiling": "execute",
+    "key": "quality.request_cleaner_evidence",
+    "label": "Ask a cleaner for a missing photo, a short answer, or their account of what happened, through a private link",
+    "level": "execute",
+    "outsider": true
+   },
+   {
+    "ceiling": "execute",
+    "key": "quality.remind_outstanding",
+    "label": "Remind the person responsible about a quality request they have not answered",
+    "level": "execute",
+    "outsider": true
+   },
+   {
+    "ceiling": "execute",
+    "key": "quality.open_case",
+    "label": "Open a quality case from a review, a report, a conversation or a confirmed pattern",
+    "level": "execute",
+    "outsider": false
+   },
+   {
+    "ceiling": "execute",
+    "key": "quality.prepare_correction",
+    "label": "Prepare a correction's scope and acceptance criteria and hand it to Retention to arrange with the customer",
+    "level": "execute_and_report",
+    "outsider": false
+   },
+   {
+    "ceiling": "execute_and_report",
+    "key": "quality.customer_clarification",
+    "label": "Prepare a focused question for a customer and hand it to Retention, which owns the conversation",
+    "level": "propose",
+    "outsider": true
+   },
+   {
+    "ceiling": "execute",
+    "key": "quality.verify_correction",
+    "label": "Verify a correction visit's record against the acceptance criteria",
+    "level": "execute",
+    "outsider": false
+   },
+   {
+    "ceiling": "execute",
+    "key": "quality.propose_improvement",
+    "label": "Propose a change to a checklist, booking question, scope wording, training or inspection frequency (a person decides)",
+    "level": "execute",
+    "outsider": false
+   }
+  ],
+  "quo": {
+   "capabilities": {
+    "readCallMetadata": "available",
+    "readMessages": "available",
+    "readSummaries": "unknown",
+    "readThreads": "not_used",
+    "readTranscripts": "unknown",
+    "recordings": "not_used",
+    "send": "not_used",
+    "webhooks": "available"
+   },
+   "failures": 0,
+   "id": "00000000010254qualityConnections",
+   "lastSuccessAt": 1804185360056,
+   "lastSyncAt": 1804185360056,
+   "numbers": [
+    {
+     "id": "PN1",
+     "name": "Office",
+     "number": "+15125550000"
+    }
+   ],
+   "problem": null,
+   "readFrom": 1801593360055,
+   "status": "connected",
+   "webhook": true
+  },
+  "settings": {
+   "cleanerAnswerHours": 24,
+   "combineMinutes": 20,
+   "linkDays": 7,
+   "maxRequestsPerVisit": 2,
+   "patternMinimum": 3,
+   "preserveDays": null,
+   "readPhonePlatform": true,
+   "reader": false
+  },
+  "sources": [
+   {
+    "action": null,
+    "capabilities": [
+     {
+      "label": "Read texts",
+      "note": "Only a short excerpt of each incoming text is kept; the conversation shows it on the client.",
+      "state": "limited"
+     },
+     {
+      "label": "Call details",
+      "note": "This number carries texts only.",
+      "state": "unavailable"
+     },
+     {
+      "label": "Transcripts",
+      "note": "No calls, so no transcripts.",
+      "state": "unavailable"
+     },
+     {
+      "label": "Send",
+      "note": "Quality's requests to cleaners go through it, under every sending rule.",
+      "state": "available"
+     }
+    ],
+    "detail": "Texts to and from +15125551000, through Selestial.",
+    "id": "texting",
+    "lastSuccessAt": null,
+    "name": "Your business texting number",
+    "state": "connected"
+   },
+   {
+    "action": null,
+    "capabilities": [
+     {
+      "label": "Send",
+      "note": "Used by Retention for customer messages.",
+      "state": "unavailable"
+     },
+     {
+      "label": "Read replies",
+      "note": "Only replies to Sales conversations come back here.",
+      "state": "limited"
+     }
+    ],
+    "detail": "Email sent for the company. Sending is not reading.",
+    "id": "email",
+    "lastSuccessAt": null,
+    "name": "Email from Selestial",
+    "state": "not_connected"
+   },
+   {
+    "action": null,
+    "capabilities": [
+     {
+      "label": "Call details",
+      "note": "Who called, when, how long, which number.",
+      "state": "available"
+     },
+     {
+      "label": "Transcripts",
+      "note": "Read when Quo has finished them, including later revisions.",
+      "state": "unknown"
+     },
+     {
+      "label": "Quo's summaries",
+      "note": "Shown as Quo's summary, never as anyone's words.",
+      "state": "unknown"
+     },
+     {
+      "label": "Texts",
+      "note": "Incoming texts on Quo numbers, through Quo's signed notices.",
+      "state": "available"
+     },
+     {
+      "label": "Recordings",
+      "note": "Selestial never copies recordings or changes recording settings.",
+      "state": "not_used"
+     },
+     {
+      "label": "Send",
+      "note": "Quality does not send through Quo.",
+      "state": "not_used"
+     }
+    ],
+    "detail": "Reading calls and texts on 1 number.",
+    "id": "quo",
+    "lastSuccessAt": 1804185360056,
+    "name": "Quo (formerly OpenPhone)",
+    "state": "connected"
+   }
+  ],
+  "stored": {
+   "readPhonePlatform": true
+  }
+ },
+ "associations": [
+  {
+   "candidates": [
+    {
+     "against": [
+      "nothing in the words points at it"
+     ],
+     "customer": "Dana Whitfield",
+     "customerId": "00000000000000000010006customers",
+     "for": [],
+     "jobId": "0000000000000000000000010066jobs",
+     "property": "12 Elm St",
+     "propertyId": "0000000000000000010011properties",
+     "service": "standard",
+     "startsAt": 1804176000000
+    },
+    {
+     "against": [
+      "nothing in the words points at it"
+     ],
+     "customer": "Dana Whitfield",
+     "customerId": "00000000000000000010006customers",
+     "for": [],
+     "jobId": "0000000000000000000000010208jobs",
+     "property": "12 Elm St",
+     "propertyId": "0000000000000000010011properties",
+     "service": "standard",
+     "startsAt": 1804089600000
+    },
+    {
+     "against": [
+      "nothing in the words points at it"
+     ],
+     "customer": "Dana Whitfield",
+     "customerId": "00000000000000000010006customers",
+     "for": [],
+     "jobId": "0000000000000000000000010160jobs",
+     "property": "12 Elm St",
+     "propertyId": "0000000000000000010011properties",
+     "service": "standard",
+     "startsAt": 1804003200000
+    },
+    {
+     "against": [
+      "nothing in the words points at it"
+     ],
+     "customer": "Dana Whitfield",
+     "customerId": "00000000000000000010006customers",
+     "for": [],
+     "jobId": "0000000000000000000000010095jobs",
+     "property": "12 Elm St",
+     "propertyId": "0000000000000000010011properties",
+     "service": "standard",
+     "startsAt": 1803916800000
+    },
+    {
+     "against": [
+      "nothing in the words points at it"
+     ],
+     "customer": "Dana Whitfield",
+     "customerId": "00000000000000000010006customers",
+     "for": [],
+     "jobId": "0000000000000000000000010044jobs",
+     "property": "12 Elm St",
+     "propertyId": "0000000000000000010011properties",
+     "service": "standard",
+     "startsAt": 1803744000000
+    }
+   ],
+   "direction": "incoming",
+   "excerpt": "",
+   "id": "0000000010264qualityAssociations",
+   "kind": "call",
+   "occurredAt": 1804185360061,
+   "why": "The client had 5 visits in the window and the words do not settle which one this is about."
+  }
+ ],
+ "permissions": {
+  "actions": [
+   {
+    "agent": "dispatch",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "dispatch.request_acceptance",
+    "label": "Send the first offers for a visit",
+    "level": "propose",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute"
+   },
+   {
+    "agent": "dispatch",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "dispatch.send_replacement_offer",
+    "label": "Offer a visit to the next cleaner after a no or no answer",
+    "level": "propose",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute"
+   },
+   {
+    "agent": "dispatch",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "dispatch.run_backup_coverage",
+    "label": "Find cover when a cleaner drops out or does not arrive",
+    "level": "propose",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute_and_report"
+   },
+   {
+    "agent": "dispatch",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "dispatch.broadcast_offer",
+    "label": "Ask several cleaners at once for one opening",
+    "level": "propose",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "propose"
+   },
+   {
+    "agent": "dispatch",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "dispatch.declare_no_show",
+    "label": "Declare a no-show once the contact steps have run",
+    "level": "propose",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "propose"
+   },
+   {
+    "agent": "dispatch",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "dispatch.request_urgent_hire",
+    "label": "Ask Recruiter for an urgent hire",
+    "level": "execute",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute"
+   },
+   {
+    "agent": "dispatch",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "dispatch.send_reminder",
+    "label": "Send reminders and confirmations",
+    "level": "propose",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute"
+   },
+   {
+    "agent": "dispatch",
+    "ceiling": "execute_and_report",
+    "changed": false,
+    "key": "dispatch.act_on_cleaner_reply",
+    "label": "Act on a cleaner's text: running late, can't come, or declining an offer",
+    "level": "propose",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute_and_report"
+   },
+   {
+    "agent": "dispatch",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "dispatch.notify_running_late",
+    "label": "Tell a customer a visit is running late",
+    "level": "propose",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute_and_report"
+   },
+   {
+    "agent": "dispatch",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "dispatch.close_visit",
+    "label": "Close a visit on clean evidence",
+    "level": "execute_and_report",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute_and_report"
+   },
+   {
+    "agent": "dispatch",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "dispatch.reassign_confirmed_visit",
+    "label": "Reassign a confirmed visit",
+    "level": "propose",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "propose"
+   },
+   {
+    "agent": "dispatch",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "dispatch.availability_check_in",
+    "label": "Ask cleaners to confirm their availability, and check in with cleaners who have had no work",
+    "level": "propose",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute"
+   },
+   {
+    "agent": "dispatch",
+    "ceiling": "propose",
+    "changed": false,
+    "key": "dispatch.override_time_between_jobs",
+    "label": "Override the time-between-jobs rule",
+    "level": "propose",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "propose"
+   },
+   {
+    "agent": "sales",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "sales.reply_and_quote",
+    "label": "Reply, collect details and send a quote from the rules",
+    "level": "propose",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute"
+   },
+   {
+    "agent": "sales",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "sales.follow_up",
+    "label": "Send follow-up messages",
+    "level": "propose",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute"
+   },
+   {
+    "agent": "sales",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "sales.discount_in_band",
+    "label": "Discount inside the allowed band",
+    "level": "propose",
+    "money": true,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute_and_report"
+   },
+   {
+    "agent": "sales",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "sales.draft_ad_campaign",
+    "label": "Draft a Google Ads campaign (costs nothing; the Owner approves and turns it on)",
+    "level": "execute",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute"
+   },
+   {
+    "agent": "sales",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "sales.confirm_booking",
+    "label": "Book an accepted quote: hold the time and send the customer the booking steps",
+    "level": "propose",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute_and_report"
+   },
+   {
+    "agent": "sales",
+    "ceiling": "propose",
+    "changed": false,
+    "key": "sales.discount_out_of_band",
+    "label": "Discount outside the band, custom or commercial price",
+    "level": "propose",
+    "money": true,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "propose"
+   },
+   {
+    "agent": "retention",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "retention.request_feedback",
+    "label": "Request feedback, invite a review, send reminders",
+    "level": "propose",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute"
+   },
+   {
+    "agent": "retention",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "retention.offer_recurring_plan",
+    "label": "Offer a recurring plan at the standard price",
+    "level": "propose",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute"
+   },
+   {
+    "agent": "retention",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "retention.recover_payment",
+    "label": "Payment recovery messages and retries",
+    "level": "propose",
+    "money": true,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute"
+   },
+   {
+    "agent": "retention",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "retention.remedy_within_limit",
+    "label": "Re-clean or credit inside the limit",
+    "level": "propose",
+    "money": true,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute_and_report"
+   },
+   {
+    "agent": "retention",
+    "ceiling": "propose",
+    "changed": false,
+    "key": "retention.refund_above_limit",
+    "label": "Refund or compensation above the limit",
+    "level": "propose",
+    "money": true,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "propose"
+   },
+   {
+    "agent": "retention",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "retention.cancel_on_request",
+    "label": "Cancel on the customer's request",
+    "level": "propose",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute"
+   },
+   {
+    "agent": "retention",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "retention.send_case_message",
+    "label": "Write to a customer about an open concern: acknowledge it, ask a question, explain the scope, or ask whether a correction worked",
+    "level": "propose",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute_and_report"
+   },
+   {
+    "agent": "retention",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "retention.apply_plan_change",
+    "label": "Carry out a customer's own request to skip, pause or resume their recurring service",
+    "level": "propose",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute_and_report"
+   },
+   {
+    "agent": "retention",
+    "ceiling": "execute_and_report",
+    "changed": false,
+    "key": "retention.reactivation_offer",
+    "label": "Send a return offer to an eligible former customer",
+    "level": "propose",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "propose"
+   },
+   {
+    "agent": "retention",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "retention.hand_off",
+    "label": "Hand work on a case to Dispatch, Sales, Quality or Finance",
+    "level": "execute",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute"
+   },
+   {
+    "agent": "retention",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "retention.draft_review_reply",
+    "label": "Draft replies to Google reviews (a person approves before anything is posted)",
+    "level": "execute",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute"
+   },
+   {
+    "agent": "quality",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "quality.review_completion",
+    "label": "Review a completed visit against the standard that applied and recommend approval, a request or an investigation (the manager still closes the visit)",
+    "level": "execute",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute"
+   },
+   {
+    "agent": "quality",
+    "ceiling": "execute",
+    "changed": true,
+    "key": "quality.request_cleaner_evidence",
+    "label": "Ask a cleaner for a missing photo, a short answer, or their account of what happened, through a private link",
+    "level": "execute",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute_and_report"
+   },
+   {
+    "agent": "quality",
+    "ceiling": "execute",
+    "changed": true,
+    "key": "quality.remind_outstanding",
+    "label": "Remind the person responsible about a quality request they have not answered",
+    "level": "execute",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute_and_report"
+   },
+   {
+    "agent": "quality",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "quality.open_case",
+    "label": "Open a quality case from a review, a report, a conversation or a confirmed pattern",
+    "level": "execute",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute"
+   },
+   {
+    "agent": "quality",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "quality.prepare_correction",
+    "label": "Prepare a correction's scope and acceptance criteria and hand it to Retention to arrange with the customer",
+    "level": "execute_and_report",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute_and_report"
+   },
+   {
+    "agent": "quality",
+    "ceiling": "execute_and_report",
+    "changed": false,
+    "key": "quality.customer_clarification",
+    "label": "Prepare a focused question for a customer and hand it to Retention, which owns the conversation",
+    "level": "propose",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "propose"
+   },
+   {
+    "agent": "quality",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "quality.verify_correction",
+    "label": "Verify a correction visit's record against the acceptance criteria",
+    "level": "execute",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute"
+   },
+   {
+    "agent": "quality",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "quality.propose_improvement",
+    "label": "Propose a change to a checklist, booking question, scope wording, training or inspection frequency (a person decides)",
+    "level": "execute",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute"
+   },
+   {
+    "agent": "recruiter",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "recruiter.acknowledge_and_collect",
+    "label": "Acknowledge, answer questions, request missing details",
+    "level": "propose",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute"
+   },
+   {
+    "agent": "recruiter",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "recruiter.decline_fixed_requirement",
+    "label": "Decline on a published fixed requirement",
+    "level": "propose",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute_and_report"
+   },
+   {
+    "agent": "recruiter",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "recruiter.run_interview",
+    "label": "Coordinate and run the interview",
+    "level": "propose",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute"
+   },
+   {
+    "agent": "recruiter",
+    "ceiling": "propose",
+    "changed": false,
+    "key": "recruiter.advance_candidate",
+    "label": "Move a candidate forward, mark a cleaner ready",
+    "level": "propose",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "propose"
+   },
+   {
+    "agent": "recruiter",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "recruiter.send_invitation",
+    "label": "Email an applicant the application link",
+    "level": "propose",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute"
+   },
+   {
+    "agent": "recruiter",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "recruiter.follow_up",
+    "label": "Remind an applicant about an unfinished application",
+    "level": "propose",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute"
+   },
+   {
+    "agent": "recruiter",
+    "ceiling": "propose",
+    "changed": false,
+    "key": "recruiter.send_offer",
+    "label": "Send a hiring offer on terms the Owner approved",
+    "level": "propose",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "propose"
+   },
+   {
+    "agent": "recruiter",
+    "ceiling": "execute",
+    "changed": false,
+    "key": "recruiter.onboarding_reminder",
+    "label": "Remind a new cleaner about onboarding steps they still need to finish",
+    "level": "propose",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "execute"
+   },
+   {
+    "agent": "recruiter",
+    "ceiling": "propose",
+    "changed": false,
+    "key": "recruiter.urgent_outreach",
+    "label": "Contact existing applicants about an urgent staffing need",
+    "level": "propose",
+    "money": false,
+    "perActionCents": null,
+    "perDayCents": null,
+    "standard": "propose"
+   }
+  ],
+  "pausedAgents": [],
+  "personOnly": [
+   {
+    "key": "person.cleaner_consequence",
+    "label": "Any consequence for a cleaner, including rejecting or ending a worker"
+   },
+   {
+    "key": "person.after_background_check",
+    "label": "Any decision that follows a background check"
+   },
+   {
+    "key": "person.pay_run",
+    "label": "Paying out a pay run"
+   },
+   {
+    "key": "person.change_prices_pay_policies",
+    "label": "Changing prices, pay rates or policies"
+   },
+   {
+    "key": "person.legal_injury_damage_dispute",
+    "label": "Anything legal, an injury, property damage or a payment dispute"
+   }
+  ]
+ },
+ "forJob": {
+  "cases": [
+   {
+    "closed": null,
+    "correction": null,
+    "createdAt": 1804185360038,
+    "customerOutcome": "Open with Retention",
+    "doing": "Suggested findings are ready. Accounts are requested where the record and the report disagree.",
+    "dueAt": 1804358160038,
+    "escalated": false,
+    "findings": {
+     "reviewed": 0,
+     "suggested": 1
+    },
+    "happened": "Dana Whitfield reported a concern about the oven on this visit. A report is not a finding.",
+    "held": false,
+    "id": "00000000000000010199qualityCases",
+    "job": {
+     "customer": {
+      "id": "00000000000000000010006customers",
+      "name": "Dana Whitfield"
+     },
+     "day": "Tue, Mar 2",
+     "id": "0000000000000000000000010160jobs",
+     "isCorrection": false,
+     "operational": "Reported done; waiting for a manager",
+     "property": {
+      "city": "Austin",
+      "id": "0000000000000000010011properties",
+      "name": "12 Elm St"
+     },
+     "service": "standard",
+     "startsAt": 1804003200000,
+     "status": "in_progress"
+    },
+    "needs": "Review the suggested findings against the evidence.",
+    "origin": "Customer feedback",
+    "overdue": false,
+    "owner": null,
+    "restricted": false,
+    "serious": false,
+    "stage": "needs_decision",
+    "stageWords": "Needs decision",
+    "title": "Dana Whitfield: oven (standard, Tue, Mar 2)",
+    "urgency": "normal"
+   }
+  ],
+  "correction": null,
+  "review": {
+   "completeness": {
+    "advisoryGaps": 0,
+    "contradictory": 0,
+    "met": 2,
+    "missing": 0,
+    "required": 2,
+    "unverifiable": 0
+   },
+   "id": "000000000000010179qualityReviews",
+   "recommendation": "approve",
+   "reopened": null,
+   "status": "ready",
+   "statusWords": "Reviewed",
+   "summary": "The visit's record meets the standard that applied. 2 of 2 required items met; There is an open quality or recovery case at this property. A complete record is not proof of how the service looked; it is what was documented.",
+   "words": "Approve: the record meets the standard that applied"
+  },
+  "waitingOn": []
+ },
+ "linkView": {
+  "allowed": [
+   "save_draft",
+   "submit",
+   "upload"
+  ],
+  "company": {
+   "email": null,
+   "name": "Alpha Cleaning",
+   "phone": null
+  },
+  "draft": null,
+  "dueAt": 1804269600002,
+  "evidence": [
+   {
+    "id": "photos:after-photos",
+    "label": "2 more after photos",
+    "photoKind": "after",
+    "uploaded": 0
+   }
+  ],
+  "expiresAt": 1804788000002,
+  "files": [],
+  "firstName": "Lena",
+  "note": null,
+  "purpose": "missing_evidence",
+  "purposeWords": "Missing evidence",
+  "questions": [],
+  "recipient": "cleaner",
+  "state": "active",
+  "submitted": [],
+  "timezone": "America/Chicago",
+  "verification": "none",
+  "visit": {
+   "city": "Austin",
+   "day": "Thu, Mar 4",
+   "service": "standard"
+  }
+ }
+}

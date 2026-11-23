@@ -18,6 +18,7 @@ import { afterProposalDecision } from "./proposals";
 import { afterRecruiterDecision, afterRecruiterExpiry, isRecruiterProposal } from "./lib/recruiter/approvals";
 import { afterFollowUpDecision, afterFollowUpExpiry } from "./lib/cleaners/followUps";
 import { afterRetentionDecision, afterRetentionExpiry, isRetentionProposal, ownerOnly } from "./lib/retention/approvals";
+import { afterQualityDecision, afterQualityExpiry, isQualityProposal } from "./lib/quality/approvals";
 import { userError } from "./lib/errors";
 import { byMember, recordEvent } from "./lib/events";
 import { approvalStatusValidator } from "./lib/statuses";
@@ -91,6 +92,7 @@ export const decide = managerMutation({
     if (isRecruiterProposal(approval)) return { carriedOut: await afterRecruiterDecision(ctx, decidedApproval, args.decision, byMember(ctx)) };
     if (isAgentProposal(approval)) return { carriedOut: await afterAgentDecision(ctx, decidedApproval, args.decision, byMember(ctx)) };
     if (isRetentionProposal(approval)) return { carriedOut: await afterRetentionDecision(ctx, decidedApproval, args.decision, byMember(ctx)) };
+    if (isQualityProposal(approval)) return { carriedOut: await afterQualityDecision(ctx, decidedApproval, args.decision, byMember(ctx)) };
     if (kind === "sales_payment_link" || kind === "sales_price_override" || kind === "plan_change" || kind === "proposal_rates") {
       const carriedOut = kind === "plan_change" ? await afterPlanDecision(ctx, decidedApproval, args.decision) : kind === "proposal_rates" ? await afterProposalDecision(ctx, decidedApproval, args.decision) : await afterSalesDecision(ctx, decidedApproval, args.decision);
       await ctx.db.patch(approval._id, { carriedOut });
@@ -116,6 +118,7 @@ export const expireDue = internalMutation({
       else if (approval.proposal?.kind === "sales_payment_link") await afterSalesExpiry(ctx, approval);
       else if (isAgentProposal(approval)) await afterAgentExpiry(ctx, { ...approval, status: "expired" });
       else if (isRetentionProposal(approval)) await afterRetentionExpiry(ctx, { ...approval, status: "expired" });
+      else if (isQualityProposal(approval)) await afterQualityExpiry(ctx, { ...approval, status: "expired" });
       else await afterExpiry(ctx, { ...approval, status: "expired" });
     }
     return due.length;

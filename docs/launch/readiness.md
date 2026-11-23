@@ -175,6 +175,29 @@ Each gate: customer outcome · what exists (files) · what this work changed · 
   - Importing `googleWork` into `convex/google.test.ts` changes another test's result; cause not found. **Engineer.**
   - **Real-phone check not done:** camera permission, poor connectivity (a failed upload restarts and is lost on reload), expired and reassigned links on iOS and Android. **Explicitly unverified.**
 
+### 9a. Quality (built November 22, 2026)
+
+- **Outcome:** completed visits are reviewed against the company's own standard. Concerns from feedback,
+  texts, calls and crew reports become cases with sourced findings that a person reviews. Corrections go
+  through Retention and Dispatch, and Quality verifies them. Nothing outside is done without the Owner's
+  permission settings.
+- **Evidence:** implemented, with automated tests passing:
+  - `convex/qualityAgent.test.ts`: the 20 acceptance scenarios
+  - `convex/lib/quality/readerEval.test.ts`: reviewed AI fixtures
+  - `convex/qualityScreens.test.ts` and `src/components/app/screens/quality/quality.test.tsx`: screens over
+    real query output
+  - Screenshots in `docs/screenshots/quality/`. Details in `docs/quality/02-verification.md`.
+- **Plan access unchanged:** Quality is in Expand only, and only Operate is on sale. On Operate the agent's
+  work is visibly blocked and people keep the workspace. **Owner decides** whether Operate includes it.
+- **Remaining:**
+  - **Quo has not been checked against the live API.** That covers key check, paging, webhooks, signatures,
+    and whether the plan returns transcripts. **Engineer + owner, with a Quo key for a test workspace.**
+  - **The Claude reader has not been checked live**, and no production rate is set for `quality_review`
+    (production rate cards are null, so it cannot charge). **Owner approves a rate; engineer runs
+    `AI_EVAL=1`.**
+  - **No real text has gone to a real cleaner** with a Quality link, and the page is unverified on real
+    phones. **Explicitly unverified.**
+
 ### 10. Sales message reading
 
 - **Path:** Sales calls the AI reader only when `SALES_MODEL=claude`, a key is set and a credit hold is verified. `sales_message_reading` has **no approved rate** on either production rate card (`convex/lib/billing/rateCards.ts`), so no hold can be made and the deterministic rules read every message.
@@ -304,3 +327,5 @@ In priority order. The first six are required before the first pilot company.
 | Cleaner photo upload loses progress on reload | Lost evidence on poor signal | Engineer | Keep pending uploads across reloads; test on real phones |
 | `convex/lib/trust/exportTables.ts` describes `oauthStates` as holding nothing sensitive | It now briefly holds a sealed token (not exported) | Engineer | Correct the description |
 | `src/lib/trust/register.ts` has a stale "No payment provider" row | Public trust page understates what is built | Owner | Approve corrected wording |
+| Quality is released in code but sold only in Expand | Operate companies see Quality's workspace with its agent work blocked | Owner | Decide whether Operate includes Quality (one catalog line) |
+| Quo integration unverified live | Calls and transcripts may differ from the documented shapes | Engineer | Run the connection check with a test-workspace key |

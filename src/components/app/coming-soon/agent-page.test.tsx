@@ -40,8 +40,8 @@ describe("coming-soon agent pages", () => {
 
   it("shows what the agent will do, the worked example, and a request for early access that turns nothing on", () => {
     data = { "agentAccess:mine": { requested: false, mine: false, people: 0, firstAt: null, status: null } };
-    const html = render("quality");
-    for (const text of ["Coming soon", "Quality", "Watch it work", "An example. Names and numbers are made up.", "Visit finished at 12 Elm St", "One item flagged", "What Quality will do", "Completion Review", "Want Quality sooner?", "Asking turns nothing on", "Request early access"]) expect(html, text).toContain(text);
+    const html = render("customer-care");
+    for (const text of ["Coming soon", "Customer Care", "Watch it work", "An example. Names and numbers are made up.", "Text from Dana", "Two open times offered", "What Customer Care will do", "Conversations", "Want Customer Care sooner?", "Asking turns nothing on", "Request early access"]) expect(html, text).toContain(text);
     expect(html).not.toContain("Available today");
   });
 

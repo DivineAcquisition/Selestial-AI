@@ -89,6 +89,10 @@ crons.interval("sales follow-up reminders", { minutes: 30 }, internal.pipeline.s
 crons.interval("sales agent picks up what a missed trigger left", { minutes: 5 }, internal.salesAgent.sweep, {});
 
 // Retention: reconciles plans, visits, billing and agreements; reads back handoffs; closes questions nobody answered; retries unfinished work.
+// Quality: reviews, requests and corrections waiting on someone, retries with backoff, and work that can resume.
+crons.interval("quality keeps its work moving", { minutes: 10 }, internal.qualityWork.sweep, {});
+// Quality: calls, texts and late transcripts from a connected phone platform, when the Owner turned reading on.
+crons.interval("quality reads the connected phone platform", { minutes: 10 }, internal.qualityComms.sweep, {});
 crons.interval("retention reconciles and follows through", { minutes: 10 }, internal.retentionWork.sweep, {});
 // Only inboxes connected for Care & Retention, and only where the Owner turned reading on.
 crons.interval("retention reads customer replies in care inboxes", { minutes: 10 }, internal.retentionInbox.sweep, {});

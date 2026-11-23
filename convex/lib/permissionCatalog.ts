@@ -71,6 +71,17 @@ export const ACTIONS: readonly ActionDef[] = [
   action("retention.hand_off", "retention", "Hand work on a case to Dispatch, Sales, Quality or Finance", "execute", { outsider: false }),
   action("retention.draft_review_reply", "retention", "Draft replies to Google reviews (a person approves before anything is posted)", "execute", { outsider: false }),
 
+  // Quality (convex/lib/quality). A finding, a disciplinary decision, a pay change or a serious-incident
+  // decision is never an action here: findings are suggested and reviewed by a person, and the rest is PERSON_ONLY.
+  action("quality.review_completion", "quality", "Review a completed visit against the standard that applied and recommend approval, a request or an investigation (the manager still closes the visit)", "execute", { outsider: false }),
+  action("quality.request_cleaner_evidence", "quality", "Ask a cleaner for a missing photo, a short answer, or their account of what happened, through a private link", "execute_and_report"),
+  action("quality.remind_outstanding", "quality", "Remind the person responsible about a quality request they have not answered", "execute_and_report"),
+  action("quality.open_case", "quality", "Open a quality case from a review, a report, a conversation or a confirmed pattern", "execute", { outsider: false }),
+  action("quality.prepare_correction", "quality", "Prepare a correction's scope and acceptance criteria and hand it to Retention to arrange with the customer", "execute_and_report", { outsider: false }),
+  action("quality.customer_clarification", "quality", "Prepare a focused question for a customer and hand it to Retention, which owns the conversation", "propose", { ceiling: "execute_and_report" }),
+  action("quality.verify_correction", "quality", "Verify a correction visit's record against the acceptance criteria", "execute", { outsider: false }),
+  action("quality.propose_improvement", "quality", "Propose a change to a checklist, booking question, scope wording, training or inspection frequency (a person decides)", "execute", { ceiling: "execute", outsider: false }),
+
   action("recruiter.acknowledge_and_collect", "recruiter", "Acknowledge, answer questions, request missing details", "execute"),
   action("recruiter.decline_fixed_requirement", "recruiter", "Decline on a published fixed requirement", "execute_and_report"),
   action("recruiter.run_interview", "recruiter", "Coordinate and run the interview", "execute"),

@@ -267,11 +267,14 @@ describe("billing", () => {
       billing.seed(s.companyId, { plan: "expand", grant: 2000, purchased: 5000 });
       await sync(s.t, s.companyId);
       const company = await s.t.run(async (ctx) => (await ctx.db.get(s.companyId))!);
-      for (const agent of ["quality", "marketing", "customer-care"] as const) expect(agentVerdict(company, agent)).toMatchObject({ ok: false, block: "not_released" });
+      for (const agent of ["marketing", "customer-care"] as const) expect(agentVerdict(company, agent)).toMatchObject({ ok: false, block: "not_released" });
+      // Quality is released with its workflows, and is part of Expand only: its plan access did not change.
+      expect(agentVerdict(company, "quality")).toEqual({ ok: true });
+      expect(agentVerdict({ plan: "operate" }, "quality")).toMatchObject({ ok: false, block: "plan" });
       // Team Coordinator was retired: it is not an agent any plan names, and its work is in Recruiter and Dispatch, in both plans.
       for (const agent of ["dispatch", "recruiter", "sales", "retention"] as const) expect(agentVerdict(company, agent)).toEqual({ ok: true });
       const view = await s.as.query(api.billing.planAndUsage, { companyId: s.companyId });
-      expect(view.catalog.agents.filter((row) => row.here).map((row) => row.agent)).toEqual(["sales", "retention", "recruiter", "dispatch"]);
+      expect(view.catalog.agents.filter((row) => row.here).map((row) => row.agent)).toEqual(["sales", "retention", "recruiter", "dispatch", "quality"]);
       expect(view.catalog.agents.map((row) => row.agent)).not.toContain("team-coordinator");
     });
 

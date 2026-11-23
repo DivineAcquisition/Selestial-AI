@@ -27,7 +27,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
  * The one detail layout, the same for a visit, an approval and a task:
  * current situation, relevant context, next action, ways to step in, history.
  */
-export function DetailView({ detail, now, timezone, onOpen, actions }: { detail: Detail; now: number; timezone: string; onOpen: (ref: EventRef) => void; actions?: React.ReactNode }) {
+export function DetailView({ detail, now, timezone, onOpen, actions, quality }: { detail: Detail; now: number; timezone: string; onOpen: (ref: EventRef) => void; actions?: React.ReactNode; quality?: React.ReactNode }) {
   const next = detail.next;
   const due = next.when ? until(next.when, now) : null;
   return (
@@ -119,6 +119,8 @@ export function DetailView({ detail, now, timezone, onOpen, actions }: { detail:
           <RunTrace steps={detail.job.run} />
         </Section>
       ) : null}
+
+      {quality ? <Section title="Quality">{quality}</Section> : null}
 
       {actions ? <Section title="Step in">{actions}</Section> : null}
 

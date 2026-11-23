@@ -22,6 +22,7 @@ import { userError } from "./lib/errors";
 import { cancelVisit, createVisit, createVisitArgs } from "./lib/jobs/visits";
 import { byMember, recordEvent } from "./lib/events";
 import { enqueueRun } from "./lib/retention/runs";
+import { onReturned } from "./lib/quality/workflow";
 import { businessSettingsOf, checkArea, checkHours } from "./lib/settings/business";
 import { ACTIVE_ASSIGNMENT, assertChange, JOB_CHANGES, jobStatusValidator, type JobStatus } from "./lib/statuses";
 import { liveTaskByKey, setTaskState } from "./lib/taskState";
@@ -266,6 +267,7 @@ export const reviewCompletion = managerMutation({
       await ctx.db.patch(job._id, { completionReportedAt: undefined, completionReturns: returns, completionReturn: { note, at: now } });
       await recordEvent(ctx, { companyId: ctx.companyId, type: "job.completion_returned", actor: byMember(ctx), subject: { table: "jobs", id: job._id }, data: { note } });
       await settleReview(ctx, job, `Sent back for correction: ${note}`);
+      await onReturned(ctx, (await ctx.db.get(job._id))!);
       return { status: "returned" as const };
     }
     const undecided = (

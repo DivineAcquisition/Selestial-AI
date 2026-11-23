@@ -51,7 +51,7 @@ export async function setup(names: (keyof typeof PHONES)[] = ["Lena", "Rosa"], p
   const job = (jobId: Id<"jobs">) => as.query(api.jobs.get, { companyId, jobId });
   const record = (jobId: Id<"jobs">) => as.query(api.dispatchViews.jobRecord, { companyId, jobId });
   const board = async (jobId: Id<"jobs">) => (await as.query(api.dispatchViews.board, { companyId, from: JOB_START - 24 * HOUR, to: JOB_END + 24 * HOUR })).jobs.find((row) => row.jobId === jobId)!;
-  const tasks = (status: "open" | "waiting" | "needs_decision" | "done" | "cancelled", agent: "dispatch" | "recruiter" = "dispatch") => as.query(api.tasks.list, { companyId, status, agent });
+  const tasks = (status: "open" | "waiting" | "needs_decision" | "done" | "cancelled", agent: "dispatch" | "recruiter" | "quality" = "dispatch") => as.query(api.tasks.list, { companyId, status, agent });
   return { t, as, companyId, smsNumber, place, cleaners, phone, allow, autonomous, job, record, board, tasks };
 }
 
