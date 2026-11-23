@@ -122,9 +122,22 @@ const MENU_GROUP = "px-3 pt-2 pb-1 text-[11px] font-semibold tracking-wide text-
  * through Dispatch, an interview through Recruiter, a walkthrough from a Sales proposal, and Calendar's
  * own events. Office creates visits, bookings and Dispatch's dated tasks.
  */
-function CreateMenu({ manager, onCreate }: { manager: boolean; onCreate: (what: Creating) => void }) {
+function CreateMenu({ manager, onCreate, button }: { manager: boolean; onCreate: (what: Creating) => void; button: React.RefObject<HTMLButtonElement | null> }) {
   const [open, setOpen] = useState(false);
   const shell = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  // The menu pattern: opening puts the keyboard on the first entry, the arrows move, Escape comes back.
+  useEffect(() => {
+    if (open) list.current?.querySelector<HTMLElement>("[role=menuitem]")?.focus();
+  }, [open]);
+  const step = (event: React.KeyboardEvent) => {
+    const entries = [...(list.current?.querySelectorAll<HTMLElement>("[role=menuitem]") ?? [])];
+    const at = entries.indexOf(document.activeElement as HTMLElement);
+    const to = event.key === "ArrowDown" ? (at + 1) % entries.length : event.key === "ArrowUp" ? (at - 1 + entries.length) % entries.length : event.key === "Home" ? 0 : event.key === "End" ? entries.length - 1 : null;
+    if (to === null || entries.length === 0) return;
+    event.preventDefault();
+    entries[to].focus();
+  };
   const menu = useId();
   const item = "flex w-full flex-col items-start gap-0.5 rounded-lg px-3 py-1.5 text-left hover:bg-muted focus-visible:outline-2 focus-visible:outline-brand-500";
   const choose = (what: Creating) => {
@@ -142,19 +155,36 @@ function CreateMenu({ manager, onCreate }: { manager: boolean; onCreate: (what: 
       ref={shell}
       className="relative"
       onKeyDown={(event) => {
-        if (event.key === "Escape") setOpen(false);
+        if (event.key === "Escape" && open) {
+          setOpen(false);
+          button.current?.focus();
+        }
       }}
       onBlur={(event) => {
         if (!shell.current?.contains(event.relatedTarget as Node | null)) setOpen(false);
       }}
     >
-      <Button variant="primary" size="sm" onClick={() => setOpen((before) => !before)} aria-haspopup="menu" aria-expanded={open} aria-controls={menu}>
+      <Button
+        ref={button}
+        variant="primary"
+        size="sm"
+        onClick={() => setOpen((before) => !before)}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown" && !open) {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={menu}
+      >
         <Plus aria-hidden />
         Create
         <ChevronDown className="size-3.5" aria-hidden />
       </Button>
       {open ? (
-        <div id={menu} role="menu" aria-label="Create" className="absolute right-0 z-popover mt-1 grid max-h-[min(36rem,80dvh)] w-80 gap-0.5 overflow-y-auto rounded-xl border border-border bg-card p-1 shadow-lg">
+        <div ref={list} id={menu} role="menu" aria-label="Create" onKeyDown={step} className="absolute right-0 z-popover mt-1 grid max-h-[min(36rem,80dvh)] w-80 gap-0.5 overflow-y-auto rounded-xl border border-border bg-card p-1 shadow-lg">
           <p className={MENU_GROUP} role="presentation">Cleaning</p>
           <Link role="menuitem" href="/app/agents/sales/new?mode=booking&from=calendar" className={item} onClick={() => setOpen(false)}>
             <span className="text-sm font-medium text-strong">Cleaning booking</span>
@@ -323,6 +353,10 @@ export function CalendarScreen() {
   const [railOpen, setRailOpen] = useState(true);
   const [creating, setCreating] = useState<Creating | null>(null);
   const [moving, setMoving] = useState<{ item: Item; to: { startsAt: number; endsAt: number } } | null>(null);
+  // Where the keyboard goes back to: the Create button after a form it opened, the view after a day is chosen.
+  const createButton = useRef<HTMLButtonElement>(null);
+  const viewRegion = useRef<HTMLElement>(null);
+  const tabsId = useId();
   /**
    * What can be dragged: a visit that has not started, and Calendar's own events that are still on, for
    * Owners and Managers. Projected visits, other records and anything private to someone else cannot.
@@ -410,15 +444,31 @@ export function CalendarScreen() {
           {zone ? `Times in ${timezone.replace(/_/g, " ")} (${zone})` : null}
         </span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <div role="tablist" aria-label="View" className="inline-flex rounded-lg border border-border bg-muted p-0.5">
+          <div
+            role="tablist"
+            aria-label="View"
+            className="inline-flex rounded-lg border border-border bg-muted p-0.5"
+            onKeyDown={(event) => {
+              // The tabs pattern: one stop in the Tab order, the arrows choose between views.
+              const at = VIEWS.indexOf(state.view);
+              const to = event.key === "ArrowRight" ? (at + 1) % VIEWS.length : event.key === "ArrowLeft" ? (at - 1 + VIEWS.length) % VIEWS.length : event.key === "Home" ? 0 : event.key === "End" ? VIEWS.length - 1 : null;
+              if (to === null) return;
+              event.preventDefault();
+              update({ view: VIEWS[to] });
+              document.getElementById(`${tabsId}-${VIEWS[to]}`)?.focus();
+            }}
+          >
             {VIEWS.map((view) => (
               <button
                 key={view}
+                id={`${tabsId}-${view}`}
                 type="button"
                 role="tab"
                 aria-selected={state.view === view}
+                aria-controls={`${tabsId}-panel`}
+                tabIndex={state.view === view ? 0 : -1}
                 onClick={() => update({ view })}
-                className={cn("rounded-md px-2.5 py-1 text-xs font-medium focus-visible:outline-2 focus-visible:outline-brand-500", state.view === view ? "bg-card text-strong shadow-sm" : "text-muted-foreground hover:text-strong")}
+                className={cn("rounded-md px-2.5 py-1 text-xs font-medium focus-visible:outline-2 focus-visible:outline-brand-500", state.view === view ? "bg-card text-strong shadow-sm" : "text-strong/70 hover:text-strong")}
               >
                 {VIEW_LABEL[view as View]}
               </button>
@@ -436,7 +486,7 @@ export function CalendarScreen() {
             <Sparkles aria-hidden />
             Ask Selestial
           </Button>
-          <CreateMenu manager={manager} onCreate={setCreating} />
+          <CreateMenu manager={manager} onCreate={setCreating} button={createButton} />
         </div>
       </header>
 
@@ -507,14 +557,19 @@ export function CalendarScreen() {
       ) : null}
 
       <div className={cn("grid items-start gap-3", railOpen && "xl:grid-cols-[minmax(0,1fr)_18rem]")}>
-        <section aria-label={`${VIEW_LABEL[state.view]} view, ${range?.label ?? ""}`} className="min-w-0 overflow-hidden rounded-2xl border border-border bg-card">
+        <section ref={viewRegion} id={`${tabsId}-panel`} role="tabpanel" tabIndex={-1} aria-label={`${VIEW_LABEL[state.view]} view, ${range?.label ?? ""}`} className="min-w-0 overflow-hidden rounded-2xl border border-border bg-card focus-visible:outline-2 focus-visible:outline-brand-500">
           {data === undefined || !range ? (
             <div className="grid gap-2 p-5" aria-busy="true">
               <Skeleton className="h-8" />
               <Skeleton className="h-64" />
             </div>
           ) : state.view === "month" ? (
-            <MonthGrid range={range} items={visible} timezone={timezone} now={now} onOpen={onOpen} onDay={(date) => update({ view: "day", date })} />
+            <MonthGrid range={range} items={visible} timezone={timezone} now={now} onOpen={onOpen} onDay={(date) => {
+                update({ view: "day", date });
+                // The day's button is gone with the month: the keyboard lands on the day it opened.
+                viewRegion.current?.focus();
+              }}
+            />
           ) : state.view === "agenda" ? (
             <Agenda range={range} items={visible} timezone={timezone} now={now} onOpen={onOpen} />
           ) : state.view === "team" ? (
@@ -566,20 +621,20 @@ export function CalendarScreen() {
           <MoveEventDialog eventId={moving.item.source.id as Id<"calendarEvents">} proposed={moving.to} onDone={() => setMoving(null)} />
         ) : null}
       </Modal>
-      <Modal open={creating === "visit"} onClose={() => setCreating(null)} title="Add a visit" description="A visit is a promise to the customer. It is staffed only when every cleaner it needs has accepted.">
+      <Modal open={creating === "visit"} onClose={() => setCreating(null)} returnFocus={createButton} title="Add a visit" description="A visit is a promise to the customer. It is staffed only when every cleaner it needs has accepted.">
         <NewVisitForm onDone={() => setCreating(null)} />
       </Modal>
-      <Modal open={creating === "interview"} onClose={() => setCreating(null)} title="Book an interview">
+      <Modal open={creating === "interview"} onClose={() => setCreating(null)} returnFocus={createButton} title="Book an interview">
         <InterviewForm day={createDay} onDone={() => setCreating(null)} />
       </Modal>
-      <Modal open={creating === "task"} onClose={() => setCreating(null)} title="Add a dated task">
+      <Modal open={creating === "task"} onClose={() => setCreating(null)} returnFocus={createButton} title="Add a dated task">
         <TaskForm day={createDay} onDone={() => setCreating(null)} />
       </Modal>
-      <Modal open={creating === "hours"} onClose={() => setCreating(null)} title="Working hours">
+      <Modal open={creating === "hours"} onClose={() => setCreating(null)} returnFocus={createButton} title="Working hours">
         <MemberHoursForm onDone={() => setCreating(null)} />
       </Modal>
       {(["meeting", "appointment", "unavailable", "training", "inspection"] as const).map((kind) => (
-        <Modal key={kind} open={creating === kind} onClose={() => setCreating(null)} title={EVENT_KIND_LABEL[kind].title}>
+        <Modal key={kind} open={creating === kind} onClose={() => setCreating(null)} returnFocus={createButton} title={EVENT_KIND_LABEL[kind].title}>
           <EventForm kind={kind} day={createDay} onDone={() => setCreating(null)} />
         </Modal>
       ))}

@@ -204,13 +204,32 @@ Team view is read-only: reassigning a cleaner stays in the visit's record panel 
   rules; an ambiguous name is asked about). Both read only; changes are made in Calendar, where the move
   is previewed. No separate calendar agent: these are Dispatch's tools, and every result names its records.
 
-## Phase 6 (not yet)
+## Phase 6: accessibility and responsive pass
 
-A dedicated accessibility, responsive and live-verification pass. What the phases above already did:
-keyboard moves and a form for every drag, words for everything color shows, Agenda as the phone default,
-and browser checks of each view, form and panel with fixture data. Not yet done: a screen-reader and
-keyboard-only walk-through of the whole page, a phone-width pass over every dialog, and a signed-in
-session against a live backend.
+Checked with axe-core (WCAG 2.2 A and AA plus best practice) on the full Calendar screen with fixture
+data: every view in light and dark, at 1440 px and 390 px, with filters open, the Create menu, each
+create form, the item panel and the move dialog (as an Owner and as Office). It reports no violations
+after these fixes:
+
+- **Contrast (1.4.3).** Secondary words on the layers' tints and on muted grounds were 2.6 to 4.5:1.
+  They now use `QUIET` (`text-strong/70`, `look.tsx`). Projected and cancelled blocks are no longer
+  faded with opacity; a projected visit is a dashed, unfilled outline, a cancelled one is struck
+  through on no fill. Inactive view tabs and the shared Select placeholder are stronger too.
+- **Target size (2.5.8).** Month view's day numbers, entries and "more" links are at least 24 px tall.
+- **Headings.** Agenda's day headings are `h2` under the page's `h1`.
+- **Keyboard.** The view tabs are one Tab stop with the arrows, Home and End, and the view is their
+  tab panel. The Create menu puts focus on its first entry when opened (Enter or the down arrow), moves
+  with the arrows, and Escape returns to Create. A form opened from it returns focus to Create when it
+  closes (`Modal`'s `returnFocus`). Opening a day from Month view puts focus on the day view. The item
+  panel and the move dialog take focus and give it back to the item. Moves have Alt+arrow keys, as
+  before.
+- **Phone width.** No view or dialog makes the page scroll sideways. Dialogs become full-width sheets.
+  Week and Month scroll sideways inside their own frame, and Agenda stays the narrow default.
+- **A label bug found on the way.** A week within one month read "Nov 22 – 2026 (day: 28)" in browsers:
+  a day and a year without a month have no pattern of their own. It is built from parts now and tested.
+
+Not covered by automation: a screen reader by ear. The labels it would read (each block's full
+sentence, the live range label, the dialogs' titles) are in place.
 
 ## Decided after the first build
 

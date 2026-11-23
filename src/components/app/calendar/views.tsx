@@ -8,7 +8,7 @@ import { cellLabel, hoursFor, isToday, minuteOf, monthOf, placeInDay, type Range
 import { clock, localDate, longDay } from "@/lib/app/format";
 import { cn } from "@/lib/utils";
 
-import { blockClass, CrewLine, HATCH, itemLabel, LAYER_LOOK, timeLabel, TimingMark, type CalendarData, type Item } from "./look";
+import { blockClass, CrewLine, HATCH, itemLabel, LAYER_LOOK, QUIET, timeLabel, TimingMark, type CalendarData, type Item } from "./look";
 
 type Open = (item: Item) => void;
 
@@ -133,7 +133,7 @@ export function TimeGrid({ range, items, timezone, now, onOpen, dense, canMove, 
                     type="button"
                     onClick={() => onOpen(row.item)}
                     aria-label={itemLabel(row.item, timezone)}
-                    className={cn("absolute inset-x-0 flex flex-col justify-start overflow-hidden border-y border-border/40 px-1 text-left text-[10px] text-muted-foreground focus-visible:outline-2 focus-visible:outline-brand-500", HATCH)}
+                    className={cn("absolute inset-x-0 flex flex-col justify-start overflow-hidden border-y border-border/40 px-1 text-left text-[10px] text-strong/70 focus-visible:outline-2 focus-visible:outline-brand-500", HATCH)}
                     style={{ top: y(row.top), height: Math.max(y(row.bottom) - y(row.top), 12) }}
                   >
                     <span className="block truncate">{row.item.title}</span>
@@ -221,9 +221,9 @@ export function TimeGrid({ range, items, timezone, now, onOpen, dense, canMove, 
                         <TimingMark item={item} />
                         <span className="truncate">{item.title}</span>
                       </span>
-                      {tall >= 34 ? <span className="block truncate text-muted-foreground">{timeLabel(item, timezone)}</span> : null}
-                      {tall >= 50 && item.detail ? <span className="block truncate text-muted-foreground">{item.detail}</span> : null}
-                      {tall >= 64 ? <CrewLine item={item} className="text-muted-foreground" /> : null}
+                      {tall >= 34 ? <span className={cn("block truncate", QUIET)}>{timeLabel(item, timezone)}</span> : null}
+                      {tall >= 50 && item.detail ? <span className={cn("block truncate", QUIET)}>{item.detail}</span> : null}
+                      {tall >= 64 ? <CrewLine item={item} className={QUIET} /> : null}
                       {tall >= 78 ? <span className="block truncate font-medium">{item.statusLabel}</span> : null}
                     </button>
                   );
@@ -254,7 +254,7 @@ export function MonthGrid({ range, items, timezone, now, onOpen, onDay }: { rang
         <thead>
           <tr>
             {weeks[0].map((day) => (
-              <th key={day} scope="col" className="border-b border-border px-2 py-1.5 text-left text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+              <th key={day} scope="col" className="border-b border-border px-2 py-1.5 text-left text-[11px] font-semibold tracking-wide text-strong/70 uppercase">
                 {new Intl.DateTimeFormat("en-US", { timeZone: timezone, weekday: "short" }).format(new Date(day))}
               </th>
             ))}
@@ -272,23 +272,23 @@ export function MonthGrid({ range, items, timezone, now, onOpen, onDay }: { rang
                 const date = localDate(day, timezone);
                 return (
                   <td key={day} className={cn("h-28 border border-border/60 p-1 align-top", outside && "bg-muted/40")}>
-                    <button type="button" onClick={() => onDay(date)} aria-label={`Open ${longDay(day, timezone)}${mine.length ? `, ${mine.length} scheduled` : ""}`} className={cn("mb-0.5 inline-flex min-w-6 items-center justify-center rounded-full px-1.5 text-xs font-semibold tabular-nums hover:bg-muted focus-visible:outline-2 focus-visible:outline-brand-500", today ? "bg-brand-500 text-white hover:bg-brand-600" : outside ? "text-muted-foreground" : "text-strong")}>
+                    <button type="button" onClick={() => onDay(date)} aria-label={`Open ${longDay(day, timezone)}${mine.length ? `, ${mine.length} scheduled` : ""}`} className={cn("mb-0.5 inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-xs font-semibold tabular-nums hover:bg-muted focus-visible:outline-2 focus-visible:outline-brand-500", today ? "bg-brand-500 text-white hover:bg-brand-600" : outside ? QUIET : "text-strong")}>
                       {cellLabel(day, timezone)}
                     </button>
                     <div className="grid gap-0.5">
                       {mine.slice(0, MONTH_LIMIT).map((item) => (
-                        <button key={item.key} type="button" onClick={() => onOpen(item)} aria-label={itemLabel(item, timezone)} className={cn("flex min-w-0 items-center gap-1 rounded px-1 py-px text-left text-[11px] leading-tight focus-visible:outline-2 focus-visible:outline-brand-500", blockClass(item))}>
+                        <button key={item.key} type="button" onClick={() => onOpen(item)} aria-label={itemLabel(item, timezone)} className={cn("flex min-h-6 min-w-0 items-center gap-1 rounded px-1 py-px text-left text-[11px] leading-tight focus-visible:outline-2 focus-visible:outline-brand-500", blockClass(item))}>
                           <TimingMark item={item} />
-                          <span className="shrink-0 tabular-nums text-muted-foreground">{item.allDay ? "" : clock(item.startsAt, timezone).replace(":00", "").replace(" ", "").toLowerCase()}</span>
+                          <span className={cn("shrink-0 tabular-nums", QUIET)}>{item.allDay ? "" : clock(item.startsAt, timezone).replace(":00", "").replace(" ", "").toLowerCase()}</span>
                           <span className="min-w-0 truncate font-medium">{item.title}</span>
                         </button>
                       ))}
                       {mine.length > MONTH_LIMIT ? (
-                        <button type="button" onClick={() => onDay(date)} className="rounded px-1 text-left text-[11px] font-medium text-brand-300 hover:underline focus-visible:outline-2 focus-visible:outline-brand-500">
+                        <button type="button" onClick={() => onDay(date)} className="min-h-6 rounded px-1 text-left text-[11px] font-medium text-brand-300 hover:underline focus-visible:outline-2 focus-visible:outline-brand-500">
                           {mine.length - MONTH_LIMIT} more
                         </button>
                       ) : null}
-                      {away > 0 ? <span className="px-1 text-[10px] text-muted-foreground">{away} away</span> : null}
+                      {away > 0 ? <span className={cn("px-1 text-[10px]", QUIET)}>{away} away</span> : null}
                     </div>
                   </td>
                 );
@@ -313,24 +313,24 @@ export function Agenda({ range, items, timezone, now, onOpen }: { range: Range; 
         .filter((day) => day.items.length > 0)
         .map((day) => (
           <li key={day.from} className="grid gap-1 px-3 py-3 sm:grid-cols-[9rem_1fr] sm:gap-4 sm:px-5">
-            <h3 className={cn("text-sm font-semibold", isToday(day.from, now, timezone) ? "text-brand-300" : "text-strong")}>
+            <h2 className={cn("text-sm font-semibold", isToday(day.from, now, timezone) ? "text-brand-300" : "text-strong")}>
               {isToday(day.from, now, timezone) ? "Today · " : ""}
               {new Intl.DateTimeFormat("en-US", { timeZone: timezone, weekday: "short", month: "short", day: "numeric" }).format(new Date(day.from))}
-            </h3>
+            </h2>
             <ul className="grid gap-1.5">
               {day.items.map((item) => (
                 <li key={item.key}>
                   <button type="button" onClick={() => onOpen(item)} aria-label={itemLabel(item, timezone)} className={cn("grid w-full grid-cols-[5.5rem_1fr] items-start gap-3 rounded-lg px-2.5 py-2 text-left text-sm focus-visible:outline-2 focus-visible:outline-brand-500 sm:grid-cols-[7.5rem_1fr]", blockClass(item))}>
-                    <span className="text-xs leading-5 text-muted-foreground tabular-nums">{timeLabel(item, timezone)}</span>
+                    <span className={cn("text-xs leading-5 tabular-nums", QUIET)}>{timeLabel(item, timezone)}</span>
                     <span className="grid min-w-0 gap-0.5">
                       <span className="flex min-w-0 items-center gap-1.5 font-semibold text-strong">
                         <span className={cn("size-2 shrink-0 rounded-full", LAYER_LOOK[item.layer].swatch)} aria-hidden />
                         <span className="truncate">{item.title}</span>
                       </span>
-                      {item.detail ? <span className="truncate text-xs text-muted-foreground">{item.detail}</span> : null}
+                      {item.detail ? <span className={cn("truncate text-xs", QUIET)}>{item.detail}</span> : null}
                       <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
                         <span className="font-medium">{item.statusLabel}</span>
-                        <CrewLine item={item} className="text-muted-foreground" />
+                        <CrewLine item={item} className={QUIET} />
                       </span>
                       {item.problems.length > 0 ? (
                         <span className="flex items-start gap-1 text-xs text-destructive-foreground">
@@ -399,10 +399,10 @@ export function TeamLanes({ data, range, items, timezone, onOpen, cleanerIds }: 
     <div className="overflow-x-auto">
       <div className="min-w-[46rem]">
         <div className="grid grid-cols-[9rem_1fr] border-b border-border bg-muted sm:grid-cols-[11rem_1fr]">
-          <div className="border-r border-border px-3 py-1.5 text-[11px] font-semibold text-muted-foreground">{timezone}</div>
+          <div className={cn("border-r border-border px-3 py-1.5 text-[11px] font-semibold", QUIET)}>{timezone}</div>
           <div className="relative h-7">
             {hours.slice(0, -1).map((hour) => (
-              <span key={hour} className="absolute top-1.5 pl-1 text-[11px] text-muted-foreground tabular-nums" style={{ left: `${pos(hour)}%` }}>
+              <span key={hour} className={cn("absolute top-1.5 pl-1 text-[11px] tabular-nums", QUIET)} style={{ left: `${pos(hour)}%` }}>
                 {HOUR_LABEL(hour)}
               </span>
             ))}
@@ -461,7 +461,7 @@ export function TeamLanes({ data, range, items, timezone, onOpen, cleanerIds }: 
                   <Block key={`w-${row.startMinute}`} left={pos(row.startMinute)} width={pos(row.endMinute) - pos(row.startMinute)} title="Their working hours" className="bg-success/8" />
                 ))}
                 {away.map((item) => (
-                  <Block key={item.key} {...place(item)} onClick={() => onOpen(item)} title={itemLabel(item, timezone)} className={cn(HATCH, "border-border/60 text-muted-foreground")}>
+                  <Block key={item.key} {...place(item)} onClick={() => onOpen(item)} title={itemLabel(item, timezone)} className={cn(HATCH, "border-border/60", QUIET)}>
                     <span className="block truncate">{item.title}</span>
                   </Block>
                 ))}
