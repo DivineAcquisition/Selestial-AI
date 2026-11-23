@@ -28,7 +28,6 @@ import { careLinkByPublicId, careLinkState, customerActor, noteCareAction } from
 import { CHANGE_WORDS, loadPlan, previewPlanChange, upcomingVisits } from "./lib/retention/planChanges";
 import { assess, customerAnswered, openRecovery, planRecovery, recordFeedback } from "./lib/retention/recovery";
 import { PLAN_CHANGES } from "./lib/retention/schema";
-import { retentionSettings } from "./lib/retention/settings";
 import { literals } from "./lib/statuses";
 
 type Link = { link: Doc<"retentionLinks">; company: Doc<"companies"> };
@@ -76,7 +75,6 @@ export const view = salesLinkQuery({
     const customer = await ctx.db.get(link.customerId);
     if (!customer) return null;
     const tz = company.timezone;
-    const settings = retentionSettings(company);
     const property = link.propertyId ? await ctx.db.get(link.propertyId) : null;
     const job = link.jobId ? await ctx.db.get(link.jobId) : null;
     const row = link.caseId ? await ctx.db.get(link.caseId) : null;

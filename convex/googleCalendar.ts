@@ -319,8 +319,7 @@ export const pullChanges = internalAction({
       // Only a difference from what Selestial last WROTE is someone else's change. While a visit has changed in
       // Selestial and the sync has not written it yet, Google still shows Selestial's older version: that is
       // not a change made in Google, and the sync is about to replace it.
-      const { subject: _subject, ...draft } = wanted;
-      if (link.writtenHash !== draftHash(draft)) continue;
+      if (link.writtenHash !== draftHash(wanted)) continue;
       if (event.status === "cancelled") {
         await ctx.runMutation(internal.googleCalendar.externalChange, { companyId: args.companyId, eventId: event.id, change: "deleted" });
         continue;
