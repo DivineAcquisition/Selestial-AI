@@ -28,7 +28,7 @@ import { siteOrigin } from "./lib/dispatch/links";
 import { exchangeCode, googleApp } from "./lib/recruiter/gmail";
 import { hashToken, randomToken, seal, unseal } from "./lib/recruiter/secrets";
 import { afterConnect, googleRedirectUri, pendingBinding } from "./recruiterMailbox";
-import { afterGoogle } from "./google";
+import { afterGoogle, pendingBinding as googlePendingBinding } from "./google";
 import { jobberCallback } from "./connectors";
 import { highLevelCallback } from "./qualityHighLevel";
 import { verifyHighLevel } from "./lib/quality/comms/highlevel";
@@ -343,16 +343,18 @@ http.route({
         }
         const who = identityFrom(tokens.idToken);
         if (!who?.email) return afterGoogle("failed", google.returnOrigin, google.features[0]);
-        const done = await ctx.runMutation(internal.google.completeConnect, { companyId: google.companyId, memberId: google.memberId, feature: google.features[0], connectionId: google.connectionId, googleSub: who.sub, email: who.email, scopes: tokens.scopes, hasRefreshToken: Boolean(tokens.refreshToken) });
-        if (!done.ok) return afterGoogle(done.reason, google.returnOrigin, google.features[0]);
+        // As for the Gmail inbox below: this request has no session, so nothing is connected here. The
+        // authorization waits, sealed to the state record, until the signed-in Owner who started confirms the
+        // Google account in the app (google.confirmConnect). Unconfirmed, it is deleted after fifteen minutes.
+        let sealed: string | null = null;
         if (tokens.refreshToken) {
-          const sealed = await seal(tokens.refreshToken, done.connectionId);
+          sealed = await seal(tokens.refreshToken, googlePendingBinding(google.stateId));
           if (!sealed) return afterGoogle("failed", google.returnOrigin, google.features[0]);
-          await ctx.runMutation(internal.google.storeCredential, { connectionId: done.connectionId, sealedRefreshToken: sealed });
         }
-        // Partial consent is kept as it is: only what Google actually granted is switched on.
-        const missing = google.features.filter((f) => !done.enabled.includes(f));
-        return afterGoogle(missing.length ? `partial:${missing.join(",")}` : "connected", google.returnOrigin, google.features[0]);
+        const confirm = await randomToken();
+        const held = await ctx.runMutation(internal.google.holdPending, { stateId: google.stateId, googleSub: who.sub, email: who.email, scopes: tokens.scopes, sealedRefreshToken: sealed, confirmHash: await hashToken(confirm) });
+        if (!held.ok) return afterGoogle(held.reason, google.returnOrigin, google.features[0]);
+        return afterGoogle("confirm", google.returnOrigin, google.features[0], confirm);
       }
       const taken = await ctx.runMutation(internal.recruiterMailbox.takeState, { stateHash });
       if (!taken) return afterConnect("expired");

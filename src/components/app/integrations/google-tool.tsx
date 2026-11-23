@@ -1,9 +1,11 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { canManage, useCompany } from "@/components/app/company";
+import { ConfirmGoogle } from "@/components/app/integrations/confirm-google";
 import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { Panel } from "@/components/app/shell";
 import { Button } from "@/components/ui/button";
@@ -20,6 +22,7 @@ const PURPOSES = ["photos", "resumes", "agreements", "reports", "creative", "doc
 /** What Google sent the Owner back with, in words. */
 export function googleResultWords(result: string): string {
   if (result === "connected") return "Connected. Now choose what Selestial may use below.";
+  if (result === "confirm") return "Google answered. Confirm the account below to finish connecting.";
   if (result.startsWith("partial:")) return "Google granted only part of what this tool needs, so it stays off. Reconnect and allow everything Google asks for.";
   if (result === "different_account") return "You signed in with a different Google account than the one this tool uses. Nothing changed. To switch, choose “Use a different Google account”.";
   if (result === "no_refresh_token") return "Google did not give lasting access, so nothing was connected. Try again and allow access.";
@@ -63,6 +66,8 @@ export function useConnectGoogle(feature: Feature) {
 export function GoogleToolPanel({ feature, result }: { feature: Feature; result: string | null }) {
   const { companyId, role } = useCompany();
   const status = useQuery(api.google.status, { companyId });
+  // Back from Google with ?result=confirm&pending=<one-time value>: the account waits to be confirmed.
+  const pending = useSearchParams().get("pending");
   if (!status) return <Skeleton className="h-40 rounded-xl" />;
   const tool = status.tools.find((t) => t.feature === feature)!;
   const owner = status.canManage;
@@ -70,7 +75,9 @@ export function GoogleToolPanel({ feature, result }: { feature: Feature; result:
   const conversions = status.tools.find((t) => t.feature === "conversions")!;
   return (
     <div className="grid gap-4">
-      {result ? (
+      {result === "confirm" && pending ? (
+        <ConfirmGoogle token={pending} describe={googleResultWords} />
+      ) : result ? (
         <p role="status" className="rounded-lg border border-border bg-muted px-3 py-2 text-sm text-strong">
           {googleResultWords(result)}
         </p>
