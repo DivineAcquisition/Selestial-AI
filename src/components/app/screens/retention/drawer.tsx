@@ -15,6 +15,7 @@ import { useMemo, useState } from "react";
 
 import { useChat, useOfferChatContext } from "@/components/app/chat/chat-context";
 import { useCompany } from "@/components/app/company";
+import { QualityOnRetentionCase } from "@/components/app/screens/quality/context";
 import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { useNow } from "@/components/app/use-now";
 import { AlertTriangle, ArrowUpRight, ChatIcon, CheckCircle2, Hand, ShieldCheck, Sparkles } from "@/components/icons";
@@ -704,6 +705,9 @@ function Body({ caseId }: { caseId: Id<"retentionCases"> }) {
         ) : (
           <p className="text-sm text-muted-foreground">Nothing has been handed to Dispatch, Sales, Quality or Finance. A handoff is progress, not completion: the case stays open until the result comes back.</p>
         )}
+        <div className="mt-3">
+          <QualityOnRetentionCase caseId={caseId} />
+        </div>
       </Section>
 
       <Section title="Verification">

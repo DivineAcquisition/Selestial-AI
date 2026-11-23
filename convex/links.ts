@@ -25,6 +25,8 @@ import { areaWords, arrivalWords, durationWords, roleWords } from "./lib/dispatc
 import { whenWords } from "./lib/dispatch/workflow";
 import { notFound, userError } from "./lib/errors";
 import { recordEvent, type Actor } from "./lib/events";
+import { qualityOnEvidence } from "./lib/quality/hooks";
+import { isPreserved } from "./lib/quality/cases";
 
 const MAX_PHOTOS_PER_KIND = 30;
 const MAX_PHOTO_BYTES = 15 * 1024 * 1024;
@@ -272,6 +274,7 @@ export const setChecklistItem = linkMutation({
       at: args.state === "pending" ? undefined : Date.now(),
     });
     await recordEvent(ctx, { companyId: ctx.companyId, type: "job.checklist_item_set", actor: asCleaner(ctx), subject: { table: "jobs", id: jobDoc._id }, data: { itemId: item._id, state: args.state } });
+    await qualityOnEvidence(ctx, jobDoc);
     return null;
   },
 });
@@ -336,6 +339,7 @@ export const attachPhoto = linkMutation({
     }
     const evidenceId = await ctx.db.insert("evidence", { companyId: ctx.companyId, jobId: jobDoc._id, assignmentId: assignment._id, cleanerId: ctx.link.cleanerId, kind: args.kind, checklistItemId: itemId, storageId: args.storageId, clientKey, uploadedAt: Date.now() });
     await recordEvent(ctx, { companyId: ctx.companyId, type: "job.photo_added", actor: asCleaner(ctx), subject: { table: "jobs", id: jobDoc._id }, data: { kind: args.kind, assignmentId: assignment._id } });
+    await qualityOnEvidence(ctx, jobDoc);
     return { evidenceId, duplicate: false };
   },
 });
@@ -350,6 +354,8 @@ export const removePhoto = linkMutation({
     if (assignment.completion) throw userError("You have already submitted this job.");
     const row = await ctx.db.get(args.evidenceId);
     if (!row || row.companyId !== ctx.companyId || row.assignmentId !== assignment._id) notFound();
+    // A photo a quality case preserves (a serious concern) stays, whoever asks.
+    if (await isPreserved(ctx, ctx.companyId, row._id)) throw userError("This photo is kept as evidence on an open case and can't be removed.");
     await ctx.db.delete(row._id);
     await ctx.storage.delete(row.storageId);
     await recordEvent(ctx, { companyId: ctx.companyId, type: "job.photo_removed", actor: asCleaner(ctx), subject: { table: "jobs", id: jobDoc._id }, data: { kind: row.kind, assignmentId: assignment._id } });

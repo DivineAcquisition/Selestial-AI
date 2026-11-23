@@ -15,6 +15,7 @@ import { staffing } from "./lib/dispatch/crew";
 import { coverRun, type RunStep } from "./lib/dispatch/run";
 import { dispatchSettings } from "./lib/dispatch/settings";
 import { coverKey, jobApprovals } from "./lib/dispatch/workflow";
+import { maySee } from "./lib/quality/cases";
 import { liveTaskByKey } from "./lib/taskState";
 import { isManager } from "./lib/roles";
 import { AGENTS, type Agent } from "./lib/statuses";
@@ -397,6 +398,12 @@ export const sidebar = companyQuery({
         .take(200);
     const [careAttention, careContext, careUnderway, careWaiting, careMonitoring] = await Promise.all([careCases("needs_attention"), careCases("needs_context"), careCases("action_underway"), careCases("waiting_on_customer"), careCases("monitoring")]);
     const careWithPerson = [...careAttention, ...careContext];
+    // Quality: only cases this person may see, so a restricted case is not hinted at by a count.
+    const qualityStage = async (stage: "needs_decision" | "needs_context" | "investigating" | "action_underway" | "verifying") =>
+      (await ctx.db.query("qualityCases").withIndex("by_company_stage", (q) => q.eq("companyId", ctx.companyId).eq("stage", stage)).take(200)).filter((row) => maySee(row, { role: ctx.role, memberId: ctx.member._id }));
+    const [qDecision, qContext, qInvestigating, qUnderway, qVerifying] = await Promise.all([qualityStage("needs_decision"), qualityStage("needs_context"), qualityStage("investigating"), qualityStage("action_underway"), qualityStage("verifying")]);
+    const qReviews = await ctx.db.query("qualityReviews").withIndex("by_company_status", (q) => q.eq("companyId", ctx.companyId).eq("status", "needs_decision")).take(200);
+    const qOpen = [...qDecision, ...qContext, ...qInvestigating, ...qUnderway, ...qVerifying];
     return {
       /** Approvals and handed-over tasks waiting on this person. */
       decisions: approvals.length + tasks.length,
@@ -433,6 +440,19 @@ export const sidebar = companyQuery({
         underway: careUnderway.length,
         /** Cases waiting on the customer's answer or on the next service. */
         waiting: careWaiting.length + careMonitoring.length,
+      },
+      quality: {
+        paused: ctx.company.pausedAgents.includes("quality"),
+        /** Serious concerns still waiting for the Owner's decision. */
+        serious: qOpen.filter((row) => row.serious && !row.serious.decision).length,
+        /** Cases and completion reviews whose next step is a person's. */
+        withYou: qDecision.length + qReviews.length,
+        /** Open cases past their due time. */
+        overdue: qOpen.filter((row) => row.dueAt < args.asOf).length,
+        /** Cases being investigated, corrected or verified. */
+        underway: qInvestigating.length + qUnderway.length + qVerifying.length,
+        /** Cases waiting on evidence or an account. */
+        waiting: qContext.length,
       },
     };
   },

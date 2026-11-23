@@ -7,6 +7,7 @@
  * delay, not silence. A crew reporting completion hands the visit to Quality: it approves nothing and
  * pays nobody.
  */
+import { qualityOnCompletionReported } from "../quality/hooks";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import { requestApproval } from "../approvalQueue";
@@ -508,6 +509,8 @@ export async function submitCompletion(ctx: MutationCtx, assignmentId: Id<"assig
       about: { table: "jobs", id: job._id },
       actor: DISPATCH,
     });
+    // Quality reviews the visit against the standard that applied. A manager still closes it.
+    await qualityOnCompletionReported(ctx, (await ctx.db.get(job._id))!);
   }
   return { status: "submitted_for_review" as const, submittedAt: now, waitingOnCrew: waitingOn.length };
 }

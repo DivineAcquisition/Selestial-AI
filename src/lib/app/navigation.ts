@@ -23,7 +23,7 @@ export const AGENT_IDS = ["marketing", "sales", "retention", "dispatch", "qualit
 export type AgentId = (typeof AGENT_IDS)[number];
 
 /** The agents the Convex backend knows today (convex/lib/statuses.ts). The other four have no record yet. */
-export type BackendAgent = "sales" | "recruiter" | "dispatch" | "retention";
+export type BackendAgent = "sales" | "recruiter" | "dispatch" | "retention" | "quality";
 
 export type Role = "owner" | "manager" | "office";
 
@@ -435,13 +435,17 @@ export const AGENTS: readonly AgentNav[] = [
     label: "Quality",
     department: "operations",
     responsibility: "Reviews service evidence, investigates issues, and coordinates corrective work.",
-    backendAgent: null,
+    backendAgent: "quality",
+    workflow: "built",
+    overview: LIVE,
+    // Built November 22, 2026 (docs/quality/00-architecture.md): the work is organised by what Quality does.
     tabs: [
-      ["completion-review", "Completion Review"],
-      ["checklists-photos", "Checklists & Photos"],
-      ["service-issues", "Service Issues"],
-      ["re-cleans", "Re-cleans"],
-      ["playbook", "Playbook"],
+      ["reviews", "Reviews", LIVE],
+      ["cases", "Cases", LIVE],
+      ["corrections", "Corrections", LIVE],
+      ["standards", "Standards", LIVE],
+      ["insights", "Insights", LIVE],
+      ["playbook", "Playbook", LIVE],
     ],
   }),
   agent({

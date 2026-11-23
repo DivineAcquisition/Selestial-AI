@@ -3,8 +3,8 @@
  *
  * The storage id comes from the person holding the link, so it proves nothing about who uploaded the file. A
  * cleaner or applicant could hand in the id of a photo or file that is already someone's record and have it
- * deleted. So an upload is discarded only when it is recent and nothing has kept it: evidence on any job and
- * files on any application are left exactly as they are.
+ * deleted. So an upload is discarded only when it is recent and nothing has kept it: evidence on any job,
+ * files on any application and files on any Quality request are left exactly as they are.
  */
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
@@ -26,6 +26,11 @@ export async function discardUpload(ctx: MutationCtx, storageId: Id<"_storage">)
     .withIndex("by_storage", (q) => q.eq("storageId", storageId))
     .first();
   if (attachment) return false;
+  const kept = await ctx.db
+    .query("qualityFiles")
+    .withIndex("by_storage", (q) => q.eq("storageId", storageId))
+    .first();
+  if (kept) return false;
   await ctx.storage.delete(storageId);
   return true;
 }

@@ -18,13 +18,14 @@ type AgentLine = {
   workflow: { audience: string; sender: string; trigger: string; approval: string; behavior: string };
 };
 
-const NAMES: Record<Agent, string> = { sales: "Sales", recruiter: "Recruiter", dispatch: "Dispatch", retention: "Retention" };
+const NAMES: Record<Agent, string> = { sales: "Sales", recruiter: "Recruiter", dispatch: "Dispatch", retention: "Retention", quality: "Quality" };
 
 const WORKFLOWS: Record<Agent, { action: string; audience: string; trigger: string; behavior: string; ready: string }> = {
   dispatch: { action: "dispatch.send_reminder", audience: "Cleaners on your team, about their own visits", trigger: "A visit needs a cleaner, is confirmed, or is about to start", behavior: "Texts job offers, confirmations and reminders. Replies are read against the cleaner's own visits; nothing is assigned until the job is checked again, and acceptances wait for a person.", ready: "Dispatch can send job offers, confirmations and reminders through" },
   sales: { action: "sales.follow_up", audience: "People who asked about service, with recorded permission to text", trigger: "A new inquiry, a quote to follow up, or their reply", behavior: "Answers questions from your real services, prices and availability, and follows up. Follow-ups stop on a reply, a booking, an opt-out or when a person takes over.", ready: "Sales can reply and follow up through" },
   recruiter: { action: "recruiter.follow_up", audience: "Applicants who agreed to texts, and cleaners being onboarded", trigger: "An unfinished application, an interview, or a missing onboarding item", behavior: "Sends application, interview and onboarding reminders. Documents are only ever collected through your secure forms, never by text. Hiring decisions stay with people.", ready: "Recruiter can send application, interview and onboarding reminders through" },
   retention: { action: "retention.send_case_message", audience: "Customers, about their own service", trigger: "A visit was completed, or a customer raised a concern", behavior: "Follows up after service and on open concerns. Complaints and reschedules go to the right place; refunds, credits and discounts always need your approval. Promotions are kept separate and need marketing permission.", ready: "Retention can follow up with customers through" },
+  quality: { action: "quality.request_cleaner_evidence", audience: "Cleaners who worked the visit", trigger: "A completed visit is missing required photos, or a case needs their account", behavior: "Asks for the missing photos, a short answer or their account through a private link, with one reminder. It never says anything about fault, and never texts customers: Retention does.", ready: "Quality can ask cleaners for evidence through" },
 };
 
 const LEVEL_WORDS = { off: "Off: it does nothing", propose: "Propose: it drafts each text for your approval", execute_and_report: "Act and notify me: it sends, then tells you", execute: "Act: it sends on its own within your rules" } as const;

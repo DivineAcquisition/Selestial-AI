@@ -19,7 +19,7 @@ import { TOP_UP_MAX_CENTS, TOP_UP_MIN_CENTS, TOP_UP_PRESETS } from "./messagingF
 
 type Charge = Doc<"messagingCharges">;
 
-const LIMITED_AGENTS = ["sales", "dispatch", "recruiter", "retention"] as const;
+const LIMITED_AGENTS = ["sales", "dispatch", "recruiter", "retention", "quality"] as const;
 
 function whoOf(charge: Pick<Charge, "agent" | "memberId" | "kind">): { key: string; label: string } {
   if (charge.agent && charge.agent in AGENT_CATALOG) return { key: charge.agent, label: AGENT_CATALOG[charge.agent as keyof typeof AGENT_CATALOG].name };

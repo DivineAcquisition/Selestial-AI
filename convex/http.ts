@@ -8,6 +8,8 @@
  * POST /webhooks/autumn         plan, purchase and balance changes from Autumn. Needs AUTUMN_WEBHOOK_SECRET.
  * GET  /oauth/google/callback   where Google sends an Owner back after they allowed access: the company's
  *                               Google connection (convex/google.ts) or a Gmail hiring inbox, told apart by the state.
+ * GET  /oauth/highlevel/callback  where HighLevel sends an Owner back after installing Selestial's app (Quality reads it).
+ * POST /webhooks/highlevel      the Selestial HighLevel app's signed events.
  * GET  /oauth/jobber/callback   where Jobber sends an Owner back after they allowed Selestial to read their clients.
  * POST /webhooks/google/calendar  Calendar push notifications, checked against each channel's own secret token.
  * POST /webhooks/google/pubsub    Gmail and Business Profile notifications through Pub/Sub, with Google's signed OIDC token.
@@ -17,15 +19,19 @@
  */
 import { httpRouter } from "convex/server";
 
+import { qualityFileRequestValid } from "./lib/quality/fileLinks";
+
 import { internal } from "./_generated/api";
 import { oauthCallback, oneClickUnsubscribe, providerWebhook, selfCheckRoute, signedFileRoute } from "./lib/builders";
 import { evidenceRequestValid } from "./lib/texting/evidence";
 import { siteOrigin } from "./lib/dispatch/links";
 import { exchangeCode, googleApp } from "./lib/recruiter/gmail";
-import { hashToken, randomToken, seal } from "./lib/recruiter/secrets";
+import { hashToken, randomToken, seal, unseal } from "./lib/recruiter/secrets";
 import { afterConnect, googleRedirectUri, pendingBinding } from "./recruiterMailbox";
 import { afterGoogle } from "./google";
 import { jobberCallback } from "./connectors";
+import { highLevelCallback } from "./qualityHighLevel";
+import { verifyHighLevel } from "./lib/quality/comms/highlevel";
 import { exchange as googleExchange, googleApp as googleConnectApp, identityFrom, redirectUri as googleConnectRedirect } from "./lib/google/oauth";
 import { endpoints as googleEndpoints } from "./lib/google/platform";
 import { googleKeys, pushData, tokenKid, verifyOidc } from "./lib/google/pubsub";
@@ -36,7 +42,6 @@ import { telnyxEvent, verifyTelnyx } from "./lib/messaging/telnyx";
 import { parseEvent as parseStripeEvent, verifyStripeSignature } from "./lib/finance/stripe";
 import { parseInvoiceEvent } from "./lib/billing/lock";
 import { verifySignature } from "./lib/quo/api";
-import { unseal } from "./lib/recruiter/secrets";
 
 const http = httpRouter();
 
@@ -215,6 +220,30 @@ http.route({
 });
 
 /**
+ * GET /quality-files/<file id>?exp=…&sig=…  one file uploaded through a Quality link, for an address this
+ * deployment signed for someone allowed to see its case. Anything else is a plain 404.
+ */
+http.route({
+  pathPrefix: "/quality-files/",
+  method: "GET",
+  handler: signedFileRoute({
+    verify: async (request, now) => {
+      const url = new URL(request.url);
+      const fileId = url.pathname.slice("/quality-files/".length);
+      return /^[a-z0-9]{10,64}$/i.test(fileId) && qualityFileRequestValid(fileId, url.searchParams.get("exp"), url.searchParams.get("sig"), now);
+    },
+    handler: async (ctx, request, now) => {
+      const url = new URL(request.url);
+      const storageId = await ctx.runQuery(internal.qualityLinks.fileStorage, { fileId: url.pathname.slice("/quality-files/".length) });
+      const file = storageId ? await ctx.storage.get(storageId) : null;
+      if (!file) return null;
+      const seconds = Math.max(0, Math.floor((Number(url.searchParams.get("exp")) - now) / 1000));
+      return new Response(file, { status: 200, headers: { "content-type": file.type || "application/octet-stream", "cache-control": `private, max-age=${seconds}`, "referrer-policy": "no-referrer", "x-content-type-options": "nosniff", "content-disposition": "inline" } });
+    },
+  }),
+});
+
+/**
  * GET /texting-evidence/<evidence id>?exp=…&sig=…  one texting evidence file, for an address signed by this
  * deployment within the last 15 minutes. Anything else is a plain 404. Never cached beyond its expiry.
  */
@@ -257,6 +286,32 @@ http.route({
 });
 
 /** Where Jobber sends the Owner back after they allowed Selestial to read their clients (convex/connectors.ts). */
+/**
+ * GET /oauth/highlevel/callback  where HighLevel sends the Owner back after installing Selestial's app on a
+ * sub-account. The one-time state names the company; the code is exchanged for tokens, sealed at once.
+ */
+http.route({
+  path: "/oauth/highlevel/callback",
+  method: "GET",
+  handler: oauthCallback({ handler: (ctx, params) => highLevelCallback(ctx, params) }),
+});
+
+/**
+ * POST /webhooks/highlevel  the Selestial app's events from HighLevel (one address for every installation):
+ * InboundMessage, OutboundMessage, INSTALL, UNINSTALL. Accepted only with HighLevel's Ed25519 signature over
+ * the exact body (lib/quality/comms/highlevel.ts); the location in the event names the company.
+ */
+http.route({
+  path: "/webhooks/highlevel",
+  method: "POST",
+  handler: providerWebhook({
+    verify: (request, body) => verifyHighLevel(body, request.headers.get("x-ghl-signature")),
+    handler: async (ctx, body) => {
+      await ctx.runMutation(internal.qualityHighLevel.webhook, { body });
+    },
+  }),
+});
+
 http.route({
   path: "/oauth/jobber/callback",
   method: "GET",

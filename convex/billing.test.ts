@@ -268,11 +268,14 @@ describe("billing", () => {
       billing.seed(s.companyId, { plan: "expand", grant: 2000, purchased: 5000 });
       await sync(s.t, s.companyId);
       const company = await s.t.run(async (ctx) => (await ctx.db.get(s.companyId))!);
-      for (const agent of ["quality", "marketing", "customer-care"] as const) expect(agentVerdict(company, agent)).toMatchObject({ ok: false, block: "not_released" });
+      for (const agent of ["marketing", "customer-care"] as const) expect(agentVerdict(company, agent)).toMatchObject({ ok: false, block: "not_released" });
+      // Quality is released with its workflows, and is part of Expand only: its plan access did not change.
+      expect(agentVerdict(company, "quality")).toEqual({ ok: true });
+      expect(agentVerdict({ plan: "operate" }, "quality")).toMatchObject({ ok: false, block: "plan" });
       // Team Coordinator was retired: it is not an agent any plan names, and its work is in Recruiter and Dispatch, in both plans.
       for (const agent of ["dispatch", "recruiter", "sales", "retention"] as const) expect(agentVerdict(company, agent)).toEqual({ ok: true });
       const view = await s.as.query(api.billing.planAndUsage, { companyId: s.companyId });
-      expect(view.catalog.agents.filter((row) => row.here).map((row) => row.agent)).toEqual(["sales", "retention", "recruiter", "dispatch"]);
+      expect(view.catalog.agents.filter((row) => row.here).map((row) => row.agent)).toEqual(["sales", "retention", "recruiter", "dispatch", "quality"]);
       expect(view.catalog.agents.map((row) => row.agent)).not.toContain("team-coordinator");
     });
 
@@ -828,10 +831,15 @@ describe("billing", () => {
       expect(row).toMatchObject({ state: "claimed", startedAt: billing.customerFor(`company_${a.companyId}`).startedAt });
       // Twelve calendar months after the first paid period began.
       expect(Math.abs(row.offerEndsAt! - Date.UTC(2028, 2, 1, 12, 0))).toBeLessThan(60_000);
-      // The app reads it as Operate for everything: the same agents, features and blocks.
+      // The app reads it as Operate, with one bonus: early users get Quality (the Owner's decision of November 23).
       const company = (await t.run(async (ctx) => ctx.db.get(a.companyId)))!;
       expect(company.plan).toBe("operate");
-      for (const agent of ["dispatch", "recruiter", "sales", "retention", "marketing", "quality"] as const) expect(agentVerdict(company, agent)).toEqual(agentVerdict({ plan: "operate" }, agent));
+      for (const agent of ["dispatch", "recruiter", "sales", "retention", "marketing"] as const) expect(agentVerdict(company, agent)).toEqual(agentVerdict({ plan: "operate" }, agent));
+      expect(company.agentBonuses).toEqual([{ agent: "quality", reason: "early_user", since: row.claimedAt }]);
+      expect(agentVerdict(company, "quality")).toEqual({ ok: true });
+      expect(agentVerdict({ plan: "operate" }, "quality")).toMatchObject({ ok: false, block: "plan" });
+      // A bonus still needs an active plan.
+      expect(agentVerdict({ plan: undefined, agentBonuses: company.agentBonuses }, "quality")).toMatchObject({ ok: false, block: "plan" });
       expect(await refusal(a.as.mutation(api.creative.generate, { companyId: a.companyId, kind: "image_generate", prompt: "A tidy kitchen", params: {} }))).toMatch(/isn't part of the Operate plan/);
       const view = await a.as.query(api.billing.planAndUsage, { companyId: a.companyId });
       expect(view.connected && view.account).toMatchObject({ plan: "operate" });
@@ -962,7 +970,10 @@ describe("billing", () => {
       expect(customer.invoices.at(-1)).toMatchObject({ plan_ids: ["operate"], total: 299 });
       expect(customer.invoices.filter((row) => row.total === 299)).toHaveLength(1);
       expect(await offerOf(t, a.companyId)).toMatchObject({ state: "ended", endReason: "moved_to_full_price" });
-      expect((await t.run(async (ctx) => ctx.db.get(a.companyId)))?.plan).toBe("operate");
+      const after = (await t.run(async (ctx) => ctx.db.get(a.companyId)))!;
+      expect(after.plan).toBe("operate");
+      // Early users keep Quality after their 12 months.
+      expect(agentVerdict(after, "quality")).toEqual({ ok: true });
     });
 
     it("retries a refused move and tells staff, instead of leaving the company on $199 silently", async () => {

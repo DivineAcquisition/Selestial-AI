@@ -27,7 +27,7 @@ const STATE: Record<View["state"], { label: string; variant: "outline" | "info" 
   disconnected: { label: "Disconnected", variant: "error" },
 };
 
-const AGENT_NAMES = { dispatch: "Dispatch", sales: "Sales", recruiter: "Recruiter", retention: "Retention" } as const;
+const AGENT_NAMES = { dispatch: "Dispatch", sales: "Sales", recruiter: "Recruiter", retention: "Retention", quality: "Quality" } as const;
 type AgentId = keyof typeof AGENT_NAMES;
 
 /** Settings › Integrations › Quo: connecting the company's own Quo (formerly OpenPhone) account, step by step. */

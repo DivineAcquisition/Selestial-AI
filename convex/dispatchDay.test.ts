@@ -102,7 +102,7 @@ describe("Dispatch: the day of service", () => {
     // The owner's side: the visit is in the review queue. It is not completed, not approved, not paid.
     row = await s.board(a.jobId);
     expect(row).toMatchObject({ status: "in_progress", group: "awaiting_completion_review", completionReportedAt: done.submittedAt });
-    const reviews = (await s.tasks("needs_decision")).filter((task) => task.handoffTo === "quality");
+    const reviews = (await s.tasks("needs_decision", "quality")).filter((task) => task.handoffTo === "quality");
     expect(reviews).toHaveLength(1);
     expect(reviews[0]).toMatchObject({ title: "Review the completed visit for Dana Whitfield on Tue, Mar 2, 10:00 AM", completionCondition: "A person reviewed the evidence and closed the visit or arranged corrective work" });
     expect(reviews[0].openQuestion).toBe("The crew reported this visit complete. Checklist: 2 done, 1 skipped, of 3. Photos: 1 before, 1 after. Review it, then close the visit or send it back. Nothing has been approved or paid.");
@@ -286,7 +286,7 @@ describe("Dispatch: the day of service", () => {
     await s.t.mutation(api.links.setChecklistItem, { token: a.jobToken, itemId: item.id, state: "done" });
     expect(await s.t.mutation(api.links.submitJob, { token: a.jobToken, incomplete: false })).toMatchObject({ status: "submitted_for_review" });
     // The handoff to review still happens: it is a record for a person, not an action on the outside world.
-    expect((await s.tasks("needs_decision")).some((task) => task.handoffTo === "quality")).toBe(true);
+    expect((await s.tasks("needs_decision", "quality")).some((task) => task.handoffTo === "quality")).toBe(true);
 
     // A second job needs a cleaner while paused: Dispatch offers nothing, and says so on the task.
     const next = await dispatchJob(s.as, s.companyId, s.place, { startsAt: JOB_START + 24 * HOUR, endsAt: JOB_END + 24 * HOUR });

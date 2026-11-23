@@ -15,7 +15,7 @@
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import { autumnConfig, type AutumnEnv } from "./autumn";
-import { AGENT_CATALOG, agentReleased, PLAN_FEATURES, planIncludesAgent, planIncludesFeature, PLANS, type AgentId, type PlanFeature, type PlanId } from "./catalog";
+import { AGENT_CATALOG, agentReleased, companyIncludesAgent, PLAN_FEATURES, planIncludesFeature, PLANS, type AgentId, type PlanFeature, type PlanId } from "./catalog";
 import { activeRateCard, priceOf, TASKS, withinSpec, type RateCard, type Task, type Variant } from "./rateCards";
 import type { Block } from "./schema";
 
@@ -54,12 +54,12 @@ export async function accountFor(ctx: QueryCtx | MutationCtx, companyId: Id<"com
 }
 
 /** Questions 1 and 2 for an agent. A paid plan never makes an unreleased agent available. */
-export function agentVerdict(company: Pick<Doc<"companies">, "plan">, agent: AgentId): Verdict {
+export function agentVerdict(company: Pick<Doc<"companies">, "plan"> & Partial<Pick<Doc<"companies">, "agentBonuses">>, agent: AgentId): Verdict {
   const name = AGENT_CATALOG[agent].name;
   if (!agentReleased(agent)) return no("not_released", `${name} is not released yet. No plan or purchase makes it available before then.`);
   const plan = verifiedPlan(company);
   if (!plan) return no("plan", `${name} needs an active plan.`);
-  if (!planIncludesAgent(plan, agent)) return no("plan", `${name} isn't part of the ${PLANS[plan].name} plan.`);
+  if (!companyIncludesAgent(plan, company.agentBonuses, agent)) return no("plan", `${name} isn't part of the ${PLANS[plan].name} plan.`);
   return { ok: true };
 }
 
