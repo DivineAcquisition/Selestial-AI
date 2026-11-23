@@ -34,6 +34,7 @@ const answers: Record<string, unknown> = {
   "qualityComms:associations": sample.associations,
   "permissions:list": sample.permissions,
   "qualityLinks:view": sample.linkView,
+  "quality:cleanerRates": sample.cleanerRates,
 };
 const search = "";
 vi.mock("convex/react", () => ({
@@ -64,7 +65,8 @@ function keep(name: string, markup: string) {
 
 /** Nothing on a Quality screen is a score, a rating of a person, or a made-up certainty. */
 function noScores(page: string) {
-  const visible = page.replace(/<[^>]+>/g, " ").replace(/&[a-z#0-9]+;/gi, " ");
+  // The visit pass rate is the one figure the Owner asked for; it is labelled as such and never a score.
+  const visible = page.replace(/<span[^>]*data-pass-rate[^>]*>.*?<\/span>/g, " ").replace(/<[^>]+>/g, " ").replace(/&[a-z#0-9]+;/gi, " ");
   // "keeps no score" says there is none; any other score, confidence figure or percentage is a failure.
   expect(visible).not.toMatch(/(?<!no )\bscore\b|confidence|\d+\s?%/i);
 }
@@ -122,14 +124,14 @@ describe("Quality's screens", () => {
   it("insights are counts with denominators and say when the sample is too small", () => {
     const page = html(<QualityInsightsScreen />);
     keep("insights", page);
-    for (const text of ["too few to read trends", "Visits reviewed", "Documentation, not how the service looked"]) expect(page, text).toContain(text);
+    for (const text of ["too few to read trends", "Visits reviewed", "Documentation, not how the service looked", "Cleaners: visit pass rate", "too few to read a rate"]) expect(page, text).toContain(text);
     noScores(page);
   });
 
   it("the playbook shows each source's capabilities as checked, and recordings and sending through Quo are never used", () => {
     const page = html(<QualityPlaybookScreen />);
     keep("playbook", page);
-    for (const text of ["Where evidence comes from", "Quo (formerly OpenPhone)", "Recordings", "Not used", "Conversations to link", "Link to this visit", "Always a person"]) expect(page, text).toContain(text);
+    for (const text of ["Where evidence comes from", "Quo (formerly OpenPhone)", "same Quo connection your agents text through", "HighLevel", "Not available yet", "Recordings", "Not used", "Conversations to link", "Link to this visit", "Always a person"]) expect(page, text).toContain(text);
     noScores(page);
   });
 

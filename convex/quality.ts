@@ -30,6 +30,9 @@ import { assembleEvidence, type Viewer } from "./lib/quality/evidence";
 import { blameIn, findingsOf, reviewFinding } from "./lib/quality/findings";
 import { signedQualityFileUrl } from "./lib/quality/fileLinks";
 import { submitImprovement, visitsDoneSince } from "./lib/quality/improvements";
+import { highLevelApp } from "./lib/quality/comms/highlevel";
+import { quoConnectionOf } from "./lib/quo/route";
+import { PASS_MINIMUM, PASS_WINDOW_DAYS, passRates, passWords } from "./lib/quality/score";
 import { prepareRequest, recipientName, routeRequest, wordingProblem } from "./lib/quality/requests";
 import { agentState } from "./lib/quality/runs";
 import { CASE_CLOSURES, CASE_STAGES, FINDING_CATEGORIES, qualitySettingsValidator, requirementValidator, remedyPolicyValidator, STANDARD_LEVELS, STANDARD_TEMPLATES, type CaseStage } from "./lib/quality/schema";
@@ -825,8 +828,21 @@ export const playbook = companyQuery({
       const found = await authorityFor(ctx, ctx.companyId, def.key);
       authority.push({ key: def.key, label: def.label, level: found.kind === "level" ? found.level : found.kind, ceiling: def.ceiling, outsider: def.outsider });
     }
-    const quo = (await ctx.db.query("qualityConnections").withIndex("by_company_provider", (q) => q.eq("companyId", ctx.companyId).eq("provider", "quo")).take(5)).find((c) => c.status !== "disconnected") ?? null;
-    return { settings, stored: ctx.company.quality ?? {}, authority, sources: await communicationSources(ctx, ctx.company), quo: quo ? { id: quo._id, status: quo.status, problem: quo.problem ?? null, numbers: quo.numbers, capabilities: quo.capabilities, lastSuccessAt: quo.lastSuccessAt ?? null, lastSyncAt: quo.lastSyncAt ?? null, readFrom: quo.readFrom, webhook: quo.webhookId !== undefined, failures: quo.failures } : null, agent: agentState(ctx.company) };
+    const readerOf = async (provider: "quo" | "highlevel") => {
+      const row = (await ctx.db.query("qualityConnections").withIndex("by_company_provider", (q) => q.eq("companyId", ctx.companyId).eq("provider", provider)).take(5)).find((c) => c.status !== "disconnected");
+      return row ? { id: row._id, status: row.status, problem: row.problem ?? null, label: row.label, numbers: row.numbers, capabilities: row.capabilities, lastSuccessAt: row.lastSuccessAt ?? null, lastSyncAt: row.lastSyncAt ?? null, readFrom: row.readFrom, failures: row.failures } : null;
+    };
+    // Quo: the company's one Quo connection (Settings › Integrations › Quo), which Quality reads when allowed.
+    const shared = await quoConnectionOf(ctx, ctx.companyId);
+    return {
+      settings,
+      stored: ctx.company.quality ?? {},
+      authority,
+      sources: await communicationSources(ctx, ctx.company),
+      quo: { shared: shared && shared.status !== "disconnected" ? { status: shared.status, numbers: shared.selected.map((n) => (n.name ? `${n.name} (${n.phoneNumber})` : n.phoneNumber)), webhook: shared.webhook !== undefined } : null, reader: await readerOf("quo") },
+      highlevel: { available: highLevelApp() !== null, reader: await readerOf("highlevel") },
+      agent: agentState(ctx.company),
+    };
   },
 });
 
@@ -902,7 +918,27 @@ export const forCleaner = managerQuery({
       open.push(...rows.filter((r) => r.recipient.kind === "cleaner" && r.recipient.cleanerId === cleaner._id));
     }
     const answered = (await ctx.db.query("qualityRequests").withIndex("by_company_status", (q) => q.eq("companyId", ctx.companyId).eq("status", "answered")).take(300)).filter((r) => r.recipient.kind === "cleaner" && r.recipient.cleanerId === cleaner._id).length;
-    return { waiting: await Promise.all(open.map(async (r) => ({ id: r._id, purpose: PURPOSE_WORDS[r.purpose], status: REQUEST_WORDS[r.status], dueAt: r.dueAt, job: await jobLine(ctx, r.jobId, ctx.company.timezone) }))), answered, note: "Being asked for evidence or an account is not a finding about this cleaner. Quality keeps no score." };
+    const [rate] = await passRates(ctx, ctx.companyId, Date.now(), cleaner._id);
+    return {
+      waiting: await Promise.all(open.map(async (r) => ({ id: r._id, purpose: PURPOSE_WORDS[r.purpose], status: REQUEST_WORDS[r.status], dueAt: r.dueAt, job: await jobLine(ctx, r.jobId, ctx.company.timezone) }))),
+      answered,
+      pass: rate ? { ...rate, words: passWords(rate) } : null,
+      note: "Being asked for evidence or an account is not a finding about this cleaner. The pass rate counts only misses a person confirmed, and changes nothing by itself.",
+    };
+  },
+});
+
+/** Each cleaner's visit pass rate, for owners and managers. A count with its denominator; it triggers nothing. */
+export const cleanerRates = managerQuery({
+  args: {},
+  handler: async (ctx) => {
+    const rows = await passRates(ctx, ctx.companyId, Date.now());
+    return {
+      windowDays: PASS_WINDOW_DAYS,
+      minimum: PASS_MINIMUM,
+      rows: rows.map((row) => ({ ...row, words: passWords(row) })),
+      note: `Of each cleaner's visits that Quality reviewed in the last ${PASS_WINDOW_DAYS} days, how many had no confirmed miss of theirs. Only misses a person confirmed count; scope, access, equipment and scheduling problems never do. A miss on a checklist item counts against whoever marked it; otherwise it is shared by the crew. It changes no one's pay, standing or schedule.`,
+    };
   },
 });
 

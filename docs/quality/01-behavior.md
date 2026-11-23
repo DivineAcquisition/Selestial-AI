@@ -128,21 +128,39 @@ of the evidence it was approved on and is re-checked at the moment it would run.
 
 ## Calls, texts and email
 
-- **Quo (formerly OpenPhone)**, connected by the Owner with an API key that is stored sealed.
-  - Selestial checks what the workspace actually allows (numbers, call details, transcripts, Quo's
-    summaries, signed webhooks) and shows each capability as checked.
-  - Recordings are "Not used": Quality never starts a recording or changes recording settings. This reading
-    connection sends nothing. Its deliveries arrive at `/webhooks/quality-quo/<id>`, apart from the Quo
-    texting connection's `/webhooks/quo/<id>`.
+- **Quo (formerly OpenPhone): one connection.** Quality reads through the company's existing Quo connection
+  (Settings › Integrations › Quo, `convex/quo.ts`): the same key, the same chosen numbers, the same signed
+  webhook. There is no second key to paste (the Owner's decision of November 23, 2026).
+  - The Owner turns call reading on in Quality's Playbook. Quality then checks what the workspace actually
+    allows (call details, transcripts, Quo's summaries) and shows each capability as checked.
+  - While Quality reads, the shared webhook also subscribes to call events (`call.completed`,
+    `call.transcript.completed`, `call.summary.completed` and others); stopping removes them again.
+    `lib/quo/events.ts` hands call events, and each incoming text after its normal routing, to Quality
+    (`lib/quality/comms/quoBridge.ts`). Only the numbers the Owner chose are read.
+  - The webhook's signature check and deduplication are the shared connection's. Bounded polling (three pages
+    a sync, with the shared key) catches what webhooks missed. Repeated, out-of-order, late and revised
+    transcripts are handled.
+  - Recordings are "Not used": Quality never starts a recording or changes recording settings. Reading sends
+    nothing.
   - Quality's texts to cleaners follow each conversation's own route (`convex/lib/quo/route.ts`). Where a
     cleaner's conversation runs through the company's Quo texting number, Quality's request goes that way
-    only if the Owner allowed Quality on that connection (Settings › Integrations › Quo); otherwise it is
-    reported blocked, never moved to another number.
-  - Signed webhooks are verified against the connection's own key, inside a five-minute window. Bounded
-    polling (three pages a sync) catches what webhooks missed. Repeated, out-of-order, late and revised
-    transcripts are handled.
+    only if the Owner allowed Quality on that connection; otherwise it is reported blocked, never moved to
+    another number.
   - Reading is off until the Owner turns on "Read calls and texts from the connected phone platform".
-  - Conversations from before connecting are history and never start outreach.
+  - Conversations from before reading started are history and never start outreach.
+- **HighLevel (GoHighLevel / LeadConnector)**, through Selestial's Marketplace app (`convex/qualityHighLevel.ts`).
+  - The Owner installs the app on their HighLevel sub-account (OAuth with read-only scopes: conversations,
+    messages, contacts, locations). Tokens are sealed; the refresh token rotates on every use and the new one is
+    stored first. An agency-level install names no location and reads nothing.
+  - New texts, emails and calls arrive as the app's signed notices (`/webhooks/highlevel`, HighLevel's Ed25519
+    signature over the exact body), deduplicated by webhook id. A bounded poll every ten minutes catches what
+    was missed and fetches call transcriptions, which HighLevel finishes later and announces with no event.
+  - HighLevel names no speaker in a transcription, so every line is marked "speaker not identified".
+  - Emails are reduced to their text and their quoted history is not read. One location belongs to one
+    company. An uninstall in HighLevel stops reading and forgets the tokens.
+  - Selestial never sends through HighLevel and never calls its recording endpoint.
+  - Until the app is registered (`HIGHLEVEL_CLIENT_ID`, `HIGHLEVEL_CLIENT_SECRET`, `HIGHLEVEL_INSTALL_URL`
+    set on the deployment), HighLevel shows as "Not available".
 - **Matching a conversation to a visit** uses evidence only: an explicit reference, the customer's number,
   dates, street numbers and names, property labels and the service.
   - More than one customer on a number, or several possible visits with nothing decisive, goes to
@@ -153,7 +171,8 @@ of the evidence it was approved on and is re-checked at the moment it would run.
   (labelled, never quoted as anyone's words), Selestial's extraction (speaker-aware: a rule about what a
   customer said never fires on a staff line, and an unidentified speaker is flagged), and what a person
   reviewed.
-- **Business texting (Telnyx)** carries Quality's requests to cleaners under every sending rule. Incoming
+- **Business texting** (the company's Selestial number, or its Quo number where the conversation runs there)
+  carries Quality's requests to cleaners under every sending rule. Incoming
   customer texts reach Retention, which opens the cases Quality investigates.
 - **Email:** Retention reads the care mailbox when it is turned on. Quoted history is stripped, so an old
   thread is not a new complaint, and a repeated complaint is one complaint. A hiring-only mailbox is never
@@ -239,16 +258,34 @@ A later evaluation reports counts before and after, and says when the numbers do
   - **Corrections**, **Standards**, **Insights** and **Playbook**.
 - **Elsewhere:**
   - A **Quality** section on each visit.
-  - A **Quality** card on the client overview, the property page and (for managers) the cleaner profile.
-    The cleaner card never shows a score.
+  - A **Quality** card on the client overview, the property page and (for owners and managers) the cleaner
+    profile, with the cleaner's visit pass rate (below).
   - Quality's findings and correction state in the Retention case drawer.
   - Sidebar badges: serious, then decisions, then overdue, then working.
   - Owner notices.
   - Company Chat tools: list cases, explain a case, explain a visit's review. These are read-only, respect
     restricted cases, and hide people's statements from office staff.
 
+## The cleaner's visit pass rate
+
+Asked for by the Owner on November 23, 2026, for owners and managers (`lib/quality/score.ts`). Of the visits a
+cleaner worked in the last 90 days that Quality reviewed, how many had no confirmed miss of theirs:
+
+- Only findings a person confirmed count. A suggestion, a rejected finding or a report never does.
+- Only service misses count. Scope misunderstandings, access, equipment and scheduling problems, and evidence
+  that settles nothing are never held against a cleaner.
+- A miss on a checklist item counts against whoever marked that item. A miss nobody marked is shared by the
+  crew, and the row says how many were shared.
+- Correction visits and imported history are left out. Each visit counts once, at its latest review.
+- Below 10 reviewed visits there is no rate: "too few visits to read".
+- It is shown with its count ("11 of 13 reviewed visits…") on the cleaner's profile and in Insights, and
+  changes no one's pay, standing, schedule or messages. Office staff do not see it.
+
 ## Entitlements
 
-Quality is released in code. Plan access is **unchanged**: it is part of Expand, and only Operate is on sale.
-On Operate, agent work is visibly blocked ("Quality isn't part of the Operate plan") while people keep the
-workspace. Making it part of Operate is the Owner's decision; see `00-architecture.md`.
+Quality is part of Expand. It is also the early-user bonus (the Owner's decision of November 23, 2026): a
+company that claimed one of the 25 places at $199 gets Quality on Operate, and keeps it after its 12 months
+when the price moves to $299. The bonus is recorded on the company when billing sync sees the place claimed
+(`companies.agentBonuses`, `lib/billing/earlyOffer.ts`) and still needs an active plan. A regular $299 Operate
+company does not get Quality: its agent work is visibly blocked ("Quality isn't part of the Operate plan")
+while people keep the workspace.

@@ -244,9 +244,9 @@ export type RunStatus = (typeof RUN_STATUSES)[number];
 
 // ── Communications ───────────────────────────────────────────────────────────────────────────────
 
-export const COMM_PROVIDERS = ["quo"] as const;
-export const commProviderValidator = v.literal("quo");
-export const COMM_KINDS = ["call", "sms", "voicemail"] as const;
+export const COMM_PROVIDERS = ["quo", "highlevel"] as const;
+export const commProviderValidator = literals(COMM_PROVIDERS);
+export const COMM_KINDS = ["call", "sms", "voicemail", "email"] as const;
 export const TRANSCRIPT_STATES = ["absent", "in_progress", "completed", "failed", "not_available"] as const;
 
 /** Each one is checked against the provider, never assumed. "unknown" until checked. */
@@ -682,11 +682,20 @@ export const qualityTables = {
     .index("by_company_job", ["companyId", "jobId", "queuedAt"])
     .index("by_company_case", ["companyId", "caseId", "queuedAt"]),
 
+  /**
+   * Quality reading one phone platform for a company. For Quo it rides on the company's one Quo connection
+   * (`quoConnectionId`, convex/quo.ts): no second key, no second webhook. For HighLevel it is Quality's own
+   * Marketplace-app installation for one location (`externalId`), with its tokens in `qualityCredentials`.
+   */
   qualityConnections: defineTable({
     companyId: v.id("companies"),
     provider: commProviderValidator,
-    /** Names the webhook address, so a delivery finds its connection without trusting the payload. */
-    publicId: v.string(),
+    /** Quo: the shared connection Quality reads through. */
+    quoConnectionId: v.optional(v.id("quoConnections")),
+    /** HighLevel: the location (sub-account) id the app was installed on; webhooks are matched by it. */
+    externalId: v.optional(v.string()),
+    /** Kept for rows made before reading moved onto the shared connection. */
+    publicId: v.optional(v.string()),
     label: v.string(),
     status: v.union(v.literal("checking"), v.literal("connected"), v.literal("error"), v.literal("expired"), v.literal("disconnected")),
     problem: v.optional(v.string()),
@@ -707,15 +716,25 @@ export const qualityTables = {
   })
     .index("by_company_provider", ["companyId", "provider"])
     .index("by_publicId", ["publicId"])
+    .index("by_quo_connection", ["quoConnectionId"])
+    .index("by_provider_external", ["provider", "externalId"])
     .index("by_status", ["status"]),
 
-  /** The sealed API key and webhook signing key for one connection. Never sent to a browser, never exported. */
+  /**
+   * Sealed secrets for a connection Quality holds itself (HighLevel's OAuth tokens). Never sent to a browser,
+   * never exported. Quo has none here: its key lives with the shared Quo connection (`quoSecrets`).
+   */
   qualityCredentials: defineTable({
     companyId: v.id("companies"),
     connectionId: v.id("qualityConnections"),
+    /** HighLevel: the refresh token (it rotates on every use). */
     sealedKey: v.string(),
+    /** HighLevel: the current access token and when it stops working. */
+    sealedAccess: v.optional(v.string()),
+    accessExpiresAt: v.optional(v.number()),
     sealedWebhookKey: v.optional(v.string()),
     createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
   }).index("by_connection", ["connectionId"]),
 
   /** Webhook deliveries, by the provider's delivery id: the same delivery twice changes nothing twice. */

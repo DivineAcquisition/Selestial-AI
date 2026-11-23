@@ -8,6 +8,8 @@
  * POST /webhooks/autumn         plan, purchase and balance changes from Autumn. Needs AUTUMN_WEBHOOK_SECRET.
  * GET  /oauth/google/callback   where Google sends an Owner back after they allowed access: the company's
  *                               Google connection (convex/google.ts) or a Gmail hiring inbox, told apart by the state.
+ * GET  /oauth/highlevel/callback  where HighLevel sends an Owner back after installing Selestial's app (Quality reads it).
+ * POST /webhooks/highlevel      the Selestial HighLevel app's signed events.
  * GET  /oauth/jobber/callback   where Jobber sends an Owner back after they allowed Selestial to read their clients.
  * POST /webhooks/google/calendar  Calendar push notifications, checked against each channel's own secret token.
  * POST /webhooks/google/pubsub    Gmail and Business Profile notifications through Pub/Sub, with Google's signed OIDC token.
@@ -17,7 +19,6 @@
  */
 import { httpRouter } from "convex/server";
 
-import { quoHeadersPlausible, verifyQuo } from "./lib/quality/comms/quo";
 import { qualityFileRequestValid } from "./lib/quality/fileLinks";
 
 import { internal } from "./_generated/api";
@@ -29,6 +30,8 @@ import { hashToken, randomToken, seal, unseal } from "./lib/recruiter/secrets";
 import { afterConnect, googleRedirectUri, pendingBinding } from "./recruiterMailbox";
 import { afterGoogle } from "./google";
 import { jobberCallback } from "./connectors";
+import { highLevelCallback } from "./qualityHighLevel";
+import { verifyHighLevel } from "./lib/quality/comms/highlevel";
 import { exchange as googleExchange, googleApp as googleConnectApp, identityFrom, redirectUri as googleConnectRedirect } from "./lib/google/oauth";
 import { endpoints as googleEndpoints } from "./lib/google/platform";
 import { googleKeys, pushData, tokenKid, verifyOidc } from "./lib/google/pubsub";
@@ -193,29 +196,6 @@ http.route({
 });
 
 /**
- * POST /webhooks/quality-quo/<connection public id>  a Quo delivery for one company's connection. The headers are
- * checked first; the signature is then checked with that connection's own key (a connection with no key, or
- * an unknown address, accepts nothing). Deliveries are kept by their id, so a retry changes nothing twice.
- */
-http.route({
-  pathPrefix: "/webhooks/quality-quo/",
-  method: "POST",
-  handler: providerWebhook({
-    verify: async (request) => quoHeadersPlausible({ id: request.headers.get("webhook-id"), timestamp: request.headers.get("webhook-timestamp"), signature: request.headers.get("webhook-signature") }, Date.now()),
-    handler: async (ctx, body, request) => {
-      const publicId = new URL(request.url).pathname.slice("/webhooks/quality-quo/".length);
-      const found = await ctx.runQuery(internal.qualityComms.webhookKey, { publicId });
-      if (!found) return 401;
-      const key = await unseal(found.sealedWebhookKey, found.connectionId);
-      const id = request.headers.get("webhook-id");
-      const ok = await verifyQuo({ key, id, timestamp: request.headers.get("webhook-timestamp"), signature: request.headers.get("webhook-signature"), body, now: Date.now() });
-      if (!ok || !id) return 401;
-      await ctx.runMutation(internal.qualityComms.webhook, { connectionId: found.connectionId, deliveryId: id.slice(0, 200), body });
-    },
-  }),
-});
-
-/**
  * GET /photos/<evidence id>?exp=…&sig=…  one crew photo, for an address signed by the deployment that
  * has not expired. Anything else is a plain 404, whatever was wrong with it.
  */
@@ -306,6 +286,32 @@ http.route({
 });
 
 /** Where Jobber sends the Owner back after they allowed Selestial to read their clients (convex/connectors.ts). */
+/**
+ * GET /oauth/highlevel/callback  where HighLevel sends the Owner back after installing Selestial's app on a
+ * sub-account. The one-time state names the company; the code is exchanged for tokens, sealed at once.
+ */
+http.route({
+  path: "/oauth/highlevel/callback",
+  method: "GET",
+  handler: oauthCallback({ handler: (ctx, params) => highLevelCallback(ctx, params) }),
+});
+
+/**
+ * POST /webhooks/highlevel  the Selestial app's events from HighLevel (one address for every installation):
+ * InboundMessage, OutboundMessage, INSTALL, UNINSTALL. Accepted only with HighLevel's Ed25519 signature over
+ * the exact body (lib/quality/comms/highlevel.ts); the location in the event names the company.
+ */
+http.route({
+  path: "/webhooks/highlevel",
+  method: "POST",
+  handler: providerWebhook({
+    verify: (request, body) => verifyHighLevel(body, request.headers.get("x-ghl-signature")),
+    handler: async (ctx, body) => {
+      await ctx.runMutation(internal.qualityHighLevel.webhook, { body });
+    },
+  }),
+});
+
 http.route({
   path: "/oauth/jobber/callback",
   method: "GET",

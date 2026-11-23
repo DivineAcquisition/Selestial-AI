@@ -31,14 +31,14 @@
     },
     "happened": "Dana Whitfield reported a concern about this visit. A report is not a finding.",
     "held": false,
-    "id": "00000000000000010241qualityCases",
+    "id": "00000000000000010244qualityCases",
     "job": {
      "customer": {
       "id": "00000000000000000010006customers",
       "name": "Dana Whitfield"
      },
      "day": "Wed, Mar 3",
-     "id": "0000000000000000000000010208jobs",
+     "id": "0000000000000000000000010211jobs",
      "isCorrection": false,
      "operational": "Reported done; waiting for a manager",
      "property": {
@@ -75,14 +75,14 @@
     },
     "happened": "Dana Whitfield reported a concern about the oven on this visit. A report is not a finding.",
     "held": false,
-    "id": "00000000000000010199qualityCases",
+    "id": "00000000000000010202qualityCases",
     "job": {
      "customer": {
       "id": "00000000000000000010006customers",
       "name": "Dana Whitfield"
      },
      "day": "Tue, Mar 2",
-     "id": "0000000000000000000000010160jobs",
+     "id": "0000000000000000000000010163jobs",
      "isCorrection": false,
      "operational": "Reported done; waiting for a manager",
      "property": {
@@ -125,6 +125,11 @@
      "id": "quo",
      "name": "Quo (formerly OpenPhone)",
      "state": "connected"
+    },
+    {
+     "id": "highlevel",
+     "name": "HighLevel",
+     "state": "not_available"
     }
    ],
    "standards": 1
@@ -133,14 +138,14 @@
   "waiting": [
    {
     "dueAt": 1804269600002,
-    "id": "00000000000010083qualityRequests",
+    "id": "00000000000010085qualityRequests",
     "job": {
      "customer": {
       "id": "00000000000000000010006customers",
       "name": "Dana Whitfield"
      },
      "day": "Thu, Mar 4",
-     "id": "0000000000000000000000010066jobs",
+     "id": "0000000000000000000000010068jobs",
      "isCorrection": false,
      "operational": "Reported done; waiting for a manager",
      "property": {
@@ -169,7 +174,7 @@
    },
    "recent": [
     {
-     "at": 1804185360063,
+     "at": 1804185360075,
      "attempts": 2,
      "blockedReason": null,
      "caseId": null,
@@ -180,7 +185,7 @@
      "found": [
       "The client had 5 visits in the window and the words do not settle which one this is about."
      ],
-     "id": "000000000000000010261qualityRuns",
+     "id": "000000000000000010270qualityRuns",
      "jobId": null,
      "kind": "message_received",
      "next": [
@@ -193,15 +198,15 @@
      "at": 1804185360050,
      "attempts": 1,
      "blockedReason": null,
-     "caseId": "00000000000000010241qualityCases",
+     "caseId": "00000000000000010244qualityCases",
      "checked": [
       "The words of the report"
      ],
      "found": [
       "The words include \"broken\". Safety, damage, theft, injury and conduct concerns are handled by a person."
      ],
-     "id": "000000000000000010239qualityRuns",
-     "jobId": "0000000000000000000000010208jobs",
+     "id": "000000000000000010242qualityRuns",
+     "jobId": "0000000000000000000000010211jobs",
      "kind": "feedback_submitted",
      "next": [
       "The Owner decides what happens next."
@@ -223,8 +228,8 @@
       "2 of 2 required items met",
       "There is an open quality or recovery case at this property."
      ],
-     "id": "000000000000000010223qualityRuns",
-     "jobId": "0000000000000000000000010208jobs",
+     "id": "000000000000000010226qualityRuns",
+     "jobId": "0000000000000000000000010211jobs",
      "kind": "completion_submitted",
      "next": [
       "A manager can close the visit. Quality's review does not close it or approve pay."
@@ -236,7 +241,7 @@
      "at": 1804185360038,
      "attempts": 1,
      "blockedReason": null,
-     "caseId": "00000000000000010199qualityCases",
+     "caseId": "00000000000000010202qualityCases",
      "checked": [
       "The visit's scope, checklist, photos and crew reports",
       "Earlier cases at the property"
@@ -244,8 +249,8 @@
      "found": [
       "\"Inside the oven\" was listed as not included in the service booked for this visit. The concern about the oven is about work outside the booked scope."
      ],
-     "id": "000000000000000010191qualityRuns",
-     "jobId": "0000000000000000000000010160jobs",
+     "id": "000000000000000010194qualityRuns",
+     "jobId": "0000000000000000000000010163jobs",
      "kind": "feedback_submitted",
      "next": [
       "1 suggested finding for a person to review."
@@ -267,8 +272,8 @@
       "2 of 2 required items met",
       "There is an open quality or recovery case at this property."
      ],
-     "id": "000000000000000010177qualityRuns",
-     "jobId": "0000000000000000000000010160jobs",
+     "id": "000000000000000010180qualityRuns",
+     "jobId": "0000000000000000000000010163jobs",
      "kind": "completion_submitted",
      "next": [
       "A manager can close the visit. Quality's review does not close it or approve pay."
@@ -280,7 +285,7 @@
      "at": 1804184700014,
      "attempts": 1,
      "blockedReason": null,
-     "caseId": "00000000000000010116qualityCases",
+     "caseId": "00000000000000010119qualityCases",
      "checked": [
       "The standard that applied (Company standard v1)",
       "3 after photos against \"At least 2 after photos\"",
@@ -290,8 +295,8 @@
       "2 of 2 required items met",
       "\"Clean the shower\" was in the booked scope and was skipped: Not done. A skip is the crew's report, not a finding."
      ],
-     "id": "000000000000000010112qualityRuns",
-     "jobId": "0000000000000000000000010095jobs",
+     "id": "000000000000000010115qualityRuns",
+     "jobId": "0000000000000000000000010098jobs",
      "kind": "completion_submitted",
      "next": [
       "Opened a case with suggested findings for a person to review."
@@ -314,8 +319,8 @@
       "1 missing",
       "No photos were uploaded for this visit."
      ],
-     "id": "000000000000000010079qualityRuns",
-     "jobId": "0000000000000000000000010066jobs",
+     "id": "000000000000000010081qualityRuns",
+     "jobId": "0000000000000000000000010068jobs",
      "kind": "completion_submitted",
      "next": [
       "Asked Lena for what is missing, in one request."
@@ -335,8 +340,8 @@
      "found": [
       "1 of 1 required item met"
      ],
-     "id": "000000000000000010061qualityRuns",
-     "jobId": "0000000000000000000000010044jobs",
+     "id": "000000000000000010063qualityRuns",
+     "jobId": "0000000000000000000000010046jobs",
      "kind": "completion_submitted",
      "next": [
       "A manager can close the visit. Quality's review does not close it or approve pay."
@@ -365,14 +370,14 @@
     }
    ],
    "historical": false,
-   "id": "000000000000010225qualityReviews",
+   "id": "000000000000010228qualityReviews",
    "job": {
     "customer": {
      "id": "00000000000000000010006customers",
      "name": "Dana Whitfield"
     },
     "day": "Wed, Mar 3",
-    "id": "0000000000000000000000010208jobs",
+    "id": "0000000000000000000000010211jobs",
     "isCorrection": false,
     "operational": "Reported done; waiting for a manager",
     "property": {
@@ -410,14 +415,14 @@
     }
    ],
    "historical": false,
-   "id": "000000000000010179qualityReviews",
+   "id": "000000000000010182qualityReviews",
    "job": {
     "customer": {
      "id": "00000000000000000010006customers",
      "name": "Dana Whitfield"
     },
     "day": "Tue, Mar 2",
-    "id": "0000000000000000000000010160jobs",
+    "id": "0000000000000000000000010163jobs",
     "isCorrection": false,
     "operational": "Reported done; waiting for a manager",
     "property": {
@@ -455,14 +460,14 @@
     }
    ],
    "historical": false,
-   "id": "000000000000010114qualityReviews",
+   "id": "000000000000010117qualityReviews",
    "job": {
     "customer": {
      "id": "00000000000000000010006customers",
      "name": "Dana Whitfield"
     },
     "day": "Mon, Mar 1",
-    "id": "0000000000000000000000010095jobs",
+    "id": "0000000000000000000000010098jobs",
     "isCorrection": false,
     "operational": "Reported done; waiting for a manager",
     "property": {
@@ -500,14 +505,14 @@
     }
    ],
    "historical": false,
-   "id": "000000000000010081qualityReviews",
+   "id": "000000000000010083qualityReviews",
    "job": {
     "customer": {
      "id": "00000000000000000010006customers",
      "name": "Dana Whitfield"
     },
     "day": "Thu, Mar 4",
-    "id": "0000000000000000000000010066jobs",
+    "id": "0000000000000000000000010068jobs",
     "isCorrection": false,
     "operational": "Reported done; waiting for a manager",
     "property": {
@@ -540,14 +545,14 @@
    "decided": null,
    "flags": [],
    "historical": false,
-   "id": "000000000000010063qualityReviews",
+   "id": "000000000000010065qualityReviews",
    "job": {
     "customer": {
      "id": "00000000000000000010006customers",
      "name": "Dana Whitfield"
     },
     "day": "Sat, Feb 27",
-    "id": "0000000000000000000000010044jobs",
+    "id": "0000000000000000000000010046jobs",
     "isCorrection": false,
     "operational": "Reported done; waiting for a manager",
     "property": {
@@ -618,7 +623,7 @@
       "label": "Service",
       "source": {
        "at": 1804089600000,
-       "id": "0000000000000000000000010208jobs",
+       "id": "0000000000000000000000010211jobs",
        "label": "standard on Wed, Mar 3",
        "table": "jobs"
       }
@@ -637,7 +642,7 @@
       "detail": "Lena: checked in Wed, Mar 3 at 10:05 AM, submitted as done.",
       "label": "Crew",
       "source": {
-       "id": "000000000000000010213assignments",
+       "id": "000000000000000010216assignments",
        "label": "Lena",
        "table": "assignments"
       }
@@ -648,7 +653,7 @@
       "label": "Checklist",
       "source": {
        "at": 1804089600000,
-       "id": "0000000000000000000000010208jobs",
+       "id": "0000000000000000000000010211jobs",
        "label": "standard on Wed, Mar 3",
        "table": "jobs"
       }
@@ -659,7 +664,7 @@
       "label": "Photos",
       "source": {
        "at": 1804089600000,
-       "id": "0000000000000000000000010208jobs",
+       "id": "0000000000000000000000010211jobs",
        "label": "standard on Wed, Mar 3",
        "table": "jobs"
       }
@@ -675,7 +680,7 @@
      },
      {
       "source": {
-       "id": "0000000010264qualityAssociations",
+       "id": "0000000010273qualityAssociations",
        "label": "Association review",
        "table": "qualityAssociations"
       },
@@ -710,7 +715,7 @@
       "label": "Price",
       "source": {
        "at": 1804089600000,
-       "id": "0000000000000000000000010208jobs",
+       "id": "0000000000000000000000010211jobs",
        "label": "standard on Wed, Mar 3",
        "table": "jobs"
       }
@@ -735,7 +740,7 @@
       "label": "Open quality case here",
       "source": {
        "at": 1804185360038,
-       "id": "00000000000000010199qualityCases",
+       "id": "00000000000000010202qualityCases",
        "label": "Quality case",
        "table": "qualityCases"
       }
@@ -748,7 +753,7 @@
       "label": "Open quality case here",
       "source": {
        "at": 1804184700014,
-       "id": "00000000000000010116qualityCases",
+       "id": "00000000000000010119qualityCases",
        "label": "Quality case",
        "table": "qualityCases"
       }
@@ -761,7 +766,7 @@
       "label": "Earlier recovery",
       "source": {
        "at": 1804185360037,
-       "id": "000000000000010182retentionCases",
+       "id": "000000000000010185retentionCases",
        "label": "Retention case",
        "table": "retentionCases"
       }
@@ -774,7 +779,7 @@
       "label": "Earlier recovery",
       "source": {
        "at": 1804184700020,
-       "id": "000000000000010129retentionCases",
+       "id": "000000000000010132retentionCases",
        "label": "Retention case",
        "table": "retentionCases"
       }
@@ -795,14 +800,14 @@
    "There is an open quality or recovery case at this property."
   ],
   "historical": false,
-  "id": "000000000000010225qualityReviews",
+  "id": "000000000000010228qualityReviews",
   "job": {
    "customer": {
     "id": "00000000000000000010006customers",
     "name": "Dana Whitfield"
    },
    "day": "Wed, Mar 3",
-   "id": "0000000000000000000000010208jobs",
+   "id": "0000000000000000000000010211jobs",
    "isCorrection": false,
    "operational": "Reported done; waiting for a manager",
    "property": {
@@ -821,18 +826,18 @@
    {
     "checklistItemId": null,
     "expiring": true,
-    "id": "000000000000000000010217evidence",
+    "id": "000000000000000000010220evidence",
     "kind": "after",
     "uploadedAt": 1804093200000,
-    "url": "https://example.convex.site/photos/000000000000000000010217evidence?exp=1804186800000&sig=ZyqOWfZwz_dUEzvuewfF0ZRXmoiBfk_6JMQMYEJ44EQ"
+    "url": "https://example.convex.site/photos/000000000000000000010220evidence?exp=1804186800000&sig=Lfu-QYlbzJznCFiEkgKjlAhOgYBkGWAf0W_BVeut9ug"
    },
    {
     "checklistItemId": null,
     "expiring": true,
-    "id": "000000000000000000010219evidence",
+    "id": "000000000000000000010222evidence",
     "kind": "after",
     "uploadedAt": 1804093200000,
-    "url": "https://example.convex.site/photos/000000000000000000010219evidence?exp=1804186800000&sig=bpHD5vGTri38OheiGhjeteriXkfOjNJKeYuMHTmFKmE"
+    "url": "https://example.convex.site/photos/000000000000000000010222evidence?exp=1804186800000&sig=dNiWDSJcBoAuKUKOGMrQcff4zvoPHvpjrB8u2s9r0w4"
    }
   ],
   "recommendation": "approve",
@@ -856,7 +861,7 @@
     "sources": [
      {
       "at": 1804089600000,
-      "id": "0000000000000000000000010208jobs",
+      "id": "0000000000000000000000010211jobs",
       "label": "This visit",
       "table": "jobs"
      }
@@ -879,7 +884,7 @@
     "sources": [
      {
       "at": 1804089600000,
-      "id": "0000000000000000000000010208jobs",
+      "id": "0000000000000000000000010211jobs",
       "label": "This visit",
       "table": "jobs"
      }
@@ -922,14 +927,14 @@
     },
     "happened": "Dana Whitfield reported a concern about this visit. A report is not a finding.",
     "held": false,
-    "id": "00000000000000010241qualityCases",
+    "id": "00000000000000010244qualityCases",
     "job": {
      "customer": {
       "id": "00000000000000000010006customers",
       "name": "Dana Whitfield"
      },
      "day": "Wed, Mar 3",
-     "id": "0000000000000000000000010208jobs",
+     "id": "0000000000000000000000010211jobs",
      "isCorrection": false,
      "operational": "Reported done; waiting for a manager",
      "property": {
@@ -970,14 +975,14 @@
     },
     "happened": "The crew's own record shows work in the booked scope was not done. 2 of 2 required items met; \"Clean the shower\" was in the booked scope and was skipped: Not done. A skip is the crew's report, not a finding. A complete record is not proof of how the service looked; it is what was documented.",
     "held": false,
-    "id": "00000000000000010116qualityCases",
+    "id": "00000000000000010119qualityCases",
     "job": {
      "customer": {
       "id": "00000000000000000010006customers",
       "name": "Dana Whitfield"
      },
      "day": "Mon, Mar 1",
-     "id": "0000000000000000000000010095jobs",
+     "id": "0000000000000000000000010098jobs",
      "isCorrection": false,
      "operational": "Reported done; waiting for a manager",
      "property": {
@@ -1014,14 +1019,14 @@
     },
     "happened": "Dana Whitfield reported a concern about the oven on this visit. A report is not a finding.",
     "held": false,
-    "id": "00000000000000010199qualityCases",
+    "id": "00000000000000010202qualityCases",
     "job": {
      "customer": {
       "id": "00000000000000000010006customers",
       "name": "Dana Whitfield"
      },
      "day": "Tue, Mar 2",
-     "id": "0000000000000000000000010160jobs",
+     "id": "0000000000000000000000010163jobs",
      "isCorrection": false,
      "operational": "Reported done; waiting for a manager",
      "property": {
@@ -1074,14 +1079,14 @@
    },
    "happened": "The crew's own record shows work in the booked scope was not done. 2 of 2 required items met; \"Clean the shower\" was in the booked scope and was skipped: Not done. A skip is the crew's report, not a finding. A complete record is not proof of how the service looked; it is what was documented.",
    "held": false,
-   "id": "00000000000000010116qualityCases",
+   "id": "00000000000000010119qualityCases",
    "job": {
     "customer": {
      "id": "00000000000000000010006customers",
      "name": "Dana Whitfield"
     },
     "day": "Mon, Mar 1",
-    "id": "0000000000000000000000010095jobs",
+    "id": "0000000000000000000000010098jobs",
     "isCorrection": false,
     "operational": "Reported done; waiting for a manager",
     "property": {
@@ -1125,7 +1130,7 @@
     "customer": "not_asked",
     "customerWords": "Customer not asked",
     "estimatedCostCents": 3000,
-    "id": "00000000010128qualityCorrections",
+    "id": "00000000010131qualityCorrections",
     "minutes": 45,
     "result": null,
     "scope": "targeted",
@@ -1139,7 +1144,7 @@
       "name": "Dana Whitfield"
      },
      "day": "Tue, Mar 9",
-     "id": "0000000000000000000000010146jobs",
+     "id": "0000000000000000000000010149jobs",
      "isCorrection": true,
      "operational": "scheduled",
      "property": {
@@ -1181,7 +1186,7 @@
       "label": "Service",
       "source": {
        "at": 1803916800000,
-       "id": "0000000000000000000000010095jobs",
+       "id": "0000000000000000000000010098jobs",
        "label": "standard on Mon, Mar 1",
        "table": "jobs"
       }
@@ -1200,7 +1205,7 @@
       "detail": "Lena: checked in Mon, Mar 1 at 10:05 AM, submitted as done.",
       "label": "Crew",
       "source": {
-       "id": "000000000000000010100assignments",
+       "id": "000000000000000010103assignments",
        "label": "Lena",
        "table": "assignments"
       }
@@ -1211,7 +1216,7 @@
       "label": "Checklist",
       "source": {
        "at": 1803916800000,
-       "id": "0000000000000000000000010095jobs",
+       "id": "0000000000000000000000010098jobs",
        "label": "standard on Mon, Mar 1",
        "table": "jobs"
       }
@@ -1222,7 +1227,7 @@
       "detail": "\"Clean the shower\": Not done.",
       "label": "Skipped",
       "source": {
-       "id": "000000000000010101checklistItems",
+       "id": "000000000000010104checklistItems",
        "label": "Clean the shower",
        "table": "checklistItems"
       }
@@ -1233,7 +1238,7 @@
       "label": "Photos",
       "source": {
        "at": 1803916800000,
-       "id": "0000000000000000000000010095jobs",
+       "id": "0000000000000000000000010098jobs",
        "label": "standard on Mon, Mar 1",
        "table": "jobs"
       }
@@ -1249,7 +1254,7 @@
      },
      {
       "source": {
-       "id": "0000000010264qualityAssociations",
+       "id": "0000000010273qualityAssociations",
        "label": "Association review",
        "table": "qualityAssociations"
       },
@@ -1284,7 +1289,7 @@
       "label": "Price",
       "source": {
        "at": 1803916800000,
-       "id": "0000000000000000000000010095jobs",
+       "id": "0000000000000000000000010098jobs",
        "label": "standard on Mon, Mar 1",
        "table": "jobs"
       }
@@ -1309,7 +1314,7 @@
       "label": "Open quality case here",
       "source": {
        "at": 1804185360050,
-       "id": "00000000000000010241qualityCases",
+       "id": "00000000000000010244qualityCases",
        "label": "Quality case",
        "table": "qualityCases"
       }
@@ -1322,7 +1327,7 @@
       "label": "Open quality case here",
       "source": {
        "at": 1804185360038,
-       "id": "00000000000000010199qualityCases",
+       "id": "00000000000000010202qualityCases",
        "label": "Quality case",
        "table": "qualityCases"
       }
@@ -1335,7 +1340,7 @@
       "label": "Earlier recovery",
       "source": {
        "at": 1804185360049,
-       "id": "000000000000010228retentionCases",
+       "id": "000000000000010231retentionCases",
        "label": "Retention case",
        "table": "retentionCases"
       }
@@ -1348,7 +1353,7 @@
       "label": "Earlier recovery",
       "source": {
        "at": 1804185360037,
-       "id": "000000000000010182retentionCases",
+       "id": "000000000000010185retentionCases",
        "label": "Retention case",
        "table": "retentionCases"
       }
@@ -1377,7 +1382,7 @@
       "statement": null
      }
     ],
-    "id": "00000000000010121qualityFindings",
+    "id": "00000000000010124qualityFindings",
     "missing": [],
     "reviewedAt": 1804184700020,
     "revision": 2,
@@ -1386,12 +1391,12 @@
     "suggestedBy": "rules",
     "supporting": [
      {
-      "id": "000000000000010114qualityReviews",
+      "id": "000000000000010117qualityReviews",
       "label": "Completion review",
       "table": "qualityReviews"
      },
      {
-      "id": "000000000000010101checklistItems",
+      "id": "000000000000010104checklistItems",
       "label": "Clean the shower",
       "table": "checklistItems"
      }
@@ -1405,7 +1410,7 @@
     "name": "Dana Whitfield"
    },
    "day": "Mon, Mar 1",
-   "id": "0000000000000000000000010095jobs",
+   "id": "0000000000000000000000010098jobs",
    "isCorrection": false,
    "operational": "Reported done; waiting for a manager",
    "property": {
@@ -1431,7 +1436,7 @@
    "owner": null,
    "retention": {
     "customerAnswer": null,
-    "id": "000000000000010129retentionCases",
+    "id": "000000000000010132retentionCases",
     "outcome": null,
     "status": "action_underway",
     "title": "Dana Whitfield: shower (from Quality's review)"
@@ -1441,26 +1446,26 @@
    {
     "checklistItemId": null,
     "expiring": true,
-    "id": "000000000000000000010104evidence",
+    "id": "000000000000000000010107evidence",
     "kind": "after",
     "uploadedAt": 1803920400000,
-    "url": "https://example.convex.site/photos/000000000000000000010104evidence?exp=1804186800000&sig=BACMGclmS4c3xINTUEk2TEQ1n3MBN4P9E4zT_bCtcMU"
+    "url": "https://example.convex.site/photos/000000000000000000010107evidence?exp=1804186800000&sig=Wg7oAx8VaLo-2c8ayyDQtMkX1B-hyGQcwUlmvOLiAz0"
    },
    {
     "checklistItemId": null,
     "expiring": true,
-    "id": "000000000000000000010106evidence",
+    "id": "000000000000000000010109evidence",
     "kind": "after",
     "uploadedAt": 1803920400000,
-    "url": "https://example.convex.site/photos/000000000000000000010106evidence?exp=1804186800000&sig=6gR5jfR3rzTISTJBNx5_jMr0jY-ArVe0f-HlLli14Q0"
+    "url": "https://example.convex.site/photos/000000000000000000010109evidence?exp=1804186800000&sig=BT1X40cH4ezjjIiEf4xz1drxXGTwERQ8U7rynDa7Fgw"
    },
    {
     "checklistItemId": null,
     "expiring": true,
-    "id": "000000000000000000010108evidence",
+    "id": "000000000000000000010111evidence",
     "kind": "after",
     "uploadedAt": 1803920400000,
-    "url": "https://example.convex.site/photos/000000000000000000010108evidence?exp=1804186800000&sig=t5mn6P7Sk_4HTh9nUJmuSatSQJM3YSC3eMdkcZ8eSHQ"
+    "url": "https://example.convex.site/photos/000000000000000000010111evidence?exp=1804186800000&sig=RbWEUM_LIedGBWzsoG_IgNqF5gI_vf9x-8OFaH1fe2w"
    }
   ],
   "pinned": [],
@@ -1488,11 +1493,11 @@
     "actor": "agent",
     "at": 1804184700014,
     "basis": "fact",
-    "id": "000000000000010118qualityEntries",
+    "id": "000000000000010121qualityEntries",
     "kind": "evidence",
     "quote": "\"Clean the shower\" was in the booked scope and was skipped: Not done. A skip is the crew's report, not a finding.",
     "source": {
-     "id": "000000000000010114qualityReviews",
+     "id": "000000000000010117qualityReviews",
      "label": "Completion review",
      "table": "qualityReviews"
     },
@@ -1502,11 +1507,11 @@
     "actor": "agent",
     "at": 1804184700014,
     "basis": "analysis",
-    "id": "000000000000010122qualityEntries",
+    "id": "000000000000010125qualityEntries",
     "kind": "finding",
     "quote": null,
     "source": {
-     "id": "00000000000010121qualityFindings",
+     "id": "00000000000010124qualityFindings",
      "label": "Finding",
      "table": "qualityFindings"
     },
@@ -1516,11 +1521,11 @@
     "actor": "member",
     "at": 1804184700020,
     "basis": "fact",
-    "id": "000000000000010126qualityEntries",
+    "id": "000000000000010129qualityEntries",
     "kind": "finding",
     "quote": null,
     "source": {
-     "id": "00000000000010121qualityFindings",
+     "id": "00000000000010124qualityFindings",
      "label": "Finding",
      "table": "qualityFindings"
     },
@@ -1530,11 +1535,11 @@
     "actor": "member",
     "at": 1804184700020,
     "basis": null,
-    "id": "000000000000010141qualityEntries",
+    "id": "000000000000010144qualityEntries",
     "kind": "handoff",
     "quote": null,
     "source": {
-     "id": "0000000000010135retentionActions",
+     "id": "0000000000010138retentionActions",
      "label": "Remedy on Retention's case",
      "table": "retentionActions"
     },
@@ -1544,11 +1549,11 @@
     "actor": "system",
     "at": 1804185360026,
     "basis": null,
-    "id": "000000000000010159qualityEntries",
+    "id": "000000000000010162qualityEntries",
     "kind": "handoff",
     "quote": null,
     "source": {
-     "id": "0000000000000000000000010146jobs",
+     "id": "0000000000000000000000010149jobs",
      "label": "Correction visit",
      "table": "jobs"
     },
@@ -1563,13 +1568,13 @@
    "areas": [
     "shower"
    ],
-   "caseId": "00000000000000010116qualityCases",
+   "caseId": "00000000000000010119qualityCases",
    "caseTitle": "Dana Whitfield: shower (standard, Mon, Mar 1)",
    "costBasis": "Estimate: 45 of the original 120 minutes, at what the original crew was paid ($80.00). Other costs, such as supplies or travel, are not included.",
    "customer": "not_asked",
    "customerWords": "Customer not asked",
    "estimatedCostCents": 3000,
-   "id": "00000000010128qualityCorrections",
+   "id": "00000000010131qualityCorrections",
    "minutes": 45,
    "original": {
     "customer": {
@@ -1577,7 +1582,7 @@
      "name": "Dana Whitfield"
     },
     "day": "Mon, Mar 1",
-    "id": "0000000000000000000000010095jobs",
+    "id": "0000000000000000000000010098jobs",
     "isCorrection": false,
     "operational": "Reported done; waiting for a manager",
     "property": {
@@ -1605,7 +1610,7 @@
      "name": "Dana Whitfield"
     },
     "day": "Tue, Mar 9",
-    "id": "0000000000000000000000010146jobs",
+    "id": "0000000000000000000000010149jobs",
     "isCorrection": true,
     "operational": "scheduled",
     "property": {
@@ -2067,32 +2072,45 @@
     "outsider": false
    }
   ],
+  "highlevel": {
+   "available": false,
+   "reader": null
+  },
   "quo": {
-   "capabilities": {
-    "readCallMetadata": "available",
-    "readMessages": "available",
-    "readSummaries": "unknown",
-    "readThreads": "not_used",
-    "readTranscripts": "unknown",
-    "recordings": "not_used",
-    "send": "not_used",
-    "webhooks": "available"
+   "reader": {
+    "capabilities": {
+     "readCallMetadata": "available",
+     "readMessages": "available",
+     "readSummaries": "unknown",
+     "readThreads": "not_used",
+     "readTranscripts": "unknown",
+     "recordings": "not_used",
+     "send": "not_used",
+     "webhooks": "available"
+    },
+    "failures": 0,
+    "id": "00000000010263qualityConnections",
+    "label": "Quo",
+    "lastSuccessAt": 1804185360069,
+    "lastSyncAt": 1804185360069,
+    "numbers": [
+     {
+      "id": "PNmain0001",
+      "name": "Main line",
+      "number": "+15125550100"
+     }
+    ],
+    "problem": null,
+    "readFrom": 1801593360068,
+    "status": "connected"
    },
-   "failures": 0,
-   "id": "00000000010254qualityConnections",
-   "lastSuccessAt": 1804185360056,
-   "lastSyncAt": 1804185360056,
-   "numbers": [
-    {
-     "id": "PN1",
-     "name": "Office",
-     "number": "+15125550000"
-    }
-   ],
-   "problem": null,
-   "readFrom": 1801593360055,
-   "status": "connected",
-   "webhook": true
+   "shared": {
+    "numbers": [
+     "Main line (+15125550100)"
+    ],
+    "status": "setup_incomplete",
+    "webhook": true
+   }
   },
   "settings": {
    "cleanerAnswerHours": 24,
@@ -2175,7 +2193,7 @@
      },
      {
       "label": "Texts",
-      "note": "Incoming texts on Quo numbers, through Quo's signed notices.",
+      "note": "Incoming texts on the chosen numbers, through Quo's signed notices.",
       "state": "available"
      },
      {
@@ -2185,15 +2203,35 @@
      },
      {
       "label": "Send",
-      "note": "Quality does not send through Quo.",
+      "note": "Reading sends nothing. Quality's requests to cleaners follow each conversation's own route, which is your Quo number only where you allowed Quality on it.",
       "state": "not_used"
      }
     ],
-    "detail": "Reading calls and texts on 1 number.",
+    "detail": "Reading calls and texts on 1 number, through the same connection agents text through.",
     "id": "quo",
-    "lastSuccessAt": 1804185360056,
+    "lastSuccessAt": 1804185360069,
     "name": "Quo (formerly OpenPhone)",
     "state": "connected"
+   },
+   {
+    "action": null,
+    "capabilities": [
+     {
+      "label": "Texts and emails",
+      "note": "Available once the Selestial app is in HighLevel's Marketplace.",
+      "state": "unavailable"
+     },
+     {
+      "label": "Call transcriptions",
+      "note": "Available once the Selestial app is in HighLevel's Marketplace.",
+      "state": "unavailable"
+     }
+    ],
+    "detail": "Not available yet: Selestial's HighLevel app isn't registered on this deployment.",
+    "id": "highlevel",
+    "lastSuccessAt": null,
+    "name": "HighLevel",
+    "state": "not_available"
    }
   ],
   "stored": {
@@ -2210,7 +2248,7 @@
      "customer": "Dana Whitfield",
      "customerId": "00000000000000000010006customers",
      "for": [],
-     "jobId": "0000000000000000000000010066jobs",
+     "jobId": "0000000000000000000000010068jobs",
      "property": "12 Elm St",
      "propertyId": "0000000000000000010011properties",
      "service": "standard",
@@ -2223,7 +2261,7 @@
      "customer": "Dana Whitfield",
      "customerId": "00000000000000000010006customers",
      "for": [],
-     "jobId": "0000000000000000000000010208jobs",
+     "jobId": "0000000000000000000000010211jobs",
      "property": "12 Elm St",
      "propertyId": "0000000000000000010011properties",
      "service": "standard",
@@ -2236,7 +2274,7 @@
      "customer": "Dana Whitfield",
      "customerId": "00000000000000000010006customers",
      "for": [],
-     "jobId": "0000000000000000000000010160jobs",
+     "jobId": "0000000000000000000000010163jobs",
      "property": "12 Elm St",
      "propertyId": "0000000000000000010011properties",
      "service": "standard",
@@ -2249,7 +2287,7 @@
      "customer": "Dana Whitfield",
      "customerId": "00000000000000000010006customers",
      "for": [],
-     "jobId": "0000000000000000000000010095jobs",
+     "jobId": "0000000000000000000000010098jobs",
      "property": "12 Elm St",
      "propertyId": "0000000000000000010011properties",
      "service": "standard",
@@ -2262,7 +2300,7 @@
      "customer": "Dana Whitfield",
      "customerId": "00000000000000000010006customers",
      "for": [],
-     "jobId": "0000000000000000000000010044jobs",
+     "jobId": "0000000000000000000000010046jobs",
      "property": "12 Elm St",
      "propertyId": "0000000000000000010011properties",
      "service": "standard",
@@ -2271,9 +2309,9 @@
    ],
    "direction": "incoming",
    "excerpt": "",
-   "id": "0000000010264qualityAssociations",
+   "id": "0000000010273qualityAssociations",
    "kind": "call",
-   "occurredAt": 1804185360061,
+   "occurredAt": 1804185360073,
    "why": "The client had 5 visits in the window and the words do not settle which one this is about."
   }
  ],
@@ -2281,567 +2319,1775 @@
   "actions": [
    {
     "agent": "dispatch",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "dispatch.request_acceptance",
     "label": "Send the first offers for a visit",
     "level": "propose",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute"
+    "standard": "execute",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "The agent prepares this and waits for a decision. Business texting and action links are ready.",
+     "status": "approval_required",
+     "words": "Approval required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "dispatch",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "dispatch.send_replacement_offer",
     "label": "Offer a visit to the next cleaner after a no or no answer",
     "level": "propose",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute"
+    "standard": "execute",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "The agent prepares this and waits for a decision. Business texting and action links are ready.",
+     "status": "approval_required",
+     "words": "Approval required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "dispatch",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "dispatch.run_backup_coverage",
     "label": "Find cover when a cleaner drops out or does not arrive",
     "level": "propose",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute_and_report"
+    "standard": "execute_and_report",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "The agent prepares this and waits for a decision. Business texting and action links are ready.",
+     "status": "approval_required",
+     "words": "Approval required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "dispatch",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "dispatch.broadcast_offer",
     "label": "Ask several cleaners at once for one opening",
     "level": "propose",
+    "measures": null,
     "money": false,
+    "note": "Runs only when asking several cleaners at once is switched on in the Dispatch playbook.",
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "propose"
+    "standard": "propose",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "The agent prepares this and waits for a decision. Business texting and action links are ready.",
+     "status": "approval_required",
+     "words": "Approval required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "dispatch",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "dispatch.declare_no_show",
     "label": "Declare a no-show once the contact steps have run",
     "level": "propose",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "propose"
+    "standard": "propose",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "The agent prepares this and waits for a decision.",
+     "status": "approval_required",
+     "words": "Approval required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "dispatch",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "dispatch.request_urgent_hire",
     "label": "Ask Recruiter for an urgent hire",
     "level": "execute",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute"
+    "standard": "execute",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "It does this without asking.",
+     "status": "ready",
+     "words": "Ready"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "dispatch",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "dispatch.send_reminder",
     "label": "Send reminders and confirmations",
     "level": "propose",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute"
+    "standard": "execute",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "The agent prepares this and waits for a decision. Business texting is ready.",
+     "status": "approval_required",
+     "words": "Approval required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "dispatch",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute_and_report",
     "changed": false,
+    "implemented": true,
     "key": "dispatch.act_on_cleaner_reply",
     "label": "Act on a cleaner's text: running late, can't come, or declining an offer",
     "level": "propose",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute_and_report"
+    "standard": "execute_and_report",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "The agent prepares this and waits for a decision. Business texting is ready.",
+     "status": "approval_required",
+     "words": "Approval required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "dispatch",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "dispatch.notify_running_late",
     "label": "Tell a customer a visit is running late",
     "level": "propose",
+    "measures": null,
     "money": false,
+    "note": "Today this hands the delay to a person to tell the customer; the agent does not text the customer itself.",
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute_and_report"
+    "standard": "execute_and_report",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "The agent prepares this and waits for a decision. Business texting is ready.",
+     "status": "approval_required",
+     "words": "Approval required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "dispatch",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": false,
     "key": "dispatch.close_visit",
     "label": "Close a visit on clean evidence",
     "level": "execute_and_report",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute_and_report"
+    "standard": "execute_and_report",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "Dispatch doesn't close visits on its own yet. A person closes each visit.",
+     "status": "unavailable",
+     "words": "Unavailable"
+    },
+    "unavailable": "Dispatch doesn't close visits on its own yet. A person closes each visit.",
+    "until": null
    },
    {
     "agent": "dispatch",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "dispatch.reassign_confirmed_visit",
     "label": "Reassign a confirmed visit",
     "level": "propose",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "propose"
+    "standard": "propose",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "The agent prepares this and waits for a decision. Business texting and action links are ready.",
+     "status": "approval_required",
+     "words": "Approval required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "dispatch",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "dispatch.availability_check_in",
     "label": "Ask cleaners to confirm their availability, and check in with cleaners who have had no work",
     "level": "propose",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute"
+    "standard": "execute",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "The agent prepares this and waits for a decision. Business texting is ready.",
+     "status": "approval_required",
+     "words": "Approval required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "dispatch",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "propose",
     "changed": false,
+    "implemented": false,
     "key": "dispatch.override_time_between_jobs",
     "label": "Override the time-between-jobs rule",
     "level": "propose",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "propose"
+    "standard": "propose",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "Dispatch never overrides the time-between-jobs rule. A person changes the rule in the playbook.",
+     "status": "unavailable",
+     "words": "Unavailable"
+    },
+    "unavailable": "Dispatch never overrides the time-between-jobs rule. A person changes the rule in the playbook.",
+    "until": null
    },
    {
     "agent": "sales",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "sales.reply_and_quote",
     "label": "Reply, collect details and send a quote from the rules",
     "level": "propose",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute"
+    "standard": "execute",
+    "status": {
+     "expired": false,
+     "next": {
+      "href": "/app/services",
+      "label": "Publish your services and prices"
+     },
+     "reason": "Blocked: No service has published prices yet, so nothing can be quoted from your rules.",
+     "status": "setup_required",
+     "words": "Setup required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "sales",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "sales.follow_up",
     "label": "Send follow-up messages",
     "level": "propose",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute"
+    "standard": "execute",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "The agent prepares this and waits for a decision. Business texting is ready.",
+     "status": "approval_required",
+     "words": "Approval required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "sales",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": false,
     "key": "sales.discount_in_band",
     "label": "Discount inside the allowed band",
     "level": "propose",
+    "measures": null,
     "money": true,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute_and_report"
+    "standard": "execute_and_report",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "Sales never discounts: quotes come from your published prices. Your team can still lower a price inside your discount band.",
+     "status": "unavailable",
+     "words": "Unavailable"
+    },
+    "unavailable": "Sales never discounts: quotes come from your published prices. Your team can still lower a price inside your discount band.",
+    "until": null
    },
    {
     "agent": "sales",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "sales.draft_ad_campaign",
     "label": "Draft a Google Ads campaign (costs nothing; the Owner approves and turns it on)",
     "level": "execute",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute"
+    "standard": "execute",
+    "status": {
+     "expired": false,
+     "next": {
+      "href": "/app/settings/integrations?tool=ads",
+      "label": "Connect Google Ads"
+     },
+     "reason": "Blocked: Google Ads isn't connected.",
+     "status": "setup_required",
+     "words": "Setup required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "sales",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "sales.confirm_booking",
     "label": "Book an accepted quote: hold the time and send the customer the booking steps",
     "level": "propose",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute_and_report"
+    "standard": "execute_and_report",
+    "status": {
+     "expired": false,
+     "next": {
+      "href": "/app/services",
+      "label": "Publish your services and prices"
+     },
+     "reason": "Blocked: No service has published prices yet, so nothing can be quoted from your rules.",
+     "status": "setup_required",
+     "words": "Setup required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "sales",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Owners only (always, for this action)"
+    },
     "ceiling": "propose",
     "changed": false,
+    "implemented": false,
     "key": "sales.discount_out_of_band",
     "label": "Discount outside the band, custom or commercial price",
     "level": "propose",
+    "measures": null,
     "money": true,
+    "note": null,
+    "ownerDecides": true,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "propose"
+    "standard": "propose",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "Sales never discounts. A price your team changes outside the band still comes to an Owner for approval.",
+     "status": "unavailable",
+     "words": "Unavailable"
+    },
+    "unavailable": "Sales never discounts. A price your team changes outside the band still comes to an Owner for approval.",
+    "until": null
    },
    {
     "agent": "retention",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "retention.request_feedback",
     "label": "Request feedback, invite a review, send reminders",
     "level": "propose",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute"
+    "standard": "execute",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "The agent prepares this and waits for a decision. Business texting is ready.",
+     "status": "approval_required",
+     "words": "Approval required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "retention",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "retention.offer_recurring_plan",
     "label": "Offer a recurring plan at the standard price",
     "level": "propose",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute"
+    "standard": "execute",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "The agent prepares this and waits for a decision. Business texting is ready.",
+     "status": "approval_required",
+     "words": "Approval required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "retention",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": false,
     "key": "retention.recover_payment",
     "label": "Payment recovery messages and retries",
     "level": "propose",
+    "measures": null,
     "money": true,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute"
+    "standard": "execute",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "Retention doesn't chase payments yet. Payment reminders are prepared in Finance, and a person approves each one.",
+     "status": "unavailable",
+     "words": "Unavailable"
+    },
+    "unavailable": "Retention doesn't chase payments yet. Payment reminders are prepared in Finance, and a person approves each one.",
+    "until": null
    },
    {
     "agent": "retention",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "retention.remedy_within_limit",
     "label": "Re-clean or credit inside the limit",
     "level": "propose",
+    "measures": "The credit's amount, or for a correction visit the estimated crew pay (the original crew's pay for the same share of the visit). It is not cash moved: credits go through Finance.",
     "money": true,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute_and_report"
+    "standard": "execute_and_report",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "The agent prepares this and waits for a decision.",
+     "status": "approval_required",
+     "words": "Approval required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "retention",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Owners only (always, for this action)"
+    },
     "ceiling": "propose",
     "changed": false,
+    "implemented": true,
     "key": "retention.refund_above_limit",
     "label": "Refund or compensation above the limit",
     "level": "propose",
+    "measures": null,
     "money": true,
+    "note": null,
+    "ownerDecides": true,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "propose"
+    "standard": "propose",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "The agent prepares this and waits for a decision.",
+     "status": "approval_required",
+     "words": "Approval required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "retention",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "retention.cancel_on_request",
     "label": "Cancel on the customer's request",
     "level": "propose",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute"
+    "standard": "execute",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "The agent prepares this and waits for a decision.",
+     "status": "approval_required",
+     "words": "Approval required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "retention",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "retention.send_case_message",
     "label": "Write to a customer about an open concern: acknowledge it, ask a question, explain the scope, or ask whether a correction worked",
     "level": "propose",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute_and_report"
+    "standard": "execute_and_report",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "The agent prepares this and waits for a decision. Business texting is ready.",
+     "status": "approval_required",
+     "words": "Approval required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "retention",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "retention.apply_plan_change",
     "label": "Carry out a customer's own request to skip, pause or resume their recurring service",
     "level": "propose",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute_and_report"
+    "standard": "execute_and_report",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "The agent prepares this and waits for a decision.",
+     "status": "approval_required",
+     "words": "Approval required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "retention",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute_and_report",
     "changed": false,
+    "implemented": true,
     "key": "retention.reactivation_offer",
     "label": "Send a return offer to an eligible former customer",
     "level": "propose",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "propose"
+    "standard": "propose",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "The agent prepares this and waits for a decision. Business texting is ready.",
+     "status": "approval_required",
+     "words": "Approval required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "retention",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "retention.hand_off",
     "label": "Hand work on a case to Dispatch, Sales, Quality or Finance",
     "level": "execute",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute"
+    "standard": "execute",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "It does this without asking.",
+     "status": "ready",
+     "words": "Ready"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "retention",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "retention.draft_review_reply",
     "label": "Draft replies to Google reviews (a person approves before anything is posted)",
     "level": "execute",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute"
+    "standard": "execute",
+    "status": {
+     "expired": false,
+     "next": {
+      "href": "/app/settings/integrations?tool=business_profile",
+      "label": "Connect Google Business Profile"
+     },
+     "reason": "Blocked: Google Business Profile isn't connected.",
+     "status": "setup_required",
+     "words": "Setup required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "quality",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "quality.review_completion",
     "label": "Review a completed visit against the standard that applied and recommend approval, a request or an investigation (the manager still closes the visit)",
     "level": "execute",
+    "measures": null,
     "money": false,
+    "note": "A review never holds the visit, its invoice or anyone's pay. A manager still closes each visit.",
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute"
+    "standard": "execute",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "It does this without asking.",
+     "status": "ready",
+     "words": "Ready"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "quality",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": true,
+    "implemented": true,
     "key": "quality.request_cleaner_evidence",
     "label": "Ask a cleaner for a missing photo, a short answer, or their account of what happened, through a private link",
     "level": "execute",
+    "measures": null,
     "money": false,
+    "note": "Only to cleaners who worked the visit, about that visit. It never says anything about fault.",
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute_and_report"
+    "standard": "execute_and_report",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "It does this without asking. Business texting and action links are ready.",
+     "status": "ready",
+     "words": "Ready"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "quality",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": true,
+    "implemented": true,
     "key": "quality.remind_outstanding",
     "label": "Remind the person responsible about a quality request they have not answered",
     "level": "execute",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute_and_report"
+    "standard": "execute_and_report",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "It does this without asking. Business texting and action links are ready.",
+     "status": "ready",
+     "words": "Ready"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "quality",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "quality.open_case",
     "label": "Open a quality case from a review, a report, a conversation or a confirmed pattern",
     "level": "execute",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute"
+    "standard": "execute",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "It does this without asking.",
+     "status": "ready",
+     "words": "Ready"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "quality",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "quality.prepare_correction",
     "label": "Prepare a correction's scope and acceptance criteria and hand it to Retention to arrange with the customer",
     "level": "execute_and_report",
+    "measures": null,
     "money": false,
+    "note": "Quality writes the scope and acceptance criteria. Retention arranges it, you set the crew's pay, and Dispatch staffs it.",
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute_and_report"
+    "standard": "execute_and_report",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "It does this without asking and emails a report each time.",
+     "status": "ready",
+     "words": "Ready"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "quality",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute_and_report",
     "changed": false,
+    "implemented": true,
     "key": "quality.customer_clarification",
     "label": "Prepare a focused question for a customer and hand it to Retention, which owns the conversation",
     "level": "propose",
+    "measures": null,
     "money": false,
+    "note": "Quality prepares the question; Retention sends it to the customer under its own permission.",
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "propose"
+    "standard": "propose",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "The agent prepares this and waits for a decision. Action links is ready.",
+     "status": "approval_required",
+     "words": "Approval required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "quality",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "quality.verify_correction",
     "label": "Verify a correction visit's record against the acceptance criteria",
     "level": "execute",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute"
+    "standard": "execute",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "It does this without asking.",
+     "status": "ready",
+     "words": "Ready"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "quality",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "quality.propose_improvement",
     "label": "Propose a change to a checklist, booking question, scope wording, training or inspection frequency (a person decides)",
     "level": "execute",
+    "measures": null,
     "money": false,
+    "note": "A proposal only. You decide whether anything changes.",
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute"
+    "standard": "execute",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "It does this without asking.",
+     "status": "ready",
+     "words": "Ready"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "recruiter",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "recruiter.acknowledge_and_collect",
     "label": "Acknowledge, answer questions, request missing details",
     "level": "propose",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute"
+    "standard": "execute",
+    "status": {
+     "expired": false,
+     "next": {
+      "href": "/app/settings/compliance",
+      "label": "Open Privacy & messaging"
+     },
+     "reason": "Blocked: Email isn't connected for Selestial yet.",
+     "status": "setup_required",
+     "words": "Setup required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "recruiter",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "recruiter.decline_fixed_requirement",
-    "label": "Decline on a published fixed requirement",
+    "label": "Decline an applicant who doesn't meet a published fixed requirement (decided from their answers, never on judgment)",
     "level": "propose",
+    "measures": null,
     "money": false,
+    "note": "Only on a yes/no or minimum you marked fixed and published, decided from the applicant's answers, never on judgment. Your published Terms and Security Overview say no agent rejects a worker; an applicant declined on a fixed requirement is the one opt-in exception. Rules on automated hiring decisions differ by state: have counsel review this, and that wording, before choosing anything above Ask me first.",
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute_and_report"
+    "standard": "execute_and_report",
+    "status": {
+     "expired": false,
+     "next": {
+      "href": "/app/settings/compliance",
+      "label": "Open Privacy & messaging"
+     },
+     "reason": "Blocked: Email isn't connected for Selestial yet.",
+     "status": "setup_required",
+     "words": "Setup required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "recruiter",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "recruiter.run_interview",
     "label": "Coordinate and run the interview",
     "level": "propose",
+    "measures": null,
     "money": false,
+    "note": "Interviews are booked from your interview hours. Selestial doesn't check a calendar for conflicts yet.",
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute"
+    "standard": "execute",
+    "status": {
+     "expired": false,
+     "next": {
+      "href": "/app/settings/compliance",
+      "label": "Open Privacy & messaging"
+     },
+     "reason": "Blocked: Email isn't connected for Selestial yet.",
+     "status": "setup_required",
+     "words": "Setup required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "recruiter",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "propose",
     "changed": false,
+    "implemented": false,
     "key": "recruiter.advance_candidate",
     "label": "Move a candidate forward, mark a cleaner ready",
     "level": "propose",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "propose"
+    "standard": "propose",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "Recruiter never moves a candidate forward on its own. A person decides after screening or the interview.",
+     "status": "unavailable",
+     "words": "Unavailable"
+    },
+    "unavailable": "Recruiter never moves a candidate forward on its own. A person decides after screening or the interview.",
+    "until": null
    },
    {
     "agent": "recruiter",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "recruiter.send_invitation",
     "label": "Email an applicant the application link",
     "level": "propose",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute"
+    "standard": "execute",
+    "status": {
+     "expired": false,
+     "next": {
+      "href": "/app/settings/compliance",
+      "label": "Open Privacy & messaging"
+     },
+     "reason": "Blocked: Email isn't connected for Selestial yet.",
+     "status": "setup_required",
+     "words": "Setup required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "recruiter",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "recruiter.follow_up",
     "label": "Remind an applicant about an unfinished application",
     "level": "propose",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute"
+    "standard": "execute",
+    "status": {
+     "expired": false,
+     "next": {
+      "href": "/app/settings/compliance",
+      "label": "Open Privacy & messaging"
+     },
+     "reason": "Blocked: Email isn't connected for Selestial yet.",
+     "status": "setup_required",
+     "words": "Setup required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "recruiter",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "propose",
     "changed": false,
+    "implemented": true,
     "key": "recruiter.send_offer",
     "label": "Send a hiring offer on terms the Owner approved",
     "level": "propose",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "propose"
+    "standard": "propose",
+    "status": {
+     "expired": false,
+     "next": {
+      "href": "/app/settings/compliance",
+      "label": "Open Privacy & messaging"
+     },
+     "reason": "Blocked: Email isn't connected for Selestial yet.",
+     "status": "setup_required",
+     "words": "Setup required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "recruiter",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "execute",
     "changed": false,
+    "implemented": true,
     "key": "recruiter.onboarding_reminder",
     "label": "Remind a new cleaner about onboarding steps they still need to finish",
     "level": "propose",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "execute"
+    "standard": "execute",
+    "status": {
+     "expired": false,
+     "next": null,
+     "reason": "The agent prepares this and waits for a decision. Business texting is ready.",
+     "status": "approval_required",
+     "words": "Approval required"
+    },
+    "unavailable": null,
+    "until": null
    },
    {
     "agent": "recruiter",
+    "allowance": null,
+    "approvers": {
+     "people": [
+      {
+       "memberId": "0000000000000000000010001members",
+       "name": "owner-a",
+       "role": "owner"
+      }
+     ],
+     "warning": null,
+     "words": "Any Owner or Manager (1 person)"
+    },
     "ceiling": "propose",
     "changed": false,
+    "implemented": true,
     "key": "recruiter.urgent_outreach",
     "label": "Contact existing applicants about an urgent staffing need",
     "level": "propose",
+    "measures": null,
     "money": false,
+    "note": null,
+    "ownerDecides": false,
     "perActionCents": null,
     "perDayCents": null,
-    "standard": "propose"
+    "standard": "propose",
+    "status": {
+     "expired": false,
+     "next": {
+      "href": "/app/settings/compliance",
+      "label": "Open Privacy & messaging"
+     },
+     "reason": "Blocked: Email isn't connected for Selestial yet.",
+     "status": "setup_required",
+     "words": "Setup required"
+    },
+    "unavailable": null,
+    "until": null
    }
   ],
   "pausedAgents": [],
@@ -2866,7 +4112,8 @@
     "key": "person.legal_injury_damage_dispute",
     "label": "Anything legal, an injury, property damage or a payment dispute"
    }
-  ]
+  ],
+  "revision": 2
  },
  "forJob": {
   "cases": [
@@ -2884,14 +4131,14 @@
     },
     "happened": "Dana Whitfield reported a concern about the oven on this visit. A report is not a finding.",
     "held": false,
-    "id": "00000000000000010199qualityCases",
+    "id": "00000000000000010202qualityCases",
     "job": {
      "customer": {
       "id": "00000000000000000010006customers",
       "name": "Dana Whitfield"
      },
      "day": "Tue, Mar 2",
-     "id": "0000000000000000000000010160jobs",
+     "id": "0000000000000000000000010163jobs",
      "isCorrection": false,
      "operational": "Reported done; waiting for a manager",
      "property": {
@@ -2925,7 +4172,7 @@
     "required": 2,
     "unverifiable": 0
    },
-   "id": "000000000000010179qualityReviews",
+   "id": "000000000000010182qualityReviews",
    "recommendation": "approve",
    "reopened": null,
    "status": "ready",
@@ -2973,5 +4220,23 @@
    "day": "Thu, Mar 4",
    "service": "standard"
   }
+ },
+ "cleanerRates": {
+  "minimum": 10,
+  "note": "Of each cleaner's visits that Quality reviewed in the last 90 days, how many had no confirmed miss of theirs. Only misses a person confirmed count; scope, access, equipment and scheduling problems never do. A miss on a checklist item counts against whoever marked it; otherwise it is shared by the crew. It changes no one's pay, standing or schedule.",
+  "rows": [
+   {
+    "cleanerId": "000000000000000000010013cleaners",
+    "missed": 1,
+    "name": "Lena",
+    "passed": 4,
+    "rate": null,
+    "shared": 0,
+    "tooFew": true,
+    "visits": 5,
+    "words": "5 reviewed visits in 90 days: too few to read a rate (at least 10)."
+   }
+  ],
+  "windowDays": 90
  }
 }

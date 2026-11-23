@@ -170,7 +170,7 @@ const LIVE: AgentPage[] = [
       { agent: "retention", what: "Customer conversations and correction visits" },
       { agent: "dispatch", what: "Correction visits to staff" },
     ],
-    plan: "Included in Expand. Not part of Operate, the plan on sale today.",
+    plan: "Free for early users on the $199 price, and theirs to keep after the 12 months. Included in Expand.",
   },
 ];
 

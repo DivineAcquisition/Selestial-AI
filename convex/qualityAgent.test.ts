@@ -297,6 +297,46 @@ describe("cases, findings and corrections", () => {
     expect(lena.submissions.every((x) => x.hidden && x.answers.length === 0)).toBe(true);
   });
 
+  it("a cleaner's pass rate counts only misses a person confirmed, against whoever marked the item, and needs ten visits", async () => {
+    const s = await qualitySetup();
+    await s.publishCompany();
+    const crew: ("Lena" | "Rosa")[] = ["Lena", "Rosa"];
+    for (let i = 0; i < 3; i += 1) await s.submitted({ scope: SCOPE, checklist: CHECKLIST, after: 3, cleaners: crew, startsAt: JOB_START + i * DAY });
+    const early = await s.as.query(api.quality.forCleaner, { companyId: s.companyId, cleanerId: s.cleaners.Lena });
+    expect(early.pass).toMatchObject({ visits: 3, rate: null, tooFew: true });
+    expect(early.pass?.words).toContain("too few to read a rate");
+    for (let i = 3; i < 10; i += 1) await s.submitted({ scope: SCOPE, checklist: CHECKLIST, after: 3, cleaners: crew, startsAt: JOB_START + i * DAY });
+    // A miss on an item Lena marked counts against Lena only.
+    const marked = await s.submitted({ scope: SCOPE, checklist: [{ label: "Clean the shower", state: "skipped", skipReason: "Not done" }, CHECKLIST[1]], after: 3, cleaners: crew, startsAt: JOB_START + 10 * DAY });
+    // A miss on an item nobody marked is shared by the crew.
+    const unmarked = await s.submitted({ scope: SCOPE, checklist: [{ label: "Clean the shower", state: "skipped", skipReason: "Not done" }, CHECKLIST[1]], after: 3, cleaners: crew, startsAt: JOB_START + 11 * DAY });
+    await s.t.run(async (ctx) => {
+      for (const item of (await ctx.db.query("checklistItems").collect()).filter((x) => x.jobId === unmarked)) await ctx.db.patch(item._id, { byCleanerId: undefined });
+    });
+    // Suggested findings count for nothing until a person confirms them.
+    let rates = await s.as.query(api.quality.cleanerRates, { companyId: s.companyId });
+    expect(rates.rows.map((r) => [r.name, r.visits, r.missed])).toEqual([["Lena Park", 12, 0], ["Rosa Diaz", 12, 0]].map(([n, v, m]) => [expect.stringContaining(String(n).split(" ")[0]), v, m]));
+    for (const qcase of (await s.qcases()).filter((c) => c.jobId === marked || c.jobId === unmarked)) {
+      for (const f of (await s.findings()).filter((x) => x.caseId === qcase._id)) await s.as.mutation(api.quality.reviewFindingAction, { companyId: s.companyId, findingId: f._id, action: "confirm" });
+    }
+    // A confirmed scope misunderstanding is never held against anyone.
+    const scope = await s.submitted({ scope: SCOPE, checklist: CHECKLIST, after: 3, cleaners: crew, startsAt: JOB_START + 12 * DAY });
+    await complain(s, scope, "The oven was not cleaned inside.");
+    for (const f of (await s.findings()).filter((x) => x.category === "scope_misunderstanding")) await s.as.mutation(api.quality.reviewFindingAction, { companyId: s.companyId, findingId: f._id, action: "confirm" });
+    rates = await s.as.query(api.quality.cleanerRates, { companyId: s.companyId });
+    const lena = rates.rows.find((r) => r.cleanerId === s.cleaners.Lena)!;
+    const rosa = rates.rows.find((r) => r.cleanerId === s.cleaners.Rosa)!;
+    expect(lena).toMatchObject({ visits: 13, passed: 11, missed: 2, shared: 1, tooFew: false });
+    expect(lena.rate).toBeCloseTo(11 / 13);
+    expect(rosa).toMatchObject({ visits: 13, passed: 12, missed: 1, shared: 1 });
+    expect(lena.words).toBe("11 of 13 reviewed visits in 90 days had no confirmed miss of theirs; 2 did, 1 of them shared with the crew.");
+    // Nothing about the cleaner changed, and the office cannot see the rates.
+    expect((await s.t.run(async (ctx) => ctx.db.get(s.cleaners.Lena)))?.status).toBe("ready");
+    const { addMember } = await import("../tests/harness");
+    const office = await addMember(s.t, s.as, s.companyId, "office-r", "office");
+    await expect(office.query(api.quality.cleanerRates, { companyId: s.companyId })).rejects.toThrow();
+  });
+
   it("15. taking a case over and pausing Quality stop its outward actions; resuming picks the work back up", async () => {
     const s = await qualitySetup();
     await s.publishCompany();
@@ -361,12 +401,13 @@ describe("cases, findings and corrections", () => {
 
 // ── Calls, texts and transcripts from a connected phone platform (Quo, faked) ────────────────────
 
-import { mockQuo, QuoError, quoSign, verifyQuo, type QuoApi, type QuoCall, type QuoTranscript } from "./lib/quality/comms/quo";
+import { mockQuo, QuoError, type QuoApi, type QuoCall, type QuoTranscript } from "./lib/quality/comms/quo";
+import { fakeQuo as sharedFakeQuo, QUO_NUMBER as SHARED_NUMBER } from "../tests/fakeQuo";
 import { extractFromMessage, isRepeat } from "./lib/quality/comms/extract";
 import { CUSTOMER_PHONE } from "../tests/qualityHarness";
 import { mockQualityReader } from "./lib/quality/reader";
 
-const QUO_NUMBER = "+15125550000";
+const QUO_NUMBER = SHARED_NUMBER.phoneNumber;
 
 function fakeQuo(): QuoApi & { calls_: QuoCall[]; transcripts_: Map<string, QuoTranscript[]>; down: boolean } {
   const fake = {
@@ -392,43 +433,80 @@ function fakeQuo(): QuoApi & { calls_: QuoCall[]; transcripts_: Map<string, QuoT
   return fake;
 }
 
+/**
+ * The company connects Quo the way an Owner does (convex/quo.ts, against main's fake Quo API), then turns on
+ * Quality's reading of that same connection. Quality's call and transcript reads use `mockQuo`.
+ */
 async function connected(s: Awaited<ReturnType<typeof qualitySetup>>) {
   process.env.MAILBOX_TOKEN_KEY = btoa("k".repeat(32));
   process.env.CONVEX_SITE_URL = "https://example.convex.site";
+  const shared = sharedFakeQuo();
+  vi.stubGlobal("fetch", shared.fetcher);
   const fake = fakeQuo();
   mockQuo.api = fake;
-  await s.as.mutation(api.quality.saveSettings, { companyId: s.companyId, settings: { readPhonePlatform: true } });
-  const { connectionId } = await s.as.mutation(api.qualityComms.connectQuo, { companyId: s.companyId, apiKey: "quo-test-key-0123456789", readDays: 30 });
+  await s.as.mutation(api.quo.connect, { companyId: s.companyId, apiKey: shared.state.key });
   await flush(s.t);
-  return { fake, connectionId };
+  await s.as.mutation(api.quo.selectNumbers, { companyId: s.companyId, numberIds: [SHARED_NUMBER.id] });
+  await flush(s.t);
+  const quoConnectionId = (await s.t.run(async (ctx) => ctx.db.query("quoConnections").collect())).find((c) => c.companyId === s.companyId)!._id;
+  await s.as.mutation(api.quality.saveSettings, { companyId: s.companyId, settings: { readPhonePlatform: true } });
+  const { connectionId } = await s.as.mutation(api.qualityComms.startQuoReading, { companyId: s.companyId, readDays: 30 });
+  await flush(s.t);
+  return { fake, shared, connectionId, quoConnectionId };
 }
 
-const deliver = (s: Awaited<ReturnType<typeof qualitySetup>>, connectionId: Id<"qualityConnections">, deliveryId: string, type: string, resource: Record<string, unknown>) =>
-  s.t.mutation(internal.qualityComms.webhook, { connectionId, deliveryId, body: JSON.stringify({ id: `EV-${deliveryId}`, type, apiVersion: "2026-03-30", createdAt: new Date().toISOString(), data: { resource } }) });
+/** A Quo event through the shared webhook's own handler (convex/quo.ts `ingest`), deduplicated there. */
+const deliver = (s: Awaited<ReturnType<typeof qualitySetup>>, link: { quoConnectionId: Id<"quoConnections"> }, deliveryId: string, type: string, resource: Record<string, unknown>, numberId: string = SHARED_NUMBER.id) =>
+  s.t.mutation(internal.quo.ingest, {
+    connectionId: link.quoConnectionId,
+    eventId: deliveryId,
+    event: JSON.stringify({ id: `EV-${deliveryId}`, type, apiVersion: "2026-03-30", createdAt: new Date().toISOString(), data: { resource, context: { phoneNumberId: numberId, orgId: "OR1", ...(type.startsWith("message.") ? { senderIdentifier: resource.from, recipientIdentifiers: resource.to, conversationId: resource.conversationId } : {}) } } }),
+  });
 
 describe("calls, texts and transcripts", () => {
   afterEach(() => {
     mockQuo.api = null;
     mockQualityReader.read = null;
     delete process.env.QUALITY_MODEL;
+    vi.unstubAllGlobals();
   });
 
-  it("connecting records only the capabilities it checked; recordings and sending are never used", async () => {
+  it("reads through the company's one Quo connection: no second key, capabilities as checked, call events only while reading", async () => {
     const s = await qualitySetup();
-    const { connectionId } = await connected(s);
-    const connection = await s.t.run(async (ctx) => ctx.db.get(connectionId));
-    expect(connection).toMatchObject({ status: "connected", webhookId: "WH1", numbers: [{ number: QUO_NUMBER }] });
+    const link = await connected(s);
+    const connection = await s.t.run(async (ctx) => ctx.db.get(link.connectionId));
+    expect(connection).toMatchObject({ status: "connected", quoConnectionId: link.quoConnectionId, numbers: [{ number: QUO_NUMBER }] });
     expect(connection?.capabilities).toMatchObject({ readCallMetadata: "available", readTranscripts: "unknown", recordings: "not_used", send: "not_used" });
-    const credential = await s.t.run(async (ctx) => (await ctx.db.query("qualityCredentials").collect())[0]);
-    expect(credential.sealedKey).not.toContain("quo-test-key");
+    // Quality holds no Quo key of its own.
+    expect(await s.t.run(async (ctx) => ctx.db.query("qualityCredentials").collect())).toEqual([]);
+    // The shared webhook now brings call events; stopping takes them away again.
+    const patches = () => link.shared.calls.filter((c) => c.method === "PATCH" && c.path.startsWith("/webhooks/"));
+    expect(patches().at(-1)?.body?.events).toEqual(expect.arrayContaining(["message.received", "call.completed", "call.transcript.completed"]));
+    await s.as.mutation(api.qualityComms.stopReading, { companyId: s.companyId, connectionId: link.connectionId });
+    await flush(s.t);
+    expect(patches().at(-1)?.body?.events).not.toContain("call.completed");
+    expect(patches().at(-1)?.body?.events).toContain("message.received");
+  });
+
+  it("reads only the numbers the Owner gave Selestial, and nothing while reading is off", async () => {
+    const s = await qualitySetup();
+    await s.submitted({ checklist: CHECKLIST, after: 3 });
+    const link = await connected(s);
+    await deliver(s, link, "x1", "call.completed", { id: "AC-other", direction: "incoming", status: "completed", participants: [CUSTOMER_PHONE], createdAt: new Date().toISOString(), duration: 60, phoneNumberId: "PNsecond02" }, "PNsecond02");
+    await flush(s.t);
+    expect(await s.t.run(async (ctx) => ctx.db.query("qualityComms").collect())).toEqual([]);
+    await s.as.mutation(api.quality.saveSettings, { companyId: s.companyId, settings: { readPhonePlatform: false } });
+    await deliver(s, link, "x2", "call.completed", { id: "AC-off", direction: "incoming", status: "completed", participants: [CUSTOMER_PHONE], createdAt: new Date().toISOString(), duration: 60 });
+    await flush(s.t);
+    expect(await s.t.run(async (ctx) => ctx.db.query("qualityComms").collect())).toEqual([]);
   });
 
   it("4. a call that could be about two visits goes to the review queue, and a person's link is kept with its history", async () => {
     const s = await qualitySetup();
     const first = await s.submitted({ checklist: CHECKLIST, after: 3 });
     const second = await s.submitted({ checklist: CHECKLIST, after: 3, startsAt: JOB_START + 2 * DAY });
-    const { connectionId } = await connected(s);
-    await deliver(s, connectionId, "d1", "call.completed", { id: "AC1", direction: "incoming", status: "completed", participants: [CUSTOMER_PHONE], createdAt: new Date().toISOString(), duration: 120 });
+    const link = await connected(s);
+    await deliver(s, link, "d1", "call.completed", { id: "AC1", direction: "incoming", status: "completed", participants: [CUSTOMER_PHONE], createdAt: new Date().toISOString(), duration: 120 });
     await flush(s.t);
     const queue = await s.as.query(api.qualityComms.associations, { companyId: s.companyId });
     expect(queue).toHaveLength(1);
@@ -445,10 +523,10 @@ describe("calls, texts and transcripts", () => {
     const oak = await s.as.mutation(api.properties.create, { companyId: s.companyId, customerId: s.place.customerId, kind: "home", address: { line1: "45 Oak St", city: "Austin", region: "TX", postalCode: "78702" } });
     await s.submitted({ checklist: CHECKLIST, after: 3, startsAt: JOB_START - 2 * DAY });
     const oakVisit = await s.submitted({ checklist: CHECKLIST, after: 3, startsAt: JOB_START, propertyId: oak });
-    const { connectionId } = await connected(s);
+    const link = await connected(s);
     await s.trustRequests();
     vi.setSystemTime(JOB_START + DAY);
-    await deliver(s, connectionId, "m1", "message.received", { id: "MS1", direction: "incoming", from: CUSTOMER_PHONE, to: [QUO_NUMBER], text: "Hi, the cleaning at 45 Oak St yesterday missed the bathroom mirror.", createdAt: new Date().toISOString(), conversationId: "CN1" });
+    await deliver(s, link, "m1", "message.received", { id: "MS1", direction: "incoming", from: CUSTOMER_PHONE, to: [QUO_NUMBER], text: "Hi, the cleaning at 45 Oak St yesterday missed the bathroom mirror.", createdAt: new Date().toISOString(), conversationId: "CN1" });
     await flush(s.t);
     const association = await s.t.run(async (ctx) => (await ctx.db.query("qualityAssociations").collect())[0]);
     expect(association).toMatchObject({ status: "linked", method: "verified_relationship", jobId: oakVisit });
@@ -460,15 +538,16 @@ describe("calls, texts and transcripts", () => {
     const s = await qualitySetup();
     await s.trustRequests();
     const jobId = await s.submitted({ checklist: CHECKLIST, after: 3 });
-    const { connectionId, fake } = await connected(s);
+    const link = await connected(s);
+    const { fake } = link;
     vi.setSystemTime(JOB_START + DAY);
-    await deliver(s, connectionId, "c1", "call.completed", { id: "AC9", direction: "incoming", status: "completed", participants: [CUSTOMER_PHONE], createdAt: new Date().toISOString(), duration: 200 });
+    await deliver(s, link, "c1", "call.completed", { id: "AC9", direction: "incoming", status: "completed", participants: [CUSTOMER_PHONE], createdAt: new Date().toISOString(), duration: 200 });
     await flush(s.t);
     // No words yet: one client, one visit, but a matching number alone is not enough.
     expect((await s.as.query(api.qualityComms.associations, { companyId: s.companyId }))).toHaveLength(1);
     // The transcript arrives minutes later.
     const dialogue = (text: string) => [{ content: "Thanks for calling, how can I help?", start: 0, end: 3, identifier: QUO_NUMBER, actorId: "US1" }, { content: text, start: 3, end: 9, identifier: CUSTOMER_PHONE, actorId: null }];
-    await deliver(s, connectionId, "t1", "call.transcript.completed", { callId: "AC9", processingStatus: "completed", dialogue: dialogue("The shower was not cleaned yesterday and it's still dirty.") });
+    await deliver(s, link, "t1", "call.transcript.completed", { callId: "AC9", processingStatus: "completed", dialogue: dialogue("The shower was not cleaned yesterday and it's still dirty.") });
     await flush(s.t);
     let comm = await s.t.run(async (ctx) => (await ctx.db.query("qualityComms").collect())[0]);
     expect(comm.transcript).toMatchObject({ status: "completed", version: 1 });
@@ -481,7 +560,7 @@ describe("calls, texts and transcripts", () => {
     expect(sentBefore).toBeGreaterThan(0);
     // The provider revises the transcript: a new version, earlier readings stale, the same case, no new requests.
     fake.transcripts_.set("AC9", [{ status: "completed", dialogue: dialogue("The shower wasn't cleaned yesterday, it is still dirty.") }]);
-    await deliver(s, connectionId, "t2", "call.transcript.completed", { callId: "AC9", processingStatus: "completed", dialogue: dialogue("The shower wasn't cleaned yesterday, it is still dirty.") });
+    await deliver(s, link, "t2", "call.transcript.completed", { callId: "AC9", processingStatus: "completed", dialogue: dialogue("The shower wasn't cleaned yesterday, it is still dirty.") });
     await flush(s.t);
     comm = await s.t.run(async (ctx) => (await ctx.db.query("qualityComms").collect())[0]);
     expect(comm.transcript).toMatchObject({ version: 2 });
@@ -490,13 +569,14 @@ describe("calls, texts and transcripts", () => {
     expect(await s.qcases()).toHaveLength(1);
     expect((await s.qualityMessages()).length).toBe(sentBefore);
     // 14. The same delivery again changes nothing.
-    await deliver(s, connectionId, "t2", "call.transcript.completed", { callId: "AC9", processingStatus: "completed", dialogue: dialogue("Something else entirely.") });
+    await deliver(s, link, "t2", "call.transcript.completed", { callId: "AC9", processingStatus: "completed", dialogue: dialogue("Something else entirely.") });
     expect((await s.t.run(async (ctx) => (await ctx.db.query("qualityComms").collect())[0])).transcript?.version).toBe(2);
   });
 
   it("13. a provider outage leaves a visible, recoverable state", async () => {
     const s = await qualitySetup();
-    const { connectionId, fake } = await connected(s);
+    const link = await connected(s);
+    const { connectionId, fake } = link;
     fake.down = true;
     await s.t.mutation(internal.qualityComms.sweep, {});
     await flush(s.t);
@@ -510,17 +590,6 @@ describe("calls, texts and transcripts", () => {
     await flush(s.t);
     connection = await s.t.run(async (ctx) => ctx.db.get(connectionId));
     expect(connection).toMatchObject({ status: "connected", failures: 0 });
-  });
-
-  it("a signed delivery is accepted only with the connection's own key, inside five minutes", async () => {
-    const key = `whsec_${btoa("0123456789abcdef0123456789abcdef")}`;
-    const body = '{"id":"EV1","type":"call.completed"}';
-    const ts = String(Math.floor(Date.now() / 1000));
-    const sig = await quoSign(key, "msg_1", ts, body);
-    expect(await verifyQuo({ key, id: "msg_1", timestamp: ts, signature: `v1,${sig}`, body, now: Date.now() })).toBe(true);
-    expect(await verifyQuo({ key, id: "msg_1", timestamp: ts, signature: `v1,${sig}`, body: body + " ", now: Date.now() })).toBe(false);
-    expect(await verifyQuo({ key: null, id: "msg_1", timestamp: ts, signature: `v1,${sig}`, body, now: Date.now() })).toBe(false);
-    expect(await verifyQuo({ key, id: "msg_1", timestamp: ts, signature: `v1,${sig}`, body, now: Date.now() + 6 * 60_000 })).toBe(false);
   });
 
   it("6. quoted email history is not a new complaint, and a repeated complaint is one complaint", () => {

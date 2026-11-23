@@ -6,10 +6,11 @@
  * queue of conversations a person needs to link to the right visit.
  */
 import { useMutation, useQuery } from "convex/react";
+import Link from "next/link";
 import { useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, FormError, TextInput, useRun } from "@/components/app/form";
+import { Field, FormError, useRun } from "@/components/app/form";
 import { PermissionRow } from "@/components/app/screens/agent-permissions";
 import { PageHeader, Panel } from "@/components/app/shell";
 import { useNow } from "@/components/app/use-now";
@@ -84,53 +85,87 @@ function Rules({ data }: { data: Playbook }) {
   );
 }
 
-function QuoPanel({ data }: { data: Playbook }) {
+type Reader = NonNullable<Playbook["quo"]["reader"]>;
+
+/** Where Quality's reading of one platform stands, and the Owner's controls for it. */
+function ReaderState({ reader, onStop }: { reader: Reader; onStop: () => Promise<unknown> }) {
   const { companyId, role, timezone } = useCompany();
   const now = useNow();
-  const connect = useMutation(api.qualityComms.connectQuo);
   const recheck = useMutation(api.qualityComms.recheck);
-  const disconnect = useMutation(api.qualityComms.disconnect);
   const { busy, error, run } = useRun();
-  const [key, setKey] = useState("");
-  const [days, setDays] = useState<0 | 7 | 30>(0);
-  const quo = data.quo;
-  const owner = role === "owner";
-  if (!quo) {
-    return (
-      <div className="grid gap-3 p-4">
-        <p className="text-sm text-foreground">Connect Quo so Quality can read call details, transcripts Quo has finished, Quo&rsquo;s own summaries, and incoming texts on your Quo numbers. Selestial never copies recordings, changes recording settings, or sends through Quo.</p>
-        {owner ? (
-          <>
-            <Field label="Quo API key" hint="Quo: Workspace Settings → API. It is stored sealed and never shown again.">
-              <TextInput type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} />
-            </Field>
-            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Read from">
-              {([0, 7, 30] as const).map((d) => <Button key={d} size="sm" variant={days === d ? "secondary" : "ghost"} aria-pressed={days === d} onClick={() => setDays(d)}>{d === 0 ? "From now" : `Last ${d} days`}</Button>)}
-            </div>
-            <p className="text-xs text-muted-foreground">Conversations from before connecting are kept as history: they never start a request or a correction on their own.</p>
-            <div><Button size="sm" loading={busy} disabled={key.trim().length < 16} onClick={() => run(async () => { await connect({ companyId, apiKey: key.trim(), readDays: days }); setKey(""); })}>Connect and check</Button></div>
-          </>
-        ) : <p className="text-xs text-muted-foreground">The Owner connects Quo.</p>}
-        <FormError message={error} />
-      </div>
-    );
-  }
   return (
-    <div className="grid gap-3 p-4">
+    <div className="grid gap-2">
       <div className="flex flex-wrap items-center gap-2">
-        <Badge variant={quo.status === "connected" ? "success" : quo.status === "checking" ? "info" : "warning"} size="sm">{quo.status === "connected" ? "Connected" : quo.status === "checking" ? "Checking" : quo.status === "expired" ? "Key no longer accepted" : "Needs attention"}</Badge>
-        {quo.lastSuccessAt ? <span className="text-xs text-muted-foreground">Last read {whenLabel(quo.lastSuccessAt, now, timezone)}</span> : null}
-        {quo.failures ? <span className="text-xs text-warning-foreground">{quo.failures} failed {quo.failures === 1 ? "attempt" : "attempts"} in a row</span> : null}
+        <Badge variant={reader.status === "connected" ? "success" : reader.status === "checking" ? "info" : "warning"} size="sm">{reader.status === "connected" ? "Reading" : reader.status === "checking" ? "Checking" : reader.status === "expired" ? "Needs reconnecting" : "Needs attention"}</Badge>
+        {reader.lastSuccessAt ? <span className="text-xs text-muted-foreground">Last read {whenLabel(reader.lastSuccessAt, now, timezone)}</span> : null}
+        {reader.failures ? <span className="text-xs text-warning-foreground">{reader.failures} failed {reader.failures === 1 ? "attempt" : "attempts"} in a row</span> : null}
+        <span className="text-xs text-muted-foreground">Reading from {whenLabel(reader.readFrom, now, timezone)}</span>
       </div>
-      {quo.problem ? <p className="text-sm text-warning-foreground">{quo.problem}</p> : null}
-      <p className="text-xs text-muted-foreground">Numbers: {quo.numbers.length ? quo.numbers.map((n) => n.name ? `${n.name} (${n.number})` : n.number).join(", ") : "none listed yet"} · Signed notices: {quo.webhook ? "set up" : "not set up, so new texts arrive only when Quality next checks"} · Reading from {whenLabel(quo.readFrom, now, timezone)}</p>
-      {!data.settings.readPhonePlatform ? <p className="text-xs font-medium text-warning-foreground">Connected, but reading for quality evidence is off. Turn it on under Your rules.</p> : null}
-      {owner ? (
+      {reader.problem ? <p className="text-sm text-warning-foreground">{reader.problem}</p> : null}
+      {role === "owner" ? (
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" loading={busy} onClick={() => run(() => recheck({ companyId, connectionId: quo.id }))}>Check again</Button>
-          <Button size="sm" variant="ghost" loading={busy} onClick={() => run(() => disconnect({ companyId, connectionId: quo.id }))}>Disconnect</Button>
+          <Button size="sm" variant="outline" loading={busy} onClick={() => run(() => recheck({ companyId, connectionId: reader.id }))}>Check again</Button>
+          <Button size="sm" variant="ghost" loading={busy} onClick={() => run(onStop)}>Stop reading</Button>
         </div>
       ) : null}
+      <FormError message={error} />
+    </div>
+  );
+}
+
+function QuoPanel({ data }: { data: Playbook }) {
+  const { companyId, role } = useCompany();
+  const start = useMutation(api.qualityComms.startQuoReading);
+  const stop = useMutation(api.qualityComms.stopReading);
+  const { busy, error, run } = useRun();
+  const [days, setDays] = useState<0 | 7 | 30>(0);
+  const { shared, reader } = data.quo;
+  const owner = role === "owner";
+  return (
+    <div className="grid gap-3 p-4">
+      <p className="text-sm text-foreground">Quality reads calls, transcripts Quo has finished, Quo&rsquo;s own summaries and incoming texts through the same Quo connection your agents text through: one key, one setup. Selestial never copies recordings, changes recording settings, or sends anything to read.</p>
+      {!shared ? (
+        <p className="text-sm text-muted-foreground">Quo isn&rsquo;t connected. {owner ? <Link className="font-medium text-brand-300 underline-offset-4 hover:underline" href="/app/settings/integrations/quo">Connect it in Settings › Integrations › Quo</Link> : "The Owner connects it in Settings › Integrations › Quo."}</p>
+      ) : (
+        <>
+          <p className="text-xs text-muted-foreground">Connected numbers: {shared.numbers.length ? shared.numbers.join(", ") : "none chosen yet"}{shared.webhook ? "" : " · Quo's notices aren't set up yet, so new calls arrive only when Quality next checks"}</p>
+          {reader ? (
+            <ReaderState reader={reader} onStop={() => stop({ companyId, connectionId: reader.id })} />
+          ) : owner ? (
+            <>
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label="Read from">
+                {([0, 7, 30] as const).map((d) => <Button key={d} size="sm" variant={days === d ? "secondary" : "ghost"} aria-pressed={days === d} onClick={() => setDays(d)}>{d === 0 ? "From now" : `Last ${d} days`}</Button>)}
+              </div>
+              <p className="text-xs text-muted-foreground">Conversations from before you turn this on are kept as history: they never start a request or a correction on their own.</p>
+              <div><Button size="sm" loading={busy} disabled={!shared.numbers.length} onClick={() => run(() => start({ companyId, readDays: days }))}>Read calls through Quo</Button></div>
+            </>
+          ) : <p className="text-xs text-muted-foreground">The Owner turns call reading on.</p>}
+          {reader && !data.settings.readPhonePlatform ? <p className="text-xs font-medium text-warning-foreground">Reading is on for Quo, but reading for quality evidence is off. Turn it on under Your rules.</p> : null}
+        </>
+      )}
+      <FormError message={error} />
+    </div>
+  );
+}
+
+function HighLevelPanel({ data }: { data: Playbook }) {
+  const { companyId, role } = useCompany();
+  const start = useMutation(api.qualityHighLevel.start);
+  const stop = useMutation(api.qualityComms.stopReading);
+  const { busy, error, run } = useRun();
+  const { available, reader } = data.highlevel;
+  const owner = role === "owner";
+  return (
+    <div className="grid gap-3 p-4">
+      <p className="text-sm text-foreground">Install Selestial&rsquo;s HighLevel app on your sub-account so Quality can read its texts, emails and call transcriptions as evidence. The app asks only to read. Selestial never sends through HighLevel and never fetches call recordings.</p>
+      {!available ? (
+        <p className="text-sm text-muted-foreground">Not available yet: Selestial&rsquo;s app is waiting on HighLevel&rsquo;s Marketplace registration.</p>
+      ) : reader ? (
+        <ReaderState reader={reader} onStop={() => stop({ companyId, connectionId: reader.id })} />
+      ) : owner ? (
+        <div><Button size="sm" loading={busy} onClick={() => run(async () => { const { url } = await start({ companyId, returnTo: window.location.origin }); window.location.assign(url); })}>Install the HighLevel app</Button></div>
+      ) : <p className="text-xs text-muted-foreground">The Owner installs the HighLevel app.</p>}
+      {reader?.status === "expired" && owner ? <div><Button size="sm" variant="outline" loading={busy} onClick={() => run(async () => { const { url } = await start({ companyId, returnTo: window.location.origin }); window.location.assign(url); })}>Install again</Button></div> : null}
       <FormError message={error} />
     </div>
   );
@@ -203,7 +238,7 @@ export function QualityPlaybookScreen() {
         <Panel title="Always a person">
           <ul className="grid list-disc gap-1 pl-5 text-sm text-foreground">
             <li>Confirming or rejecting a finding. Quality suggests; a person decides what happened.</li>
-            <li>Anything about a cleaner&rsquo;s pay, standing, discipline or schedule. Quality keeps no score.</li>
+            <li>Anything about a cleaner&rsquo;s pay, standing, discipline or schedule. Their visit pass rate is information for owners and managers; it changes nothing by itself.</li>
             <li>Serious incidents: injury, damage, theft, safety and conduct. Restricted to the Owner, evidence preserved, and nothing admitted, promised or reported on the company&rsquo;s behalf.</li>
             <li>Publishing a standard and adopting an improvement.</li>
           </ul>
@@ -233,6 +268,7 @@ export function QualityPlaybookScreen() {
           ) : <Skeleton className="m-4 h-40 rounded-xl" />}
         </Panel>
         <Panel title="Quo (formerly OpenPhone)">{data ? <QuoPanel data={data} /> : <Skeleton className="m-4 h-24 rounded-xl" />}</Panel>
+        <Panel title="HighLevel">{data ? <HighLevelPanel data={data} /> : <Skeleton className="m-4 h-24 rounded-xl" />}</Panel>
         <section id="associations">
           <Panel title="Conversations to link">
             <LinkQueue />

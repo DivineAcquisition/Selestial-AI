@@ -40,6 +40,15 @@ harnesses, so the corrections run through their real code.
 | 6 | Quoted email content does not become a new complaint | "6. quoted email history…" | Quoted history is stripped. A repeated complaint is one complaint. |
 | 20 | Model output cites actual evidence and invents no sources | "20. keeps only findings that cite real evidence…" | Invented ids and blaming words are dropped. One reading of unchanged evidence is charged once. |
 
+## Added November 23, 2026 (the Owner's follow-up decisions)
+
+| Decision | Test | What it shows |
+| --- | --- | --- |
+| Quality is the early-user bonus, kept after 12 months | `convex/billing.test.ts` (the early-user offer) | Claiming a $199 place records the bonus; Quality is allowed on Operate for that company only; it stays after the move to $299; it still needs an active plan. |
+| A cleaner's visit pass rate, for owners and managers | `convex/qualityAgent.test.ts` "a cleaner's pass rate…" | Suggested findings count for nothing; a miss counts against whoever marked the item, otherwise it is shared; a confirmed scope misunderstanding counts against no one; fewer than 10 visits gives no rate; office staff are refused; nothing about the cleaner changes. |
+| One Quo connection | `convex/qualityAgent.test.ts` "reads through the company's one Quo connection…", "reads only the numbers…", and scenarios 4, 5, 7 and 13 | Connected the way an Owner does (main's fake Quo API), events delivered through the shared webhook handler: no Quality key, capabilities as checked, call events subscribed only while reading, only chosen numbers read, nothing read while reading is off. |
+| HighLevel through a Marketplace app | `convex/qualityHighLevel.test.ts` (6 tests) | Install with a one-time state and sealed tokens; a used state opens nothing; an agency-level install reads nothing; "not available" until configured; only Ed25519-signed notices, once each; a customer's text is read against their visit; a quoted email history is not a complaint; a transcription is fetched later with no speaker guessed; the refresh token rotates; an uninstall forgets the tokens; one location belongs to one company. |
+
 ## AI behavior against reviewed fixtures
 
 `convex/lib/quality/readerEval.test.ts` runs over seven reviewed fixtures (`tests/fixtures/qualityEval.ts`).
@@ -121,8 +130,13 @@ Existing tests updated for Quality being built:
 
 ## Not verified
 
-- **Quo against the live API:** the key check, call and transcript paging, webhook creation and signature
-  format, rate limits, and whether the workspace's plan returns transcripts and summaries.
+- **Quo against the live API:** call and transcript paging, whether Quo accepts call events and a changed
+  event list on the shared webhook (`PATCH /webhooks/{id}`), rate limits, and whether the workspace's plan
+  returns transcripts and summaries.
+- **HighLevel against the live API:** the install link's exact form (`HIGHLEVEL_INSTALL_URL`), the `Version`
+  header (`HIGHLEVEL_API_VERSION`, default `2021-07-28`), the token request's content type, the
+  transcription response's shape, the webhook payloads, and whether Convex's runtime verifies Ed25519 (if it
+  cannot, every notice is refused and the ten-minute poll still reads new messages). The app is not registered.
 - **The Claude reader against the live API**, and the evaluation's live pass.
 - **Real texts** to a real cleaner's phone, the link opened on iOS and Android, and camera upload on poor
   connectivity.

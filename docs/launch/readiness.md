@@ -187,8 +187,15 @@ Each gate: customer outcome · what exists (files) · what this work changed · 
   - `convex/qualityScreens.test.ts` and `src/components/app/screens/quality/quality.test.tsx`: screens over
     real query output
   - Screenshots in `docs/screenshots/quality/`. Details in `docs/quality/02-verification.md`.
-- **Plan access unchanged:** Quality is in Expand only, and only Operate is on sale. On Operate the agent's
-  work is visibly blocked and people keep the workspace. **Owner decides** whether Operate includes it.
+- **Plan access (decided November 23, 2026):** Quality is in Expand and is the early-user bonus: the 25
+  companies at $199 get it on Operate and keep it after their 12 months. Regular $299 Operate companies see the
+  workspace with Quality's agent work blocked.
+- **Phone platforms:** Quo is read through the company's one Quo connection (no second key). HighLevel is read
+  through Selestial's Marketplace app, which is **not registered yet**. **Owner registers the app in
+  HighLevel's Marketplace** (read-only scopes `conversations.readonly`, `conversations/message.readonly`,
+  `contacts.readonly`, `locations.readonly`; redirect `https://<deployment>.convex.site/oauth/highlevel/callback`;
+  webhook `https://<deployment>.convex.site/webhooks/highlevel` with InboundMessage, OutboundMessage, INSTALL and
+  UNINSTALL), then sets `HIGHLEVEL_CLIENT_ID`, `HIGHLEVEL_CLIENT_SECRET` and `HIGHLEVEL_INSTALL_URL` on Convex.
 - **Remaining:**
   - **Quo has not been checked against the live API.** That covers key check, paging, webhooks, signatures,
     and whether the plan returns transcripts. **Engineer + owner, with a Quo key for a test workspace.**
@@ -328,5 +335,5 @@ In priority order. The first six are required before the first pilot company.
 | Cleaner photo upload loses progress on reload | Lost evidence on poor signal | Engineer | Keep pending uploads across reloads; test on real phones |
 | `convex/lib/trust/exportTables.ts` describes `oauthStates` as holding nothing sensitive | It now briefly holds a sealed token (not exported) | Engineer | Correct the description |
 | `src/lib/trust/register.ts` has a stale "No payment provider" row | Public trust page understates what is built | Owner | Approve corrected wording |
-| Quality is released in code but sold only in Expand | Operate companies see Quality's workspace with its agent work blocked | Owner | Decide whether Operate includes Quality (one catalog line) |
+| HighLevel app not registered | Companies on HighLevel can't give Quality their texts and calls | Owner | Register the Marketplace app and set the three settings (gate 9a) |
 | Quo integration unverified live | Calls and transcripts may differ from the documented shapes | Engineer | Run the connection check with a test-workspace key |

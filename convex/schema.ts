@@ -311,6 +311,12 @@ export default defineSchema({
      * billing.clearLegacyPlans.
      */
     plan: v.optional(v.union(v.literal("operate"), v.literal("expand"), v.literal("growth"), v.literal("scale"))),
+    /**
+     * Agents a company has beyond its plan, and why. Today only Quality, for a company that claimed an
+     * early-user place: kept for good, also after its 12 months at $199 (the Owner's decision of November 23,
+     * 2026). It still needs an active plan; written only by billing sync (lib/billing/earlyOffer.ts).
+     */
+    agentBonuses: v.optional(v.array(v.object({ agent: v.literal("quality"), reason: v.literal("early_user"), since: v.number() }))),
     /** The Owner's named pay tiers (Finance › Team Pay). A job keeps the share that applied when it was worked. */
     payTiers: v.optional(v.array(payTierValidator)),
     /** AI features the Owner switched off. Absent means on, within the plan's allowances. */

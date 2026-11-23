@@ -139,7 +139,7 @@ export function QualityOnProperty({ propertyId }: { propertyId: Id<"properties">
   );
 }
 
-/** Requests waiting on a cleaner. Managers only, and never a score: being asked is not a finding. */
+/** Requests waiting on a cleaner, and their visit pass rate. Managers and the Owner only; being asked is not a finding. */
 export function QualityOnCleaner({ cleanerId }: { cleanerId: Id<"cleaners"> }) {
   const { companyId, role, timezone } = useCompany();
   const now = useNow();
@@ -152,6 +152,13 @@ export function QualityOnCleaner({ cleanerId }: { cleanerId: Id<"cleaners"> }) {
           {data.waiting.map((w) => <li key={w.id} className="rounded-lg border border-border px-3 py-2"><span className="font-medium text-strong">{w.purpose}</span> · {w.status}{w.job ? ` · ${w.job.service}, ${w.job.day}` : ""}{w.dueAt ? <span className="block text-xs text-muted-foreground">Due {whenLabel(w.dueAt, now, timezone)}</span> : null}</li>)}
         </ul>
       ) : <p className="text-muted-foreground">Quality is not waiting on anything from this cleaner.</p>}
+      {data.pass ? (
+        <p className="flex flex-wrap items-baseline gap-x-2">
+          <span className="font-medium text-strong">Visit pass rate:</span>
+          <span className="font-semibold text-strong tabular-nums" data-pass-rate>{data.pass.rate === null ? "too few visits" : `${Math.round(data.pass.rate * 100)}%`}</span>
+          <span className="basis-full text-xs text-muted-foreground">{data.pass.words}</span>
+        </p>
+      ) : <p className="text-xs text-muted-foreground">No visits of theirs reviewed by Quality in the last 90 days.</p>}
       <p className="text-xs text-muted-foreground">{data.note}</p>
     </div>
   );

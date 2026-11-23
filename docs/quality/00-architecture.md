@@ -89,12 +89,14 @@ it is done when the named record shows the result.
 
 ## Entitlements
 
-`AGENT_CATALOG.quality.plans` is `["expand"]` and only Operate is on sale (`PLANS_ON_SALE`). This work does
-**not** change that. The effect:
+`AGENT_CATALOG.quality.plans` is `["expand"]`, and only Operate is on sale (`PLANS_ON_SALE`). On November 23,
+2026 the Owner decided Quality is also the early-user bonus: companies holding one of the 25 places at $199 get
+Quality on Operate, and keep it after their 12 months (`companies.agentBonuses`, granted by billing sync when
+the place is claimed, checked by `agentVerdict` through `companyIncludesAgent`). For everyone else:
 
 - Quality's **agent work** (background reviews, requests, AI reading) runs only where `agentVerdict` allows it.
   On Operate it shows "Quality isn't part of the Operate plan" and does nothing on its own.
 - **People keep the workspace.** Reviewing visits, opening and working cases, recording findings, requesting
   statements by hand and reading evidence work on every plan, because the person-worked review queue they
   replace already existed on every plan. A paused or unavailable agent never removes access to existing cases.
-- Making Quality part of Operate is one line in the catalog and is the Owner's decision.
+- Making Quality part of Operate for everyone is one line in the catalog.

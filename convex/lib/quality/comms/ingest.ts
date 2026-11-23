@@ -13,6 +13,7 @@ import { normalAddress, recipientsAt } from "../../compliance/recipients";
 import { clientsAtPhone } from "../../clients/conversations";
 import { enqueueQualityRun } from "../runs";
 import { SYSTEM, MINUTE, DAY } from "../words";
+import type { HighLevelMessage, HighLevelSentence } from "./highlevel";
 import type { QuoCall, QuoMessage, QuoTranscript } from "./quo";
 
 type Connection = Doc<"qualityConnections">;
@@ -32,10 +33,11 @@ function ownNumbers(connection: Connection): Set<string> {
   return new Set(connection.numbers.map((n) => normalAddress("sms", n.number)).filter((n): n is string => n !== null));
 }
 
-async function people(ctx: MutationCtx, companyId: Id<"companies">, counterpart: string | undefined): Promise<{ customers: Id<"customers">[]; cleaners: Id<"cleaners">[] }> {
+async function people(ctx: MutationCtx, companyId: Id<"companies">, counterpart: string | undefined, channel: "sms" | "email" = "sms"): Promise<{ customers: Id<"customers">[]; cleaners: Id<"cleaners">[] }> {
   if (!counterpart) return { customers: [], cleaners: [] };
-  const customers = (await clientsAtPhone(ctx, companyId, counterpart)).map((c) => c.customerId);
-  const cleaners = (await recipientsAt(ctx, companyId, "sms", counterpart)).filter((r) => r.kind === "cleaner").map((r) => r.id as Id<"cleaners">);
+  const found = await recipientsAt(ctx, companyId, channel, counterpart);
+  const customers = channel === "sms" ? (await clientsAtPhone(ctx, companyId, counterpart)).map((c) => c.customerId) : found.filter((r) => r.kind === "customer").map((r) => r.id as Id<"customers">);
+  const cleaners = found.filter((r) => r.kind === "cleaner").map((r) => r.id as Id<"cleaners">);
   return { customers: [...new Set(customers)], cleaners: [...new Set(cleaners)] };
 }
 
@@ -171,3 +173,50 @@ export async function markUnavailable(ctx: MutationCtx, comm: Comm): Promise<voi
 }
 
 export const LOOKBACK = { visitsBefore: 14 * DAY, visitsAfter: 2 * DAY };
+
+/**
+ * A HighLevel text, email, call or voicemail, from its webhook or a poll, kept once by its message id. The
+ * other side is the sender (incoming) or the recipient (outgoing); an email is matched by address, the rest by
+ * phone. A call is re-checked a few times for its transcription. Never read before the connection's start.
+ */
+export async function ingestHighLevel(ctx: MutationCtx, connection: Connection, message: HighLevelMessage): Promise<{ comm: Comm; created: boolean } | null> {
+  if (message.occurredAt < connection.readFrom || message.kind === "other") return null;
+  const found = await existing(ctx, connection, message.id);
+  if (found) {
+    if (message.callDuration !== undefined || message.callStatus) await ctx.db.patch(found._id, { durationSec: message.callDuration ?? found.durationSec, status: message.callStatus ?? found.status });
+    return { comm: found, created: false };
+  }
+  const channel = message.kind === "email" ? "email" : "sms";
+  const raw = message.direction === "incoming" ? message.from : message.to;
+  const counterpart = normalAddress(channel, raw) ?? undefined;
+  const matched = await people(ctx, connection.companyId, counterpart, channel);
+  const now = Date.now();
+  const isCall = message.kind === "call" || message.kind === "voicemail";
+  const id = await ctx.db.insert("qualityComms", {
+    companyId: connection.companyId,
+    connectionId: connection._id,
+    provider: "highlevel",
+    kind: message.kind === "voicemail" ? "voicemail" : message.kind,
+    providerId: message.id,
+    conversationId: message.conversationId,
+    direction: message.direction,
+    counterpart,
+    status: message.callStatus,
+    occurredAt: message.occurredAt,
+    ingestedAt: now,
+    durationSec: message.callDuration,
+    ...(isCall ? {} : { body: `${message.subject ? `${message.subject}\n` : ""}${message.body}`.slice(0, message.kind === "email" ? 8000 : 1600) }),
+    matchedCustomerIds: matched.customers,
+    matchedCleanerIds: matched.cleaners,
+    recheckAt: isCall && (message.callDuration ?? 0) > 0 && connection.capabilities.readTranscripts !== "unavailable" ? now + RECHECK_MINUTES[0] * MINUTE : undefined,
+    rechecks: 0,
+  });
+  await recordEvent(ctx, { companyId: connection.companyId, type: "quality_comm.received", actor: SYSTEM, subject: { table: "qualityComms", id }, data: { kind: message.kind, direction: message.direction } });
+  await enqueueQualityRun(ctx, { companyId: connection.companyId, kind: "message_received", key: `comm:${id}`, commId: id, historical: message.occurredAt < connection.connectedAt });
+  return { comm: (await ctx.db.get(id))!, created: true };
+}
+
+/** HighLevel names no speaker, only a media channel: every line stays "speaker not identified". */
+export async function applyHighLevelTranscription(ctx: MutationCtx, connection: Connection, comm: Comm, sentences: HighLevelSentence[]) {
+  return applyTranscripts(ctx, connection, comm, [{ status: sentences.length ? "completed" : "in_progress", dialogue: sentences.map((s) => ({ content: s.text, start: s.start, end: s.end, identifier: null, actorId: null })) }]);
+}

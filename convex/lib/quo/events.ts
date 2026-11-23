@@ -19,6 +19,7 @@ import { normalAddress } from "../compliance/recipients";
 import { recordEvent } from "../events";
 import type { QuoEvent } from "./api";
 import { ensureConversation } from "./route";
+import { qualityOnQuoEvent } from "../quality/comms/quoBridge";
 
 const RACE_MS = 2 * 60_000;
 
@@ -37,6 +38,9 @@ export async function applyQuoEvent(ctx: MutationCtx, connection: Doc<"quoConnec
     return "other_workspace";
   }
   await ctx.db.patch(connection._id, { ...(connection.orgId || !context.orgId ? {} : { orgId: context.orgId }), ...(connection.webhook ? { webhook: { ...connection.webhook, lastEventAt: Date.now() } } : {}) });
+
+  // Calls, transcripts and summaries are Quality's to read (lib/quality/comms/quoBridge.ts); nothing else uses them.
+  if (event.type.startsWith("call.")) return `quality: ${await qualityOnQuoEvent(ctx, connection, eventId, event as never)}`;
 
   if (event.type === "message.received" && resource.direction === "incoming") {
     const from = normalAddress("sms", context.senderIdentifier ?? "");
@@ -60,6 +64,8 @@ export async function applyQuoEvent(ctx: MutationCtx, connection: Doc<"quoConnec
       providerId: `quo:${resource.id ?? eventId}`,
       quo: { connectionId: connection._id, senderId: number.id, providerConversationId: context.conversationId, providerMessageId: resource.id },
     });
+    // Quality reads the same text for quality evidence, when it reads this connection. It sends nothing.
+    await qualityOnQuoEvent(ctx, connection, eventId, event as never);
     return "received";
   }
 

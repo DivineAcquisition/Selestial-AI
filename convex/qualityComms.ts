@@ -1,16 +1,17 @@
 /**
- * Quality's connection to a phone platform (Quo), and what it does with what arrives.
+ * Quality reading the phone platforms a company already uses, and what it does with what arrives.
  *
- * Connecting: the Owner pastes a Quo API key; it is sealed at rest and checked. The check reads the workspace's
- * numbers and a few recent calls, looks for a transcript, and registers a signed webhook. Each capability is
- * recorded as checked (available / unavailable / unknown), never assumed. Reading is off until the Owner turns
- * it on in Quality's Playbook, and nothing before the chosen start date is read.
+ * Quo: Quality reads through the company's one Quo connection (convex/quo.ts): the same key, the same
+ * numbers, the same signed webhook. The Owner turns reading on here; Quality then checks what the workspace
+ * actually allows (calls, transcripts, Quo's summaries) and records each capability as checked, never assumed.
+ * The shared webhook adds call events only while Quality reads, and lib/quo/events.ts passes calls and incoming
+ * texts to Quality (lib/quality/comms/quoBridge.ts). A bounded poll every ten minutes catches what the webhook
+ * missed, including transcripts that arrive after the call and revisions. Nothing before the chosen start date
+ * is read. Nothing is sent, recorded or changed at Quo.
  *
- * Arriving: signed webhooks (deduplicated by delivery id, in any order) and a bounded poll every ten minutes
- * catch calls, texts, summaries and transcripts, including transcripts that arrive after the call and
- * revisions. Each item becomes a keyed run that links it to a visit only on evidence, reads it by rules, and
- * hands a concern to the visit's quality case. An expired key, a refused request or an outage is shown on the
- * connection with what to do, and reading resumes when it clears.
+ * Each item becomes a keyed run that links it to a visit only on evidence, reads it by rules, and hands a
+ * concern to the visit's quality case. A refused key, an outage or a disconnected Quo connection is shown with
+ * what to do, and reading resumes when it clears.
  */
 import { v } from "convex/values";
 
@@ -21,17 +22,18 @@ import { managerMutation, managerQuery, ownerMutation } from "./lib/builders";
 import { userError } from "./lib/errors";
 import { byMember, recordEvent } from "./lib/events";
 import { owned } from "./lib/access";
-import { seal, secretsConfigured, unseal } from "./lib/recruiter/secrets";
-import { newLinkId, publicIdFor } from "./lib/sales/links";
-import { applySummary, applyTranscripts, ingestCall, ingestMessage, LOOKBACK, markUnavailable } from "./lib/quality/comms/ingest";
+import { quoConnectionOf } from "./lib/quo/route";
+import { publicIdFor } from "./lib/sales/links";
+import { applyTranscripts, ingestCall, LOOKBACK, markUnavailable } from "./lib/quality/comms/ingest";
 import { decideAssociation } from "./lib/quality/comms/match";
 import { extractFromMessage, extractFromSegments, extractFromSummary, isRepeat, type Extract } from "./lib/quality/comms/extract";
-import { parseQuoEvent, QUO_EVENTS, QuoError, quoClient } from "./lib/quality/comms/quo";
+import { QuoError, quoClient } from "./lib/quality/comms/quo";
 import { agentState, finishRun, leaseRun } from "./lib/quality/runs";
 import { qualitySettings } from "./lib/quality/settings";
 import { onConcern, reviewVisit } from "./lib/quality/workflow";
 import { addEntry } from "./lib/quality/cases";
 import { DAY, MINUTE, QUALITY, SYSTEM } from "./lib/quality/words";
+import { keyFor } from "./quo";
 
 const UNKNOWN_CAPABILITIES = { readMessages: "unknown", readThreads: "not_used", readCallMetadata: "unknown", readTranscripts: "unknown", readSummaries: "unknown", recordings: "not_used", webhooks: "unknown", send: "not_used" } as const;
 
@@ -42,57 +44,89 @@ function withoutLink<T extends { link?: unknown }>(call: T): Omit<T, "link"> {
   return copy;
 }
 
-// ── Connecting ───────────────────────────────────────────────────────────────────────────────────
+const numbersOf = (quo: Doc<"quoConnections">) => quo.selected.map((n) => ({ id: n.id, number: n.phoneNumber, ...(n.name ? { name: n.name } : {}) }));
 
-export const connectQuo = ownerMutation({
-  args: { apiKey: v.string(), readDays: v.number() },
+// ── Reading Quo through the company's one Quo connection ─────────────────────────────────────────
+
+/** The Owner turns Quality's reading on for the company's Quo connection. There is no second key to paste. */
+export const startQuoReading = ownerMutation({
+  args: { readDays: v.number() },
   handler: async (ctx, args) => {
-    const key = args.apiKey.trim();
-    if (key.length < 16 || key.length > 200 || /\s/.test(key)) throw userError("Paste the API key exactly as Quo shows it (Workspace Settings → API).");
     if (![0, 7, 30].includes(args.readDays)) throw userError("Choose to read from now, or from 7 or 30 days back.");
-    if (!(await secretsConfigured())) throw userError("Keys can't be stored safely on this deployment yet, so Quo can't be connected.");
-    const existing = await ctx.db.query("qualityConnections").withIndex("by_company_provider", (q) => q.eq("companyId", ctx.companyId).eq("provider", "quo")).take(5);
-    if (existing.some((c) => c.status !== "disconnected")) throw userError("Quo is already connected. Disconnect it first to use a different key.");
+    const quo = await quoConnectionOf(ctx, ctx.companyId);
+    if (!quo || quo.status === "disconnected") throw userError("Connect Quo first in Settings › Integrations › Quo. Quality reads calls through that same connection.");
+    if (!quo.selected.length) throw userError("Choose the Quo numbers Selestial may use in Settings › Integrations › Quo first. Quality reads calls on those numbers.");
     const now = Date.now();
-    const connectionId = await ctx.db.insert("qualityConnections", { companyId: ctx.companyId, provider: "quo", publicId: newLinkId(), label: "Quo", status: "checking", numbers: [], capabilities: { ...UNKNOWN_CAPABILITIES }, readFrom: now - args.readDays * DAY, failures: 0, connectedBy: ctx.member._id, connectedAt: now });
-    const sealed = await seal(key, connectionId);
-    if (!sealed) throw userError("Keys can't be stored safely on this deployment yet, so Quo can't be connected.");
-    await ctx.db.insert("qualityCredentials", { companyId: ctx.companyId, connectionId, sealedKey: sealed, createdAt: now });
+    const existing = (await ctx.db.query("qualityConnections").withIndex("by_company_provider", (q) => q.eq("companyId", ctx.companyId).eq("provider", "quo")).take(5)).find((c) => c.status !== "disconnected");
+    const fields = { quoConnectionId: quo._id, status: "checking" as const, numbers: numbersOf(quo), problem: undefined, failures: 0 };
+    const connectionId = existing
+      ? (await ctx.db.patch(existing._id, fields), existing._id)
+      : await ctx.db.insert("qualityConnections", { companyId: ctx.companyId, provider: "quo", label: "Quo", ...fields, capabilities: { ...UNKNOWN_CAPABILITIES }, readFrom: now - args.readDays * DAY, connectedBy: ctx.member._id, connectedAt: now });
     await recordEvent(ctx, { companyId: ctx.companyId, type: "quality_connection.added", actor: byMember(ctx), subject: { table: "qualityConnections", id: connectionId }, data: { provider: "quo" } });
     await ctx.scheduler.runAfter(0, internal.qualityComms.check, { connectionId });
+    // The shared webhook now also brings call events.
+    await ctx.scheduler.runAfter(0, internal.quo.syncWebhook, { connectionId: quo._id });
     return { connectionId };
   },
 });
 
-export const credentialFor = internalQuery({
+/** Stops Quality reading a platform. The Quo connection itself, and everything already read, stay. */
+export const stopReading = ownerMutation({
   args: { connectionId: v.id("qualityConnections") },
   handler: async (ctx, args) => {
-    const connection = await ctx.db.get(args.connectionId);
-    if (!connection || connection.status === "disconnected") return null;
-    const credential = await ctx.db.query("qualityCredentials").withIndex("by_connection", (q) => q.eq("connectionId", args.connectionId)).first();
-    return credential ? { connection, sealedKey: credential.sealedKey, sealedWebhookKey: credential.sealedWebhookKey ?? null } : null;
+    const connection = await owned(ctx, args.connectionId);
+    if (connection.status === "disconnected") return null;
+    await ctx.db.patch(connection._id, { status: "disconnected", disconnectedAt: Date.now(), problem: undefined, leaseUntil: undefined });
+    if (connection.quoConnectionId) await ctx.scheduler.runAfter(0, internal.quo.syncWebhook, { connectionId: connection.quoConnectionId });
+    if (connection.provider === "highlevel") await ctx.scheduler.runAfter(0, internal.qualityHighLevel.forget, { connectionId: connection._id });
+    await recordEvent(ctx, { companyId: ctx.companyId, type: "quality_connection.removed", actor: byMember(ctx), subject: { table: "qualityConnections", id: connection._id }, data: { provider: connection.provider } });
+    return null;
   },
 });
 
-/** Checks the key and what this workspace actually allows. Each capability is recorded as checked, never assumed. */
+export const recheck = ownerMutation({
+  args: { connectionId: v.id("qualityConnections") },
+  handler: async (ctx, args) => {
+    const connection = await owned(ctx, args.connectionId);
+    if (connection.status === "disconnected") throw userError("Turn reading on again first.");
+    await ctx.db.patch(connection._id, { status: "checking" });
+    await ctx.scheduler.runAfter(0, connection.provider === "highlevel" ? internal.qualityHighLevel.check : internal.qualityComms.check, { connectionId: connection._id });
+    return null;
+  },
+});
+
+/** Whether the shared Quo webhook should bring call events: Quality is reading that connection. */
+export const readsCalls = internalQuery({
+  args: { quoConnectionId: v.id("quoConnections") },
+  handler: async (ctx, args) => {
+    const row = await ctx.db.query("qualityConnections").withIndex("by_quo_connection", (q) => q.eq("quoConnectionId", args.quoConnectionId)).first();
+    if (!row || row.status === "disconnected") return false;
+    const company = await ctx.db.get(row.companyId);
+    return Boolean(company && qualitySettings(company).readPhonePlatform);
+  },
+});
+
+export const readerFor = internalQuery({
+  args: { connectionId: v.id("qualityConnections") },
+  handler: async (ctx, args) => {
+    const connection = await ctx.db.get(args.connectionId);
+    return connection && connection.status !== "disconnected" && connection.quoConnectionId ? { connection, quoConnectionId: connection.quoConnectionId } : null;
+  },
+});
+
+/** Checks what this Quo workspace actually allows Quality to read. Each capability is recorded as checked, never assumed. */
 export const check = internalAction({
   args: { connectionId: v.id("qualityConnections") },
   handler: async (ctx, args): Promise<null> => {
-    const found = await ctx.runQuery(internal.qualityComms.credentialFor, args);
+    const found = await ctx.runQuery(internal.qualityComms.readerFor, args);
     if (!found) return null;
-    const key = await unseal(found.sealedKey, args.connectionId);
-    if (!key) {
-      await ctx.runMutation(internal.qualityComms.checked, { connectionId: args.connectionId, ok: false, problem: "The key could not be read back. Paste it again." });
+    const quo = await keyFor(ctx, found.quoConnectionId);
+    if (!quo || quo.connection.status === "disconnected") {
+      await ctx.runMutation(internal.qualityComms.checked, { connectionId: args.connectionId, ok: false, problem: "The Quo connection isn't usable. Check it in Settings › Integrations › Quo.", expired: true });
       return null;
     }
-    const api = quoClient(key);
+    const api = quoClient(quo.key);
     try {
-      let numbers: { id: string; number: string; name?: string }[] = [];
-      try {
-        numbers = await api.numbers();
-      } catch (error) {
-        if (error instanceof QuoError && error.kind === "unauthorized") throw error;
-      }
       const page = await api.calls({ since: Date.now() - 14 * DAY, limit: 10 });
       let transcripts: "available" | "unavailable" | "unknown" = "unknown";
       for (const call of page.calls.filter((c) => (c.duration ?? 0) > 0).slice(0, 3)) {
@@ -104,17 +138,12 @@ export const check = internalAction({
         if (t.length && t.every((x) => x.status === "absent")) transcripts = "unavailable";
       }
       const summaries = page.calls.some((c) => c.summary?.status === "completed") ? "available" : page.calls.length && page.calls.every((c) => !c.summary || c.summary.status === "absent") ? "unavailable" : "unknown";
-      const site = process.env.CONVEX_SITE_URL?.trim().replace(/\/+$/, "");
-      let webhook: { id: string; key: string } | null = null;
-      if (site && !found.connection.webhookId) webhook = await api.createWebhook(`${site}/webhooks/quality-quo/${found.connection.publicId}`, QUO_EVENTS);
-      const sealedWebhookKey = webhook ? await seal(webhook.key, args.connectionId) : null;
+      const webhook = quo.connection.webhook ? "available" : "unavailable";
       await ctx.runMutation(internal.qualityComms.checked, {
         connectionId: args.connectionId,
         ok: true,
-        numbers,
-        capabilities: { readMessages: webhook || found.connection.webhookId ? "available" : "unavailable", readThreads: "not_used", readCallMetadata: "available", readTranscripts: transcripts, readSummaries: summaries, recordings: "not_used", webhooks: webhook || found.connection.webhookId ? "available" : site ? "unavailable" : "unknown", send: "not_used" },
-        ...(webhook ? { webhookId: webhook.id } : {}),
-        ...(sealedWebhookKey ? { sealedWebhookKey } : {}),
+        numbers: numbersOf(quo.connection),
+        capabilities: { readMessages: webhook, readThreads: "not_used", readCallMetadata: "available", readTranscripts: transcripts, readSummaries: summaries, recordings: "not_used", webhooks: webhook, send: "not_used" },
       });
     } catch (error) {
       const problem = error instanceof QuoError ? error.message : "Quo could not be reached. Try again in a few minutes.";
@@ -134,8 +163,6 @@ export const checked = internalMutation({
     expired: v.optional(v.boolean()),
     numbers: v.optional(v.array(v.object({ id: v.string(), number: v.string(), name: v.optional(v.string()) }))),
     capabilities: v.optional(v.object({ readMessages: capabilityValidator, readThreads: capabilityValidator, readCallMetadata: capabilityValidator, readTranscripts: capabilityValidator, readSummaries: capabilityValidator, recordings: capabilityValidator, webhooks: capabilityValidator, send: capabilityValidator })),
-    webhookId: v.optional(v.string()),
-    sealedWebhookKey: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const connection = await ctx.db.get(args.connectionId);
@@ -144,91 +171,8 @@ export const checked = internalMutation({
       await ctx.db.patch(connection._id, { status: args.expired ? "expired" : "error", problem: args.problem, failures: connection.failures + 1, lastSyncAt: Date.now() });
       return null;
     }
-    await ctx.db.patch(connection._id, { status: "connected", problem: undefined, failures: 0, numbers: args.numbers ?? connection.numbers, capabilities: args.capabilities ?? connection.capabilities, webhookId: args.webhookId ?? connection.webhookId, lastSyncAt: Date.now(), lastSuccessAt: Date.now() });
-    if (args.sealedWebhookKey) {
-      const credential = await ctx.db.query("qualityCredentials").withIndex("by_connection", (q) => q.eq("connectionId", connection._id)).first();
-      if (credential) await ctx.db.patch(credential._id, { sealedWebhookKey: args.sealedWebhookKey });
-    }
+    await ctx.db.patch(connection._id, { status: "connected", problem: undefined, failures: 0, numbers: args.numbers ?? connection.numbers, capabilities: args.capabilities ?? connection.capabilities, lastSyncAt: Date.now(), lastSuccessAt: Date.now() });
     return null;
-  },
-});
-
-export const recheck = ownerMutation({
-  args: { connectionId: v.id("qualityConnections") },
-  handler: async (ctx, args) => {
-    const connection = await owned(ctx, args.connectionId);
-    if (connection.status === "disconnected") throw userError("Connect Quo again with a new key.");
-    await ctx.db.patch(connection._id, { status: "checking" });
-    await ctx.scheduler.runAfter(0, internal.qualityComms.check, { connectionId: connection._id });
-    return null;
-  },
-});
-
-export const disconnect = ownerMutation({
-  args: { connectionId: v.id("qualityConnections") },
-  handler: async (ctx, args) => {
-    const connection = await owned(ctx, args.connectionId);
-    if (connection.status === "disconnected") return null;
-    const credential = await ctx.db.query("qualityCredentials").withIndex("by_connection", (q) => q.eq("connectionId", connection._id)).first();
-    if (credential && connection.webhookId) await ctx.scheduler.runAfter(0, internal.qualityComms.removeWebhook, { sealedKey: credential.sealedKey, connectionId: connection._id, webhookId: connection.webhookId });
-    if (credential) await ctx.db.delete(credential._id);
-    await ctx.db.patch(connection._id, { status: "disconnected", disconnectedAt: Date.now(), problem: undefined });
-    await recordEvent(ctx, { companyId: ctx.companyId, type: "quality_connection.removed", actor: byMember(ctx), subject: { table: "qualityConnections", id: connection._id }, data: { provider: "quo" } });
-    return null;
-  },
-});
-
-/** Best effort: the webhook at Quo is removed. If it cannot be, deliveries are refused anyway (no key is kept). */
-export const removeWebhook = internalAction({
-  args: { sealedKey: v.string(), connectionId: v.id("qualityConnections"), webhookId: v.string() },
-  handler: async (_ctx, args): Promise<null> => {
-    const key = await unseal(args.sealedKey, args.connectionId);
-    if (key) await quoClient(key).deleteWebhook(args.webhookId).catch(() => undefined);
-    return null;
-  },
-});
-
-// ── Webhooks ─────────────────────────────────────────────────────────────────────────────────────
-
-export const webhookKey = internalQuery({
-  args: { publicId: v.string() },
-  handler: async (ctx, args) => {
-    if (args.publicId.length > 64) return null;
-    const connection = await ctx.db.query("qualityConnections").withIndex("by_publicId", (q) => q.eq("publicId", args.publicId)).first();
-    if (!connection || connection.status === "disconnected") return null;
-    const credential = await ctx.db.query("qualityCredentials").withIndex("by_connection", (q) => q.eq("connectionId", connection._id)).first();
-    return credential?.sealedWebhookKey ? { connectionId: connection._id, sealedWebhookKey: credential.sealedWebhookKey } : null;
-  },
-});
-
-async function applyEvent(ctx: MutationCtx, connection: Doc<"qualityConnections">, body: string): Promise<string> {
-  const event = parseQuoEvent(body);
-  if (!event) return "unreadable";
-  const company = await ctx.db.get(connection.companyId);
-  if (!company || !qualitySettings(company).readPhonePlatform) return "reading is off";
-  if (event.kind === "call") return (await ingestCall(ctx, connection, event.call)) ? "call" : "before the start date";
-  if (event.kind === "message") return (await ingestMessage(ctx, connection, event.message)) ? "message" : "before the start date";
-  const comm = event.kind === "transcript" || event.kind === "summary" ? await ctx.db.query("qualityComms").withIndex("by_connection_provider_id", (q) => q.eq("connectionId", connection._id).eq("providerId", event.callId)).first() : null;
-  // A transcript can arrive before its call: the poll fetches the call and the transcript together later.
-  if (!comm) return "call not seen yet";
-  if (event.kind === "transcript") return applyTranscripts(ctx, connection, comm, [event.transcript]);
-  if (event.kind === "summary") {
-    await applySummary(ctx, comm, event.summary);
-    return "summary";
-  }
-  return "ignored";
-}
-
-export const webhook = internalMutation({
-  args: { connectionId: v.id("qualityConnections"), deliveryId: v.string(), body: v.string() },
-  handler: async (ctx, args) => {
-    const connection = await ctx.db.get(args.connectionId);
-    if (!connection || connection.status === "disconnected") return "disconnected";
-    const seen = await ctx.db.query("qualityWebhookEvents").withIndex("by_connection_delivery", (q) => q.eq("connectionId", connection._id).eq("deliveryId", args.deliveryId)).first();
-    if (seen) return "duplicate";
-    const parsed = parseQuoEvent(args.body);
-    await ctx.db.insert("qualityWebhookEvents", { connectionId: connection._id, deliveryId: args.deliveryId, eventId: parsed?.eventId, type: parsed && "type" in parsed ? parsed.type : parsed?.kind ?? "unreadable", receivedAt: Date.now() });
-    return applyEvent(ctx, connection, args.body);
   },
 });
 
@@ -238,15 +182,19 @@ export const syncBegin = internalMutation({
   args: { connectionId: v.id("qualityConnections") },
   handler: async (ctx, args) => {
     const connection = await ctx.db.get(args.connectionId);
-    if (!connection || connection.status === "disconnected" || connection.status === "checking" || connection.status === "expired") return null;
+    if (!connection || !connection.quoConnectionId || connection.status === "disconnected" || connection.status === "checking" || connection.status === "expired") return null;
     const company = await ctx.db.get(connection.companyId);
     if (!company || !qualitySettings(company).readPhonePlatform) return null;
+    const quo = await ctx.db.get(connection.quoConnectionId);
+    if (!quo || quo.status === "disconnected") {
+      await ctx.db.patch(connection._id, { status: "expired", problem: "The Quo connection was disconnected. Connect Quo again in Settings › Integrations › Quo." });
+      return null;
+    }
     const now = Date.now();
     if (connection.leaseUntil !== undefined && connection.leaseUntil > now) return null;
-    await ctx.db.patch(connection._id, { leaseUntil: now + 5 * MINUTE, lastSyncAt: now });
-    const credential = await ctx.db.query("qualityCredentials").withIndex("by_connection", (q) => q.eq("connectionId", connection._id)).first();
+    await ctx.db.patch(connection._id, { leaseUntil: now + 5 * MINUTE, lastSyncAt: now, numbers: numbersOf(quo) });
     const due = await ctx.db.query("qualityComms").withIndex("by_recheck", (q) => q.gt("recheckAt", 0).lte("recheckAt", now)).take(40);
-    return credential ? { sealedKey: credential.sealedKey, since: Math.max(connection.readFrom, connection.syncCursor ?? connection.readFrom), recheck: due.filter((c) => c.connectionId === connection._id).slice(0, 15).map((c) => ({ commId: c._id, providerId: c.providerId })) } : null;
+    return { quoConnectionId: connection.quoConnectionId, numbers: quo.selected.map((n) => n.id), since: Math.max(connection.readFrom, connection.syncCursor ?? connection.readFrom), recheck: due.filter((c) => c.connectionId === connection._id).slice(0, 15).map((c) => ({ commId: c._id, providerId: c.providerId })) };
   },
 });
 
@@ -287,12 +235,12 @@ export const sync = internalAction({
   handler: async (ctx, args): Promise<null> => {
     const begun = await ctx.runMutation(internal.qualityComms.syncBegin, args);
     if (!begun) return null;
-    const key = await unseal(begun.sealedKey, args.connectionId);
-    if (!key) {
-      await ctx.runMutation(internal.qualityComms.syncFinish, { connectionId: args.connectionId, ok: false, problem: "The stored key could not be read. Reconnect Quo.", expired: true });
+    const quo = await keyFor(ctx, begun.quoConnectionId);
+    if (!quo) {
+      await ctx.runMutation(internal.qualityComms.syncFinish, { connectionId: args.connectionId, ok: false, problem: "The Quo connection's key could not be read. Check it in Settings › Integrations › Quo.", expired: true });
       return null;
     }
-    const api = quoClient(key);
+    const api = quoClient(quo.key);
     try {
       let after: string | undefined;
       let cursor = begun.since;
@@ -300,7 +248,9 @@ export const sync = internalAction({
       for (let page = 0; page < 3; page += 1) {
         const result = await api.calls({ since: begun.since, after, limit: 50 });
         for (const c of result.calls) cursor = Math.max(cursor, c.createdAt);
-        await ctx.runMutation(internal.qualityComms.syncApply, { connectionId: args.connectionId, calls: result.calls.map(withoutLink), transcripts: [] });
+        // Only the numbers the Owner gave Selestial.
+        const ours = result.calls.filter((c) => !c.phoneNumberId || begun.numbers.includes(c.phoneNumberId));
+        await ctx.runMutation(internal.qualityComms.syncApply, { connectionId: args.connectionId, calls: ours.map(withoutLink), transcripts: [] });
         if (!result.next) break;
         after = result.next;
       }
@@ -323,7 +273,7 @@ export const sync = internalAction({
   },
 });
 
-/** Every ten minutes: each readable connection is synced once. An expired key waits for the Owner to reconnect. */
+/** Every ten minutes: each platform Quality reads is synced once. An expired connection waits for the Owner. */
 export const sweep = internalMutation({
   args: {},
   handler: async (ctx) => {
@@ -333,7 +283,7 @@ export const sweep = internalMutation({
       for (const c of rows) {
         const company = await ctx.db.get(c.companyId);
         if (!company || company.suspendedAt || !qualitySettings(company).readPhonePlatform) continue;
-        await ctx.scheduler.runAfter(0, internal.qualityComms.sync, { connectionId: c._id });
+        await ctx.scheduler.runAfter(0, c.provider === "highlevel" ? internal.qualityHighLevel.sync : internal.qualityComms.sync, { connectionId: c._id });
         n += 1;
       }
     }
@@ -358,6 +308,8 @@ async function explicitJob(ctx: MutationCtx, companyId: Id<"companies">, text: s
   }
   return undefined;
 }
+
+const COMM_LABEL: Record<Doc<"qualityComms">["kind"], { label: string; article: string }> = { call: { label: "Call", article: "a call" }, voicemail: { label: "Voicemail", article: "a voicemail" }, sms: { label: "Text", article: "a text" }, email: { label: "Email", article: "an email" } };
 
 function wordsOf(comm: Doc<"qualityComms">): string {
   if (comm.transcript?.status === "completed") return comm.transcript.segments.map((s) => s.text).join(" ");
@@ -412,7 +364,7 @@ export const processRun = internalMutation({
     let extracts: Extract[] = [];
     if (!prior.length) {
       if (fresh.transcript?.status === "completed") extracts = extractFromSegments(fresh.transcript.segments);
-      else if (fresh.body) extracts = extractFromMessage(fresh.body, "sms", fresh.direction);
+      else if (fresh.body) extracts = extractFromMessage(fresh.body, fresh.kind === "email" ? "email" : "sms", fresh.direction);
       else if (fresh.providerSummary?.status === "completed") extracts = extractFromSummary(fresh.providerSummary.lines);
       for (const e of extracts) await ctx.db.insert("qualityExtracts", { companyId: company._id, commId: comm._id, version, kind: e.kind, text: e.text, quote: e.quote, segments: e.segments, speakerUncertain: e.speakerUncertain, fromSummary: e.fromSummary, by: "rules", state: "suggested", createdAt: Date.now() });
       checked.push(fresh.transcript?.status === "completed" ? `The transcript (version ${version}, ${fresh.transcript.segments.length} segments)` : fresh.body ? "The text's words" : fresh.providerSummary ? "The provider's summary (not anyone's words)" : "Call details only: no transcript yet");
@@ -429,9 +381,9 @@ export const processRun = internalMutation({
         if (isRepeat(words, earlier)) {
           found.push("The same words were already reported for this visit: recorded on the case, not a new complaint.");
           const open = cases.find((c) => c.stage !== "closed");
-          if (open) await addEntry(ctx, open, { kind: "evidence", basis: comm.kind === "call" ? "customer_stated" : "customer_stated", text: `The same concern came up again in a ${comm.kind === "call" ? "call" : "text"}.`, source: { table: "qualityComms", id: comm._id, label: comm.kind === "call" ? "Call" : "Text", at: comm.occurredAt }, actor: SYSTEM });
+          if (open) await addEntry(ctx, open, { kind: "evidence", basis: "customer_stated", text: `The same concern came up again in ${COMM_LABEL[comm.kind].article}.`, source: { table: "qualityComms", id: comm._id, label: COMM_LABEL[comm.kind].label, at: comm.occurredAt }, actor: SYSTEM });
         } else {
-          const out = await onConcern(ctx, company, { job, words, origin: comm.kind === "sms" ? "sms" : "call", source: { table: "qualityComms", id: comm._id, label: comm.kind === "call" ? "Call" : "Text", at: comm.occurredAt }, historical: run.historical, actor: QUALITY, act: state.ok && !run.historical });
+          const out = await onConcern(ctx, company, { job, words, origin: comm.kind === "sms" ? "sms" : comm.kind === "email" ? "email" : "call", source: { table: "qualityComms", id: comm._id, label: COMM_LABEL[comm.kind].label, at: comm.occurredAt }, historical: run.historical, actor: QUALITY, act: state.ok && !run.historical });
           if (out.caseId) for (const e of await ctx.db.query("qualityExtracts").withIndex("by_company_comm", (q) => q.eq("companyId", company._id).eq("commId", comm._id)).take(30)) if (!e.caseId) await ctx.db.patch(e._id, { caseId: out.caseId });
           next.push(...out.next);
         }

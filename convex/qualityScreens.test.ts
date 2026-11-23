@@ -9,12 +9,13 @@
  */
 import { writeFileSync } from "node:fs";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { dispatchTestEnv, PHONES } from "../tests/dispatchHarness";
 import { CUSTOMER_PHONE, DAY, flush, JOB_START, qualityLink, qualitySetup } from "../tests/qualityHarness";
 import { api, internal } from "./_generated/api";
 import { mockQuo, QuoError, type QuoApi } from "./lib/quality/comms/quo";
+import { fakeQuo as sharedFakeQuo, QUO_NUMBER as SHARED_NUMBER } from "../tests/fakeQuo";
 
 let undo: () => void;
 beforeEach(() => {
@@ -23,6 +24,7 @@ beforeEach(() => {
 afterEach(() => {
   undo();
   mockQuo.api = null;
+  vi.unstubAllGlobals();
 });
 
 const SCOPE = "A full clean of the home.\n- Bathroom: Clean the shower\n- Kitchen: Wipe kitchen counters\nNot included: Inside the oven.";
@@ -81,10 +83,17 @@ describe("Quality's screens over a sample company", () => {
     process.env.MAILBOX_TOKEN_KEY = btoa("k".repeat(32));
     process.env.CONVEX_SITE_URL = "https://example.convex.site";
     mockQuo.api = fakeQuo();
-    await as.mutation(api.quality.saveSettings, { companyId, settings: { readPhonePlatform: true } });
-    const { connectionId } = await as.mutation(api.qualityComms.connectQuo, { companyId, apiKey: "quo-test-key-0123456789", readDays: 30 });
+    const shared = sharedFakeQuo();
+    vi.stubGlobal("fetch", shared.fetcher);
+    await as.mutation(api.quo.connect, { companyId, apiKey: shared.state.key });
     await flush(s.t);
-    await s.t.mutation(internal.qualityComms.webhook, { connectionId, deliveryId: "d1", body: JSON.stringify({ id: "EV-1", type: "call.completed", apiVersion: "2026-03-30", createdAt: new Date().toISOString(), data: { resource: { id: "AC1", direction: "incoming", status: "completed", participants: [CUSTOMER_PHONE], createdAt: new Date().toISOString(), duration: 95 } } }) });
+    await as.mutation(api.quo.selectNumbers, { companyId, numberIds: [SHARED_NUMBER.id] });
+    await flush(s.t);
+    const quoConnectionId = (await s.t.run(async (ctx) => ctx.db.query("quoConnections").collect())).find((c) => c.companyId === companyId)!._id;
+    await as.mutation(api.quality.saveSettings, { companyId, settings: { readPhonePlatform: true } });
+    await as.mutation(api.qualityComms.startQuoReading, { companyId, readDays: 30 });
+    await flush(s.t);
+    await s.t.mutation(internal.quo.ingest, { connectionId: quoConnectionId, eventId: "d1", event: JSON.stringify({ id: "EV-1", type: "call.completed", apiVersion: "2026-03-30", createdAt: new Date().toISOString(), data: { resource: { id: "AC1", direction: "incoming", status: "completed", participants: [CUSTOMER_PHONE], createdAt: new Date().toISOString(), duration: 95 }, context: { phoneNumberId: SHARED_NUMBER.id, orgId: "OR1" } } }) });
     await flush(s.t);
 
     const overview = await as.query(api.quality.overview, { companyId });
@@ -101,6 +110,7 @@ describe("Quality's screens over a sample company", () => {
     const associations = await as.query(api.qualityComms.associations, { companyId });
     const permissions = await as.query(api.permissions.list, { companyId });
     const forJob = await as.query(api.quality.forJob, { companyId, jobId: scopeVisit });
+    const cleanerRates = await as.query(api.quality.cleanerRates, { companyId });
     // What the cleaner sees from the photo request: the day and town, nothing anyone said.
     const linkView = await s.t.query(api.qualityLinks.view, { token: qualityLink(PHONES.Lena) });
     expect(linkView).toMatchObject({ state: "active", purpose: "missing_evidence" });
@@ -110,11 +120,11 @@ describe("Quality's screens over a sample company", () => {
     expect(cases.cases.some((c) => c.serious)).toBe(true);
     expect(corrections[0]).toMatchObject({ state: "scheduled" });
     expect(associations).toHaveLength(1);
-    expect(playbook.quo?.status).toBe("connected");
+    expect(playbook.quo.reader?.status).toBe("connected");
     const everything = JSON.stringify({ overview, reviews, review, cases, caseDetail, corrections, standards, insights, playbook, associations, forJob });
     expect(everything).not.toMatch(/"score"|confidence|"percent"/i);
 
     const out = process.env.QUALITY_SCREENS_OUT;
-    if (out) writeFileSync(out, JSON.stringify({ overview, reviews, review, cases, caseDetail, corrections, standards, standard, insights, playbook, associations, permissions, forJob, linkView }, null, 1));
+    if (out) writeFileSync(out, JSON.stringify({ overview, reviews, review, cases, caseDetail, corrections, standards, standard, insights, playbook, associations, permissions, forJob, linkView, cleanerRates }, null, 1));
   });
 });

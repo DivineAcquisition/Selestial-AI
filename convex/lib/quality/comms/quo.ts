@@ -163,55 +163,7 @@ export function quoClient(apiKey: string): QuoApi {
   };
 }
 
-// ── Webhook signatures ───────────────────────────────────────────────────────────────────────────
-
-const encoder = new TextEncoder();
-
-function fromBase64(value: string): Uint8Array<ArrayBuffer> {
-  const binary = atob(value);
-  const bytes = new Uint8Array(new ArrayBuffer(binary.length));
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-}
-function toBase64(bytes: Uint8Array): string {
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
-}
-function same(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
-
-/** Whether the headers could be a Quo delivery at all, before the connection's key is looked up. */
-export function quoHeadersPlausible(headers: { id: string | null; timestamp: string | null; signature: string | null }, now: number): boolean {
-  if (!headers.id || !headers.timestamp || !headers.signature) return false;
-  const ts = Number(headers.timestamp);
-  return Number.isFinite(ts) && Math.abs(now / 1000 - ts) <= 5 * 60;
-}
-
-export async function quoSign(key: string, id: string, timestamp: string, body: string): Promise<string> {
-  const raw = fromBase64(key.startsWith("whsec_") ? key.slice(6) : key);
-  const imported = await crypto.subtle.importKey("raw", raw, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  return toBase64(new Uint8Array(await crypto.subtle.sign("HMAC", imported, encoder.encode(`${id}.${timestamp}.${body}`))));
-}
-
-/** A delivery is genuine only with this connection's key, inside five minutes. With no key, nothing is accepted. */
-export async function verifyQuo(input: { key: string | null; id: string | null; timestamp: string | null; signature: string | null; body: string; now: number }): Promise<boolean> {
-  if (!input.key || !quoHeadersPlausible(input, input.now)) return false;
-  let expected: string;
-  try {
-    expected = await quoSign(input.key, input.id!, input.timestamp!, input.body);
-  } catch {
-    return false;
-  }
-  return input.signature!.split(" ").some((part) => {
-    const [version, sig] = part.split(",");
-    return version === "v1" && typeof sig === "string" && same(sig, expected);
-  });
-}
+// ── Events (verified and deduplicated by the shared Quo connection, convex/quo.ts) ──────────────────
 
 export type QuoEvent =
   | { kind: "call"; eventId: string; type: string; call: QuoCall; link?: string }
@@ -251,4 +203,3 @@ export function parseQuoEvent(body: string): QuoEvent | null {
   return { kind: "ignored", eventId, type };
 }
 
-export const QUO_EVENTS = ["call.completed", "call.missed", "call.voicemail.completed", "call.transcript.completed", "call.summary.completed", "message.received"];

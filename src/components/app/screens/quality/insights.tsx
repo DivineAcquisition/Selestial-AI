@@ -6,7 +6,7 @@
  * a first action and corrections were verified, repeat issues, and the improvements Quality proposes. Counts
  * only; a small sample is said to be too small to read, and nothing is a score or a prediction.
  */
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 
 import { useCompany } from "@/components/app/company";
@@ -31,9 +31,10 @@ export function QualityInsightsScreen() {
   const submit = useMutation(api.quality.submitImprovementAction);
   const withdraw = useMutation(api.quality.withdrawImprovement);
   const { busy, error, run } = useRun();
+  const rates = useQuery(api.quality.cleanerRates, role === "office" ? "skip" : { companyId });
   return (
     <>
-      <PageHeader title="Insights" lead="Patterns in reviewed findings, how well visits are documented, what corrections cost, and the changes Quality proposes. Counts with their denominators; no scores." actions={<div className="flex gap-1" role="group" aria-label="Period">{([30, 90] as const).map((d) => <Button key={d} size="sm" variant={days === d ? "secondary" : "ghost"} aria-pressed={days === d} onClick={() => setDays(d)}>{d} days</Button>)}</div>} />
+      <PageHeader title="Insights" lead="Patterns in reviewed findings, how well visits are documented, each cleaner's visit pass rate, what corrections cost, and the changes Quality proposes. Counts with their denominators." actions={<div className="flex gap-1" role="group" aria-label="Period">{([30, 90] as const).map((d) => <Button key={d} size="sm" variant={days === d ? "secondary" : "ghost"} aria-pressed={days === d} onClick={() => setDays(d)}>{d} days</Button>)}</div>} />
       {data === undefined ? (
         <Skeleton className="h-64 rounded-2xl" aria-busy="true" />
       ) : (
@@ -64,6 +65,28 @@ export function QualityInsightsScreen() {
               {data.repeats.length ? <ul className="grid gap-1.5 p-4 text-sm">{data.repeats.map((r) => <li key={`${r.category}:${r.area}`}>{r.category}{r.area ? ` · ${r.area}` : ""}: {r.cases} cases at {r.properties} {r.properties === 1 ? "property" : "properties"}</li>)}</ul> : <p className="p-4 text-sm text-muted-foreground">No reviewed issue repeated at the same property in this period.</p>}
             </Panel>
           </div>
+          <Panel title="Cleaners: visit pass rate">
+            {role === "office" ? (
+              <p className="p-4 text-sm text-muted-foreground">Shown to managers and the Owner.</p>
+            ) : rates === undefined ? (
+              <Skeleton className="m-4 h-24 rounded-xl" />
+            ) : (
+              <div className="grid gap-3 p-4">
+                <p className="text-xs text-muted-foreground">{rates.note}</p>
+                {rates.rows.length ? (
+                  <ul className="divide-y divide-border rounded-xl border border-border">
+                    {rates.rows.map((r) => (
+                      <li key={r.cleanerId} className="grid gap-1 px-3.5 py-2.5 sm:grid-cols-[12rem_minmax(0,1fr)_auto] sm:items-center sm:gap-3">
+                        <span className="text-sm font-medium text-strong">{r.name}</span>
+                        <span className="text-xs text-muted-foreground">{r.words}</span>
+                        <span className="text-sm font-semibold text-strong tabular-nums" data-pass-rate>{r.rate === null ? "Too few visits" : `${Math.round(r.rate * 100)}%`}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : <p className="text-sm text-muted-foreground">No reviewed visits with a crew in the last {rates.windowDays} days.</p>}
+              </div>
+            )}
+          </Panel>
           <Panel title="Proposed improvements">
             <div className="grid gap-3 p-4">
               {data.improvements.length ? data.improvements.map((i) => (

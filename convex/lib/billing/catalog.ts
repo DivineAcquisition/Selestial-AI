@@ -140,6 +140,14 @@ export function planIncludesAgent(plan: PlanId | null, agent: AgentId): boolean 
   return plan !== null && AGENT_CATALOG[agent].plans.includes(plan);
 }
 
+/** Agents an early-user place brings beyond the plan. Kept once the place was claimed, also after the 12 months. */
+export const EARLY_BONUS_AGENTS = ["quality"] as const satisfies readonly AgentId[];
+
+/** Whether a company with this plan and these bonuses has the agent. A bonus needs an active plan too. */
+export function companyIncludesAgent(plan: PlanId | null, bonuses: readonly { agent: string }[] | undefined, agent: AgentId): boolean {
+  return plan !== null && (planIncludesAgent(plan, agent) || (bonuses ?? []).some((bonus) => bonus.agent === agent));
+}
+
 export function planIncludesFeature(plan: PlanId | null, feature: PlanFeature): boolean {
   return plan !== null && (PLAN_FEATURES[feature].plans as readonly PlanId[]).includes(plan);
 }
