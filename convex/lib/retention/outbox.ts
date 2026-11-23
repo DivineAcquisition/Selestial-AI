@@ -22,6 +22,7 @@ import { messageByKey, type SendIntent } from "../messaging/outbox";
 import { checkSend, type PolicyAnswer, type PolicyCode } from "../messaging/policy";
 import { ownMailbox } from "../sales/outbox";
 import { careLinkState, careLinkUrl } from "./links";
+import { requestLinkState, requestUrl } from "../quality/outbox";
 
 type Ctx = QueryCtx | MutationCtx;
 export type CarePurpose = "feedback_request" | "care_update" | "return_offer";
@@ -184,6 +185,17 @@ export async function careClaim(ctx: MutationCtx, message: Doc<"messages">): Pro
     const url = await careLinkUrl(link);
     if (!url) return { problem: "Links aren't set up, so there was no link to send." };
     body = body.replaceAll("{link}", url);
+  }
+  if (body.includes("{qualityLink}")) {
+    // A customer question Quality handed to Retention: Quality's page, made now and never stored.
+    const request = await ctx.db
+      .query("qualityRequests")
+      .withIndex("by_company_retention_action", (q) => q.eq("companyId", message.companyId).eq("retentionActionId", action._id))
+      .first();
+    if (!request || requestLinkState(request, Date.now()) !== "active") return { problem: "Quality's question was closed before the message went out." };
+    const url = await requestUrl(request);
+    if (!url) return { problem: "Links aren't set up, so there was no link to send." };
+    body = body.replaceAll("{qualityLink}", url);
   }
   const company = await ctx.db.get(message.companyId);
   const profile = await readProfile(ctx, message.companyId);

@@ -85,7 +85,8 @@ const RELEASED: Record<AgentId, boolean> = {
   sales: AGENT_PROFILES.sales.built,
   retention: AGENT_PROFILES.retention.built,
   marketing: false,
-  quality: false,
+  // Released with its workflows. Plan access is unchanged: the catalog above still puts Quality on Expand only.
+  quality: AGENT_PROFILES.quality.built,
   "customer-care": false,
 };
 
@@ -137,6 +138,14 @@ export const BOTH_PLANS_INCLUDE = [
 
 export function planIncludesAgent(plan: PlanId | null, agent: AgentId): boolean {
   return plan !== null && AGENT_CATALOG[agent].plans.includes(plan);
+}
+
+/** Agents an early-user place brings beyond the plan. Kept once the place was claimed, also after the 12 months. */
+export const EARLY_BONUS_AGENTS = ["quality"] as const satisfies readonly AgentId[];
+
+/** Whether a company with this plan and these bonuses has the agent. A bonus needs an active plan too. */
+export function companyIncludesAgent(plan: PlanId | null, bonuses: readonly { agent: string }[] | undefined, agent: AgentId): boolean {
+  return plan !== null && (planIncludesAgent(plan, agent) || (bonuses ?? []).some((bonus) => bonus.agent === agent));
 }
 
 export function planIncludesFeature(plan: PlanId | null, feature: PlanFeature): boolean {

@@ -35,6 +35,7 @@ export const HOLD_MS: Record<Task, number> = {
   follow_up_draft: 10 * MINUTE,
   dispatch_exception_analysis: 10 * MINUTE,
   retention_assessment: 10 * MINUTE,
+  quality_review: 15 * MINUTE,
   agreement_draft: 15 * MINUTE,
   campaign_generation: 60 * MINUTE,
   research_brief: 15 * MINUTE,

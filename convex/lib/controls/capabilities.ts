@@ -86,6 +86,15 @@ export const CAPABILITIES: Record<string, Capability> = {
   "recruiter.send_offer": ready(["email", "links"]),
   "recruiter.onboarding_reminder": ready(["outreach"], { routine: true }),
   "recruiter.urgent_outreach": ready(["email"]),
+
+  "quality.review_completion": ready([], { routine: true, note: "A review never holds the visit, its invoice or anyone's pay. A manager still closes each visit." }),
+  "quality.open_case": ready([], { routine: true }),
+  "quality.request_cleaner_evidence": ready(["sms", "links"], { routine: true, note: "Only to cleaners who worked the visit, about that visit. It never says anything about fault." }),
+  "quality.remind_outstanding": ready(["sms", "links"], { routine: true }),
+  "quality.prepare_correction": ready([], { note: "Quality writes the scope and acceptance criteria. Retention arranges it, you set the crew's pay, and Dispatch staffs it." }),
+  "quality.customer_clarification": ready(["links"], { note: "Quality prepares the question; Retention sends it to the customer under its own permission." }),
+  "quality.verify_correction": ready([], { routine: true }),
+  "quality.propose_improvement": ready([], { note: "A proposal only. You decide whether anything changes." }),
 };
 
 export function capabilityOf(action: string): Capability {
@@ -97,4 +106,5 @@ export const AGENT_PLAYBOOK: Record<Agent, string> = {
   sales: "/app/agents/sales/playbook",
   recruiter: "/app/agents/recruiter/playbook",
   retention: "/app/agents/retention/playbook",
+  quality: "/app/agents/quality/playbook",
 };

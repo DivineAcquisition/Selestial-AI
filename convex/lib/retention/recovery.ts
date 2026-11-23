@@ -24,6 +24,7 @@ import { addEntry, areasIn, caseByKey, cleanAreas, closeCase, DAY, entriesOf, HO
 import { DIAGNOSIS_WORDS, diagnoseByRule, retentionModel } from "./diagnose";
 import { gatherEvidence, statements, type Evidence } from "./evidence";
 import { enqueueRun } from "./runs";
+import { enqueueQualityRun } from "../quality/runs";
 import { raiseSignal, attachSignal } from "./signals";
 import { retentionSettings } from "./settings";
 import type { Diagnosis } from "./schema";
@@ -126,6 +127,8 @@ export async function openRecovery(ctx: MutationCtx, company: Doc<"companies">, 
     await attachSignal(ctx, signal.row, row._id);
   }
   row = await assess(ctx, company, row);
+  // Quality investigates the visit the concern is about; Retention keeps the conversation.
+  if (job) await enqueueQualityRun(ctx, { companyId: company._id, kind: "feedback_submitted", key: `feedback:${row._id}`, jobId: job._id, payload: { retentionCaseId: row._id } });
   if (!row.serious) row = await planRecovery(ctx, company, row, { wantsDifferentCleaner: concern.wantsDifferentCleaner === true });
   // When an AI reader is connected, it reads the customer's words once, with credits held first. The rules' reading stands until then, and if it cannot.
   if (!row.serious && retentionModel()) await enqueueRun(ctx, { companyId: company._id, kind: "diagnose", key: `diagnose:${row._id}`, caseId: row._id });
@@ -397,6 +400,8 @@ export async function correctionCompleted(ctx: MutationCtx, company: Doc<"compan
     verification: { ...(row.verification ?? { criteria: `The customer confirms that ${what} was addressed.` }), correctionJobId: job._id, correctionCompletedAt: Date.now() },
   }, SYSTEM);
   await addEntry(ctx, row, { kind: "verification", basis: "fact", text: `The correction visit was completed${job.completionReview?.decision === "closed" ? " and reviewed by a person" : ""}. That is the work done. Whether it addressed the problem is the customer's to say.`, source: { table: "jobs", id: job._id, label: "Correction visit", at: job.startsAt }, actor: SYSTEM });
+  // Quality verifies the work against its acceptance criteria, separately from the customer's answer.
+  await enqueueQualityRun(ctx, { companyId: company._id, kind: "correction_completed", key: `correction:${job._id}`, jobId: job._id, payload: { retentionCaseId: row._id } });
   if (row.serious || row.heldBy) return;
   const channel = await careChannel(ctx, customer);
   if (!channel) {

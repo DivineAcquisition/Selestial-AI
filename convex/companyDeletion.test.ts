@@ -339,7 +339,7 @@ describe("while a company is closing", () => {
     const company = (await t.run((ctx) => ctx.db.get(a.companyId)))!;
     expect(company.closingAt).toBeDefined();
     expect(company.suspendedAt).toBeDefined();
-    expect(company.pausedAgents.sort()).toEqual(["dispatch", "recruiter", "retention", "sales"]);
+    expect(company.pausedAgents.sort()).toEqual(["dispatch", "quality", "recruiter", "retention", "sales"]);
     // Members: nothing reads or writes, not even what a locked account still allows.
     expect(await refusal(a.as.query(api.companies.get, { companyId: a.companyId }))).toMatch(/being deleted/);
     expect(await refusal(a.as.mutation(api.customers.create, { companyId: a.companyId, name: "New", kind: "home" }))).toMatch(/being deleted/);

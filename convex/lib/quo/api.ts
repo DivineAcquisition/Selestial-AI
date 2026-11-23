@@ -105,16 +105,16 @@ export async function registration(fetcher: Fetch, key: string): Promise<Answer<
 }
 
 /** POST /webhooks: Quo signs every event with the returned `whsec_` key. */
-export async function createWebhook(fetcher: Fetch, key: string, input: { url: string; numberIds: string[] }): Promise<Answer<{ id: string; key: string; events: string[] }>> {
-  const answer = await call<{ id: string; key: string; events: string[] }>(fetcher, key, "POST", "/webhooks", { url: input.url, events: [...QUO_EVENTS], resourceIds: input.numberIds, status: "enabled", label: "Selestial" });
+export async function createWebhook(fetcher: Fetch, key: string, input: { url: string; numberIds: string[]; events?: readonly string[] }): Promise<Answer<{ id: string; key: string; events: string[] }>> {
+  const answer = await call<{ id: string; key: string; events: string[] }>(fetcher, key, "POST", "/webhooks", { url: input.url, events: [...(input.events ?? QUO_EVENTS)], resourceIds: input.numberIds, status: "enabled", label: "Selestial" });
   if (!answer.ok) return answer;
   if (!answer.data.id || !answer.data.key?.startsWith("whsec_")) return { ok: false, kind: "invalid", status: 201, words: "Quo created the webhook but did not return its signing key." };
   return answer;
 }
 
-/** PATCH /webhooks/{id}: the numbers whose events come to Selestial. */
-export async function updateWebhook(fetcher: Fetch, key: string, id: string, numberIds: string[]): Promise<Answer<unknown>> {
-  return call(fetcher, key, "PATCH", `/webhooks/${encodeURIComponent(id)}`, { resourceIds: numberIds, status: "enabled" });
+/** PATCH /webhooks/{id}: the numbers whose events come to Selestial, and (when given) which events. */
+export async function updateWebhook(fetcher: Fetch, key: string, id: string, numberIds: string[], events?: readonly string[]): Promise<Answer<unknown>> {
+  return call(fetcher, key, "PATCH", `/webhooks/${encodeURIComponent(id)}`, { resourceIds: numberIds, status: "enabled", ...(events ? { events: [...events] } : {}) });
 }
 
 /** DELETE /webhooks/{id}. Already gone counts as done. */

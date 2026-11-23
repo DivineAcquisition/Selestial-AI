@@ -26,7 +26,7 @@
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import type { AutumnEnv } from "./autumn";
-import { AUTUMN, EARLY_OFFER, PLANS } from "./catalog";
+import { AUTUMN, EARLY_BONUS_AGENTS, EARLY_OFFER, PLANS } from "./catalog";
 import type { Projection } from "./projection";
 
 const HOUR = 3_600_000;
@@ -137,9 +137,25 @@ export async function releasePlace(ctx: MutationCtx, row: Doc<"earlyOffers">, re
  * $199 plan shows active, notices the month-12 move once Autumn shows it scheduled, and ends the offer when
  * the company moved to the full price or cancelled. Returns what changed, for the event log.
  */
+/**
+ * Gives a company that claimed an early-user place its bonus agents, once. It is never taken back by the
+ * offer ending: early users keep Quality after their 12 months (the Owner's decision of November 23, 2026).
+ */
+export async function grantEarlyBonus(ctx: MutationCtx, companyId: Id<"companies">, since: number): Promise<boolean> {
+  const company = await ctx.db.get(companyId);
+  if (!company) return false;
+  const have = company.agentBonuses ?? [];
+  const add = EARLY_BONUS_AGENTS.filter((agent) => !have.some((bonus) => bonus.agent === agent));
+  if (!add.length) return false;
+  await ctx.db.patch(companyId, { agentBonuses: [...have, ...add.map((agent) => ({ agent, reason: "early_user" as const, since }))] });
+  return true;
+}
+
 export async function onAccountSynced(ctx: MutationCtx, input: { companyId: Id<"companies">; env: AutumnEnv; projection: Projection; now: number }): Promise<"claimed" | "switch_confirmed" | "ended" | null> {
   const { projection, now } = input;
   const row = await offerFor(ctx, input.companyId, input.env);
+  // A place claimed before the bonus existed gets it on the next sync.
+  if (row?.claimedAt !== undefined) await grantEarlyBonus(ctx, input.companyId, row.claimedAt);
   const onEarly = projection.plan !== null && projection.autumnPlanId === AUTUMN.earlyPlan;
   if (onEarly) {
     if (!row || row.state === "reserved" || row.state === "released") {
@@ -151,6 +167,7 @@ export async function onAccountSynced(ctx: MutationCtx, input: { companyId: Id<"
       const fields = { state: "claimed" as const, claimedAt: now, startedAt, offerEndsAt: addMonthsUTC(startedAt, EARLY_OFFER.months), updatedAt: now };
       if (row) await ctx.db.patch(row._id, fields);
       else await ctx.db.insert("earlyOffers", { companyId: input.companyId, env: input.env, reservedAt: now, reservedUntil: now, ...fields });
+      await grantEarlyBonus(ctx, input.companyId, now);
       return "claimed";
     }
     if (row.state === "claimed" && !row.switchConfirmedAt && projection.subscription.scheduledAutumnPlanId === AUTUMN.plans.operate) {

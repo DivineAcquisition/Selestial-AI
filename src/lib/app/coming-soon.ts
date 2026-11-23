@@ -21,7 +21,7 @@ export type Capability = {
 };
 
 export type ComingSoonAgent = {
-  id: Extract<AgentId, "marketing" | "quality" | "customer-care">;
+  id: Extract<AgentId, "marketing" | "customer-care">;
   name: string;
   department: string;
   pitch: string;
@@ -55,28 +55,6 @@ export const COMING_SOON: Record<ComingSoonAgent["id"], ComingSoonAgent> = {
       { tab: "Performance", title: "What each campaign booked", detail: "Ties sends to inquiries and bookings Sales handled, instead of opens and clicks.", mock: "progress" },
     ],
     availableNow: [{ label: "Content & Creative", detail: "Create images and short videos for your business with Creative Studio today.", path: "/app/agents/marketing/content-creative" }],
-    plan: "Not released yet. We'll say what it comes with when it is.",
-  },
-  quality: {
-    id: "quality",
-    name: "Quality",
-    department: "Operations",
-    pitch: "Checks every finished visit against what was promised: reads the photos and checklist, spots what was missed, asks the cleaner first, and lines up a re-clean before the customer has to complain.",
-    scene: {
-      trigger: { title: "Visit finished at 12 Elm St", detail: "18 photos · checklist 23 of 24" },
-      work: ["Compares the photos with the home's scope and checklist", "Notices the oven interior was never shown", "Checks whether the customer asked for it"],
-      outcomes: [
-        { title: "One item flagged", detail: "Oven interior: no photo" },
-        { title: "Cleaner asked for a photo", detail: "Before anything reaches the customer" },
-        { title: "Re-clean ready if needed", detail: "Proposed for your approval" },
-      ],
-    },
-    capabilities: [
-      { tab: "Completion Review", title: "Every visit reviewed", detail: "Reads completion photos and notes against the property's scope, so gaps are found the same day.", mock: "photos" },
-      { tab: "Checklists & Photos", title: "Checklists that match the home", detail: "Keeps each property's checklist and required photos current with its approved scope.", mock: "checklist" },
-      { tab: "Service Issues", title: "Issues traced to the cause", detail: "Groups repeat problems by home, task and cleaner, so coaching is specific and fair.", mock: "list" },
-      { tab: "Re-cleans", title: "Re-cleans arranged", detail: "Proposes the visit, the crew and what the crew is paid, and hands it to Dispatch once you approve.", mock: "calendar" },
-    ],
     plan: "Not released yet. We'll say what it comes with when it is.",
   },
   "customer-care": {

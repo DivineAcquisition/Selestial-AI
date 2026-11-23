@@ -23,7 +23,8 @@ import { recordEvent } from "./lib/events";
 import { notifyMembers } from "./lib/notify/route";
 import { allow } from "./lib/rateLimit";
 import { seal, unseal } from "./lib/recruiter/secrets";
-import { createWebhook, deleteWebhook, listNumbers, registration as readRegistration, sendMessage, updateWebhook, type QuoFailure, type QuoNumber } from "./lib/quo/api";
+import { createWebhook, deleteWebhook, listNumbers, registration as readRegistration, sendMessage, updateWebhook, type QuoFailure, type QuoNumber, QUO_EVENTS } from "./lib/quo/api";
+import { QUO_CALL_EVENTS } from "./lib/quality/comms/quoBridge";
 import { readinessOf } from "./lib/quo/readiness";
 import { ensureConversation, quoConnectionOf } from "./lib/quo/route";
 import { QUO_AGENTS, type QuoProblem, type QuoStatus } from "./lib/quo/schema";
@@ -388,15 +389,17 @@ export const syncWebhook = internalAction({
     if (!found || found.connection.status === "disconnected") return null;
     const ids = found.connection.selected.map((row) => row.id);
     if (ids.length === 0) return null;
+    // Call events only while Quality reads calls through this connection (convex/qualityComms.ts).
+    const events = (await ctx.runQuery(internal.qualityComms.readsCalls, { quoConnectionId: args.connectionId })) ? [...QUO_EVENTS, ...QUO_CALL_EVENTS] : [...QUO_EVENTS];
     if (found.connection.webhook) {
-      const answer = await updateWebhook(fetch, found.key, found.connection.webhook.id, ids);
+      const answer = await updateWebhook(fetch, found.key, found.connection.webhook.id, ids, events);
       if (!answer.ok && answer.kind !== "not_found") await ctx.runMutation(internal.quo.recordProblem, { connectionId: args.connectionId, failure: { kind: answer.kind === "key_rejected" ? answer.kind : "webhook", words: `Selestial couldn't update Quo's webhook: ${answer.words}` } });
       if (answer.ok || answer.kind !== "not_found") return null;
       // Deleted in Quo: made again below.
     }
     const site = process.env.CONVEX_SITE_URL?.trim().replace(/\/+$/, "");
     if (!site) return null;
-    const created = await createWebhook(fetch, found.key, { url: `${site}/webhooks/quo/${args.connectionId}`, numberIds: ids });
+    const created = await createWebhook(fetch, found.key, { url: `${site}/webhooks/quo/${args.connectionId}`, numberIds: ids, events });
     if (!created.ok) {
       await ctx.runMutation(internal.quo.recordProblem, { connectionId: args.connectionId, failure: { kind: created.kind === "key_rejected" ? created.kind : "webhook", words: `Selestial couldn't set up Quo's webhook: ${created.words}` } });
       return null;

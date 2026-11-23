@@ -65,4 +65,17 @@ describe("sidebar badges", () => {
     expect(tabBadge("dispatch", "schedule", facts({ unfilled: 2 }))).toBeNull();
     expect(approvalsBadge(facts({}, 3))).toEqual({ kind: "decision", label: "3 to decide", count: 3 });
   });
+
+  it("badges Quality with a serious concern first, then a decision, and only says working while a case moves", () => {
+    const q = (values: Partial<NonNullable<SidebarFacts["quality"]>>): SidebarFacts => ({ ...quiet, quality: { paused: false, serious: 0, withYou: 0, overdue: 0, underway: 0, waiting: 0, ...values } });
+    expect(agentBadge("quality", quiet)).toBeNull();
+    expect(agentBadge("quality", q({}))).toBeNull();
+    expect(agentBadge("quality", q({ serious: 1, withYou: 2, underway: 3 }))).toEqual({ kind: "urgent", label: "1 serious", count: 1 });
+    expect(agentBadge("quality", q({ withYou: 2, overdue: 1 }))).toEqual({ kind: "decision", label: "2 for you", count: 2 });
+    expect(agentBadge("quality", q({ underway: 1 }))).toEqual({ kind: "working", label: "Working" });
+    expect(agentBadge("quality", q({ waiting: 1 }))).toEqual({ kind: "working", label: "Waiting on evidence" });
+    expect(agentBadge("quality", q({ paused: true, underway: 2 }))).toEqual({ kind: "attention", label: "Paused" });
+    expect(tabBadge("quality", "cases", q({ serious: 1 }))).toEqual({ kind: "urgent", label: "1 serious", count: 1 });
+    expect(tabBadge("quality", "standards", q({ serious: 1 }))).toBeNull();
+  });
 });

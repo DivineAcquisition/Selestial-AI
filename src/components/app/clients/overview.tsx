@@ -10,6 +10,7 @@ import { useState } from "react";
 
 import { useCompany } from "@/components/app/company";
 import { Modal } from "@/components/app/modal";
+import { QualityOnCustomer } from "@/components/app/screens/quality/context";
 import { Plus } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -127,6 +128,9 @@ export function OverviewTab({ profile, onBook, compact }: { profile: Profile; on
           </Card>
         ) : null}
         <SalesCard profile={profile} />
+        <Card title="Quality">
+          <QualityOnCustomer customerId={profile.id} />
+        </Card>
         <Card
           title="Contacts"
           action={

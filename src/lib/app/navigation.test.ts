@@ -59,7 +59,7 @@ const SPEC: Record<string, Record<string, string[]>> = {
   },
   Operations: {
     Dispatch: ["Dispatch Board", "Schedule", "Offers & Coverage", "Live Jobs", "Action Links", "Playbook"],
-    Quality: ["Completion Review", "Checklists & Photos", "Service Issues", "Re-cleans", "Playbook"],
+    Quality: ["Reviews", "Cases", "Corrections", "Standards", "Insights", "Playbook"],
     "Care": ["Conversations", "Customer Setup", "Service Requests", "Rescheduling & Cancellations", "Playbook"],
   },
   Team: {
@@ -217,7 +217,7 @@ describe("what is available today", () => {
       for (const backendAgent of department.agents) expect(AGENTS.find((agent) => agent.backendAgent === backendAgent)?.department, backendAgent).toBe(department.id);
     }
     expect(BACKEND_DEPARTMENTS.flatMap((row) => row.agents).sort()).toEqual([...BACKEND_AGENTS].sort());
-    expect(AGENTS.filter((agent) => agent.workflow === "built").map((agent) => agent.id)).toEqual(["sales", "retention", "dispatch", "recruiter"]);
+    expect(AGENTS.filter((agent) => agent.workflow === "built").map((agent) => agent.id)).toEqual(["sales", "retention", "dispatch", "quality", "recruiter"]);
     // Beneath an agent that is not released, the sidebar lists only tabs that open a real page, never a row
     // of links to the same coming-soon page. A released agent lists every tab.
     for (const agent of AGENTS) {
@@ -226,7 +226,7 @@ describe("what is available today", () => {
       else for (const tab of listed) expect(hrefFor(tab), `${agent.id}.${tab.id}`).not.toBeNull();
     }
     expect(disclosedTabs(AGENTS.find((agent) => agent.id === "marketing")!).map((tab) => tab.id)).toEqual(["content-creative"]);
-    for (const id of ["quality", "customer-care"]) expect(disclosedTabs(AGENTS.find((agent) => agent.id === id)!), id).toEqual([]);
+    for (const id of ["customer-care"]) expect(disclosedTabs(AGENTS.find((agent) => agent.id === id)!), id).toEqual([]);
     // The plan carries no numbers or states of its own: badges get their values from the record.
     expect(JSON.stringify({ AGENTS, NAV_ITEMS })).not.toMatch(/"count"|"badge"|"status":"(working|active)"/);
   });
@@ -359,7 +359,9 @@ describe("navigation behavior", () => {
     expect(linkTo("reports")).toBe("/app/insights");
     expect(linkTo("finance")).toBe("/app/finance");
     expect(linkTo("dispatch")).toBe("/app/agents/dispatch");
-    expect(linkTo("quality")).toBeNull();
+    expect(linkTo("quality")).toBe("/app/agents/quality");
+    expect(linkTo("quality.cases")).toBe("/app/agents/quality/cases");
+    expect(linkTo("quality.playbook")).toBe("/app/agents/quality/playbook");
     expect(linkTo("nothing")).toBeNull();
   });
 

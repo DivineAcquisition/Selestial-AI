@@ -1,8 +1,8 @@
 /**
- * The public page for each of the eight agents: what it is responsible for, a worked example the page plays,
- * what it handles, what it always brings back to the owner, and who it hands work to. The four working
+ * The public page for each of the agents: what it is responsible for, a worked example the page plays,
+ * what it handles, what it always brings back to the owner, and who it hands work to. The working
  * agents describe only what the product does today (checked against AGENT_PROFILES by the content test);
- * the four coming-soon agents use the same words as their in-app coming-soon pages (src/lib/app/coming-soon.ts).
+ * the coming-soon agents use the same words as their in-app coming-soon pages (src/lib/app/coming-soon.ts).
  * Every name, price and time in an example is made up, and the page says so.
  */
 import type { MockKind, SceneSpec } from "@/components/agents/scene";
@@ -143,21 +143,46 @@ const LIVE: AgentPage[] = [
     ],
     plan: "Included in the Selestial plan.",
   },
+  {
+    id: "quality",
+    name: "Quality",
+    department: "Operations",
+    status: "live",
+    headline: "Make your service promise measurable.",
+    pitch: "Reviews every finished visit against the standard you set, asks the crew for anything missing, investigates concerns from the evidence, scopes corrections and checks the work afterwards, and proposes changes that stop the same problem coming back.",
+    scene: {
+      trigger: { title: "Visit reported done at 12 Elm St", detail: "Checklist complete · 1 of 2 after photos" },
+      work: ["Applies the standard for this service and property", "Finds one required photo missing", "Asks the cleaner for it in one private link"],
+      outcomes: [
+        { title: "Photo arrives", detail: "The request closes by itself" },
+        { title: "Review: meets the standard", detail: "A manager closes the visit" },
+        { title: "Nothing assumed", detail: "A complete record is not proof of how it looked" },
+      ],
+    },
+    capabilities: [
+      { title: "Standards you write", detail: "Company defaults, per-service and per-property rules, versioned, so a later edit never changes what an earlier visit was held to.", mock: "checklist" },
+      { title: "Every visit reviewed", detail: "Each finished visit is compared with the standard that applied, and anything missing is asked for once, not chased.", mock: "photos" },
+      { title: "Concerns investigated fairly", detail: "Findings cite the evidence, keep conflicting accounts side by side, and never blame a person.", mock: "list" },
+      { title: "Corrections checked", detail: "Scopes the re-clean for Retention and Dispatch, then checks the work against what it set, separately from what the customer says.", mock: "calendar" },
+    ],
+    bringsToYou: ["Any safety, damage or conduct concern", "Every finding, before it counts", "Anything outside the permissions you set"],
+    handoffs: [
+      { agent: "retention", what: "Customer conversations and correction visits" },
+      { agent: "dispatch", what: "Correction visits to staff" },
+    ],
+    plan: "Free for early users on the $199 price, and theirs to keep after the 12 months. Included in Expand.",
+  },
 ];
 
-const HANDOFFS: Record<"marketing" | "quality" | "customer-care", AgentPage["handoffs"]> = {
+const HANDOFFS: Record<"marketing" | "customer-care", AgentPage["handoffs"]> = {
   marketing: [{ agent: "sales", what: "New inquiries its campaigns bring in" }],
-  quality: [
-    { agent: "dispatch", what: "Re-clean visits to schedule" },
-    { agent: "retention", what: "Issues a customer reported" },
-  ],
   "customer-care": [
     { agent: "dispatch", what: "Schedule changes to staff" },
     { agent: "retention", what: "Concerns that need a follow-through" },
   ],
 };
 
-const SOON: AgentPage[] = (["marketing", "quality", "customer-care"] as const).map((id) => {
+const SOON: AgentPage[] = (["marketing", "customer-care"] as const).map((id) => {
   const soon = COMING_SOON[id];
   return {
     id,

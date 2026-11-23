@@ -11,7 +11,7 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { REGISTRY } from "./lib/ai/registry";
 import { accountFor, billingState, BLOCK_WORDS, pricing, verifiedPlan } from "./lib/billing/access";
-import { AGENT_CATALOG, agentReleased, planIncludesAgent, planIncludesFeature, RETIRED_AGENT_NAMES } from "./lib/billing/catalog";
+import { AGENT_CATALOG, agentReleased, companyIncludesAgent, planIncludesFeature, RETIRED_AGENT_NAMES } from "./lib/billing/catalog";
 import { TASKS, type Task } from "./lib/billing/rateCards";
 import { companyQuery, ownerQuery } from "./lib/builders";
 
@@ -169,7 +169,7 @@ export const usage = ownerQuery({
     const done = charged(inRange);
     const total = done.reduce((sum, row) => sum + (row.charged ?? 0), 0);
     const share = (value: number) => (total > 0 ? Math.round((1000 * value) / total) / 10 : 0);
-    const agentKeys = AGENT_ORDER.filter((key) => key === "chat" || key === "services" || done.some((row) => row.agent === key) || (key === "studio" ? planIncludesFeature(plan, "creative_studio") : key in AGENT_CATALOG && agentReleased(key as never) && planIncludesAgent(plan, key as never)));
+    const agentKeys = AGENT_ORDER.filter((key) => key === "chat" || key === "services" || done.some((row) => row.agent === key) || (key === "studio" ? planIncludesFeature(plan, "creative_studio") : key in AGENT_CATALOG && agentReleased(key as never) && companyIncludesAgent(plan, ctx.company.agentBonuses, key as never)));
     const byAgent = agentKeys.map((key) => {
       const list = done.filter((row) => row.agent === key);
       const value = list.reduce((sum, row) => sum + (row.charged ?? 0), 0);
@@ -242,7 +242,7 @@ export const usage = ownerQuery({
       ledger: account?.ledger ?? null,
       communication: { sms: channel("sms"), email: channel("email"), voice: null as null },
       controls: account?.controls ?? null,
-      budgetAgents: AGENT_ORDER.filter((key) => key === "chat" || key === "services" || (key === "studio" ? planIncludesFeature(plan, "creative_studio") : key in AGENT_CATALOG && agentReleased(key as never) && planIncludesAgent(plan, key as never))).map((key) => ({ key, label: agentLabel(key) })),
+      budgetAgents: AGENT_ORDER.filter((key) => key === "chat" || key === "services" || (key === "studio" ? planIncludesFeature(plan, "creative_studio") : key in AGENT_CATALOG && agentReleased(key as never) && companyIncludesAgent(plan, ctx.company.agentBonuses, key as never))).map((key) => ({ key, label: agentLabel(key) })),
       priceList: priceList(state.card),
     };
   },

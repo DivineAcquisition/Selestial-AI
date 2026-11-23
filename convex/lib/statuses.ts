@@ -11,7 +11,7 @@ export function literals<const T extends readonly [string, string, ...string[]]>
   return v.union(...values.map((value) => v.literal(value))) as unknown as Validator<T[number]>;
 }
 
-export const AGENTS = ["sales", "recruiter", "dispatch", "retention"] as const;
+export const AGENTS = ["sales", "recruiter", "dispatch", "retention", "quality"] as const;
 export type Agent = (typeof AGENTS)[number];
 export const agentValidator = literals(AGENTS);
 

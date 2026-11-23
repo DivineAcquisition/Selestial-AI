@@ -41,11 +41,11 @@ describe("the Overview", () => {
     expect(first.briefing[1]).toMatchObject({ certainty: "attention", link: { kind: "view", view: "schedule_tomorrow" } });
     expect(await as.query(api.overview.decisionCount, { companyId })).toBe(1);
     // The sidebar's badges come from the same record: one decision, and one visit nobody has been asked to take.
-    expect(await as.query(api.overview.sidebar, s.at())).toEqual({ decisions: 1, dispatch: { paused: false, withYou: 1, inProgress: 0, waiting: 0, unfilled: 1, unfilledWithinDay: 0, awaitingAnswer: 0 }, sales: { paused: false, withYou: 0, running: 0, waiting: 0 }, retention: { paused: false, serious: 0, withYou: 0, overdue: 0, underway: 0, waiting: 0 } });
+    expect(await as.query(api.overview.sidebar, s.at())).toEqual({ decisions: 1, dispatch: { paused: false, withYou: 1, inProgress: 0, waiting: 0, unfilled: 1, unfilledWithinDay: 0, awaitingAnswer: 0 }, sales: { paused: false, withYou: 0, running: 0, waiting: 0 }, retention: { paused: false, serious: 0, withYou: 0, overdue: 0, underway: 0, waiting: 0 }, quality: { paused: false, serious: 0, withYou: 0, overdue: 0, underway: 0, waiting: 0 } });
     const departments = (await as.query(api.overview.team, { companyId })).departments;
     expect(departments.map((row) => [row.id, row.agents.map((agent) => agent.agent)])).toEqual([
       ["growth", ["sales", "retention"]],
-      ["operations", ["dispatch"]],
+      ["operations", ["dispatch", "quality"]],
       ["team", ["recruiter"]],
     ]);
 
@@ -74,7 +74,7 @@ describe("the Overview", () => {
     expect(decision.run[2].detail).toMatch(/^Rosa first: Rosa /);
     expect((await as.query(api.overview.team, { companyId })).departments.find((row) => row.id === "operations")).toMatchObject({
       summary: "1 item needs your decision.",
-      agents: [{ agent: "dispatch", state: "needs_you" }],
+      agents: [{ agent: "dispatch", state: "needs_you" }, { agent: "quality" }],
     });
 
     // Approving carries it out: the offer goes to Rosa. Offered is still not accepted.

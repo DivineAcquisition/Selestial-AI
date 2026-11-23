@@ -25,6 +25,8 @@ export const actorValidator = v.union(
   v.object({ kind: v.literal("subcontractor_contact"), subcontractorId: v.id("subcontractors"), linkId: v.id("portalLinks") }),
   /** A customer acting through a Retention link. The link is the authorization; the customer id says who it was issued to. */
   v.object({ kind: v.literal("customer"), customerId: v.id("customers"), linkId: v.id("retentionLinks") }),
+  /** A cleaner or customer answering a Quality request through its private link. The request names who it was issued to. */
+  v.object({ kind: v.literal("quality_link"), requestId: v.id("qualityRequests") }),
 );
 export type Actor = typeof actorValidator.type;
 
@@ -93,6 +95,18 @@ export const subjectValidator = v.union(
   v.object({ table: v.literal("messagingTopUps"), id: v.id("messagingTopUps") }),
   v.object({ table: v.literal("messagingAttention"), id: v.id("messagingAttention") }),
   v.object({ table: v.literal("agentAccessRequests"), id: v.id("agentAccessRequests") }),
+  // Quality (convex/lib/quality/schema.ts).
+  v.object({ table: v.literal("qualityStandards"), id: v.id("qualityStandards") }),
+  v.object({ table: v.literal("qualityReviews"), id: v.id("qualityReviews") }),
+  v.object({ table: v.literal("qualityCases"), id: v.id("qualityCases") }),
+  v.object({ table: v.literal("qualityFindings"), id: v.id("qualityFindings") }),
+  v.object({ table: v.literal("qualityRequests"), id: v.id("qualityRequests") }),
+  v.object({ table: v.literal("qualitySubmissions"), id: v.id("qualitySubmissions") }),
+  v.object({ table: v.literal("qualityCorrections"), id: v.id("qualityCorrections") }),
+  v.object({ table: v.literal("qualityImprovements"), id: v.id("qualityImprovements") }),
+  v.object({ table: v.literal("qualityConnections"), id: v.id("qualityConnections") }),
+  v.object({ table: v.literal("qualityComms"), id: v.id("qualityComms") }),
+  v.object({ table: v.literal("qualityAssociations"), id: v.id("qualityAssociations") }),
   // Admin Support Sessions (convex/lib/support/schema.ts).
   v.object({ table: v.literal("supportGrants"), id: v.id("supportGrants") }),
   v.object({ table: v.literal("supportSessions"), id: v.id("supportSessions") }),

@@ -84,7 +84,7 @@ export async function factsFor(ctx: QueryCtx, company: Doc<"companies">, now: nu
     links: linksConfigured(),
     pricing: service !== null,
     google: { ads: await google("ads"), business: await google("business_profile") },
-    plan: { dispatch: verdict("dispatch"), sales: verdict("sales"), recruiter: verdict("recruiter"), retention: verdict("retention") },
+    plan: { dispatch: verdict("dispatch"), sales: verdict("sales"), recruiter: verdict("recruiter"), retention: verdict("retention"), quality: verdict("quality") },
   };
 }
 

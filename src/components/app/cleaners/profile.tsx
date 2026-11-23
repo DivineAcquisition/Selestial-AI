@@ -15,6 +15,7 @@ import { canManage, useCompany } from "@/components/app/company";
 import { useDetail } from "@/components/app/detail-panel";
 import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
 import { Modal } from "@/components/app/modal";
+import { QualityOnCleaner } from "@/components/app/screens/quality/context";
 import { useNow } from "@/components/app/use-now";
 import { type LucideIcon, ArrowRight, CalendarIcon, Check, ChevronDown, Clock, Hand, HistoryIcon, Mail, MapPin, MessageSquareText, PenLine, Plus, Sparkles, TriangleAlert, User, Users } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
@@ -523,7 +524,7 @@ function AttentionList({ profile, onSection }: { profile: Profile; onSection?: (
 }
 
 export function OverviewSection({ profile, onSection }: { profile: Profile; onSection?: (section: SectionId) => void }) {
-  const { timezone } = useCompany();
+  const { timezone, role } = useCompany();
   const now = useNow();
   const openJob = useDetail();
   return (
@@ -564,6 +565,11 @@ export function OverviewSection({ profile, onSection }: { profile: Profile; onSe
       </div>
       <div className="grid content-start gap-4">
         <FollowUpsCard profile={profile} />
+        {canManage(role) ? (
+          <Card title="Quality">
+            <QualityOnCleaner cleanerId={profile.cleanerId} />
+          </Card>
+        ) : null}
         <Card title="Details">
           <div className="grid gap-3">
             <Fact icon={MessageSquareText} label="Mobile">{profile.phone ?? <span className="text-muted-foreground">Not on file</span>}</Fact>

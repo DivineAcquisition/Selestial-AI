@@ -61,7 +61,7 @@ async function load<T extends TableNames>(ctx: QueryCtx, table: T, source: Relat
   return id ? await ctx.db.get(id) : null;
 }
 
-const AGENT_NAMES: Record<string, string> = { dispatch: "Dispatch", recruiter: "Recruiter", sales: "Sales", retention: "Care & Retention" };
+const AGENT_NAMES: Record<string, string> = { dispatch: "Dispatch", recruiter: "Recruiter", sales: "Sales", retention: "Care & Retention", quality: "Quality" };
 const agentName = (agent: string) => AGENT_NAMES[agent] ?? agent;
 
 // ── Agent work ────────────────────────────────────────────────────────────────────────────────────
