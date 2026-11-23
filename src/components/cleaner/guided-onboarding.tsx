@@ -182,7 +182,6 @@ export function GuidedOnboarding({ view, token, onOpenPortal }: { view: GuidedVi
       const finished = lastNext.current;
       lastNext.current = view.journey.next;
       // Opening the next step as the record changes, so the cleaner never has to find it.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setOpen((current) => (current === finished || current === null ? view.journey.next : current));
     }
   }, [view.journey.next]);
@@ -996,7 +995,7 @@ function TrainingStep({ step, view, onOpen }: { step: Step; view: GuidedView; on
         ))}
       </ul>
       <p className="text-sm text-muted-foreground">
-        {done} of {required.length} required {required.length === 1 ? "module" : "modules"} complete. A video counts once it plays to the end; a guide once every section is read and its questions answered. Skipping does not count.
+        {done} of {required.length} required {required.length === 1 ? "lesson" : "modules"} complete. A video counts once it plays to the end; a guide once every section is read and its questions answered. Skipping does not count.
       </p>
       <Button testId="open-training" onClick={onOpen}>
         <PlayCircle aria-hidden className="size-5" /> {step.state === "done" ? "Open training again" : done > 0 ? "Continue training" : "Start training"}

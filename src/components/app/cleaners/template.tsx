@@ -63,6 +63,13 @@ export function TemplateScreen() {
         <ArrowLeft className="size-4" aria-hidden />
         Cleaners
       </Link>
+      <Link href={`${CLEANERS_PATH}/onboarding/setup`} className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-brand-500/30 bg-brand-500/5 px-4 py-3 text-sm hover:border-brand-500/60">
+        <span>
+          <span className="font-semibold text-strong">Guided onboarding setup</span>
+          <span className="block text-muted-foreground">Agreement, supplies, job-day guide, expectations, pay methods and training, with a cleaner-view preview.</span>
+        </span>
+        <span aria-hidden>→</span>
+      </Link>
       <PageHeader
         title="Onboarding checklist"
         lead="What each kind of worker needs, and what an unmet item holds up. Only what is needed before work stops someone being offered jobs; nothing else does."

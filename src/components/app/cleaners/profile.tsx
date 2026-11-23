@@ -30,6 +30,7 @@ import { Avatar, Chips, EFFECT_WORDS, ENGAGEMENT_WORDS, Progress, ReadinessLine,
 import { ConfirmHoursDialog, ExceptionDialog, RemoveButton, TimeAwayDialog, WeekDialog } from "./availability-edit";
 import { PerformanceSection } from "./performance";
 import { FollowUpsCard, PortalAccessCard, RequirementActions, SkillClaims } from "./onboarding-review";
+import { GuidedStatusCard } from "./guided-status";
 import { profilePath, SECTIONS, type SectionId } from "./state";
 import { Checkbox, Select } from "@/components/ui/selection";
 import { DurationField, EmailInput, ListInput, numberProblem, PhoneInput, zipProblem } from "@/components/ui/fields";
@@ -817,6 +818,7 @@ export function OnboardingSection({ profile }: { profile: Profile }) {
   return (
     <div className="grid gap-4">
       <ReadinessCard profile={profile} />
+      <GuidedStatusCard cleanerId={profile.cleanerId} />
       <FollowUpsCard profile={profile} />
       <PortalAccessCard profile={profile} />
       {GROUPS.map((effect) => {

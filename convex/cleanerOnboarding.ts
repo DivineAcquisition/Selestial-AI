@@ -211,12 +211,12 @@ export const view = portalQuery({
       },
       training: {
         key: trainingKey ?? null,
-        modules: content.training.modules.map((module) => {
-          const row = progress.find((item) => item.moduleKey === module.key);
+        modules: content.training.modules.map((lesson) => {
+          const row = progress.find((item) => item.moduleKey === lesson.key);
           return {
-            ...module,
-            sections: module.sections?.map((section) => ({ title: section.title, body: section.body, check: section.check ? { question: section.check.question, options: section.check.options } : null })),
-            completedAt: done.has(module.key) ? (row?.completedAt ?? null) : null,
+            ...lesson,
+            sections: lesson.sections?.map((section) => ({ title: section.title, body: section.body, check: section.check ? { question: section.check.question, options: section.check.options } : null })),
+            completedAt: done.has(lesson.key) ? (row?.completedAt ?? null) : null,
             watchedSeconds: row?.watchedSeconds ?? 0,
             sectionsRead: row && row.version >= floor ? (row.sectionsRead ?? []) : [],
           };
@@ -584,8 +584,8 @@ export const taxPrepared = internalMutation({
 async function moduleOf(ctx: Portal, moduleKey: string) {
   const { def, row, onboarding, cleaner } = await stepOf(ctx, "training");
   inScope(ctx, [def.key]);
-  const module = onboarding.content.training.modules.find((item) => item.key === moduleKey);
-  if (!module) throw userError("That module is no longer part of the training.");
+  const lesson = onboarding.content.training.modules.find((item) => item.key === moduleKey);
+  if (!lesson) throw userError("That lesson is no longer part of the training.");
   const floor = onboarding.reack[def.key] ?? 0;
   let progress = (
     await ctx.db
@@ -603,20 +603,20 @@ async function moduleOf(ctx: Portal, moduleKey: string) {
     const id = await ctx.db.insert("trainingProgress", { companyId: ctx.companyId, cleanerId: cleaner._id, moduleKey, version: onboarding.version, startedAt: now, watchedSeconds: 0, sectionsRead: [], updatedAt: now });
     progress = (await ctx.db.get(id))!;
   }
-  return { def, row, onboarding, cleaner, module, progress, floor };
+  return { def, row, onboarding, cleaner, lesson, progress, floor };
 }
 
-/** When every required module counts, the training step does too (or goes to the office, if the company checks it). */
+/** When every required lesson counts, the training step does too (or goes to the office, if the company checks it). */
 async function settleTraining(ctx: Portal, parts: Awaited<ReturnType<typeof moduleOf>>) {
   const { def, row, onboarding, cleaner, floor } = parts;
   const required = requiredModules(onboarding.content);
   const done = completedModules(await trainingOf(ctx, ctx.companyId, cleaner._id), floor);
-  if (required.length === 0 || !required.every((module) => done.has(module.key))) return false;
+  if (required.length === 0 || !required.every((lesson) => done.has(lesson.key))) return false;
   const fresh = (await ctx.db.get(row._id))!;
   if ((fresh.status === "accepted" || fresh.status === "awaiting_review") && (fresh.acknowledged?.version ?? 0) >= floor) return true;
   const acknowledged = { words: "required training", at: Date.now(), version: onboarding.version, hash: partsOf(onboarding.content).training };
-  if (def.officeReview) await markForReview(ctx, fresh, { acknowledged }, { label: "Training", where: "Every required module is complete. Confirm it in their profile." });
-  else await markAccepted(ctx, fresh, { acknowledged }, "Every required training module completed by the cleaner.");
+  if (def.officeReview) await markForReview(ctx, fresh, { acknowledged }, { label: "Training", where: "Every required lesson is complete. Confirm it in their profile." });
+  else await markAccepted(ctx, fresh, { acknowledged }, "Every required training lesson completed by the cleaner.");
   return true;
 }
 
@@ -638,8 +638,8 @@ export const videoProgress = portalMutation({
   args: { moduleKey: v.string(), position: v.number(), duration: v.number() },
   handler: async (ctx, args) => {
     const parts = await moduleOf(ctx, args.moduleKey);
-    const { module, progress } = parts;
-    if (module.kind !== "video") throw userError("This module is not a video.");
+    const { lesson, progress } = parts;
+    if (lesson.kind !== "video") throw userError("This lesson is not a video.");
     if (!Number.isFinite(args.position) || !Number.isFinite(args.duration) || args.duration <= 0 || args.duration > 6 * 3600) throw userError("The video could not be read.");
     const now = Date.now();
     const watched = progress.watchedSeconds ?? 0;
@@ -650,7 +650,7 @@ export const videoProgress = portalMutation({
     await ctx.db.patch(progress._id, { watchedSeconds: next, durationSeconds: args.duration, updatedAt: now });
     if (progress.completedAt === undefined && next >= args.duration - 2 && now - progress.startedAt >= (args.duration * 1000) / 2) {
       await ctx.db.patch(progress._id, { completedAt: now, completion: "video_watched" });
-      await recordEvent(ctx, { companyId: ctx.companyId, type: "cleaner.training_module_completed", actor: actorOf(ctx), subject: { table: "cleaners", id: parts.cleaner._id }, data: { module: module.key, how: "video_watched" } });
+      await recordEvent(ctx, { companyId: ctx.companyId, type: "cleaner.training_module_completed", actor: actorOf(ctx), subject: { table: "cleaners", id: parts.cleaner._id }, data: { lesson: lesson.key, how: "video_watched" } });
       return { watchedSeconds: next, completed: true, trainingDone: await settleTraining(ctx, parts) };
     }
     return { watchedSeconds: next, completed: progress.completedAt !== undefined, trainingDone: false };
@@ -663,9 +663,9 @@ export const readSection = portalMutation({
   args: { moduleKey: v.string(), index: v.number(), answer: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const parts = await moduleOf(ctx, args.moduleKey);
-    const { module, progress } = parts;
-    const sections = module.sections ?? [];
-    if (module.kind !== "guide" || !Number.isInteger(args.index) || args.index < 0 || args.index >= sections.length) throw userError("That section is not part of this module.");
+    const { lesson, progress } = parts;
+    const sections = lesson.sections ?? [];
+    if (lesson.kind !== "guide" || !Number.isInteger(args.index) || args.index < 0 || args.index >= sections.length) throw userError("That section is not part of this lesson.");
     const read = progress.sectionsRead ?? [];
     if (read.includes(args.index)) return { read: read.length, of: sections.length, completed: progress.completedAt !== undefined, trainingDone: false };
     if (args.index !== read.length) throw userError("Read the sections in order.");
@@ -676,7 +676,7 @@ export const readSection = portalMutation({
     await ctx.db.patch(progress._id, { sectionsRead: next, updatedAt: now });
     if (next.length === sections.length && progress.completedAt === undefined) {
       await ctx.db.patch(progress._id, { completedAt: now, completion: "guide_read" });
-      await recordEvent(ctx, { companyId: ctx.companyId, type: "cleaner.training_module_completed", actor: actorOf(ctx), subject: { table: "cleaners", id: parts.cleaner._id }, data: { module: module.key, how: "guide_read" } });
+      await recordEvent(ctx, { companyId: ctx.companyId, type: "cleaner.training_module_completed", actor: actorOf(ctx), subject: { table: "cleaners", id: parts.cleaner._id }, data: { lesson: lesson.key, how: "guide_read" } });
       return { read: next.length, of: sections.length, completed: true, trainingDone: await settleTraining(ctx, parts) };
     }
     return { read: next.length, of: sections.length, completed: false, trainingDone: false };

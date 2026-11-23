@@ -4,7 +4,7 @@
  * The training hub: the company's modules, required and optional, each with what completes it. A video
  * counts once it has played to its end without skipping ahead (the server keeps the furthest point watched
  * in order, so leaving resumes there); a guide counts once each section is read in order and its questions
- * answered. Opening a module or leaving it half way records a start and nothing else.
+ * answered. Opening a lesson or leaving it half way records a start and nothing else.
  */
 import { useMutation } from "convex/react";
 import { useEffect, useRef, useState } from "react";
@@ -20,35 +20,35 @@ type Module = GuidedView["training"]["modules"][number];
 
 export function TrainingHub({ view, token, onBack }: { view: GuidedView; token: string | null; onBack: () => void }) {
   const [openKey, setOpenKey] = useState<string | null>(null);
-  const module = view.training.modules.find((m) => m.key === openKey) ?? null;
+  const lesson = view.training.modules.find((m) => m.key === openKey) ?? null;
   const required = view.training.modules.filter((m) => m.required);
   const done = required.filter((m) => m.completedAt).length;
   return (
     <div className="min-h-dvh bg-background">
       <header className="sticky top-0 z-20 border-b border-border/60 bg-background/90 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-xl items-center gap-2 px-4">
-          <button type="button" onClick={module ? () => setOpenKey(null) : onBack} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg pr-2 text-sm font-medium focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:outline-none">
+          <button type="button" onClick={lesson ? () => setOpenKey(null) : onBack} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg pr-2 text-sm font-medium focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:outline-none">
             <ArrowLeft aria-hidden className="size-4" />
-            {module ? "All training" : "Back to setup"}
+            {lesson ? "All training" : "Back to setup"}
           </button>
           <span className="ml-auto text-xs text-muted-foreground">{view.company.name}</span>
         </div>
       </header>
       <main className="mx-auto flex w-full max-w-xl flex-col gap-4 px-4 pt-5 pb-16">
-        {module ? (
-          <ModuleView key={module.key} module={module} token={token} onDone={() => setOpenKey(null)} />
+        {lesson ? (
+          <ModuleView key={lesson.key} lesson={lesson} token={token} onDone={() => setOpenKey(null)} />
         ) : (
           <>
             <div>
               <h1 className="text-2xl font-semibold tracking-tight">Your training</h1>
               <p className="mt-1 text-sm text-muted-foreground">
-                {done} of {required.length} required {required.length === 1 ? "module" : "modules"} complete. Your place is saved in each one.
+                {done} of {required.length} required {required.length === 1 ? "lesson" : "modules"} complete. Your place is saved in each one.
               </p>
             </div>
             <ul className="flex flex-col gap-3">
               {view.training.modules.map((m) => (
                 <li key={m.key}>
-                  <button type="button" onClick={() => setOpenKey(m.key)} className="flex w-full items-start gap-3 rounded-3xl border border-border bg-card p-4 text-left shadow-sm hover:border-brand-500/40 focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:outline-none" data-testid={`module-${m.key}`}>
+                  <button type="button" onClick={() => setOpenKey(m.key)} className="flex w-full items-start gap-3 rounded-3xl border border-border bg-card p-4 text-left shadow-sm hover:border-brand-500/40 focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:outline-none" data-testid={`lesson-${m.key}`}>
                     <span aria-hidden className={cn("grid size-12 shrink-0 place-items-center rounded-2xl", m.completedAt ? "bg-emerald-500/15 text-emerald-700" : "bg-brand-500/10 text-brand-600")}>{m.completedAt ? <Check className="size-6" /> : m.kind === "video" ? <PlayCircle className="size-6" /> : <BookOpen className="size-6" />}</span>
                     <span className="min-w-0 flex-1">
                       <span className="block font-semibold">{m.title}</span>
@@ -65,7 +65,7 @@ export function TrainingHub({ view, token, onBack }: { view: GuidedView; token: 
             </ul>
             {required.length > 0 && done === required.length ? (
               <p role="status" className="flex items-center gap-2 rounded-2xl bg-emerald-500/10 p-3 text-sm font-medium text-emerald-900 dark:text-emerald-200">
-                <CheckCircle2 aria-hidden className="size-5" /> Required training complete. You can come back to any module.
+                <CheckCircle2 aria-hidden className="size-5" /> Required training complete. You can come back to any lesson.
               </p>
             ) : null}
           </>
@@ -75,32 +75,32 @@ export function TrainingHub({ view, token, onBack }: { view: GuidedView; token: 
   );
 }
 
-function ModuleView({ module, token, onDone }: { module: Module; token: string | null; onDone: () => void }) {
+function ModuleView({ lesson, token, onDone }: { lesson: Module; token: string | null; onDone: () => void }) {
   const start = useMutation(api.cleanerOnboarding.startModule);
   const started = useRef(false);
   useEffect(() => {
     if (!token || started.current) return;
     started.current = true;
-    void start({ token, moduleKey: module.key }).catch(() => undefined);
-  }, [start, token, module.key]);
+    void start({ token, moduleKey: lesson.key }).catch(() => undefined);
+  }, [start, token, lesson.key]);
   return (
     <article className="flex flex-col gap-4">
       <div>
-        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{module.required ? "Required" : "Optional"} · {module.kind === "video" ? "Video" : "Guide"}</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">{module.title}</h1>
-        {module.summary ? <p className="mt-1 text-sm text-muted-foreground">{module.summary}</p> : null}
+        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{lesson.required ? "Required" : "Optional"} · {lesson.kind === "video" ? "Video" : "Guide"}</p>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight">{lesson.title}</h1>
+        {lesson.summary ? <p className="mt-1 text-sm text-muted-foreground">{lesson.summary}</p> : null}
       </div>
-      {module.kind === "video" ? <VideoModule module={module} token={token} /> : <GuideModule module={module} token={token} onDone={onDone} />}
+      {lesson.kind === "video" ? <VideoModule lesson={lesson} token={token} /> : <GuideModule lesson={lesson} token={token} onDone={onDone} />}
     </article>
   );
 }
 
-function VideoModule({ module, token }: { module: Module; token: string | null }) {
+function VideoModule({ lesson, token }: { lesson: Module; token: string | null }) {
   const report = useMutation(api.cleanerOnboarding.videoProgress);
   const ref = useRef<HTMLVideoElement>(null);
-  const watched = useRef(module.watchedSeconds);
+  const watched = useRef(lesson.watchedSeconds);
   const last = useRef(0);
-  const [done, setDone] = useState(Boolean(module.completedAt));
+  const [done, setDone] = useState(Boolean(lesson.completedAt));
   const [problem, setProblem] = useState<string | null>(null);
   const send = (force = false) => {
     const video = ref.current;
@@ -108,7 +108,7 @@ function VideoModule({ module, token }: { module: Module; token: string | null }
     const now = Date.now();
     if (!force && now - last.current < 8000) return;
     last.current = now;
-    report({ token, moduleKey: module.key, position: video.currentTime, duration: video.duration })
+    report({ token, moduleKey: lesson.key, position: video.currentTime, duration: video.duration })
       .then((result) => {
         watched.current = Math.max(watched.current, result.watchedSeconds);
         if (result.completed) setDone(true);
@@ -120,7 +120,7 @@ function VideoModule({ module, token }: { module: Module; token: string | null }
       <div className="overflow-hidden rounded-3xl border border-border bg-black">
         <video
           ref={ref}
-          src={module.videoUrl}
+          src={lesson.videoUrl}
           controls
           playsInline
           preload="metadata"
@@ -144,7 +144,7 @@ function VideoModule({ module, token }: { module: Module; token: string | null }
       <Problem message={problem} />
       {done ? (
         <p role="status" className="flex items-center gap-2 rounded-2xl bg-emerald-500/10 p-3 text-sm font-medium text-emerald-900 dark:text-emerald-200">
-          <CheckCircle2 aria-hidden className="size-5" /> Watched to the end. This module is complete.
+          <CheckCircle2 aria-hidden className="size-5" /> Watched to the end. This lesson is complete.
         </p>
       ) : (
         <p className="text-sm text-muted-foreground">It counts once it plays to the end. You can pause and come back; your place is saved.</p>
@@ -153,10 +153,10 @@ function VideoModule({ module, token }: { module: Module; token: string | null }
   );
 }
 
-function GuideModule({ module, token, onDone }: { module: Module; token: string | null; onDone: () => void }) {
+function GuideModule({ lesson, token, onDone }: { lesson: Module; token: string | null; onDone: () => void }) {
   const read = useMutation(api.cleanerOnboarding.readSection);
-  const sections = module.sections ?? [];
-  const [readCount, setReadCount] = useState(module.completedAt ? sections.length : module.sectionsRead.length);
+  const sections = lesson.sections ?? [];
+  const [readCount, setReadCount] = useState(lesson.completedAt ? sections.length : lesson.sectionsRead.length);
   const [index, setIndex] = useState(Math.min(readCount, sections.length - 1));
   const [answer, setAnswer] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -177,7 +177,7 @@ function GuideModule({ module, token, onDone }: { module: Module; token: string 
     setBusy(true);
     setProblem(null);
     try {
-      const result = await read({ token, moduleKey: module.key, index, answer: answer ?? undefined });
+      const result = await read({ token, moduleKey: lesson.key, index, answer: answer ?? undefined });
       setReadCount(result.read);
       setAnswer(null);
       if (index < sections.length - 1) setIndex(index + 1);
@@ -206,7 +206,7 @@ function GuideModule({ module, token, onDone }: { module: Module; token: string 
             <legend className="mb-1 text-sm font-semibold">{section.check.question}</legend>
             {section.check.options.map((option, i) => (
               <label key={option} className={cn("flex min-h-12 cursor-pointer items-center gap-3 rounded-2xl border px-3 text-sm", answer === i ? "border-brand-600 bg-brand-500/5" : "border-border")}>
-                <input type="radio" name={`check-${module.key}-${index}`} checked={answer === i} onChange={() => setAnswer(i)} className="size-4 accent-brand-600" />
+                <input type="radio" name={`check-${lesson.key}-${index}`} checked={answer === i} onChange={() => setAnswer(i)} className="size-4 accent-brand-600" />
                 {option}
               </label>
             ))}
@@ -217,7 +217,7 @@ function GuideModule({ module, token, onDone }: { module: Module; token: string 
       {complete && index === sections.length - 1 ? (
         <>
           <p role="status" className="flex items-center gap-2 rounded-2xl bg-emerald-500/10 p-3 text-sm font-medium text-emerald-900 dark:text-emerald-200">
-            <CheckCircle2 aria-hidden className="size-5" /> Every section read. This module is complete.
+            <CheckCircle2 aria-hidden className="size-5" /> Every section read. This lesson is complete.
           </p>
           <button type="button" onClick={onDone} className="min-h-12 rounded-xl border border-border font-semibold">
             Back to all training

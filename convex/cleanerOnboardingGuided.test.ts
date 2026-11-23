@@ -182,12 +182,12 @@ describe("the guided cleaner onboarding", () => {
 
       // Step 7: training completes only by reading in order and answering correctly.
       v = (await view(s, token))!;
-      const module = v.training.modules[0];
-      expect(await refusal(s.t.mutation(api.cleanerOnboarding.readSection, { token, moduleKey: module.key, index: 2 }))).toContain("in order");
-      expect(await refusal(s.t.mutation(api.cleanerOnboarding.readSection, { token, moduleKey: module.key, index: 0, answer: 0 }))).toContain("Not quite");
+      const lesson = v.training.modules[0];
+      expect(await refusal(s.t.mutation(api.cleanerOnboarding.readSection, { token, moduleKey: lesson.key, index: 2 }))).toContain("in order");
+      expect(await refusal(s.t.mutation(api.cleanerOnboarding.readSection, { token, moduleKey: lesson.key, index: 0, answer: 0 }))).toContain("Not quite");
       expect((await stepStates(s, token)).training).toBe("todo");
       const answersFor = [1, 1, undefined, 1];
-      for (let i = 0; i < module.sections!.length; i += 1) await s.t.mutation(api.cleanerOnboarding.readSection, { token, moduleKey: module.key, index: i, answer: answersFor[i] });
+      for (let i = 0; i < lesson.sections!.length; i += 1) await s.t.mutation(api.cleanerOnboarding.readSection, { token, moduleKey: lesson.key, index: i, answer: answersFor[i] });
       expect((await stepStates(s, token)).training).toBe("done");
 
       // Every step is hers and finished. The office makes the engagement active; Rosa is then ready.

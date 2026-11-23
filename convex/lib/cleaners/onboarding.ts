@@ -236,14 +236,14 @@ export function normalizeContent(input: OnboardingContent): { content: Onboardin
   if (methods.length === 0) problems.push("Choose at least one way the company pays people.");
   const moduleKeys = new Set<string>();
   const modules: TrainingModule[] = [];
-  for (const module of input.training.modules.slice(0, 20)) {
-    const title = clean(module.title, 100);
+  for (const lesson of input.training.modules.slice(0, 20)) {
+    const title = clean(lesson.title, 100);
     if (!title) continue;
-    let key = slug(module.key || title) || "module";
+    let key = slug(lesson.key || title) || "lesson";
     while (moduleKeys.has(key)) key = `${key}_2`;
     moduleKeys.add(key);
-    const videoUrl = httpsOnly(module.videoUrl);
-    const sections = (module.sections ?? [])
+    const videoUrl = httpsOnly(lesson.videoUrl);
+    const sections = (lesson.sections ?? [])
       .map((section) => {
         const options = (section.check?.options ?? []).map((o) => clean(o, 120) ?? "").filter(Boolean).slice(0, 5);
         const check = section.check && clean(section.check.question, 200) && options.length >= 2 && Number.isInteger(section.check.answer) && section.check.answer >= 0 && section.check.answer < options.length ? { question: clean(section.check.question, 200)!, options, answer: section.check.answer } : undefined;
@@ -251,10 +251,10 @@ export function normalizeContent(input: OnboardingContent): { content: Onboardin
       })
       .filter((section) => section.title && section.body)
       .slice(0, 15);
-    if (module.kind === "video" && !videoUrl) problems.push(`"${title}" needs a video address starting with https://, to a video file such as .mp4.`);
-    if (module.kind === "guide" && sections.length === 0) problems.push(`"${title}" needs at least one section.`);
-    const minutes = module.minutes !== undefined && Number.isFinite(module.minutes) ? Math.min(240, Math.max(1, Math.round(module.minutes))) : undefined;
-    modules.push({ key, title, summary: clean(module.summary, 200), kind: module.kind, required: module.required, minutes, videoUrl: module.kind === "video" ? videoUrl : undefined, sections: module.kind === "guide" ? sections : undefined });
+    if (lesson.kind === "video" && !videoUrl) problems.push(`"${title}" needs a video address starting with https://, to a video file such as .mp4.`);
+    if (lesson.kind === "guide" && sections.length === 0) problems.push(`"${title}" needs at least one section.`);
+    const minutes = lesson.minutes !== undefined && Number.isFinite(lesson.minutes) ? Math.min(240, Math.max(1, Math.round(lesson.minutes))) : undefined;
+    modules.push({ key, title, summary: clean(lesson.summary, 200), kind: lesson.kind, required: lesson.required, minutes, videoUrl: lesson.kind === "video" ? videoUrl : undefined, sections: lesson.kind === "guide" ? sections : undefined });
   }
   const content: OnboardingContent = {
     welcome: clean(input.welcome, 400),
@@ -327,7 +327,7 @@ export function publishedOf(rows: Doc<"onboardingConfigs">[]): PublishedOnboardi
 
 /** The required modules a cleaner must complete, from the content in force. */
 export function requiredModules(content: OnboardingContent): TrainingModule[] {
-  return content.training.modules.filter((module) => module.required);
+  return content.training.modules.filter((lesson) => lesson.required);
 }
 
 /** Catalog items the cleaner is asked about, and the ones that apply to a visit of a service. */
