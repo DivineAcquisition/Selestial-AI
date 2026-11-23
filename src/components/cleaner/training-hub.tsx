@@ -42,13 +42,13 @@ export function TrainingHub({ view, token, onBack }: { view: GuidedView; token: 
             <div>
               <h1 className="text-2xl font-semibold tracking-tight">Your training</h1>
               <p className="mt-1 text-sm text-muted-foreground">
-                {done} of {required.length} required {required.length === 1 ? "lesson" : "modules"} complete. Your place is saved in each one.
+                {done} of {required.length} required {required.length === 1 ? "module" : "modules"} complete. Your place is saved in each one.
               </p>
             </div>
             <ul className="flex flex-col gap-3">
               {view.training.modules.map((m) => (
                 <li key={m.key}>
-                  <button type="button" onClick={() => setOpenKey(m.key)} className="flex w-full items-start gap-3 rounded-3xl border border-border bg-card p-4 text-left shadow-sm hover:border-brand-500/40 focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:outline-none" data-testid={`lesson-${m.key}`}>
+                  <button type="button" onClick={() => setOpenKey(m.key)} className="flex w-full items-start gap-3 rounded-3xl border border-border bg-card p-4 text-left shadow-sm hover:border-brand-500/40 focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:outline-none" data-testid={`module-${m.key}`}>
                     <span aria-hidden className={cn("grid size-12 shrink-0 place-items-center rounded-2xl", m.completedAt ? "bg-emerald-500/15 text-emerald-700" : "bg-brand-500/10 text-brand-600")}>{m.completedAt ? <Check className="size-6" /> : m.kind === "video" ? <PlayCircle className="size-6" /> : <BookOpen className="size-6" />}</span>
                     <span className="min-w-0 flex-1">
                       <span className="block font-semibold">{m.title}</span>

@@ -387,11 +387,11 @@ function TrainingEditor({ content, owner, onChange }: { content: Content; owner:
         ))}
       </ul>
       {owner ? (
-        <Button variant="outline" size="sm" onClick={() => onChange({ modules: [...modules, { key: "", title: "New lesson", kind: "video", required: true, videoUrl: "" }] })}>
+        <Button variant="outline" size="sm" onClick={() => onChange({ modules: [...modules, { key: "", title: "New module", kind: "video", required: true, videoUrl: "" }] })}>
           <Plus aria-hidden /> Add a lesson
         </Button>
       ) : null}
-      <p className="text-xs text-muted-foreground">A certificate issued by someone else (for example, a safety course) is a document requirement in the checklist, not a lesson.</p>
+      <p className="text-xs text-muted-foreground">A certificate issued by someone else (for example, a safety course) is a document requirement in the checklist, not a module.</p>
     </Section>
   );
 }

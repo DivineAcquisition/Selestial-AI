@@ -239,7 +239,7 @@ export function normalizeContent(input: OnboardingContent): { content: Onboardin
   for (const lesson of input.training.modules.slice(0, 20)) {
     const title = clean(lesson.title, 100);
     if (!title) continue;
-    let key = slug(lesson.key || title) || "lesson";
+    let key = slug(lesson.key || title) || "module";
     while (moduleKeys.has(key)) key = `${key}_2`;
     moduleKeys.add(key);
     const videoUrl = httpsOnly(lesson.videoUrl);

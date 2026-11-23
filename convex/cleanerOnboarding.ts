@@ -585,7 +585,7 @@ async function moduleOf(ctx: Portal, moduleKey: string) {
   const { def, row, onboarding, cleaner } = await stepOf(ctx, "training");
   inScope(ctx, [def.key]);
   const lesson = onboarding.content.training.modules.find((item) => item.key === moduleKey);
-  if (!lesson) throw userError("That lesson is no longer part of the training.");
+  if (!lesson) throw userError("That module is no longer part of the training.");
   const floor = onboarding.reack[def.key] ?? 0;
   let progress = (
     await ctx.db
@@ -615,8 +615,8 @@ async function settleTraining(ctx: Portal, parts: Awaited<ReturnType<typeof modu
   const fresh = (await ctx.db.get(row._id))!;
   if ((fresh.status === "accepted" || fresh.status === "awaiting_review") && (fresh.acknowledged?.version ?? 0) >= floor) return true;
   const acknowledged = { words: "required training", at: Date.now(), version: onboarding.version, hash: partsOf(onboarding.content).training };
-  if (def.officeReview) await markForReview(ctx, fresh, { acknowledged }, { label: "Training", where: "Every required lesson is complete. Confirm it in their profile." });
-  else await markAccepted(ctx, fresh, { acknowledged }, "Every required training lesson completed by the cleaner.");
+  if (def.officeReview) await markForReview(ctx, fresh, { acknowledged }, { label: "Training", where: "Every required module is complete. Confirm it in their profile." });
+  else await markAccepted(ctx, fresh, { acknowledged }, "Every required training module completed by the cleaner.");
   return true;
 }
 
@@ -639,7 +639,7 @@ export const videoProgress = portalMutation({
   handler: async (ctx, args) => {
     const parts = await moduleOf(ctx, args.moduleKey);
     const { lesson, progress } = parts;
-    if (lesson.kind !== "video") throw userError("This lesson is not a video.");
+    if (lesson.kind !== "video") throw userError("This module is not a video.");
     if (!Number.isFinite(args.position) || !Number.isFinite(args.duration) || args.duration <= 0 || args.duration > 6 * 3600) throw userError("The video could not be read.");
     const now = Date.now();
     const watched = progress.watchedSeconds ?? 0;
@@ -650,7 +650,7 @@ export const videoProgress = portalMutation({
     await ctx.db.patch(progress._id, { watchedSeconds: next, durationSeconds: args.duration, updatedAt: now });
     if (progress.completedAt === undefined && next >= args.duration - 2 && now - progress.startedAt >= (args.duration * 1000) / 2) {
       await ctx.db.patch(progress._id, { completedAt: now, completion: "video_watched" });
-      await recordEvent(ctx, { companyId: ctx.companyId, type: "cleaner.training_module_completed", actor: actorOf(ctx), subject: { table: "cleaners", id: parts.cleaner._id }, data: { lesson: lesson.key, how: "video_watched" } });
+      await recordEvent(ctx, { companyId: ctx.companyId, type: "cleaner.training_module_completed", actor: actorOf(ctx), subject: { table: "cleaners", id: parts.cleaner._id }, data: { module: lesson.key, how: "video_watched" } });
       return { watchedSeconds: next, completed: true, trainingDone: await settleTraining(ctx, parts) };
     }
     return { watchedSeconds: next, completed: progress.completedAt !== undefined, trainingDone: false };
@@ -665,7 +665,7 @@ export const readSection = portalMutation({
     const parts = await moduleOf(ctx, args.moduleKey);
     const { lesson, progress } = parts;
     const sections = lesson.sections ?? [];
-    if (lesson.kind !== "guide" || !Number.isInteger(args.index) || args.index < 0 || args.index >= sections.length) throw userError("That section is not part of this lesson.");
+    if (lesson.kind !== "guide" || !Number.isInteger(args.index) || args.index < 0 || args.index >= sections.length) throw userError("That section is not part of this module.");
     const read = progress.sectionsRead ?? [];
     if (read.includes(args.index)) return { read: read.length, of: sections.length, completed: progress.completedAt !== undefined, trainingDone: false };
     if (args.index !== read.length) throw userError("Read the sections in order.");
@@ -676,7 +676,7 @@ export const readSection = portalMutation({
     await ctx.db.patch(progress._id, { sectionsRead: next, updatedAt: now });
     if (next.length === sections.length && progress.completedAt === undefined) {
       await ctx.db.patch(progress._id, { completedAt: now, completion: "guide_read" });
-      await recordEvent(ctx, { companyId: ctx.companyId, type: "cleaner.training_module_completed", actor: actorOf(ctx), subject: { table: "cleaners", id: parts.cleaner._id }, data: { lesson: lesson.key, how: "guide_read" } });
+      await recordEvent(ctx, { companyId: ctx.companyId, type: "cleaner.training_module_completed", actor: actorOf(ctx), subject: { table: "cleaners", id: parts.cleaner._id }, data: { module: lesson.key, how: "guide_read" } });
       return { read: next.length, of: sections.length, completed: true, trainingDone: await settleTraining(ctx, parts) };
     }
     return { read: next.length, of: sections.length, completed: false, trainingDone: false };
