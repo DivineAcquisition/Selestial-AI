@@ -528,6 +528,8 @@ import type * as textingSetup from "../textingSetup.js";
 import type * as trust from "../trust.js";
 import type * as tutorials from "../tutorials.js";
 import type * as workforce from "../workforce.js";
+import type * as cleanerOnboarding from "../cleanerOnboarding.js";
+import type * as onboardingSetup from "../onboardingSetup.js";
 
 import type {
   ApiFromModules,
@@ -536,6 +538,8 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  onboardingSetup: typeof onboardingSetup;
+  cleanerOnboarding: typeof cleanerOnboarding;
   activation: typeof activation;
   agentAccess: typeof agentAccess;
   agreementFiles: typeof agreementFiles;

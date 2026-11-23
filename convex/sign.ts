@@ -11,14 +11,14 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { applyEvent, isOpen } from "./lib/agreements/signingStore";
+import { applyEvent } from "./lib/agreements/signingStore";
 import { HOSTED } from "./lib/agreements/signing";
+import { CONSENT, recordHostedSignature, signerState } from "./lib/agreements/hostedSign";
 import { salesLinkMutation, salesLinkQuery } from "./lib/builders";
 import { userError } from "./lib/errors";
-import { recordEvent } from "./lib/events";
-import { optionalText, text } from "./lib/text";
+import { optionalText } from "./lib/text";
 
-export const CONSENT = "I have read this agreement, I agree to its terms, and I intend my typed name below to be my electronic signature. I agree to sign electronically.";
+export { CONSENT };
 
 async function resolve(ctx: QueryCtx | MutationCtx, publicId: string) {
   const link = await ctx.db
@@ -35,13 +35,7 @@ async function resolve(ctx: QueryCtx | MutationCtx, publicId: string) {
 
 type Resolved = NonNullable<Awaited<ReturnType<typeof resolve>>>;
 
-function state(r: Resolved): "open" | "signed" | "declined" | "expired" | "withdrawn" | "closed" {
-  if (r.link.signature) return "signed";
-  if (r.link.declined) return "declined";
-  if (r.request.status === "expired" || r.request.expiresAt < Date.now()) return "expired";
-  if (r.request.status === "withdrawn") return "withdrawn";
-  return isOpen(r.request.status) ? "open" : "closed";
-}
+const state = (r: Resolved) => signerState(r);
 
 export const view = salesLinkQuery({
   kind: "sign",
@@ -91,22 +85,8 @@ export const signNow = salesLinkMutation({
   resolve,
   args: { typedName: v.string(), hash: v.string(), agreed: v.boolean(), userAgent: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const r = ctx.link as Resolved;
-    // Signing twice from two tabs records one signature.
-    if (r.link.signature) return { signed: true, already: true };
-    const now = state(r);
-    if (now !== "open") throw userError(now === "expired" ? "This signing link has expired. Ask the company for a new one." : "This document can no longer be signed here.");
-    if (!args.agreed) throw userError("Check the box to agree before signing.");
-    if (args.hash !== r.request.hash) throw userError("The document changed since you opened it. Reload and read the current version.");
-    const typed = text(args.typedName, "Your full name", 120);
-    if (typed.replace(/[^a-z]/gi, "").length < 2) throw userError("Type your full name to sign.");
-    if (r.request.provider !== HOSTED || !r.request.providerRequestId) throw userError("This document is signed through another service.");
-    const at = Date.now();
-    await ctx.db.patch(r.link._id, { signature: { typedName: typed, at, hash: r.request.hash, version: r.request.version, consent: CONSENT, userAgent: optionalText(args.userAgent, "Browser", 300) } });
-    const result = await applyEvent(ctx, HOSTED, { eventId: `signed:${r.link._id}`, requestId: r.request.providerRequestId, type: "signed", signerEmail: r.link.signerEmail, at });
-    await recordEvent(ctx, { companyId: r.request.companyId, type: "agreement.signer_signed", actor: { kind: "system" }, subject: { table: "agreements", id: r.agreement._id }, data: { version: r.request.version, via: HOSTED } });
-    if (result.completed) await ctx.scheduler.runAfter(0, internal.bookings.agreementChanged, { agreementId: r.agreement._id });
-    return { signed: true, already: false };
+    const result = await recordHostedSignature(ctx, ctx.link as Resolved, { ...args, via: "signing_link" });
+    return { signed: true, already: result.already };
   },
 });
 

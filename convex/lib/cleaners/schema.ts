@@ -8,6 +8,7 @@ import { defineTable } from "convex/server";
 import { v } from "convex/values";
 
 import { literals } from "../statuses";
+import { onboardingContentValidator, payMethodValidator } from "./onboarding";
 
 // ── Lists ────────────────────────────────────────────────────────────────────────────────────────
 
@@ -16,7 +17,11 @@ export const ENGAGEMENTS = ["employee", "contractor", "subcontractor"] as const;
 export type Engagement = (typeof ENGAGEMENTS)[number];
 export const engagementValidator = literals(ENGAGEMENTS);
 
-export const REQUIREMENT_KINDS = ["contact", "agreement", "document", "payment", "availability", "service_areas", "skills", "equipment", "training", "acknowledgment", "custom"] as const;
+/**
+ * `tax` is handled in the background (lib/cleaners/tax.ts): it is never a visible onboarding step and never an
+ * upload. When it needs something only the worker can give, it asks inside the payment step.
+ */
+export const REQUIREMENT_KINDS = ["contact", "agreement", "document", "payment", "availability", "service_areas", "skills", "equipment", "training", "acknowledgment", "tax", "custom"] as const;
 export type RequirementKind = (typeof REQUIREMENT_KINDS)[number];
 export const requirementKindValidator = literals(REQUIREMENT_KINDS);
 
@@ -72,6 +77,10 @@ export type PersonnelKind = (typeof PERSONNEL_KINDS)[number];
 export const personnelKindValidator = literals(PERSONNEL_KINDS);
 
 export const PORTAL_PURPOSES = ["portal", "task", "availability", "check_in"] as const;
+
+/** How a cleaner answered one item of the supplies checklist. Company-provided items are not asked. */
+export const SUPPLY_ANSWERS = ["have", "missing"] as const;
+export const supplyAnswerValidator = literals(SUPPLY_ANSWERS);
 export type PortalPurpose = (typeof PORTAL_PURPOSES)[number];
 
 // ── Shapes ───────────────────────────────────────────────────────────────────────────────────────
@@ -101,6 +110,12 @@ export const cleanersSettingsValidator = v.object({
   personnelDecider: v.optional(v.union(v.literal("owner"), v.literal("owner_or_manager"))),
   /** What happens to portal access when an engagement ends. */
   endedAccess: v.optional(v.union(v.literal("revoke"), v.literal("history_only"))),
+  /**
+   * Which starting template a company that never saved its own uses. "guided" is the guided onboarding
+   * (sign, verify, supplies, guides, pay, training). Absent means the earlier starting template, so a company
+   * that was already onboarding people keeps exactly the rules it had until its Owner switches.
+   */
+  startingTemplate: v.optional(v.union(v.literal("v1"), v.literal("guided"))),
 });
 
 export const fileRefValidator = v.object({
@@ -116,6 +131,8 @@ export const evidenceValidator = v.object({
   agreementId: v.optional(v.id("agreements")),
   /** What the cleaner or a person wrote, for example a confirmed phone number or "has own vacuum". */
   text: v.optional(v.string()),
+  /** For a supplies checklist: the cleaner's answer per catalog item, as they gave it. */
+  supplies: v.optional(v.record(v.string(), supplyAnswerValidator)),
 });
 
 /** Who did something on a requirement. A cleaner acts only through their own portal link. */
@@ -187,6 +204,10 @@ export const cleanersTables = {
     agreementDocType: v.optional(v.string()),
     /** For an acknowledgment: when its words last changed. Agreements from before then are asked again. */
     wordsChangedAt: v.optional(v.number()),
+    /** True when a person checks what the cleaner did before it counts (supplies, training, documents). */
+    officeReview: v.optional(v.boolean()),
+    /** For an acknowledgment shown as a guide of the onboarding content. Absent: its description is its words. */
+    guide: v.optional(v.union(v.literal("jobGuide"), v.literal("expectations"))),
     order: v.number(),
     status: v.union(v.literal("active"), v.literal("retired")),
     updatedBy: v.optional(v.id("members")),
@@ -210,8 +231,11 @@ export const cleanersTables = {
     /** When an accepted requirement stops counting. */
     expiresAt: v.optional(v.number()),
     waiver: v.optional(v.object({ by: v.id("members"), at: v.number(), reason: v.string() })),
-    /** For an acknowledgment: the exact words the cleaner agreed to. New words need a new agreement. */
-    acknowledged: v.optional(v.object({ words: v.string(), at: v.number() })),
+    /**
+     * For an acknowledgment, a guide, training or a checklist: what the cleaner agreed to or completed, and
+     * the version of the company's onboarding it was. `hash` is the content they were shown.
+     */
+    acknowledged: v.optional(v.object({ words: v.string(), at: v.number(), version: v.optional(v.number()), hash: v.optional(v.string()) })),
     updatedAt: v.number(),
   })
     .index("by_company_cleaner", ["companyId", "cleanerId", "key"])
@@ -314,6 +338,10 @@ export const cleanersTables = {
   portalCodes: defineTable({
     companyId: v.id("companies"),
     linkId: v.id("portalLinks"),
+    /** unlock: opens pay and tax for a while. phone: proves the person holds `to`. Absent on older rows: unlock. */
+    purpose: v.optional(v.union(v.literal("unlock"), v.literal("phone"))),
+    /** For a phone code: the number it was sent to, as dialled. */
+    to: v.optional(v.string()),
     codeHash: v.string(),
     channel: v.union(v.literal("sms"), v.literal("email")),
     expiresAt: v.number(),
@@ -430,6 +458,101 @@ export const cleanersTables = {
   })
     .index("by_company_status", ["companyId", "status", "requestedAt"])
     .index("by_company_cleaner", ["companyId", "cleanerId", "requestedAt"]),
+
+  /**
+   * The company's guided onboarding content (lib/cleaners/onboarding.ts), one row per version. At most one
+   * draft; the published row with the highest version is in force; earlier ones are kept as they were, so
+   * what a cleaner agreed to can always be shown. `reack` is cumulative: requirement key → the version from
+   * which an earlier completion no longer counts, decided by the Owner when publishing.
+   */
+  onboardingConfigs: defineTable({
+    companyId: v.id("companies"),
+    version: v.number(),
+    status: v.union(v.literal("draft"), v.literal("published"), v.literal("superseded")),
+    content: onboardingContentValidator,
+    reack: v.record(v.string(), v.number()),
+    /** What changed in this version and what the Owner decided for people who had already completed it. */
+    changes: v.optional(v.array(v.object({ key: v.string(), label: v.string(), again: v.boolean() }))),
+    note: v.optional(v.string()),
+    publishedBy: v.optional(v.id("members")),
+    publishedAt: v.optional(v.number()),
+    updatedBy: v.optional(v.id("members")),
+    updatedAt: v.number(),
+  }).index("by_company_version", ["companyId", "version"]),
+
+  /**
+   * One training module for one cleaner. Completed only by what the page saw: a video played to its end
+   * without skipping ahead, or a guide read section by section with its questions answered. Opening a
+   * module, or skipping, records a start and nothing more.
+   */
+  trainingProgress: defineTable({
+    companyId: v.id("companies"),
+    cleanerId: v.id("cleaners"),
+    moduleKey: v.string(),
+    /** The onboarding version the module was taken under. */
+    version: v.number(),
+    startedAt: v.number(),
+    /** Video: the furthest second watched in order, the video's length, and when watching started. */
+    watchedSeconds: v.optional(v.number()),
+    durationSeconds: v.optional(v.number()),
+    /** Guide: the sections read, in order, and the questions answered correctly. */
+    sectionsRead: v.optional(v.array(v.number())),
+    completedAt: v.optional(v.number()),
+    completion: v.optional(v.union(v.literal("video_watched"), v.literal("guide_read"))),
+    updatedAt: v.number(),
+  }).index("by_company_cleaner", ["companyId", "cleanerId", "moduleKey"]),
+
+  /**
+   * How a worker would like to be paid. Recording a preference is not enabling payment: Finance confirms
+   * it before it is used, and payments are still made and recorded in Team Pay. Bank and tax numbers are
+   * never kept here.
+   */
+  payoutPreferences: defineTable({
+    companyId: v.id("companies"),
+    cleanerId: v.id("cleaners"),
+    method: payMethodValidator,
+    /** Zelle email or phone, or Venmo username. */
+    handle: v.optional(v.string()),
+    /** Where a check is mailed. */
+    mailingAddress: v.optional(v.string()),
+    status: v.union(v.literal("recorded"), v.literal("confirmed"), v.literal("replaced")),
+    recordedAt: v.number(),
+    recordedBy: byValidator,
+    confirmedBy: v.optional(v.id("members")),
+    confirmedAt: v.optional(v.number()),
+  }).index("by_company_cleaner", ["companyId", "cleanerId", "recordedAt"]),
+
+  /**
+   * A worker's tax document, prepared in the background (lib/cleaners/tax.ts). Each state is its own fact:
+   * awaiting_information (only the worker can give it), awaiting_confirmation (given, not yet certified by
+   * them), preparing (certified, the document is being made), completed (made and stored), failed (with the
+   * problem, for the office), not_applicable (handled outside Selestial, with why). The taxpayer number is
+   * sealed with TAX_ID_KEY and never leaves this table except as its last four digits.
+   */
+  taxDocuments: defineTable({
+    companyId: v.id("companies"),
+    cleanerId: v.id("cleaners"),
+    form: v.union(v.literal("w9"), v.literal("none")),
+    status: v.union(v.literal("awaiting_information"), v.literal("awaiting_confirmation"), v.literal("preparing"), v.literal("completed"), v.literal("failed"), v.literal("not_applicable")),
+    /** For not_applicable: why, in words for the office. */
+    reason: v.optional(v.string()),
+    legalName: v.optional(v.string()),
+    businessName: v.optional(v.string()),
+    tinType: v.optional(v.union(v.literal("ssn"), v.literal("ein"), v.literal("itin"))),
+    tinSealed: v.optional(v.string()),
+    tinLast4: v.optional(v.string()),
+    address: v.optional(v.object({ line1: v.string(), city: v.string(), state: v.string(), postalCode: v.string() })),
+    /** The worker's own certification: their typed name, the exact words, when. Never given for them. */
+    certification: v.optional(v.object({ typedName: v.string(), words: v.string(), at: v.number(), linkId: v.id("portalLinks") })),
+    documentId: v.optional(v.id("_storage")),
+    documentHash: v.optional(v.string()),
+    problem: v.optional(v.string()),
+    preparedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  })
+    .index("by_company_cleaner", ["companyId", "cleanerId"])
+    .index("by_company_status", ["companyId", "status", "updatedAt"]),
 
   /** Each compensation arrangement and when it applied. The current one is copied to `cleaners.pay`. */
   payArrangements: defineTable({

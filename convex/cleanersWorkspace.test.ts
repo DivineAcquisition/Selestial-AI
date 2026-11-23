@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { addMember, company, HOUR, JOB_END, JOB_START, NOW, refusal, seedVisit, start } from "../tests/harness";
+import { addMember, legacyCompany, HOUR, JOB_END, JOB_START, NOW, refusal, seedVisit, start } from "../tests/harness";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { NOT_ALLOWED, NOT_FOUND } from "./lib/errors";
@@ -13,7 +13,7 @@ const week = [1, 2, 3, 4, 5].map((weekday) => ({ weekday, startMinute: 8 * 60, e
 describe("adding workers", () => {
   it("gives a new worker the template for their relationship type, and nothing makes them ready by itself", async () => {
     const t = start();
-    const { as, companyId } = await company(t, "owner-1", "Alpha Cleaning");
+    const { as, companyId } = await legacyCompany(t, "owner-1", "Alpha Cleaning");
     const { cleanerId } = await as.mutation(api.workforce.add, { companyId, person: { name: "Rosa Diaz", engagement: "contractor", phone: "512-555-0101", serviceAreas: ["78701"] }, windows: week });
     const profile = await as.query(api.cleanerProfile.profile, { companyId, cleanerId, asOf: NOW });
     expect(profile.status).toBe("onboarding");
@@ -35,7 +35,7 @@ describe("adding workers", () => {
 
   it("refuses a likely duplicate unless a person says why it is someone else", async () => {
     const t = start();
-    const { as, companyId } = await company(t, "owner-1", "Alpha Cleaning");
+    const { as, companyId } = await legacyCompany(t, "owner-1", "Alpha Cleaning");
     await as.mutation(api.workforce.add, { companyId, person: { name: "Rosa Diaz", engagement: "contractor", phone: "+1 (512) 555-0101" } });
     const matches = await as.query(api.workforce.possibleDuplicates, { companyId, name: "Rosa M. Diaz", phone: "512.555.0101" });
     expect(matches).toMatchObject([{ name: "Rosa Diaz", why: "same phone number", strong: true }]);
@@ -47,7 +47,7 @@ describe("adding workers", () => {
 
   it("imports with a review: bad rows and duplicates are not written, and running it again adds nobody", async () => {
     const t = start();
-    const { as, companyId } = await company(t, "owner-1", "Alpha Cleaning");
+    const { as, companyId } = await legacyCompany(t, "owner-1", "Alpha Cleaning");
     await as.mutation(api.workforce.add, { companyId, person: { name: "Rosa Diaz", engagement: "contractor", email: "rosa@example.com" } });
     const rows = [
       { name: "Lena Park", engagement: "employee", phone: "512 555 0102", serviceAreas: "78701; 78702", skills: "deep clean, windows" },
@@ -78,7 +78,7 @@ describe("adding workers", () => {
 
   it("links a subcontractor worker to their company and keeps the affiliation's history", async () => {
     const t = start();
-    const { as, companyId } = await company(t, "owner-1", "Alpha Cleaning");
+    const { as, companyId } = await legacyCompany(t, "owner-1", "Alpha Cleaning");
     expect(await refusal(as.mutation(api.workforce.add, { companyId, person: { name: "Kai", engagement: "subcontractor" } }))).toContain("needs the subcontractor company");
     const sparkle = await as.mutation(api.subcontractors.create, { companyId, name: "Sparkle Partners", contact: { name: "Maya Lee", email: "maya@sparkle.example" } });
     const bright = await as.mutation(api.subcontractors.create, { companyId, name: "Bright Crew LLC", contact: { name: "Omar" } });
@@ -101,7 +101,7 @@ describe("adding workers", () => {
 describe("who sees what", () => {
   it("keeps pay and personnel requests away from Office and Managers as the rules say, on every read", async () => {
     const t = start();
-    const { as: owner, companyId } = await company(t, "owner-1", "Alpha Cleaning");
+    const { as: owner, companyId } = await legacyCompany(t, "owner-1", "Alpha Cleaning");
     const manager = await addMember(t, owner, companyId, "manager-1", "manager");
     const office = await addMember(t, owner, companyId, "office-1", "office");
     const { cleanerId } = await owner.mutation(api.workforce.add, { companyId, person: { name: "Rosa Diaz", engagement: "contractor", phone: "5125550101" } });
@@ -131,8 +131,8 @@ describe("who sees what", () => {
 
   it("answers another company's workers exactly like missing ones", async () => {
     const t = start();
-    const a = await company(t, "owner-a", "Alpha Cleaning");
-    const b = await company(t, "owner-b", "Beta Cleaning");
+    const a = await legacyCompany(t, "owner-a", "Alpha Cleaning");
+    const b = await legacyCompany(t, "owner-b", "Beta Cleaning");
     const { cleanerId } = await b.as.mutation(api.workforce.add, { companyId: b.companyId, person: { name: "Beta's Rosa", engagement: "contractor" } });
     const sub = await b.as.mutation(api.subcontractors.create, { companyId: b.companyId, name: "Beta Subs", contact: { name: "B" } });
     const A = a.companyId;
@@ -159,7 +159,7 @@ describe("who sees what", () => {
 describe("sensitive changes", () => {
   it("needs an authorized person to suspend or end, and never removes anyone from an accepted job silently", async () => {
     const t = start();
-    const { as: owner, companyId } = await company(t, "owner-1", "Alpha Cleaning");
+    const { as: owner, companyId } = await legacyCompany(t, "owner-1", "Alpha Cleaning");
     const manager = await addMember(t, owner, companyId, "manager-1", "manager");
     const visit = await seedVisit(owner, companyId);
     await owner.mutation(api.cleaners.setPay, { companyId, cleanerId: visit.cleanerId, pay: { kind: "share", shareBps: 5000 } });
@@ -188,7 +188,7 @@ describe("sensitive changes", () => {
 
   it("keeps the pay that applied to a job, and dates every arrangement", async () => {
     const t = start();
-    const { as: owner, companyId } = await company(t, "owner-1", "Alpha Cleaning");
+    const { as: owner, companyId } = await legacyCompany(t, "owner-1", "Alpha Cleaning");
     const { cleanerId } = await owner.mutation(api.workforce.add, { companyId, person: { name: "Rosa Diaz", engagement: "employee" } });
     expect(await refusal(owner.mutation(api.personnel.request, { companyId, kind: "pay_change", cleanerId, reason: "x", pay: { kind: "hourly", hourlyCents: 2200 }, effectiveAt: Date.now() - 3 * 24 * HOUR }))).toContain("never earlier");
     const requestId = await owner.mutation(api.personnel.request, { companyId, kind: "pay_change", cleanerId, reason: "Starting rate", pay: { kind: "hourly", hourlyCents: 2200 } });
@@ -205,7 +205,7 @@ describe("sensitive changes", () => {
 
   it("refuses a Manager deciding their own request and an Office member requesting at all", async () => {
     const t = start();
-    const { as: owner, companyId } = await company(t, "owner-1", "Alpha Cleaning");
+    const { as: owner, companyId } = await legacyCompany(t, "owner-1", "Alpha Cleaning");
     await owner.mutation(api.companies.update, { companyId, name: "Alpha Cleaning" });
     await t.run(async (ctx) => ctx.db.patch(companyId as Id<"companies">, { cleaners: { personnelDecider: "owner_or_manager" } }));
     const manager = await addMember(t, owner, companyId, "manager-1", "manager");

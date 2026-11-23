@@ -9,6 +9,7 @@ import { crewPayOf } from "./policy";
 import { dispatchSettings } from "./settings";
 import { localParts } from "../availability";
 import { cleanerReadiness, companyFacts, readinessOf, type CompanyFacts } from "../cleaners/records";
+import { supplyGap } from "../cleaners/onboarding";
 import { exceptionSpan } from "../cleaners/schedule";
 
 type Db = QueryCtx | MutationCtx;
@@ -106,10 +107,20 @@ export async function jobReadiness(ctx: Db, job: Doc<"jobs">, cleaner: Doc<"clea
   if (!company) return { blockers: [], notTakingWork: null };
   const service = { name: job.serviceType, skills: job.requiredSkills };
   const at = Math.max(job.startsAt, Date.now());
-  const readiness = known ? readinessOf(cleaner, known.facts, company, at, service) : (await cleanerReadiness(ctx, company, cleaner, at, service)).readiness;
+  const base = known ? { readiness: readinessOf(cleaner, known.facts, company, at, service), rows: known.facts.requirements.get(cleaner._id) ?? [], definitions: known.facts.definitions, onboarding: known.facts.onboarding } : await cleanerReadiness(ctx, company, cleaner, at, service);
+  const readiness = base.readiness;
   const supplier = cleaner.status === "ready" && readiness.state === "not_active" && cleaner.subcontractorId ? await ctx.db.get(cleaner.subcontractorId) : null;
+  // Supplies for this visit, by the company's rule: a completed checklist is not the same as having what
+  // this visit needs. Advisory companies are only told; "required for the visit" holds the visit back.
+  const supplies: string[] = [];
+  if (base.onboarding.content.supplies.rule === "required_for_visit") {
+    const keys = base.definitions.filter((def) => def.kind === "equipment" && def.providedBy !== "crew").map((def) => def.key);
+    const answers = base.rows.find((row) => keys.includes(row.key))?.evidence?.supplies;
+    const gap = supplyGap(base.onboarding.content, answers, job.serviceType, job.requiredSkills);
+    if (gap.length) supplies.push(`supplies for this visit (${gap.join(", ")})`);
+  }
   return {
-    blockers: readiness.blockers.map((view) => view.label),
+    blockers: [...readiness.blockers.map((view) => view.label), ...supplies],
     notTakingWork: supplier ? `works through ${supplier.name}, whose working relationship with you has ended` : null,
   };
 }

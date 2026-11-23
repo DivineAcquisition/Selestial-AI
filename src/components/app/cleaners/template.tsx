@@ -41,7 +41,8 @@ const KIND_WORDS: Record<Definition["kind"], string> = {
   skills: "Skills",
   equipment: "Equipment",
   training: "Training",
-  acknowledgment: "Acknowledgment",
+  acknowledgment: "Guide or acknowledgment",
+  tax: "Tax document (background)",
   custom: "Other",
 };
 const EFFECT_TONE = { blocks_assignments: "error", blocks_payment: "warning", informational: "outline" } as const;

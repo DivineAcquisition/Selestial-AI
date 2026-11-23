@@ -22,7 +22,7 @@ import { sessionForToken } from "./booking/tokens";
 import { allow } from "./rateLimit";
 import { movedTo } from "./environment";
 import { linkForStatementToken } from "./finance/statementLinks";
-import { notePortalAction, portalLinkForToken, portalLinkState, type PortalAction, type PortalLinkState } from "./cleaners/portal";
+import { linkAllows, notePortalAction, portalLinkForToken, portalLinkState, type PortalAction, type PortalLinkState } from "./cleaners/portal";
 import { isManager, isOwner, roleOf, type Role } from "./roles";
 import { publicIdFor, type LinkKind } from "./sales/links";
 import { manageBasisHolds, recordSupportChange, redactingDb, requireSupport, type SupportContext, type SupportUse } from "./support/access";
@@ -724,7 +724,7 @@ export function portalMutation<V extends AnyValidators, R>(def: {
       const { token, ...rest } = args;
       const access = await portalAccess(ctx, token);
       if (access.linkState !== "active") throw userError(PORTAL_CLOSED[access.linkState], "not_allowed");
-      if (!access.link.allowed.includes(def.action)) notAllowed();
+      if (!linkAllows(access.link, def.action)) notAllowed();
       // An ended engagement keeps its history, and its links do nothing more.
       if (access.cleaner?.status === "ended") throw userError("This engagement has ended, so this link no longer changes anything.", "not_allowed");
       if (access.subcontractor?.status === "ended") throw userError("This working relationship has ended, so this link no longer changes anything.", "not_allowed");

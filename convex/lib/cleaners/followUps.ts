@@ -22,6 +22,7 @@ import { openTask, liveTaskByKey, setTaskState } from "../taskState";
 import { channelsFor, queueCleanerMessage } from "./outbox";
 import { issuePortalLink } from "./portal";
 import { cleanerReadiness } from "./records";
+import { journeyOf } from "./guided";
 import type { RequirementView } from "./readiness";
 import type { FollowUpTopic } from "./schema";
 import { cleanersSettings, DAY, HOUR } from "./settings";
@@ -52,10 +53,12 @@ export async function needFor(ctx: MutationCtx, company: Doc<"companies">, clean
   if (cleaner.status === "ended" || cleaner.status === "suspended" || cleaner.status === "paused") return null;
   const settings = cleanersSettings(company);
   if (topic === "onboarding") {
-    const { readiness } = await cleanerReadiness(ctx, company, cleaner, now);
-    const unique = cleanerOwes(readiness.requirements);
-    if (unique.length === 0) return null;
-    return { summary: `${unique.length} onboarding ${unique.length === 1 ? "step" : "steps"} still to do: ${unique.map((view) => view.label.toLowerCase()).join(", ")}.`, items: unique.map((view) => ({ key: view.key, label: view.label })) };
+    // Only what the cleaner can act on now, from the same steps their page shows: never a step waiting on the
+    // office, one with the office for review, a locked step, or a tax document being prepared.
+    const { journey } = await journeyOf(ctx, company, cleaner, now);
+    const steps = journey.steps.filter((step) => step.keys.some((key) => journey.actionable.includes(key)));
+    if (steps.length === 0) return null;
+    return { summary: `${steps.length} onboarding ${steps.length === 1 ? "step" : "steps"} still to do: ${steps.map((step) => step.title.charAt(0).toLowerCase() + step.title.slice(1)).join("; ")}.`, items: steps.map((step) => ({ key: step.id, label: step.title })) };
   }
   if (topic === "availability") {
     if (cleaner.status !== "ready") return null;

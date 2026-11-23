@@ -16,10 +16,23 @@ import { recordEvent, type Actor } from "../events";
 type Ctx = QueryCtx | MutationCtx;
 
 /** Everything a full portal link may do. A task, availability or check-in link carries a subset. */
-export const PORTAL_ACTIONS = ["confirm_contact", "submit_requirement", "set_availability", "confirm_availability", "add_time_away", "add_exception", "claim_skill", "acknowledge", "request_code", "verify_code", "ask_for_help", "respond_check_in", "respond_feedback", "dispute"] as const;
+/**
+ * The guided onboarding's actions (convex/onboarding.ts). A full portal link and a task link may take them;
+ * a task link only for the step it names (each action checks `requirementKey`). Links issued before these
+ * existed get them from their purpose (linkAllows), so resending is never needed to keep going.
+ */
+export const ONBOARDING_ACTIONS = ["verify_phone", "sign_agreement", "submit_supplies", "set_payout", "submit_tax", "take_training"] as const;
+
+export const PORTAL_ACTIONS = ["confirm_contact", "submit_requirement", "set_availability", "confirm_availability", "add_time_away", "add_exception", "claim_skill", "acknowledge", "request_code", "verify_code", "ask_for_help", "respond_check_in", "respond_feedback", "dispute", ...ONBOARDING_ACTIONS] as const;
 export type PortalAction = (typeof PORTAL_ACTIONS)[number];
 
-const TASK_ACTIONS: PortalAction[] = ["confirm_contact", "submit_requirement", "acknowledge", "set_availability", "confirm_availability", "ask_for_help"];
+const TASK_ACTIONS: PortalAction[] = ["confirm_contact", "submit_requirement", "acknowledge", "set_availability", "confirm_availability", "ask_for_help", "request_code", "verify_code", ...ONBOARDING_ACTIONS];
+
+/** Whether a link may take an action: what it was issued with, plus the onboarding actions its purpose implies. */
+export function linkAllows(link: Pick<Doc<"portalLinks">, "allowed" | "purpose" | "holder">, action: PortalAction): boolean {
+  if (link.allowed.includes(action)) return true;
+  return link.holder === "cleaner" && (link.purpose === "portal" || link.purpose === "task") && (ONBOARDING_ACTIONS as readonly string[]).includes(action);
+}
 const AVAILABILITY_ACTIONS: PortalAction[] = ["set_availability", "confirm_availability", "add_time_away", "add_exception", "ask_for_help"];
 const CHECK_IN_ACTIONS: PortalAction[] = ["respond_check_in", "confirm_availability", "set_availability", "add_time_away", "ask_for_help"];
 /** A subcontractor contact tells the office a worker will be away, and asks for help. Pay is not shown to contacts yet. */

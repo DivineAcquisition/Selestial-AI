@@ -67,6 +67,8 @@ async function insertDefinition(ctx: MutationCtx & MemberAccess, def: Omit<Defin
     forServices: def.forServices,
     cleanerCompletes: def.cleanerCompletes,
     agreementDocType: def.agreementDocType,
+    officeReview: def.officeReview,
+    guide: def.guide,
     order: def.order,
     status: "active",
     updatedBy: ctx.member._id,
@@ -87,6 +89,8 @@ const definitionInput = {
   forServices: v.optional(v.array(v.string())),
   cleanerCompletes: v.boolean(),
   agreementDocType: v.optional(v.union(v.string(), v.null())),
+  /** A person checks what the cleaner did before it counts. Payment is always confirmed by Finance; guides never need it. */
+  officeReview: v.optional(v.boolean()),
 };
 
 function keyFrom(label: string): string {
@@ -122,6 +126,9 @@ export const saveDefinition = ownerMutation({
       forServices,
       cleanerCompletes: args.cleanerCompletes,
       agreementDocType: args.agreementDocType ?? undefined,
+      officeReview: args.officeReview ?? current?.officeReview,
+      // Only an acknowledgment can be a guide, and only Selestial's two guides keep one.
+      guide: args.kind === "acknowledgment" ? current?.guide : undefined,
       status: "active" as const,
       updatedBy: ctx.member._id,
       updatedAt: Date.now(),
@@ -159,18 +166,23 @@ export const retireDefinition = ownerMutation({
   },
 });
 
-/** Puts the starting template back, keeping the company's own requirements retired rather than removed. */
+/**
+ * Puts Selestial's guided starting template back, keeping the company's own requirements retired rather than
+ * removed. People keep what they completed; a step they were never given holds nothing up until it is
+ * applied to them.
+ */
 export const restoreDefaults = ownerMutation({
   args: {},
   handler: async (ctx) => {
     await materialize(ctx);
+    if (ctx.company.cleaners?.startingTemplate !== "guided") await ctx.db.patch(ctx.companyId, { cleaners: { ...(ctx.company.cleaners ?? {}), startingTemplate: "guided" } });
     const rows = await ctx.db
       .query("requirementDefinitions")
       .withIndex("by_company_key", (q) => q.eq("companyId", ctx.companyId))
       .take(200);
     for (const def of DEFAULT_DEFINITIONS) {
       const row = rows.find((item) => item.key === def.key);
-      if (row) await ctx.db.patch(row._id, { label: def.label, description: def.description, kind: def.kind, effect: def.effect, appliesTo: def.appliesTo, reviewer: def.reviewer, validForDays: def.validForDays, providedBy: def.providedBy, forServices: def.forServices, cleanerCompletes: def.cleanerCompletes, status: "active", updatedBy: ctx.member._id, updatedAt: Date.now() });
+      if (row) await ctx.db.patch(row._id, { label: def.label, description: def.description, kind: def.kind, effect: def.effect, appliesTo: def.appliesTo, reviewer: def.reviewer, validForDays: def.validForDays, providedBy: def.providedBy, forServices: def.forServices, cleanerCompletes: def.cleanerCompletes, officeReview: def.officeReview, guide: def.guide, status: "active", updatedBy: ctx.member._id, updatedAt: Date.now() });
       else await insertDefinition(ctx, def);
     }
     return null;
