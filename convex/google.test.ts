@@ -311,7 +311,7 @@ describe("approvals before anything public or paid", () => {
     const manager = await addMember(t, as, companyId, "manager", "manager");
     await connect(t, as, companyId, { feature: "ads", grant: [SCOPE.ads] });
     await as.mutation(api.google.addResource, { companyId, kind: "ads_account", externalId: "1234567890", label: "Alpha Ads" });
-    const { draftId, spends } = await manager.mutation(api.googleAds.draftCampaign, { companyId, accountId: "123-456-7890", name: "Spring", dailyBudgetCents: 2500, keywords: ["house cleaning"], postalCodes: ["78701"], headline: "Spotless homes", description: "Trusted cleaners near you.", finalUrl: "https://alpha.test" });
+    const { draftId, spends } = await manager.mutation(api.googleAds.draftCampaign, { companyId, accountId: "123-456-7890", name: "Spring", dailyBudgetCents: 2500, keywords: ["house cleaning"], postalCodes: ["78701"], headline: "Spotless homes", description: "Trusted cleaners near you.", headlines: ["Book in 60 seconds", "Insured local cleaners"], descriptions: ["Same team every visit."], finalUrl: "https://alpha.test" });
     expect(spends).toBe(false);
     expect(await refusal(manager.mutation(api.googleAds.approveCampaign, { companyId, draftId, confirmDailyBudgetCents: 2500 }))).toMatch(/not allowed|owner/i);
     expect(await refusal(as.mutation(api.googleAds.approveCampaign, { companyId, draftId, confirmDailyBudgetCents: 9900 }))).toMatch(/does not match/);

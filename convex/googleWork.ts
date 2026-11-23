@@ -18,7 +18,7 @@ import { noticeInApp } from "./lib/activation/notices";
 import { recordEvent } from "./lib/events";
 import { listCalendars } from "./lib/google/calendar";
 import { accounts as businessAccounts, locations as businessLocations } from "./lib/google/business";
-import { accessibleCustomers, search as adsSearch } from "./lib/google/ads";
+import { accessibleCustomers, conversionAction, customerId as adsCustomerId, customerInfo, formatCustomerId, managedClients, search as adsSearch } from "./lib/google/ads";
 import { FOLDER, getFile, listChildren } from "./lib/google/drive";
 import { GoogleError, plainProblem } from "./lib/google/http";
 import { backoff, MAX_ATTEMPTS } from "./lib/google/jobs";
@@ -182,12 +182,37 @@ export const verifyResource = internalAction({
         const locations = await businessLocations(access.token, account);
         if (!locations.some((l) => l.name === resource.externalId)) throw new GoogleError("not_found", "This location isn’t in your Google account.");
         await ctx.runMutation(internal.google.setResourceAccess, { resourceId: args.resourceId, access: "verified", note: "Ready." });
-      } else if (resource.kind === "ads_account" || resource.kind === "conversion_destination") {
+      } else if (resource.kind === "ads_account") {
         const developer = adsDeveloperToken();
         if (!developer) throw new GoogleError("not_configured", "Google Ads isn’t available yet.");
-        const account = resource.kind === "ads_account" ? resource.externalId : (resource.detail ?? "").split(":")[0];
+        const account = adsCustomerId(resource.externalId);
+        const manager = resource.detail && /^\d{10}$/.test(resource.detail.replace(/-/g, "")) ? resource.detail.replace(/-/g, "") : null;
         const reachable = await accessibleCustomers(access.token, developer);
-        if (!reachable.includes(account.replace(/-/g, ""))) throw new GoogleError("not_found", "Your Google account can’t reach this ad account.");
+        // Reached directly, or through the manager account it was chosen under (login-customer-id).
+        if (!reachable.includes(account)) {
+          if (!manager || !reachable.includes(manager)) throw new GoogleError("not_found", "Your Google account can’t reach this ad account.");
+          await customerInfo(access.token, developer, account, manager);
+        }
+        await ctx.runMutation(internal.google.setResourceAccess, { resourceId: args.resourceId, access: "verified", note: manager ? `Ready, through manager account ${formatCustomerId(manager)}.` : "Ready." });
+        await ctx.runMutation(internal.googleAds.queueSnapshot, { resourceId: args.resourceId });
+      } else if (resource.kind === "conversion_destination") {
+        // The booked-job reporting token only carries the Data Manager scope, which cannot query Google Ads. The
+        // conversion action is looked up with the Google Ads connection when there is one; otherwise Google's
+        // answer to the first report decides (googleExecutors.ts, conversion).
+        const [account, login] = (resource.detail ?? "").split(":");
+        const developer = adsDeveloperToken();
+        const adsConnection = await ctx.runQuery(internal.googleAds.adsConnectionFor, { companyId: resource.companyId });
+        const ads = adsConnection && developer ? await accessTokenFor(ctx, adsConnection) : null;
+        if (!developer || !ads?.ok || !/^\d{10}$/.test((account ?? "").replace(/-/g, ""))) {
+          await ctx.runMutation(internal.googleAds.destinationNote, { resourceId: args.resourceId, note: "Selestial can’t look this conversion up without Google Ads connected. It’s confirmed when Google accepts the first booked-visit report." });
+          return null;
+        }
+        const action = await conversionAction(ads.token, developer, account, resource.externalId, login || null);
+        if (!action) throw new GoogleError("not_found", "This conversion isn’t in that Google Ads account any more.");
+        if (action.type !== "UPLOAD_CLICKS") {
+          await ctx.runMutation(internal.google.setResourceAccess, { resourceId: args.resourceId, access: "lost", note: "This conversion doesn’t accept imported clicks. In Google Ads, choose or create one whose source is “Website (Import from clicks)”." });
+          return null;
+        }
         await ctx.runMutation(internal.google.setResourceAccess, { resourceId: args.resourceId, access: "verified", note: "Ready." });
       }
     } catch (error) {
@@ -227,17 +252,36 @@ export const listChoices = internalAction({
       } else if (args.kind === "ads_accounts") {
         const developer = adsDeveloperToken();
         if (!developer) return await store([], "Google Ads isn’t available yet."), null;
+        // Accounts reached directly, and the advertiser accounts under each manager account. One reached through a
+        // manager carries the manager's id as its detail: every later call goes through it (login-customer-id).
         const ids = await accessibleCustomers(access.token, developer);
-        await store(ids.map((id) => ({ id, label: `${id.slice(0, 3)}-${id.slice(3, 6)}-${id.slice(6)}` })), ids.length ? undefined : "This Google account doesn’t have any Google Ads accounts.");
+        const direct = new Map<string, { id: string; label: string; detail?: string }>();
+        const managed = new Map<string, { id: string; label: string; detail?: string }>();
+        const label = (id: string, name: string) => (name ? `${name} (${formatCustomerId(id)})` : formatCustomerId(id));
+        for (const id of ids.slice(0, 50)) {
+          const info = await customerInfo(access.token, developer, id, id).catch(() => null);
+          if (!info) {
+            direct.set(id, { id, label: formatCustomerId(id) });
+            continue;
+          }
+          if (!info.manager) {
+            direct.set(id, { id, label: label(id, info.name) });
+            continue;
+          }
+          for (const client of await managedClients(access.token, developer, id).catch(() => [])) if (!managed.has(client.id)) managed.set(client.id, { id: client.id, label: `${label(client.id, client.name)} · through ${label(id, info.name)}`, detail: id });
+        }
+        const items = [...direct.values(), ...[...managed.values()].filter((item) => !direct.has(item.id))];
+        await store(items, items.length ? undefined : "This Google account doesn’t have any Google Ads accounts.");
       } else if (args.kind === "conversion_actions") {
         const developer = adsDeveloperToken();
         if (!developer) return await store([], "Google Ads isn’t available yet."), null;
         const items: { id: string; label: string; detail?: string }[] = [];
         for (const account of await ctx.runQuery(internal.googleAds.adsAccountsFor, { companyId })) {
-          const rows = await adsSearch<{ conversionAction?: { id?: string; name?: string } }>(access.token, developer, account.id, "SELECT conversion_action.id, conversion_action.name FROM conversion_action WHERE conversion_action.status = 'ENABLED'", account.login ?? undefined);
-          for (const row of rows) if (row.conversionAction?.id) items.push({ id: String(row.conversionAction.id), label: row.conversionAction.name ?? "Conversion", detail: account.id });
+          // Only "Import from clicks" conversions accept booked-visit reports. The detail is "account:manager", as the report needs it.
+          const rows = await adsSearch<{ conversionAction?: { id?: string; name?: string } }>(access.token, developer, account.id, "SELECT conversion_action.id, conversion_action.name FROM conversion_action WHERE conversion_action.status = 'ENABLED' AND conversion_action.type = 'UPLOAD_CLICKS'", account.login ?? undefined);
+          for (const row of rows) if (row.conversionAction?.id) items.push({ id: String(row.conversionAction.id), label: row.conversionAction.name ?? "Conversion", detail: account.login ? `${account.id}:${account.login.replace(/-/g, "")}` : account.id });
         }
-        await store(items, items.length ? undefined : "Choose a Google Ads account first, or add a conversion in Google Ads.");
+        await store(items, items.length ? undefined : "Choose a Google Ads account first, or in Google Ads add a conversion whose source is “Website (Import from clicks)”.");
       } else if (args.kind === "folder_contents" && args.scope) {
         const children = await listChildren(access.token, args.scope);
         await store(children.map((f) => ({ id: f.id, label: f.name, detail: f.mimeType })), children.length ? undefined : "No files here yet.");
