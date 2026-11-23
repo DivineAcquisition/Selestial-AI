@@ -14,7 +14,7 @@
  * happen in production.
  */
 
-export const TASK_IDS = ["chat_response_standard", "chat_response_advanced", "hiring_message_reading", "image_generation", "image_edit", "video_generation", "applicant_evaluation", "follow_up_draft", "dispatch_exception_analysis", "retention_assessment", "quality_review", "agreement_draft", "campaign_generation", "research_brief", "sales_message_reading"] as const;
+export const TASK_IDS = ["chat_response_standard", "chat_response_advanced", "hiring_message_reading", "image_generation", "image_edit", "video_generation", "applicant_evaluation", "follow_up_draft", "dispatch_exception_analysis", "retention_assessment", "quality_review", "agreement_draft", "campaign_generation", "research_brief", "sales_message_reading", "hiring_reply_draft"] as const;
 export type Task = (typeof TASK_IDS)[number];
 
 export const TASKS: Record<Task, { label: string; unit: string; available: boolean }> = {
@@ -93,6 +93,11 @@ export const TASKS: Record<Task, { label: string; unit: string; available: boole
     unit: "One customer message read, and one reply worded, by the AI reader for the Sales agent. Messages read by the company's rules are not charged.",
     available: true,
   },
+  hiring_reply_draft: {
+    label: "Hiring reply drafted by AI",
+    unit: "One reply to an applicant's question drafted by AI from the role's approved details and the company's Hiring FAQ. Template messages (application links, reminders, replies with approved pay) are not charged, and a draft the AI declines to write is not charged.",
+    available: true,
+  },
 };
 
 /** The exact setup a media rate covers. Work outside it has no published price, so it cannot run. */
@@ -135,6 +140,7 @@ export const RATE_CARDS: readonly RateCard[] = [
       campaign_generation: 20,
       research_brief: 5,
       sales_message_reading: 1,
+      hiring_reply_draft: 1,
     },
   },
   {
@@ -159,6 +165,8 @@ export const RATE_CARDS: readonly RateCard[] = [
       research_brief: null,
       /** The Sales agent did not exist when this card was approved: its AI reading has no rate, so the company's rules read instead. */
       sales_message_reading: null,
+      /** Drafted hiring replies did not exist when this card was approved: no rate, so a person writes the reply. */
+      hiring_reply_draft: null,
     },
     specs: {
       image_generation: { sizes: ["1024x1024"], fastAllowed: false, describe: "Standard quality, 1024 × 1024, one image per charge." },
@@ -188,6 +196,8 @@ export const RATE_CARDS: readonly RateCard[] = [
       research_brief: 10,
       /** Not approved on this card either: until a card gives it a rate, the Sales agent reads by rule and charges nothing. */
       sales_message_reading: null,
+      /** Drafted hiring replies did not exist when this card was approved: no rate, so a person writes the reply. */
+      hiring_reply_draft: null,
     },
     specs: {
       image_generation: { sizes: ["1024x1024"], fastAllowed: false, describe: "Standard quality, 1024 × 1024, one image per charge." },
@@ -217,6 +227,38 @@ export const RATE_CARDS: readonly RateCard[] = [
       research_brief: 10,
       /** One customer message read by the AI reader. Messages the rules settle alone, and mail Sales ignores, are not charged. */
       sales_message_reading: 1,
+      /** Not on this card: a person writes each reply to an applicant's question. */
+      hiring_reply_draft: null,
+    },
+    specs: {
+      image_generation: { sizes: ["1024x1024"], fastAllowed: false, describe: "Standard quality, 1024 × 1024, one image per charge." },
+      image_edit: { sizes: ["1024x1024"], describe: "Standard quality, 1024 × 1024, one edited image per charge." },
+      video_generation: { durations: [6], describe: "One 6-second clip at the standard resolution with the model's default audio. Other lengths have no published price yet." },
+    },
+    startingAt: { video_generation: true },
+  },
+  {
+    version: "2026-11d",
+    fixture: false,
+    note: "The 2026-11c rates unchanged, plus a hiring reply drafted by AI at 1 credit (the same as a hiring email read by AI), approved by the owner on November 23, 2026. Put in force by setting BILLING_RATE_CARD to 2026-11d.",
+    rates: {
+      chat_response_standard: 1,
+      chat_response_advanced: 5,
+      hiring_message_reading: 1,
+      image_generation: 20,
+      image_edit: 15,
+      video_generation: 200,
+      applicant_evaluation: null,
+      follow_up_draft: null,
+      dispatch_exception_analysis: null,
+      retention_assessment: null,
+      quality_review: null,
+      agreement_draft: null,
+      campaign_generation: null,
+      research_brief: 10,
+      sales_message_reading: 1,
+      /** One reply to an applicant's question, drafted from approved information. A draft it declines to write is not charged. */
+      hiring_reply_draft: 1,
     },
     specs: {
       image_generation: { sizes: ["1024x1024"], fastAllowed: false, describe: "Standard quality, 1024 × 1024, one image per charge." },

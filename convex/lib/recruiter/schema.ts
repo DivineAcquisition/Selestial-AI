@@ -210,6 +210,11 @@ export const recruiterSettingsValidator = v.object({
   recruitingRules: v.optional(v.string()),
   communicationPolicy: v.optional(v.string()),
   escalationRules: v.optional(v.string()),
+  /**
+   * The Owner's answers to questions applicants ask (equipment, transport, hours, how long hiring takes).
+   * With a role's approved details, the only things a drafted reply may say (lib/recruiter/drafting.ts).
+   */
+  hiringFaq: v.optional(v.string()),
 });
 
 export const offerTermsValidator = v.object({
@@ -292,6 +297,8 @@ export const recruiterTables = {
     /** The facts this was prepared from. When they change, an unused finding expires and a new one is made. */
     basis: v.string(),
     scheduledFor: v.optional(v.number()),
+    /** A reply being drafted by AI, or why one was not: it could not be answered from approved information. */
+    draft: v.optional(v.object({ state: v.union(v.literal("drafting"), v.literal("declined"), v.literal("unavailable")), at: v.number(), why: v.optional(v.string()) })),
     messageId: v.optional(v.id("messages")),
     outcome: v.optional(v.string()),
     /** Carried out by Recruiter under the Owner's automation setting, not by a person's click. */

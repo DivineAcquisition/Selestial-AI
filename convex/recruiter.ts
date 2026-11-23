@@ -146,6 +146,7 @@ export const updatePlaybook = ownerMutation({
     next.recruitingRules = optionalText(next.recruitingRules, "Recruiting rules", 4000);
     next.communicationPolicy = optionalText(next.communicationPolicy, "The communication policy", 4000);
     next.escalationRules = optionalText(next.escalationRules, "Escalation rules", 4000);
+    next.hiringFaq = optionalText(next.hiringFaq, "The Hiring FAQ", 6000);
     if (!isTimezone(ctx.company.timezone)) throw userError("Set the company's time zone first.");
     await ctx.db.patch(ctx.companyId, { recruiter: next });
     await recordEvent(ctx, { companyId: ctx.companyId, type: "recruiter.playbook_changed", actor: byMember(ctx), subject: { table: "companies", id: ctx.companyId } });

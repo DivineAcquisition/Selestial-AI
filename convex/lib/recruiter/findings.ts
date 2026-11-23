@@ -309,8 +309,11 @@ export async function refresh(ctx: MutationCtx, applicationId: Id<"applications"
   const open = await openFinding(ctx, applicationId);
   if (open && derived && open.kind === derived.kind && open.basis === derived.basis) {
     // The same facts: only the timing can have moved (a scheduled reminder that is now due).
-    const prepared = open.prepared?.writtenBy === "person" || open.prepared?.writtenBy === "assistant" ? open.prepared : derived.prepared;
-    if (open.status !== derived.status || open.scheduledFor !== derived.scheduledFor) await ctx.db.patch(open._id, { status: derived.status, scheduledFor: derived.scheduledFor, prepared, updatedAt: now });
+    const kept = open.prepared?.writtenBy === "person" || open.prepared?.writtenBy === "assistant";
+    const prepared = kept ? open.prepared : derived.prepared;
+    // Words a person or the drafting assistant wrote make a reply ready that the records alone could not.
+    const status = kept && derived.status === "needs_attention" && prepared?.body.trim() ? "ready" : derived.status;
+    if (open.status !== status || open.scheduledFor !== derived.scheduledFor) await ctx.db.patch(open._id, { status, scheduledFor: derived.scheduledFor, prepared, updatedAt: now });
     return (await ctx.db.get(open._id))!;
   }
   if (open) await ctx.db.patch(open._id, { status: open.status === "needs_attention" ? "done" : "expired", outcome: open.status === "needs_attention" ? "Things moved on." : "The facts changed before it was used, so it was not sent.", updatedAt: now });

@@ -25,6 +25,7 @@ export type RecruiterSettings = {
   recruitingRules: string | null;
   communicationPolicy: string | null;
   escalationRules: string | null;
+  hiringFaq: string | null;
 };
 
 /** What a new worker needs before a person may mark them ready, unless the Owner sets their own list. */
@@ -59,5 +60,6 @@ export function recruiterSettings(company: Pick<Doc<"companies">, "name" | "recr
     recruitingRules: own.recruitingRules ?? null,
     communicationPolicy: own.communicationPolicy ?? null,
     escalationRules: own.escalationRules ?? null,
+    hiringFaq: own.hiringFaq ?? null,
   };
 }

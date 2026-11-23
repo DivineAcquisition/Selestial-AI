@@ -11,6 +11,7 @@
  * Automation is a separate question asked here (`mayAutomate`): whether the Owner turned that kind on,
  * whether Recruiter is paused, and the kind's own extra conditions. It never covers a hiring decision.
  */
+import { internal } from "../../_generated/api";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx } from "../../_generated/server";
 import { authorityFor } from "../authority";
@@ -18,6 +19,7 @@ import { reportAction } from "../controls/report";
 import type { CarriedOut } from "../dispatch/workflow";
 import { recordEvent, type Actor } from "../events";
 import { RECRUITER } from "./applications";
+import { replyDrafter } from "./drafting";
 import { answered, openFinding, refresh, staleness, type Prepared } from "./findings";
 import { sendInterviewReminder, startInterview } from "./interviews";
 import { autoEligible, sendFollowUp, sendInvitation } from "./invitations";
@@ -190,3 +192,23 @@ export async function automate(ctx: MutationCtx, applicationId: Id<"applications
 }
 
 export { openFinding };
+
+export function draftable(finding: Doc<"recruiterFindings"> | null): finding is Doc<"recruiterFindings"> {
+  return finding !== null && (finding.status === "ready" || finding.status === "needs_attention") && finding.prepared?.kind === "question_reply" && finding.draft?.state !== "drafting";
+}
+
+/** Starts drafting a reply with AI (convex/recruiterDrafts.ts). `by`: the person who asked; null when Recruiter does it itself. */
+export async function startDraft(ctx: MutationCtx, finding: Doc<"recruiterFindings">, by: Id<"members"> | null): Promise<void> {
+  await ctx.db.patch(finding._id, { draft: { state: "drafting", at: Date.now() }, updatedAt: Date.now() });
+  await ctx.scheduler.runAfter(0, internal.recruiterDrafts.run, { findingId: finding._id, memberId: by ?? undefined });
+}
+
+/** Where the Owner switched "Answer routine questions" on, Recruiter drafts the reply to a question itself. */
+export async function draftAutomatically(ctx: MutationCtx, applicationId: Id<"applications">): Promise<boolean> {
+  const finding = await openFinding(ctx, applicationId);
+  if (!draftable(finding) || !replyDrafter()) return false;
+  const authority = await authorityFor(ctx, finding.companyId, ANSWER_QUESTIONS);
+  if (authority.kind !== "level" || authority.level === "off" || authority.level === "propose") return false;
+  await startDraft(ctx, finding, null);
+  return true;
+}

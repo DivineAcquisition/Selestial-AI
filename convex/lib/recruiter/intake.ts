@@ -17,7 +17,7 @@ import { routeApplication } from "./invitations";
 import { addressOf, boardFor, isAutomatedSender, isRelayAddress, oneLine, unsupportedBoardFor, type MessageHeader } from "./mail";
 import type { Classification, ContactEvidence, Fact, Source } from "./schema";
 import { DAY, recruiterSettings } from "./settings";
-import { automate } from "./act";
+import { automate, draftAutomatically } from "./act";
 
 export type Verdict = { classification: Classification; classifiedBy: "rule" | "model"; reason: string; source?: Source; /** possibly_hiring: when its sender and subject are cleared. */ expiresAt?: number };
 export type IngestInput = {
@@ -205,6 +205,8 @@ async function handleReply(ctx: MutationCtx, connection: Doc<"mailboxConnections
   await askPerson(ctx, application, { what: "reply", title: `${who} replied about their application`, question: "Read the reply in the hiring inbox and answer it, then mark it answered. Reminders to this applicant are paused until then.", dueAt: Date.now() + DAY, completionCondition: "The reply was answered" });
   // The answer is prepared as a finding; a routine one goes by itself only where the Owner allowed it.
   await automate(ctx, application._id);
+  // A question only words can answer: under "Answer routine questions", Recruiter drafts it from approved information.
+  await draftAutomatically(ctx, application._id);
   return "question";
 }
 

@@ -40,6 +40,7 @@ export const HOLD_MS: Record<Task, number> = {
   campaign_generation: 60 * MINUTE,
   research_brief: 15 * MINUTE,
   sales_message_reading: 5 * MINUTE,
+  hiring_reply_draft: 5 * MINUTE,
 };
 
 export type Opened = { ok: true; executionId: Id<"aiExecutions">; credits: number; repeated: boolean } | { ok: false; block: Block; message: string };
