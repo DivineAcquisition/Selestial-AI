@@ -26,6 +26,8 @@ export async function redactApplication(ctx: MutationCtx, application: Doc<"appl
     await ctx.db.patch(row._id, { fromAddress: undefined, replyTo: undefined, subject: undefined, excerpt: undefined, attachments: undefined, flag: undefined, redactedAt: Date.now() });
   }
   for (const row of await applicationMessages(ctx, application)) await ctx.db.patch(row._id, { to: undefined, body: "[removed]", subject: undefined, replyTo: undefined });
+  // What Recruiter found and prepared names the applicant and quotes them: it goes with the rest.
+  for (const row of await ctx.db.query("recruiterFindings").withIndex("by_application", (q) => q.eq("applicationId", scope.applicationId)).take(100)) await ctx.db.delete(row._id);
   for (const row of await ctx.db.query("screenings").withIndex("by_company_application", (q) => q.eq("companyId", scope.companyId).eq("applicationId", scope.applicationId)).take(50)) await ctx.db.delete(row._id);
   for (const row of await ctx.db.query("interviews").withIndex("by_company_application", (q) => q.eq("companyId", scope.companyId).eq("applicationId", scope.applicationId)).take(50)) {
     if (row.feedback) await ctx.db.patch(row._id, { feedback: { ...row.feedback, notes: "[removed]" } });

@@ -11,6 +11,7 @@ import { liveTaskByKey, openTask, setTaskState } from "../taskState";
 import { revokeApplicationLinks } from "./links";
 import { ACTIVE_STAGES, STAGE_CHANGES, type ClosureReason, type Stage } from "./schema";
 import { DAY, recruiterSettings } from "./settings";
+import { refresh } from "./findings";
 
 export const RECRUITER: Actor = { kind: "agent", agent: "recruiter" };
 export const SYSTEM: Actor = { kind: "system" };
@@ -33,11 +34,14 @@ export async function setStage(ctx: MutationCtx, application: Doc<"applications"
   if (application.stage !== to) {
     await recordEvent(ctx, { companyId: application.companyId, type: `application.${to}`, actor, subject: { table: "applications", id: application._id }, data: { from: application.stage } });
   }
+  // What Recruiter found and prepared follows the record: anything prepared from the old state ends here.
+  await refresh(ctx, application._id);
   return (await ctx.db.get(application._id))!;
 }
 
 export async function setNextAction(ctx: MutationCtx, application: Doc<"applications">, nextAction: NextAction): Promise<void> {
   await ctx.db.patch(application._id, { nextAction });
+  await refresh(ctx, application._id);
 }
 
 const taskKey = (what: string, id: string) => `recruiter.${what}:${id}`;

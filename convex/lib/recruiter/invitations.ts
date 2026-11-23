@@ -8,16 +8,14 @@
  * Review first. An invitation goes out without a person only when the Owner chose automatic
  * invitations AND raised the permission above Propose AND every item in `autoEligible` holds.
  */
-import { reportAction } from "../controls/report";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
-import { requestApproval } from "../approvalQueue";
 import { authorityFor } from "../authority";
 import type { CarriedOut } from "../dispatch/workflow";
 import type { Actor } from "../events";
 import { messageByKey } from "../messaging/outbox";
-import { when } from "../time";
 import { askPerson, firstName, isActive, RECRUITER, setNextAction, setStage, settleTask, SYSTEM } from "./applications";
+import { automate } from "./act";
 import { CONTACT_WORDS, contactNextStep } from "./contact";
 import { applicantLinkState, issueApplicantLink, liveApplicantLink } from "./links";
 import { applicationMessages, queueApplicantMessage, sendProblem } from "./outbox";
@@ -72,7 +70,7 @@ export async function autoEligible(ctx: QueryCtx | MutationCtx, application: Doc
 }
 
 /** Sends the invitation: one link, one email, once. The same call again returns the same message. */
-export async function sendInvitation(ctx: MutationCtx, applicationId: Id<"applications">, actor: Actor, options: { /** A person asked for it to be sent again. */ again?: boolean } = {}): Promise<CarriedOut> {
+export async function sendInvitation(ctx: MutationCtx, applicationId: Id<"applications">, actor: Actor, options: { /** A person asked for it to be sent again. */ again?: boolean; /** The words a person edited, or an inquiry reply that carries the link. "{link}" is where the link goes. */ override?: { subject: string; body: string } } = {}): Promise<CarriedOut> {
   const found = await load(ctx, applicationId);
   if (!found) return { ok: false, detail: "The application no longer exists." };
   const { application, applicant, company, need } = found;
@@ -86,7 +84,7 @@ export async function sendInvitation(ctx: MutationCtx, applicationId: Id<"applic
   if (!USABLE_CONTACT.includes(application.contact.status)) return { ok: false, detail: CONTACT_WORDS[application.contact.status] };
 
   const link = await issueApplicantLink(ctx, { application, purpose: "apply", expiresAt: Date.now() + settings.linkTtlDays * DAY, actor });
-  const email = invitationEmail({ ...partsFor(company, settings.fromName, applicant, need.title), source: application.source });
+  const email = options.override ?? invitationEmail({ ...partsFor(company, settings.fromName, applicant, need.title), source: application.source });
   // Every earlier attempt stays on the record. The next one is planned under its own key, so asking twice for the same attempt is still one email.
   const dedupeKey = invitations.last ? `${inviteKey(application._id)}:after:${invitations.last._id}` : inviteKey(application._id);
   const message = await queueApplicantMessage(ctx, { company, application, applicant, purpose: "application_invitation", channel: "email", subject: email.subject, body: email.body, link, dedupeKey, actor });
@@ -111,6 +109,12 @@ export async function routeApplication(ctx: MutationCtx, applicationId: Id<"appl
   const soon = Date.now() + DAY;
   const who = applicant.name ?? "An applicant";
 
+  // Someone who asked about work has not applied for a role yet: the reply names the open roles (findings.ts).
+  if (application.intake === "inquiry" && !need) {
+    await automate(ctx, application._id);
+    return;
+  }
+
   if (!need) {
     await setNextAction(ctx, application, { what: `Match this application to a role. The notification said "${application.roleSeen ?? "no role"}".`, by: "owner", dueAt: soon });
     await askPerson(ctx, application, { what: "role", title: `Which role did ${who} apply for?`, question: `The notification named "${application.roleSeen ?? "no role"}", which matches no hiring need, or more than one. Choose the role, or close the application.`, dueAt: soon, completionCondition: "The application is matched to a role or closed" });
@@ -130,43 +134,21 @@ export async function routeApplication(ctx: MutationCtx, applicationId: Id<"appl
     return;
   }
   await settleTask(ctx, application, "contact", "A usable address is recorded.");
+  // A usable address now: no longer waiting on one. (Before findings, the approval step moved it on.)
+  if (application.stage === "contact_needed" || application.stage === "invitation_awaiting_approval") application = await setStage(ctx, application, "received", RECRUITER, { nextAction: { what: "Send the application link", by: "owner", dueAt: soon } });
   if (applicant.doNotContact) {
     await setNextAction(ctx, application, { what: "The applicant asked not to be contacted. Close the application, or record that they changed their mind.", by: "owner", dueAt: soon });
     return;
   }
 
   const authority = await authorityFor(ctx, company._id, SEND_INVITATION);
-  if (authority.kind !== "level" || authority.level === "off") {
-    await setNextAction(ctx, application, { what: authority.kind === "paused" ? "Recruiter is paused. Send the invitation yourself, or resume Recruiter." : "Recruiter may not send invitations. Send it yourself, or change the permission.", by: "owner", dueAt: soon });
+  if (authority.kind === "paused") {
+    await setNextAction(ctx, application, { what: "Recruiter is paused. Send the application link yourself, or resume Recruiter.", by: "owner", dueAt: soon });
     return;
   }
-  const settings = recruiterSettings(company);
-  const eligible = await autoEligible(ctx, application, applicant);
-  if (settings.invitationMode === "auto" && authority.level !== "propose" && eligible.ok) {
-    if (application.stage !== "received") application = await setStage(ctx, application, "received", RECRUITER, { nextAction: application.nextAction });
-    await sendInvitation(ctx, application._id, RECRUITER);
-    await reportAction(ctx, { companyId: company._id, agent: "recruiter", action: SEND_INVITATION, level: authority.level, subject: { table: "applications", id: application._id }, ref: application._id, stage: "queued", kind: "invitation", data: { applicationId: application._id } });
-    return;
-  }
-
-  // One pending approval per application, however often this runs.
-  const pending = application.invitationApprovalId ? await ctx.db.get(application.invitationApprovalId) : null;
-  if (pending?.status === "pending") return;
-  if (pending && pending.status !== "expired" && application.stage === "invitation_awaiting_approval") return;
-  const decideBy = Date.now() + settings.decideWithinHours * HOUR;
-  const address = application.contact.address!;
-  const approvalId = await requestApproval(ctx, {
-    companyId: company._id,
-    action: SEND_INVITATION,
-    summary: `Email ${who} the application link for ${need.title}`,
-    reason: `${who} applied for ${need.title}${application.source === "indeed" || application.source === "ziprecruiter" ? ` through ${application.source === "indeed" ? "Indeed" : "ZipRecruiter"}` : ""}. ${CONTACT_WORDS[application.contact.status]} ${settings.invitationMode === "auto" && !eligible.ok ? `Not sent automatically: ${eligible.why}` : "Invitations are reviewed before they go."}`,
-    authorizes: `One email to ${address} with a link to ${company.name}'s application for ${need.title}, and the reminders your Playbook allows. Nothing else.`,
-    ifWaiting: `Nothing is sent. If nobody decides by ${when(decideBy, Date.now(), company.timezone)}, the application stays open and comes back to you.`,
-    decideBy,
-    proposal: { kind: "send_invitation", applicationId: application._id },
-    about: { table: "applications", id: application._id },
-  });
-  await setStage(ctx, application, "invitation_awaiting_approval", RECRUITER, { invitationApprovalId: approvalId, nextAction: { what: "Approve, change or skip the invitation", by: "owner", dueAt: decideBy } });
+  // The application link is prepared as a finding (findings.ts). It goes by itself only where the Owner
+  // switched automatic application links on; otherwise it waits, ready, for a person to send it.
+  await automate(ctx, application._id);
 }
 
 /** A person decided an invitation proposal. */
@@ -196,7 +178,7 @@ export async function afterInvitationExpiry(ctx: MutationCtx, applicationId: Id<
 export const followUpKey = (applicationId: Id<"applications">, attempt: number) => `followup:${applicationId}:${attempt}`;
 
 /** Queues reminder number `attempt` if every rule still allows it. Returns why not, otherwise. */
-export async function sendFollowUp(ctx: MutationCtx, applicationId: Id<"applications">, attempt: number, actor: Actor): Promise<CarriedOut> {
+export async function sendFollowUp(ctx: MutationCtx, applicationId: Id<"applications">, attempt: number, actor: Actor, override?: { subject: string; body: string }): Promise<CarriedOut> {
   const found = await load(ctx, applicationId);
   if (!found || !found.need) return { ok: false, detail: "The application no longer exists." };
   const { application, applicant, company, need } = found;
@@ -207,7 +189,7 @@ export async function sendFollowUp(ctx: MutationCtx, applicationId: Id<"applicat
   const link = await liveApplicantLink(ctx, application, "apply");
   if (!link) return { ok: false, detail: "The application link has expired or was revoked." };
   const parts = partsFor(company, settings.fromName, applicant, need.title);
-  const email = followUpEmail(parts);
+  const email = override ?? followUpEmail(parts);
   const message = await queueApplicantMessage(ctx, { company, application, applicant, purpose: "application_follow_up", channel: "email", subject: email.subject, body: email.body, link, dedupeKey: followUpKey(application._id, attempt), actor });
   // A text goes too only where the applicant gave permission to be texted. A phone number alone is not permission.
   if (applicant.smsConsent && message.status !== "not_sent") {
@@ -248,33 +230,9 @@ export async function followUpSweep(ctx: MutationCtx, now: number): Promise<numb
       if (now < application.invitedAt + gap * HOUR) continue;
       if (await sendProblem(ctx, application, applicant, "application_follow_up", settings)) continue;
       if (await messageByKey(ctx, company._id, followUpKey(application._id, attempt))) continue;
-
-      const authority = await authorityFor(ctx, company._id, FOLLOW_UP);
-      if (authority.kind !== "level" || authority.level === "off") continue;
-      if (authority.level !== "propose") {
-        await sendFollowUp(ctx, application._id, attempt, RECRUITER);
-        await reportAction(ctx, { companyId: company._id, agent: "recruiter", action: FOLLOW_UP, level: authority.level, subject: { table: "applications", id: application._id }, ref: `${application._id}:${attempt}`, stage: "queued", kind: "follow_up", data: { applicationId: application._id } });
-        acted += 1;
-        continue;
-      }
-      const open = await ctx.db
-        .query("approvals")
-        .withIndex("by_company_status_decideBy", (q) => q.eq("companyId", company._id).eq("status", "pending"))
-        .take(500);
-      if (open.some((row) => row.proposal?.kind === "send_follow_up" && row.proposal.applicationId === application._id)) continue;
-      const decideBy = now + settings.decideWithinHours * HOUR;
-      await requestApproval(ctx, {
-        companyId: company._id,
-        action: FOLLOW_UP,
-        summary: `Remind ${applicant.name ?? "an applicant"} to finish the ${found.need.title} application (reminder ${attempt} of ${settings.maxFollowUps})`,
-        reason: `The invitation was delivered ${when(application.invitedAt, now, company.timezone)} and the application has not been submitted.`,
-        authorizes: `One reminder email to ${application.contact.address ?? "the applicant"}${applicant.smsConsent ? ", and one text" : ""}. Nothing else.`,
-        ifWaiting: "No reminder is sent.",
-        decideBy,
-        proposal: { kind: "send_follow_up", applicationId: application._id, attempt },
-        about: { table: "applications", id: application._id },
-      });
-      acted += 1;
+      // The reminder is prepared as a finding; it goes by itself only where the Owner switched reminders on.
+      const result = await automate(ctx, application._id);
+      if (result) acted += 1;
     }
   }
   return acted;

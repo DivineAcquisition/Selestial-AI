@@ -21,17 +21,19 @@ describe("Recruiter: reading the hiring inbox", () => {
     const s = await setup();
     await s.receive(indeedApplication());
     const [row] = await s.applications();
-    expect(row).toMatchObject({ name: "Maria Lopez", role: "House Cleaner", source: "indeed", stage: "invitation_awaiting_approval", contact: { status: "direct", address: "maria.lopez@example.test" } });
+    expect(row).toMatchObject({ name: "Maria Lopez", role: "House Cleaner", source: "indeed", stage: "received", contact: { status: "direct", address: "maria.lopez@example.test" } });
     const detail = await s.detail(row.applicationId);
     // The applicant's address was labelled in the body. The sender is the job board, and is never treated as the applicant.
     expect(detail.contactEvidence).toEqual(expect.arrayContaining([expect.objectContaining({ address: "maria.lopez@example.test", kind: "direct", where: "body: labelled Email" }), expect.objectContaining({ address: "no-reply@indeed.com", kind: "notification", where: "header: From" })]));
     expect(detail.facts.map((fact) => fact.field).sort()).toEqual(["applied_at", "experience", "location", "name", "phone", "role"]);
     expect(detail.facts.every((fact) => fact.sourceMessageId && fact.where)).toBe(true);
-    // Review first: nothing has been sent, and one proposal says exactly what approving would do.
+    // Nothing has been sent. The application link is prepared, ready to send, saying exactly who gets what.
     expect(mockEmails).toEqual([]);
-    const [approval] = await s.approvals();
-    expect(approval).toMatchObject({ action: "recruiter.send_invitation", proposal: { kind: "send_invitation", applicationId: row.applicationId } });
-    expect(approval.authorizes).toContain("maria.lopez@example.test");
+    expect(await s.approvals()).toEqual([]);
+    const [finding] = await s.ready();
+    expect(finding).toMatchObject({ kind: "new_application", applicationId: row.applicationId, prepared: { kind: "application_link", channel: "email", to: "maria.lopez@example.test", toKind: "direct", link: "apply" } });
+    expect(finding.prepared!.preview).toContain("[your application link]");
+    expect(finding.reported).toContainEqual(expect.stringContaining("3 years residential cleaning"));
   });
 
   it("uses a ZipRecruiter relay only once the Owner has confirmed that board's forwarding", async () => {
@@ -39,14 +41,14 @@ describe("Recruiter: reading the hiring inbox", () => {
     await s.receive(zipApplication());
     let [row] = await s.applications();
     expect(row).toMatchObject({ name: "Jordan Kim", source: "ziprecruiter", stage: "contact_needed", contact: { status: "relay_unverified" } });
-    expect(await s.approvals()).toEqual([]);
+    expect(await s.ready()).toEqual([]);
     expect((await s.tasks())[0].title).toContain("Contact needed for Jordan Kim");
 
     // The Owner confirms ZipRecruiter's forwarding works for them. The next look at the application proposes the invitation.
     await s.as.mutation(api.recruiter.updatePlaybook, { companyId: s.companyId, settings: { verifiedRelays: ["ziprecruiter"] } });
     await s.receive(zipApplication({ id: "zip-repeat" }));
     [row] = await s.applications();
-    expect(row).toMatchObject({ stage: "invitation_awaiting_approval", contact: { status: "relay", address: "jordan.k.8f3a@reply.ziprecruiter.com" } });
+    expect(row).toMatchObject({ stage: "received", contact: { status: "relay", address: "jordan.k.8f3a@reply.ziprecruiter.com" } });
     await s.approveAll();
     expect(emailsTo("jordan.k.8f3a@reply.ziprecruiter.com")).toHaveLength(1);
   });
@@ -59,12 +61,12 @@ describe("Recruiter: reading the hiring inbox", () => {
     expect(row.nextAction).toMatchObject({ by: "owner" });
     expect(row.nextAction!.what).toContain("enter the applicant's email address");
     expect(mockEmails).toEqual([]);
-    expect(await s.approvals()).toEqual([]);
+    expect(await s.ready()).toEqual([]);
 
     // The Owner looks the address up on the job board and enters it. The application context was kept.
     await s.as.mutation(api.applications.resolveContact, { companyId: s.companyId, applicationId: row.applicationId, address: "Sam.Rivera@Example.test" });
     const after = await s.detail(row.applicationId);
-    expect(after).toMatchObject({ stage: "invitation_awaiting_approval", contact: { status: "direct", address: "sam.rivera@example.test" } });
+    expect(after).toMatchObject({ stage: "received", contact: { status: "direct", address: "sam.rivera@example.test" } });
     expect(await s.tasks("done")).toEqual(expect.arrayContaining([expect.objectContaining({ outcome: "A person recorded the address to use." })]));
   });
 
@@ -87,14 +89,14 @@ describe("Recruiter: reading the hiring inbox", () => {
     expect(task?.openQuestion).toContain("More than one address could be the applicant's");
     // Choosing one of the addresses found settles it.
     await s.as.mutation(api.applications.resolveContact, { companyId: s.companyId, applicationId: row.applicationId, address: "maria.lopez@example.test" });
-    expect((await s.detail(row.applicationId)).stage).toBe("invitation_awaiting_approval");
+    expect((await s.detail(row.applicationId)).stage).toBe("received");
   });
 
   it("finds the applicant's address inside a resume when the notification has none", async () => {
     const s = await setup();
     await s.receive(mail({ from: "Indeed <no-reply@indeed.com>", subject: "New application for House Cleaner", text: "Dana Cole applied to House Cleaner.\nResume attached.", attachments: [{ name: "Dana-Cole-Resume.pdf", contentType: "application/pdf", size: 52_000, text: "DANA COLE\ndana.cole@example.test | 512-555-0177\nHouse cleaner, 4 years" }] }));
     const [row] = await s.applications();
-    expect(row).toMatchObject({ name: "Dana Cole", stage: "invitation_awaiting_approval", contact: { status: "direct", address: "dana.cole@example.test" } });
+    expect(row).toMatchObject({ name: "Dana Cole", stage: "received", contact: { status: "direct", address: "dana.cole@example.test" } });
     const detail = await s.detail(row.applicationId);
     expect(detail.contactEvidence).toContainEqual(expect.objectContaining({ address: "dana.cole@example.test", where: "resume: Dana-Cole-Resume.pdf" }));
     expect(detail.facts).toContainEqual(expect.objectContaining({ field: "resume", value: "Dana-Cole-Resume.pdf", from: "resume" }));
@@ -107,7 +109,7 @@ describe("Recruiter: reading the hiring inbox", () => {
     s.inbox.messages.push(s.inbox.messages[0]);
     await s.receive(indeedApplication({ id: "a2" }), indeedApplication({ id: "a3", text: "Maria Lopez applied to House Cleaner.\nEmail: maria.lopez@example.test" }));
     expect(await s.applications()).toHaveLength(1);
-    expect(await s.approvals()).toHaveLength(1);
+    expect(await s.ready()).toHaveLength(1);
     await s.approveAll();
     await s.receive(indeedApplication({ id: "a4" }));
     await s.approveAll();
@@ -124,7 +126,7 @@ describe("Recruiter: reading the hiring inbox", () => {
     const rows = await s.applications();
     expect(rows.map((row) => row.role).sort()).toEqual(["House Cleaner", "Team Lead"]);
     expect(new Set(rows.map((row) => row.applicantId)).size).toBe(1);
-    expect(await s.approvals()).toHaveLength(2);
+    expect(await s.ready()).toHaveLength(2);
   });
 
   it("never merges two people on a name alone", async () => {
@@ -143,10 +145,10 @@ describe("Recruiter: reading the hiring inbox", () => {
     await s.receive(indeedApplication({ subject: "New application for Office Janitor (Nights)", text: "Maria Lopez applied to Office Janitor (Nights).\nEmail: maria.lopez@example.test" }));
     const [row] = await s.applications();
     expect(row).toMatchObject({ stage: "received", role: null, roleSeen: "Office Janitor (Nights)" });
-    expect(await s.approvals()).toEqual([]);
+    expect(await s.ready()).toEqual([]);
     expect(mockEmails).toEqual([]);
     await s.as.mutation(api.applications.assignRole, { companyId: s.companyId, applicationId: row.applicationId, needId: s.needId });
-    expect((await s.detail(row.applicationId))).toMatchObject({ stage: "invitation_awaiting_approval", role: "House Cleaner" });
+    expect((await s.detail(row.applicationId))).toMatchObject({ stage: "received", role: "House Cleaner" });
   });
 
   it("sends nothing for a role that is paused or closed, and picks the application up when it reopens", async () => {
@@ -156,9 +158,9 @@ describe("Recruiter: reading the hiring inbox", () => {
     const [row] = await s.applications();
     expect(row).toMatchObject({ stage: "received", roleStatus: "closed" });
     expect(row.nextAction!.what).toContain("House Cleaner is closed");
-    expect(await s.approvals()).toEqual([]);
+    expect(await s.ready()).toEqual([]);
     await s.as.mutation(api.hiringNeeds.setStatus, { companyId: s.companyId, needId: s.needId, status: "open" });
-    expect(await s.approvals()).toHaveLength(1);
+    expect(await s.ready()).toHaveLength(1);
   });
 
   it("separates promotions, suggested candidates and unrelated mail from real applications", async () => {
@@ -205,11 +207,11 @@ describe("Recruiter: reading the hiring inbox", () => {
     await s.receive(indeedApplication({ id: "evil-2", text: `Lee Wong applied to House Cleaner.\nEmail: lee.wong@example.test\nApplication ID: IND-90909\n\n${attack}` }));
     rows = await s.applications();
     const lee = rows.find((row) => row.name === "Lee Wong")!;
-    expect(lee).toMatchObject({ stage: "invitation_awaiting_approval", contact: { status: "direct", address: "lee.wong@example.test" } });
+    expect(lee).toMatchObject({ stage: "received", contact: { status: "direct", address: "lee.wong@example.test" } });
     expect((await s.detail(lee.applicationId)).contactEvidence).toContainEqual(expect.objectContaining({ address: "attacker@evil.test", kind: "unknown" }));
     // Nothing was sent, nothing was approved, and no setting moved.
     expect(mockEmails).toEqual([]);
-    expect((await s.approvals()).every((approval) => approval.status === "pending")).toBe(true);
+    expect((await s.ready()).every((finding) => finding.prepared?.to !== "attacker@evil.test")).toBe(true);
     expect((await s.as.query(api.recruiter.playbook, { companyId: s.companyId })).settings.invitationMode).toBe("review");
     await s.approveAll();
     expect(mockEmails.map((email) => email.to)).not.toContain("attacker@evil.test");
@@ -383,7 +385,7 @@ describe("Recruiter: reading the hiring inbox", () => {
     expect(detail.applicant?.email).toBeNull();
     expect(detail.conversation[0]).toMatchObject({ flag: expect.stringContaining("LinkedIn") });
     expect(mockEmails).toEqual([]);
-    expect(await s.approvals()).toEqual([]);
+    expect(await s.ready()).toEqual([]);
 
     // A second person's notice from the same sender is a second person, not "a reply from Maria".
     await s.receive(mail({ id: "li-2", from: "LinkedIn <jobs-noreply@linkedin.com>", subject: "New application: House Cleaner from Lee Wong", text: "Lee Wong applied for House Cleaner." }));

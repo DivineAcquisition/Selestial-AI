@@ -17,6 +17,7 @@ import { routeApplication } from "./invitations";
 import { addressOf, boardFor, isAutomatedSender, isRelayAddress, oneLine, unsupportedBoardFor, type MessageHeader } from "./mail";
 import type { Classification, ContactEvidence, Fact, Source } from "./schema";
 import { DAY, recruiterSettings } from "./settings";
+import { automate } from "./act";
 
 export type Verdict = { classification: Classification; classifiedBy: "rule" | "model"; reason: string; source?: Source; /** possibly_hiring: when its sender and subject are cleared. */ expiresAt?: number };
 export type IngestInput = {
@@ -181,6 +182,7 @@ async function handleReply(ctx: MutationCtx, connection: Doc<"mailboxConnections
   const application = applications[0];
   await ctx.db.patch(sourceMessageId, { applicationId: application._id, ...(applications.length > 1 ? { flag: "The sender has more than one open application. This was filed under the newest." } : {}) });
   const intent = input.read?.replyIntent ?? "question";
+  await ctx.db.patch(sourceMessageId, { replyIntent: intent });
   const who = applicant.name ?? "An applicant";
   await recordEvent(ctx, { companyId: connection.companyId, type: "application.reply_received", actor: { kind: "system" }, subject: { table: "applications", id: application._id }, data: { intent } });
 
@@ -201,6 +203,8 @@ async function handleReply(ctx: MutationCtx, connection: Doc<"mailboxConnections
   await ctx.db.patch(application._id, { questionSince: application.questionSince ?? Date.now() });
   await setNextAction(ctx, application, { what: `${who} replied. Read it and answer; reminders are paused until you do.`, by: "owner", dueAt: Date.now() + DAY });
   await askPerson(ctx, application, { what: "reply", title: `${who} replied about their application`, question: "Read the reply in the hiring inbox and answer it, then mark it answered. Reminders to this applicant are paused until then.", dueAt: Date.now() + DAY, completionCondition: "The reply was answered" });
+  // The answer is prepared as a finding; a routine one goes by itself only where the Owner allowed it.
+  await automate(ctx, application._id);
   return "question";
 }
 

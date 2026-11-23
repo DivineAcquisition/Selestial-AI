@@ -126,7 +126,7 @@ describe("Recruiter on the shared sending policy", () => {
     expect(mockEmails).toEqual([]);
     const [held] = await messages(s);
     expect(held).toMatchObject({ status: "held", problem: expect.stringContaining("quiet hours") });
-    expect((await s.applications())[0].stage).toBe("invitation_awaiting_approval");
+    expect((await s.applications())[0].stage).toBe("received");
     await later(s.t, HOUR + 60_000);
     expect(emailsTo(MARIA)).toHaveLength(1);
     expect((await s.applications())[0].stage).toBe("invited");

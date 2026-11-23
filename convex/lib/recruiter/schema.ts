@@ -231,9 +231,80 @@ const screeningResultValidator = v.object({
   fixed: v.boolean(),
 });
 
+/** What Recruiter found about one application, and the next useful step (lib/recruiter/findings.ts). */
+export const FINDING_KINDS = ["new_application", "employment_inquiry", "incomplete_application", "pay_question", "availability_given", "interview_soon", "applicant_question", "contact_needed", "delivery_failed", "role_needed", "role_not_open", "decision_needed", "follow_up_ended"] as const;
+export type FindingKind = (typeof FINDING_KINDS)[number];
+/**
+ * ready: a message is prepared and can be sent now. scheduled: it will be due at `scheduledFor`, or is
+ * waiting for sending hours. sending: handed to the sender. sent: the provider took it (delivery is on the
+ * message). needs_attention: a person has to do or decide something. done, dismissed and expired end it;
+ * expired means the facts it was prepared from changed before it was used.
+ */
+export const FINDING_STATUSES = ["ready", "scheduled", "sending", "sent", "needs_attention", "done", "dismissed", "expired"] as const;
+export type FindingStatus = (typeof FINDING_STATUSES)[number];
+export const OPEN_FINDING: readonly FindingStatus[] = ["ready", "scheduled", "needs_attention"];
+export const PREPARED_KINDS = ["application_link", "reminder", "inquiry_reply", "pay_reply", "question_reply", "interview_times", "interview_reminder"] as const;
+export type PreparedKind = (typeof PREPARED_KINDS)[number];
+
+/** A message ready to go, shown in full beside its Send button: who, how, what, and why. */
+export const preparedValidator = v.object({
+  kind: literals(PREPARED_KINDS),
+  channel: v.literal("email"),
+  /** The real address it goes to, or null when there is none. Never invented. */
+  to: v.union(v.string(), v.null()),
+  /** direct: the applicant's own address. relay: a job board's forwarding address the Owner confirmed. */
+  toKind: v.union(v.literal("direct"), v.literal("relay"), v.null()),
+  subject: v.string(),
+  /** With "{link}" where the link goes. Empty when a person has to write it. */
+  body: v.string(),
+  /** Which link it carries, if any. */
+  link: v.union(v.literal("apply"), v.literal("interview"), v.null()),
+  reason: v.string(),
+  /** Anything that limits it: no texting permission, a relay address, sending hours. */
+  limitation: v.optional(v.string()),
+  writtenBy: v.union(v.literal("template"), v.literal("assistant"), v.literal("person")),
+  attempt: v.optional(v.number()),
+  interviewId: v.optional(v.id("interviews")),
+  needId: v.optional(v.id("hiringNeeds")),
+});
+
 // ── Tables ───────────────────────────────────────────────────────────────────────────────────────
 
 export const recruiterTables = {
+  /**
+   * One thing Recruiter found and the next step it prepared, for one application. At most one is open per
+   * application; each is kept afterwards as what was done. Source facts (`reported`: what the applicant or
+   * a board said) are kept apart from Recruiter's reading (`explanation`, `next`).
+   */
+  recruiterFindings: defineTable({
+    companyId: v.id("companies"),
+    applicationId: v.id("applications"),
+    applicantId: v.id("applicants"),
+    sourceMessageIds: v.array(v.id("sourceMessages")),
+    kind: literals(FINDING_KINDS),
+    headline: v.string(),
+    explanation: v.string(),
+    reported: v.array(v.string()),
+    missing: v.array(v.string()),
+    next: v.string(),
+    prepared: v.optional(preparedValidator),
+    status: literals(FINDING_STATUSES),
+    /** The facts this was prepared from. When they change, an unused finding expires and a new one is made. */
+    basis: v.string(),
+    scheduledFor: v.optional(v.number()),
+    messageId: v.optional(v.id("messages")),
+    outcome: v.optional(v.string()),
+    /** Carried out by Recruiter under the Owner's automation setting, not by a person's click. */
+    automatic: v.optional(v.boolean()),
+    by: v.optional(v.id("members")),
+    discoveredAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_company_status", ["companyId", "status", "updatedAt"])
+    .index("by_company_updated", ["companyId", "updatedAt"])
+    .index("by_application", ["applicationId", "updatedAt"])
+    .index("by_message", ["messageId"]),
+
   /** A role the Owner is hiring for. Only the Owner opens one or sets its pay. */
   hiringNeeds: defineTable({
     companyId: v.id("companies"),
@@ -435,6 +506,8 @@ export const recruiterTables = {
     applicationId: v.optional(v.id("applications")),
     /** Something about this message a person should look at. */
     flag: v.optional(v.string()),
+    /** An applicant's reply: what it was about (lib/recruiter/interpret.ts), so the next step can be prepared. */
+    replyIntent: v.optional(v.union(v.literal("withdraw"), v.literal("no_contact"), v.literal("availability"), v.literal("pay"), v.literal("question"))),
     /** possibly_hiring only: when its sender and subject are cleared if nobody has decided. */
     expiresAt: v.optional(v.number()),
     /** possibly_hiring only: what a person decided, and who. */

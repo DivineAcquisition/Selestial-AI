@@ -140,17 +140,28 @@ export async function setup() {
   const detail = (applicationId: Id<"applications">) => as.query(api.applications.get, { companyId, applicationId });
   const approvals = () => as.query(api.approvals.list, { companyId });
   const decide = (approvalId: Id<"approvals">, decision: "approved" | "changed" | "skipped" = "approved", note?: string) => as.mutation(api.approvals.decide, { companyId, approvalId, decision, note });
-  /** Approves every pending proposal and runs what that sets off. */
+  /** Findings Recruiter prepared, open ones first. */
+  const findings = () => as.query(api.recruiterFindings.list, { companyId });
+  /** Prepared messages waiting for a person to send them. */
+  const ready = async () => (await findings()).open.filter((row) => row.status === "ready");
+  /** Sends every prepared message that is ready, the way a person clicking Send on each would. */
+  const sendReady = async () => {
+    const ready = (await findings()).open.filter((row) => row.status === "ready" && row.prepared?.to);
+    if (ready.length) await as.mutation(api.recruiterFindings.sendMany, { companyId, findingIds: ready.map((row) => row.findingId) });
+    await flush(t);
+    return ready.length;
+  };
+  /** Approves every pending proposal, sends every ready finding, and runs what that sets off. */
   const approveAll = async () => {
     const pending = await approvals();
     for (const approval of pending) await decide(approval._id);
     await flush(t);
-    return pending.length;
+    return pending.length + (await sendReady());
   };
   const tasks = (status: "open" | "waiting" | "needs_decision" | "done" | "cancelled" = "needs_decision") => as.query(api.tasks.list, { companyId, status, agent: "recruiter" });
   const manager = () => addMember(t, as, companyId, "manager-a", "manager");
   const office = () => addMember(t, as, companyId, "office-a", "office");
-  return { t, as, companyId, needId, connectionId, inbox, sync, receive, allow, applications, detail, approvals, decide, approveAll, tasks, manager, office };
+  return { t, as, companyId, needId, connectionId, inbox, sync, receive, allow, applications, detail, approvals, decide, approveAll, findings, ready, sendReady, tasks, manager, office };
 }
 export type Setup = Awaited<ReturnType<typeof setup>>;
 

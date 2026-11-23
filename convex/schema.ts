@@ -724,6 +724,8 @@ export default defineSchema({
       v.literal("hiring_offer"),
       v.literal("application_decline"),
       v.literal("urgent_outreach"),
+      /** A reply to something an applicant asked (lib/recruiter/findings.ts). */
+      v.literal("applicant_reply"),
       // Finance, to customers: an invoice's pay link, and a reminder about what is due (convex/lib/finance/outbox.ts).
       v.literal("invoice_sent"),
       v.literal("payment_reminder"),

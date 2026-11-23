@@ -12,9 +12,12 @@ import { addSuppression } from "../compliance/permissions";
 import { normalAddress } from "../compliance/recipients";
 import { askPerson, isActive, setStage, SYSTEM } from "./applications";
 import { DAY } from "./settings";
+import { afterFindingMessage } from "./findings";
 
 /** `accepted`: the provider took it. `delivered`: a later report that it arrived. `failed`: it did not go, or nobody knows. */
 export async function afterApplicantMessage(ctx: MutationCtx, message: Doc<"messages">, event: "accepted" | "delivered" | "failed"): Promise<void> {
+  // The finding that sent it shows what became of it: accepted, delivered, or a failure to look at.
+  await afterFindingMessage(ctx, message, event);
   if (!message.applicationId || event === "delivered") return;
   const application = await ctx.db.get(message.applicationId);
   if (!application || !isActive(application)) return;

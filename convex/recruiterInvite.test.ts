@@ -18,12 +18,14 @@ describe("Recruiter: invitation, the application page, reminders and replies", (
   });
   afterEach(() => undo());
 
-  it("sends one invitation after approval, from the company, with only verified details", async () => {
+  it("sends one invitation when a person chooses Send, from the company, with only verified details", async () => {
     const s = await setup();
     await s.receive(indeedApplication());
-    const [approval] = await s.approvals();
-    const answer = await s.decide(approval._id);
-    expect(answer.carriedOut).toMatchObject({ ok: true });
+    // No approval queue: the prepared message is sent by choosing it.
+    expect(await s.approvals()).toEqual([]);
+    const [finding] = await s.ready();
+    const answer = await s.as.mutation(api.recruiterFindings.send, { companyId: s.companyId, findingId: finding.findingId });
+    expect(answer).toMatchObject({ ok: true });
     await flush(s.t);
     expect(mockEmails).toHaveLength(1);
     const [email] = mockEmails;
@@ -67,7 +69,7 @@ describe("Recruiter: invitation, the application page, reminders and replies", (
     await s.as.mutation(api.recruiter.updatePlaybook, { companyId: s.companyId, settings: { invitationMode: "auto" } });
     await s.receive(indeedApplication({ id: "auto-1" }));
     expect(mockEmails).toEqual([]);
-    expect(await s.approvals()).toHaveLength(1);
+    expect(await s.ready()).toHaveLength(1);
     await s.approveAll();
     // With the permission raised too, a clean job-board application goes by itself...
     await s.allow("recruiter.send_invitation", "execute");
@@ -76,24 +78,26 @@ describe("Recruiter: invitation, the application page, reminders and replies", (
     // ...and one that someone wrote in directly still waits for a person.
     await s.receive(mail({ from: "Chris Park <chris.park@example.test>", subject: "Application for the House Cleaner position", text: "I would like to apply for the House Cleaner position." }));
     expect(emailsTo("chris.park@example.test")).toEqual([]);
-    const [waiting] = await s.approvals();
-    expect(waiting.reason).toContain("Not sent automatically");
+    const [waiting] = await s.ready();
+    expect(waiting).toMatchObject({ kind: "new_application", prepared: { to: "chris.park@example.test" } });
   });
 
-  it("a changed or skipped proposal sends nothing and leaves the application with a person", async () => {
+  it("a dismissed message stays unsent, and a person taking over stops Recruiter preparing anything until handed back", async () => {
     const s = await setup();
     await s.receive(indeedApplication());
-    const [approval] = await s.approvals();
-    await s.decide(approval._id, "skipped");
+    const [finding] = await s.ready();
+    await s.as.mutation(api.recruiterFindings.dismiss, { companyId: s.companyId, findingId: finding.findingId });
     await flush(s.t);
     expect(mockEmails).toEqual([]);
-    const [row] = await s.applications();
-    expect(row).toMatchObject({ stage: "received", withPerson: true, nextAction: { by: "owner" } });
-    // Another notification about the same application does not bring the proposal back while a person has it.
+    // Another notice about the same application changes nothing it was prepared from: it does not come back.
     await s.receive(indeedApplication({ id: "again" }));
-    expect(await s.approvals()).toEqual([]);
+    expect(await s.ready()).toEqual([]);
+    const [row] = await s.applications();
+    await s.as.mutation(api.applications.takeOver, { companyId: s.companyId, applicationId: row.applicationId });
+    expect((await s.findings()).open).toEqual([]);
     await s.as.mutation(api.applications.handBack, { companyId: s.companyId, applicationId: row.applicationId });
-    expect(await s.approvals()).toHaveLength(1);
+    expect(await s.ready()).toHaveLength(1);
+    expect(mockEmails).toEqual([]);
   });
 
   it("does not send a second invitation when the send is retried after it succeeded", async () => {
@@ -237,16 +241,26 @@ describe("Recruiter: invitation, the application page, reminders and replies", (
     expect((await s.tasks()).some((task) => task.openQuestion?.includes("Not answering is not a no"))).toBe(true);
   });
 
-  it("asks before each reminder while the permission is on Propose", async () => {
+  it("prepares each reminder for a person to send while automatic reminders are off, and refuses one that went stale", async () => {
     const s = await setup();
-    await invited(s);
+    const { token } = await invited(s);
+    // Before it is due, the reminder shows as scheduled, not ready.
+    expect((await s.findings()).open).toEqual([expect.objectContaining({ kind: "incomplete_application", status: "scheduled" })]);
     await later(s.t, 49 * HOUR);
     expect(emailsTo(MARIA)).toHaveLength(1);
-    await later(s.t, HOUR);
-    const pending = await s.approvals();
-    expect(pending).toHaveLength(1);
-    expect(pending[0]).toMatchObject({ action: "recruiter.follow_up", proposal: { kind: "send_follow_up", attempt: 1 } });
+    const [due] = await s.ready();
+    expect(due).toMatchObject({ kind: "incomplete_application", prepared: { kind: "reminder", to: MARIA } });
+    expect(await s.approvals()).toEqual([]);
     await s.approveAll();
+    expect(emailsTo(MARIA)).toHaveLength(2);
+    // The second reminder becomes due, and the applicant submits before anyone sends it: it can no longer be sent.
+    await later(s.t, 72 * HOUR);
+    const [second] = await s.ready();
+    expect(second).toMatchObject({ kind: "incomplete_application" });
+    await s.t.mutation(api.applicantPages.submit, { token, answers: ANSWERS, attested: true });
+    await flush(s.t);
+    const answer = await s.as.mutation(api.recruiterFindings.send, { companyId: s.companyId, findingId: second.findingId });
+    expect(answer).toMatchObject({ ok: false });
     expect(emailsTo(MARIA)).toHaveLength(2);
   });
 

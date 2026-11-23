@@ -18,7 +18,8 @@ import { CONTACT_WORDS, contactNextStep } from "./contact";
 import { completion, formFields } from "./form";
 import { createHandoff } from "./handoff";
 import { bookSlot, liveInterview, openSlots, RUN_INTERVIEW } from "./interviews";
-import { autoEligible, routeApplication, SEND_INVITATION, sendInvitation } from "./invitations";
+import { autoEligible, invitationState, routeApplication, SEND_INVITATION, sendInvitation } from "./invitations";
+import { openFinding } from "./findings";
 import { issueApplicantLink } from "./links";
 import { liveOffer, payWords, prepareOffer } from "./offers";
 import { applicationMessages, sendProblem } from "./outbox";
@@ -130,12 +131,16 @@ export async function runTool(ctx: MutationCtx, company: Doc<"companies">, tool:
       if (!may.ok) return refused(may.label, "Recruiter may not invite applicants.", mine._id);
       await routeApplication(ctx, mine._id);
       const after = (await ctx.db.get(mine._id))!;
-      return { outcome: after.stage === "invitation_awaiting_approval" ? "proposed" : "done", authorization: may.label, result: { stage: after.stage, nextAction: after.nextAction ?? null }, applicationId: mine._id };
+      // The link is prepared for a person to send (or sent, where the Owner made it automatic).
+      const prepared = await openFinding(ctx, mine._id);
+      return { outcome: prepared?.status === "ready" ? "proposed" : "done", authorization: may.label, result: { stage: after.stage, nextAction: after.nextAction ?? null, prepared: prepared?.status === "ready" ? "ready for a person to send" : null }, applicationId: mine._id };
     }
     case "send_approved_invitation": {
       if (!mine) return noApplication();
       const may = await allowed(ctx, company, SEND_INVITATION);
       if (!may.ok) return refused(may.label, "Recruiter may not invite applicants.", mine._id);
+      // Asked again after it went: the same answer, nothing sent twice.
+      if ((await invitationState(ctx, mine)).standing) return { outcome: "done", authorization: may.label, result: { detail: "The invitation was already sent." }, applicationId: mine._id };
       const approval = mine.invitationApprovalId ? await ctx.db.get(mine.invitationApprovalId) : null;
       const approved = approval?.status === "approved" && approval.proposal?.kind === "send_invitation" && approval.proposal.applicationId === mine._id;
       const automatic = settings.invitationMode === "auto" && may.level !== "propose" && applicant !== null && (await autoEligible(ctx, mine, applicant)).ok;

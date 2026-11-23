@@ -18,7 +18,7 @@ import { userError } from "../errors";
 import { calendarBusy, isBusy } from "../google/busy";
 import { recordEvent, type Actor } from "../events";
 import { when } from "../time";
-import { askPerson, isActive, RECRUITER, setNextAction, setStage, settleTask, SYSTEM } from "./applications";
+import { askPerson, isActive, setNextAction, setStage, settleTask, SYSTEM } from "./applications";
 import { calendarProvider } from "./calendar";
 import { issueApplicantLink, liveApplicantLink } from "./links";
 import { queueApplicantMessage } from "./outbox";
@@ -229,34 +229,49 @@ export async function scheduleByPerson(ctx: MutationCtx, interviewId: Id<"interv
 }
 
 /** Run on a schedule: one reminder before each confirmed interview. */
-export async function reminderSweep(ctx: MutationCtx, now: number): Promise<number> {
+export const INTERVIEW_REMINDER = "recruiter.interview_reminder";
+
+/** Sends the one reminder for a booked interview: email, and a text only where the applicant agreed to texts. */
+export async function sendInterviewReminder(ctx: MutationCtx, interviewId: Id<"interviews">, actor: Actor, override?: { subject: string; body: string }): Promise<CarriedOut> {
+  const loaded = await load(ctx, interviewId);
+  if (!loaded || !isActive(loaded.application)) return { ok: false, detail: "The application has ended." };
+  const { interview } = loaded;
+  const now = Date.now();
+  if (interview.status !== "confirmed" || !interview.startsAt || interview.startsAt <= now) return { ok: false, detail: "The interview is not booked for a time still to come." };
+  if (interview.reminderQueuedAt) return { ok: true, detail: "The reminder was already sent." };
+  const settings = recruiterSettings(loaded.company);
+  const parts = { ...partsFor(loaded.company, settings.fromName, loaded.applicant, loaded.need.title), when: `${when(interview.startsAt, now, loaded.company.timezone)} (${loaded.company.timezone})` };
+  const key = `interview-reminder:${interview._id}:${interview.startsAt}`;
+  const message = await send(ctx, loaded, "interview_reminder", override ?? interviewReminderEmail(parts), key, actor, true);
+  if (loaded.applicant.smsConsent && message.status !== "not_sent") {
+    const link = await liveApplicantLink(ctx, loaded.application, "interview");
+    await queueApplicantMessage(ctx, { company: loaded.company, application: loaded.application, applicant: loaded.applicant, purpose: "interview_reminder", channel: "sms", body: interviewReminderText(parts), link, dedupeKey: `${key}:sms`, actor, immediate: true });
+  }
+  if (message.status === "not_sent") return { ok: false, detail: message.problem ?? "The reminder could not be sent." };
+  await ctx.db.patch(interview._id, { reminderQueuedAt: now });
+  return { ok: true, detail: "The interview reminder was handed to the email service." };
+}
+
+/**
+ * Run on a schedule: booked interviews coming up. Each one's finding is brought up to date, and the
+ * reminder goes by itself only where the Owner switched interview reminders on (lib/recruiter/act.ts).
+ */
+export async function reminderSweep(ctx: MutationCtx, now: number, step: (applicationId: Id<"applications">) => Promise<void>): Promise<number> {
   const upcoming = await ctx.db
     .query("interviews")
     .withIndex("by_status_start", (q) => q.eq("status", "confirmed").gt("startsAt", now))
     .take(300);
-  let sent = 0;
+  let looked = 0;
   for (const interview of upcoming) {
-    const loaded = await load(ctx, interview._id);
-    if (!loaded || !interview.startsAt || interview.reminderQueuedAt || !isActive(loaded.application)) continue;
-    const settings = recruiterSettings(loaded.company);
-    if (interview.startsAt - now > settings.interviewReminderHours * HOUR) continue;
-    const authority = await authorityFor(ctx, loaded.company._id, RUN_INTERVIEW);
-    if (authority.kind !== "level" || authority.level === "off") continue;
-    const parts = { ...partsFor(loaded.company, settings.fromName, loaded.applicant, loaded.need.title), when: `${when(interview.startsAt, now, loaded.company.timezone)} (${loaded.company.timezone})` };
-    const key = `interview-reminder:${interview._id}:${interview.startsAt}`;
-    await send(ctx, loaded, "interview_reminder", interviewReminderEmail(parts), key, RECRUITER, true);
-    if (loaded.applicant.smsConsent) {
-      const link = await liveApplicantLink(ctx, loaded.application, "interview");
-      await queueApplicantMessage(ctx, { company: loaded.company, application: loaded.application, applicant: loaded.applicant, purpose: "interview_reminder", channel: "sms", body: interviewReminderText(parts), link, dedupeKey: `${key}:sms`, actor: RECRUITER, immediate: true });
-    }
-    await ctx.db.patch(interview._id, { reminderQueuedAt: now });
-    await reportAction(ctx, { companyId: loaded.company._id, agent: "recruiter", action: RUN_INTERVIEW, level: authority.level, subject: { table: "interviews", id: interview._id }, ref: key, stage: "queued", kind: "interview_reminder", data: { applicationId: loaded.application._id } });
-    sent += 1;
+    if (!interview.startsAt || interview.reminderQueuedAt) continue;
+    const company = await ctx.db.get(interview.companyId);
+    if (!company || interview.startsAt - now > recruiterSettings(company).interviewReminderHours * HOUR + DAY) continue;
+    await step(interview.applicationId);
+    looked += 1;
   }
-  return sent;
+  return looked;
 }
 
-/** The interviewer's own account of how it went. This is what moves the application to a decision. */
 export async function recordFeedback(ctx: MutationCtx, interviewId: Id<"interviews">, member: Doc<"members">, input: { attended: boolean; notes: string; recommendation: "advance" | "hold" | "do_not_advance" }): Promise<void> {
   const loaded = await load(ctx, interviewId);
   if (!loaded) throw userError("That interview does not exist.");

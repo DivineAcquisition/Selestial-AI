@@ -86,6 +86,7 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   { table: "messagingAttention", index: "by_company_at", omit: ["resolvedBy"], why: "Which Selestial staff member resolved it." },
   { table: "messagingTopUps", index: "by_company_created", omit: ["intentId", "applied"], why: "Internal references to a purchase request and to payment events already applied." },
   { table: "sourceMessages", index: "by_company_received" },
+  { table: "recruiterFindings", index: "by_company_updated" },
   { table: "formSessions", index: "by_company_application" },
   { table: "applicantAttachments", index: "by_company_application", omit: ["storageId", "clientKey"], why: "Internal file references. The files themselves are not in the file." },
   { table: "screenings", index: "by_company_application" },

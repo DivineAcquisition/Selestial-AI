@@ -16,6 +16,7 @@ import { byMember, recordEvent } from "./lib/events";
 import { emailProvider } from "./lib/messaging/email";
 import { messagingProvider } from "./lib/messaging/provider";
 import { calendarProvider } from "./lib/recruiter/calendar";
+import { automate } from "./lib/recruiter/act";
 import { reminderSweep } from "./lib/recruiter/interviews";
 import { followUpSweep } from "./lib/recruiter/invitations";
 import { googleApp } from "./lib/recruiter/gmail";
@@ -305,5 +306,11 @@ export const prepareUrgentOutreach = managerMutation({
 // ── Kept on a schedule ───────────────────────────────────────────────────────────────────────────
 
 export const followUps = internalMutation({ args: {}, handler: async (ctx) => followUpSweep(ctx, Date.now()) });
-export const interviewReminders = internalMutation({ args: {}, handler: async (ctx) => reminderSweep(ctx, Date.now()) });
+export const interviewReminders = internalMutation({
+  args: {},
+  handler: async (ctx) =>
+    reminderSweep(ctx, Date.now(), async (applicationId) => {
+      await automate(ctx, applicationId);
+    }),
+});
 export const retention = internalMutation({ args: {}, handler: async (ctx) => redactDue(ctx, Date.now()) });

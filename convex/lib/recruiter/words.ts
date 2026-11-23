@@ -93,6 +93,36 @@ export function urgentOutreachEmail(parts: Parts): { subject: string; body: stri
   };
 }
 
+/** The open roles, one per line, from the records. Nothing about a role is said that is not on it. */
+const roleLines = (roles: { title: string; location: string }[]) => roles.map((role) => `- ${role.title}${role.location ? `, ${role.location}` : ""}`).join("\n");
+
+/** To a person who asked about work. With one open role it carries the application link; with several it asks which. */
+export function inquiryReplyEmail(parts: Omit<Parts, "role"> & { roles: { title: string; location: string }[]; withLink: boolean }): { subject: string; body: string } {
+  const one = parts.roles.length === 1;
+  const ask = parts.withLink
+    ? `To apply for the ${parts.roles[0].title} position, please complete our application:\n{link}`
+    : one
+      ? "Reply to this email if you would like to apply, and we will send you the application."
+      : "Reply to tell us which of these you would like to apply for, and we will send you the application.";
+  return {
+    subject: `Working at ${parts.company}`,
+    body: `${greeting(parts.name)}\n\nThank you for asking about work at ${parts.company}. We are hiring for:\n${roleLines(parts.roles)}\n\n${ask}\n\n${footer({ ...parts, role: "" })}`,
+  };
+}
+
+/** The pay for a role, exactly as the Owner approved it. Sent only when there is an approved figure. */
+export function payReplyEmail(parts: Parts & { pay: string; note?: string; applyLink: boolean }): { subject: string; body: string } {
+  return {
+    subject: `Re: the ${parts.role} position at ${parts.company}`,
+    body: `${greeting(parts.name)}\n\nThank you for asking. The ${parts.role} position at ${parts.company} pays ${parts.pay}.${parts.note ? ` ${parts.note}` : ""}${parts.applyLink ? `\n\nIf you have not finished your application yet, you can do it here:\n{link}` : ""}\n\nIf you have any other questions, reply to this email.\n\n${footer(parts)}`,
+  };
+}
+
+/** A reply a person or the drafting assistant wrote, wrapped in the same greeting and footer as every message. */
+export function replyEmail(parts: Parts & { text: string; subject?: string }): { subject: string; body: string } {
+  return { subject: parts.subject ?? `Re: your ${parts.role} application at ${parts.company}`, body: `${greeting(parts.name)}\n\n${parts.text.trim()}\n\n${footer(parts)}` };
+}
+
 export function partsFor(company: Doc<"companies">, fromName: string, applicant: Doc<"applicants">, role: string): Parts {
   return { company: company.name, fromName, name: applicant.name, role };
 }

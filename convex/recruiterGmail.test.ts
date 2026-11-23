@@ -232,7 +232,7 @@ describe("connecting Gmail and working through it", () => {
     expect(JSON.stringify(stored)).not.toContain("refresh-secret-token");
     expect(await unseal(stored.credentials[0].sealedRefreshToken, gmail._id)).toBe("refresh-secret-token");
     // The application came in through Gmail.
-    expect(await s.applications()).toEqual([expect.objectContaining({ name: "Maria Lopez", stage: "invitation_awaiting_approval" })]);
+    expect(await s.applications()).toEqual([expect.objectContaining({ name: "Maria Lopez", stage: "received" })]);
     // The same state a second time, an unknown one, or one that expired, connects nothing.
     google.state.codes.add("good-code");
     expect((await s.t.fetch(`/oauth/google/callback?state=${state}&code=good-code`, { method: "GET" })).headers.get("Location")).toContain("mailbox=expired");

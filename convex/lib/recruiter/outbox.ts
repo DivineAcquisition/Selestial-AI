@@ -25,7 +25,7 @@ import { recruiterSettings, type RecruiterSettings } from "./settings";
 
 export type ApplicantPurpose = Extract<
   Doc<"messages">["purpose"],
-  "application_invitation" | "application_follow_up" | "information_request" | "interview_invitation" | "interview_confirmation" | "interview_reminder" | "hiring_offer" | "application_decline" | "urgent_outreach"
+  "application_invitation" | "application_follow_up" | "information_request" | "interview_invitation" | "interview_confirmation" | "interview_reminder" | "hiring_offer" | "application_decline" | "urgent_outreach" | "applicant_reply"
 >;
 
 const MINUTE = 60_000;

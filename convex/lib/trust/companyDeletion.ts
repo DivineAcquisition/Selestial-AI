@@ -228,6 +228,7 @@ export const DELETION_PLAN: readonly TablePlan[] = [
   del("mailboxCredentials", "Sealed mailbox authorizations (deleted when the inbox is disconnected; any left are deleted here)."),
   del("oauthStates", "Ten-minute mailbox sign-in records."),
   del("sourceMessages", "Emails read from the company's inbox."),
+  del("recruiterFindings", "What Recruiter found about applications and the messages it prepared."),
   del("applicantLinks", "Applicants' links."),
   del("formSessions", "Applicants' answers."),
   del("applicantAttachments", "Applicants' files."),

@@ -133,6 +133,8 @@ describe("Recruiter: screening, interviews, offers and the handoff to onboarding
 
   it("confirms an interview only when a slot is reserved, and two applicants cannot take the same time", async () => {
     const s = await setup();
+    // The Owner switched interview reminders to automatic (new companies start with every automatic send off).
+    await s.allow("recruiter.interview_reminder");
     const maria = await interviewing(s);
     const lee = await submitted(s, { ...ANSWERS, fullName: "Lee Wong", email: "lee.wong@example.test" }, second("Lee Wong", "lee.wong@example.test", "IND-2"));
     await s.as.mutation(api.applications.decide, { companyId: s.companyId, applicationId: lee.applicationId, decision: "interview" });

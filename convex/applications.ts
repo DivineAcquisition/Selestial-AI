@@ -25,9 +25,10 @@ import { normalizePhone } from "./lib/recruiter/mail";
 import { applicationMessages } from "./lib/recruiter/outbox";
 import { redactApplicant } from "./lib/recruiter/retention";
 import { closureReasonValidator, stageValidator, STAGES, type Stage } from "./lib/recruiter/schema";
-import { latestScreening, requestInformation, runScreening } from "./lib/recruiter/screening";
+import { latestScreening, sendInformationRequest, runScreening } from "./lib/recruiter/screening";
 import { DAY } from "./lib/recruiter/settings";
 import { email, optionalText, text } from "./lib/text";
+import { refresh } from "./lib/recruiter/findings";
 
 type Ctx = QueryCtx & MemberAccess;
 
@@ -149,7 +150,10 @@ export const resolveContact = managerMutation({
     if (applicant && !applicant.email) await ctx.db.patch(applicant._id, { email: address });
     await recordEvent(ctx, { companyId: ctx.companyId, type: "application.contact_resolved", actor: byMember(ctx), subject: { table: "applications", id: application._id }, data: { fromEvidence: known } });
     await settleTask(ctx, application, "contact", "A person recorded the address to use.", byMember(ctx));
-    if (application.stage === "invited" || application.stage === "application_started") return null;
+    if (application.stage === "invited" || application.stage === "application_started") {
+      await refresh(ctx, application._id);
+      return null;
+    }
     await routeApplication(ctx, application._id);
     return null;
   },
@@ -183,6 +187,8 @@ export const takeOver = managerMutation({
     if (!isActive(application)) throw userError("This application has ended.");
     await ctx.db.patch(application._id, { withPersonSince: Date.now(), nextAction: { what: optionalText(args.note, "The note", 300) ?? `${ctx.member.name} is handling this application.`, by: "owner", dueAt: Date.now() + 2 * DAY } });
     await recordEvent(ctx, { companyId: ctx.companyId, type: "application.taken_over", actor: byMember(ctx), subject: { table: "applications", id: application._id } });
+    // Whatever Recruiter had prepared stops here: a person has it now.
+    await refresh(ctx, application._id);
     return null;
   },
 });
@@ -276,6 +282,7 @@ export const inviteAgain = managerMutation({
     await ctx.db.patch(application._id, { followUpsSent: 0, invitedAt: undefined });
     await settleTask(ctx, application, "decision", `${ctx.member.name} sent a new link.`, byMember(ctx));
     await settleTask(ctx, application, "delivery", `${ctx.member.name} sent the invitation again.`, byMember(ctx));
+    await refresh(ctx, application._id);
     return null;
   },
 });
@@ -289,17 +296,22 @@ export const markReplyAnswered = companyMutation({
     await ctx.db.patch(application._id, { questionSince: undefined, nextAction: application.submittedAt ? application.nextAction : { what: "Complete the application form", by: "applicant" } });
     await settleTask(ctx, application, "reply", `${ctx.member.name} answered the applicant.`, byMember(ctx));
     await recordEvent(ctx, { companyId: ctx.companyId, type: "application.reply_answered", actor: byMember(ctx), subject: { table: "applications", id: application._id } });
+    await refresh(ctx, application._id);
     return null;
   },
 });
 
-/** Recruiter asks the applicant for something missing: sent, or put up for approval, as the permission says. */
+/**
+ * A person asks the applicant something, in their own words. Typing the question and choosing Ask is the
+ * authorization: it is sent as theirs, with every sending check, and does not go to an approval queue.
+ */
 export const askApplicant = managerMutation({
   args: { applicationId: v.id("applications"), question: v.string() },
   handler: async (ctx, args) => {
     const application = await owned(ctx, args.applicationId);
     if (!isActive(application)) throw userError("This application has ended.");
-    return requestInformation(ctx, application, text(args.question, "The question", 1000));
+    const sent = await sendInformationRequest(ctx, application._id, text(args.question, "The question", 1000), byMember(ctx));
+    return { outcome: sent.ok ? ("sent" as const) : ("refused" as const), detail: sent.detail };
   },
 });
 
