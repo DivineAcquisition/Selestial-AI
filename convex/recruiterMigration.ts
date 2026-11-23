@@ -80,17 +80,17 @@ export async function migrateCompany(ctx: MutationCtx, company: Doc<"companies">
   return { kept, moved, findings };
 }
 
-/** Starts the move for every company, a few at a time. */
+/**
+ * Starts the move for every company, a few at a time. Pages with Convex's own cursor, so each batch continues
+ * exactly where the last one stopped. (Comparing ids while reading in creation order skipped companies.)
+ */
 export const start = internalMutation({
-  args: { after: v.optional(v.id("companies")) },
+  args: { cursor: v.optional(v.union(v.string(), v.null())) },
   handler: async (ctx, args) => {
-    const page = await ctx.db
-      .query("companies")
-      .filter((q) => (args.after ? q.gt(q.field("_id"), args.after) : true))
-      .take(10);
-    for (const company of page) await migrateCompany(ctx, company);
-    if (page.length === 10) await ctx.scheduler.runAfter(0, internal.recruiterMigration.start, { after: page[page.length - 1]._id });
-    return page.length;
+    const page = await ctx.db.query("companies").paginate({ numItems: 10, cursor: args.cursor ?? null });
+    for (const company of page.page) await migrateCompany(ctx, company);
+    if (!page.isDone) await ctx.scheduler.runAfter(0, internal.recruiterMigration.start, { cursor: page.continueCursor });
+    return page.page.length;
   },
 });
 
