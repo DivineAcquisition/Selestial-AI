@@ -10,6 +10,7 @@ import { owned } from "./lib/access";
 import { companyQuery, managerMutation } from "./lib/builders";
 import { userError } from "./lib/errors";
 import { byMember, recordEvent } from "./lib/events";
+import { syncCalendarSoon } from "./lib/google/syncSoon";
 import { calendarProvider } from "./lib/recruiter/calendar";
 import { afterCalendar, cancelInterviewTime, openSlots, recordFeedback, scheduleByPerson, sendInterviewInvite } from "./lib/recruiter/interviews";
 import { recruiterSettings } from "./lib/recruiter/settings";
@@ -91,6 +92,7 @@ export const schedule = managerMutation({
     await owned(ctx, args.interviewId);
     await owned(ctx, args.interviewerId);
     await scheduleByPerson(ctx, args.interviewId, { interviewerId: args.interviewerId, startsAt: instant(args.startsAt, "The start"), endsAt: instant(args.endsAt, "The end"), how: optionalText(args.how, "How to join", 500) }, byMember(ctx));
+    await syncCalendarSoon(ctx, ctx.companyId, ctx.member._id);
     return null;
   },
 });
@@ -100,6 +102,8 @@ export const cancelTime = managerMutation({
   handler: async (ctx, args) => {
     await owned(ctx, args.interviewId);
     await cancelInterviewTime(ctx, args.interviewId, byMember(ctx), text(args.reason, "The reason", 500));
+    // The cancelled time comes off the connected calendar now, not at the next sweep.
+    await syncCalendarSoon(ctx, ctx.companyId, ctx.member._id);
     return null;
   },
 });

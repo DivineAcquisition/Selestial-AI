@@ -136,6 +136,20 @@ describe("Calendar events", () => {
     expect(await s.as.query(api.calendarEvents.get, { companyId: s.companyId, eventId: inspectionId })).toMatchObject({ status: "completed", inspection: { result: "issues_found", note: "Oven not cleaned.", byName: "manager-a" } });
   });
 
+  it("tells the people on an event once per change, never the person who made it, and nobody else", async () => {
+    const s = await setup();
+    const notices = async () => (await s.t.run((ctx) => ctx.db.query("messages").collect())).filter((row) => row.dedupeKey.startsWith("notice:calendar_event:"));
+    const eventId = await s.as.mutation(api.calendarEvents.create, { companyId: s.companyId, kind: "meeting", title: "Planning", startsAt: JOB_START, endsAt: JOB_START + HOUR, memberIds: [s.ids.owner, s.ids.manager], cleanerIds: [] });
+    let sent = await notices();
+    expect(sent.map((row) => row.dedupeKey)).toEqual([`notice:calendar_event:${eventId}:added:1:${s.ids.manager}`]);
+    await s.as.mutation(api.calendarEvents.update, { companyId: s.companyId, eventId, expectedRevision: 1, kind: "meeting", title: "Planning", startsAt: JOB_START + HOUR, endsAt: JOB_START + 2 * HOUR, memberIds: [s.ids.owner, s.ids.manager], cleanerIds: [] });
+    await s.manager.mutation(api.calendarEvents.cancel, { companyId: s.companyId, eventId, expectedRevision: 2, reason: "Moved to Friday." });
+    sent = await notices();
+    // Moved: the manager hears. Cancelled by the manager: only the owner hears. Office, not on it, never does.
+    expect(sent.map((row) => row.dedupeKey.split(":").slice(3).join(":"))).toEqual([`added:1:${s.ids.manager}`, `moved:2:${s.ids.manager}`, `cancelled:3:${s.ids.owner}`]);
+    expect(sent.some((row) => row.dedupeKey.endsWith(s.ids.office))).toBe(false);
+  });
+
   it("keeps a restricted quality case from a Manager", async () => {
     const s = await setup();
     const caseId = await s.t.run(async (ctx) =>
@@ -144,5 +158,42 @@ describe("Calendar events", () => {
     const inspection = { companyId: s.companyId, kind: "inspection" as const, startsAt: JOB_START, endsAt: JOB_START + HOUR, memberIds: [s.ids.manager], cleanerIds: [], qualityCaseId: caseId };
     expect(await refusal(s.manager.mutation(api.calendarEvents.create, inspection))).toBe("Not found.");
     expect((await s.manager.query(api.calendarEvents.options, { companyId: s.companyId })).cases).toEqual([]);
+  });
+
+  it("answers Company Chat from the Calendar's own read and rules, with the asker's role, and never guesses a name", async () => {
+    const s = await setup();
+    const { CALENDAR_TOOLS } = await import("./lib/chat/calendarTools");
+    const tool = (name: string) => CALENDAR_TOOLS.find((row) => row.name === name)!;
+    const rosa = await readyCleaner(s.as, s.companyId, "Rosa");
+    const { jobId } = await visitWith(s.t, s.as, s.companyId, rosa);
+    const second = await s.as.mutation(api.jobs.create, { companyId: s.companyId, customerId: (await s.t.run((ctx) => ctx.db.get(jobId)))!.customerId, propertyId: (await s.t.run((ctx) => ctx.db.get(jobId)))!.propertyId, serviceType: "deep", scope: "Deep clean", startsAt: JOB_START + 3 * HOUR, endsAt: JOB_START + 5 * HOUR });
+    await s.as.mutation(api.calendarEvents.create, { companyId: s.companyId, kind: "meeting", title: "Owners only", startsAt: JOB_START, endsAt: JOB_START + HOUR, memberIds: [s.ids.owner], cleanerIds: [] });
+    const run = (role: "owner" | "office", name: string, args: Record<string, unknown>) =>
+      s.t.run(async (ctx) => {
+        const company = (await ctx.db.get(s.companyId))!;
+        const member = (await ctx.db.query("members").collect()).find((row) => row.companyId === s.companyId && row.role === role)!;
+        return tool(name).run({ ...ctx, company, member, role, conversationId: "c" as never, runId: "r" as never, idempotencyKey: "k" }, args);
+      });
+
+    // "Show tomorrow's uncovered visits": the unstaffed one, not the staffed one.
+    const uncovered = await run("owner", "calendar_schedule", { from: "2027-03-02", only: "unstaffed" });
+    if (uncovered.status !== "done") throw new Error(JSON.stringify(uncovered));
+    expect((uncovered.data.items as { record: { id: string } | null; status: string }[]).map((row) => row.record?.id)).toEqual([second]);
+    // Office reads the same Calendar Office sees: visits, never the owners' meeting.
+    const forOffice = await run("office", "calendar_schedule", { from: "2027-03-02" });
+    if (forOffice.status !== "done") throw new Error("expected done");
+    expect(JSON.stringify(forOffice.data)).not.toContain("Owners only");
+    expect(tool("calendar_find_time").minimumRole).toBe("manager");
+
+    // "Find a time for Rosa and the owner on Tuesday": Rosa's visit and the owner's meeting are skipped.
+    const free = await run("owner", "calendar_find_time", { people: ["rosa", "owner-a"], from: "2027-03-02", days: 1, minutes: 60 });
+    if (free.status !== "done") throw new Error(JSON.stringify(free));
+    const times = (free.data.times as { when: string }[]).map((row) => row.when);
+    expect(times.length).toBeGreaterThan(0);
+    expect(times.some((words) => words.startsWith("Tue, Mar 2, 10:00 AM"))).toBe(false);
+    expect(times.some((words) => words.startsWith("Tue, Mar 2, 10:30 AM"))).toBe(false);
+    // A name that could be two people is asked about, not guessed.
+    await readyCleaner(s.as, s.companyId, "Rosalind");
+    expect(await run("owner", "calendar_find_time", { people: ["ros"], from: "2027-03-02", days: 1 })).toMatchObject({ status: "refused", why: '"ros" could be Rosa, Rosalind. Say which.' });
   });
 });

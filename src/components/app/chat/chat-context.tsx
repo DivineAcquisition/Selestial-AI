@@ -23,6 +23,8 @@ type ChatStore = {
   page: { path: string; label: string } | null;
   offered: OfferedRecord[];
   offer: (records: OfferedRecord[]) => () => void;
+  /** A page that knows more about what is on screen (Calendar's view and dates) says so here. */
+  describe: (detail: { path: string; label: string } | null) => void;
   /** The button that opened the panel, so focus can go back to it. */
   launcher: React.RefObject<HTMLButtonElement | null>;
 };
@@ -47,6 +49,7 @@ export function ChatProvider({ userId, companyId, children }: { userId: string; 
   const [stored, setStored] = useState(() => parseStoredChat(read(key)));
   const [artifactId, setArtifactId] = useState<string | null>(null);
   const [offers, setOffers] = useState<{ id: number; records: OfferedRecord[] }[]>([]);
+  const [detail, describe] = useState<{ path: string; label: string } | null>(null);
   const counter = useRef(0);
   const launcher = useRef<HTMLButtonElement | null>(null);
   const pathname = usePathname();
@@ -72,17 +75,19 @@ export function ChatProvider({ userId, companyId, children }: { userId: string; 
   }, []);
 
   const crumbs = breadcrumbsFor(pathname);
-  const page = pathname.startsWith("/app") && !pathname.startsWith("/app/chat") ? { path: pathname, label: crumbs.length ? crumbs.map((crumb) => crumb.label).join(" › ") : "Home" } : null;
+  const own = pathname.startsWith("/app") && !pathname.startsWith("/app/chat") ? { path: pathname, label: crumbs.length ? crumbs.map((crumb) => crumb.label).join(" › ") : "Home" } : null;
+  // A page's own description counts only while that page is open: what it shows, never record contents.
+  const page = own && detail && detail.path.split("?")[0] === pathname ? detail : own;
   const offered = useMemo(() => {
     const seen = new Set<string>();
     return offers.flatMap((entry) => entry.records).filter((record) => (seen.has(`${record.table}:${record.id}`) ? false : (seen.add(`${record.table}:${record.id}`), true)));
   }, [offers]);
 
   const value = useMemo<ChatStore>(
-    () => ({ conversationId: stored.conversationId, setConversationId, panelOpen: stored.panelOpen, openPanel, closePanel, artifactId, openArtifact: setArtifactId, page, offered, offer, launcher }),
-    // `page` is derived from the path.
+    () => ({ conversationId: stored.conversationId, setConversationId, panelOpen: stored.panelOpen, openPanel, closePanel, artifactId, openArtifact: setArtifactId, page, offered, offer, describe, launcher }),
+    // `page` is derived from the path and the page's own description.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [stored, setConversationId, openPanel, closePanel, artifactId, pathname, offered, offer],
+    [stored, setConversationId, openPanel, closePanel, artifactId, pathname, detail, offered, offer],
   );
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 }
@@ -104,4 +109,20 @@ export function useOfferChatContext(records: OfferedRecord[] | null) {
     // The signature is the identity of the records.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offer, signature]);
+}
+
+/**
+ * A page describes what it is showing to the chat, in a path and words (for Calendar: the view, the dates
+ * and the time zone). Only ids and words a person chose; never a record's contents. Cleared on leaving.
+ */
+export function useDescribeChatPage(detail: { path: string; label: string } | null) {
+  const describe = useContext(ChatContext)?.describe;
+  const signature = detail ? `${detail.path}|${detail.label}` : "";
+  useEffect(() => {
+    if (!describe) return;
+    describe(detail);
+    return () => describe(null);
+    // The signature is the identity of the description.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [describe, signature]);
 }

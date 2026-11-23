@@ -39,7 +39,7 @@ const REPORT_WORDS: Record<string, string> = { queued: "sending", sent: "reporte
 const USE_WORDS: Record<string, (purpose: string | null) => string> = {
   drive_source: () => "your team can ask about it",
   drive_output: (purpose) => (purpose ? `${purpose} are saved here` : "files are saved here"),
-  calendar_sync: () => "visits and interviews go here",
+  calendar_sync: () => "visits, interviews and Calendar events go here",
   calendar_busy: () => "busy times are respected",
   business_location: () => "reviews",
   ads_account: () => "ads and leads",
@@ -179,7 +179,7 @@ function Resources({ tool, owner, companyId }: { tool: Tool; owner: boolean; com
       {owner ? (
         <>
           {tool.feature === "drive" ? <ChooseDrive companyId={companyId} email={tool.connection?.email} /> : null}
-          {tool.feature === "calendar" ? <ChooseFromList companyId={companyId} kind="calendars" title="Your calendars" empty="No calendars found." options={[{ kind: "calendar_sync", label: "Put visits and interviews here" }, { kind: "calendar_busy", label: "Respect busy times here" }]} /> : null}
+          {tool.feature === "calendar" ? <ChooseFromList companyId={companyId} kind="calendars" title="Your calendars" empty="No calendars found." options={[{ kind: "calendar_sync", label: "Put visits, interviews and Calendar events here" }, { kind: "calendar_busy", label: "Respect busy times here" }]} /> : null}
           {tool.feature === "business_profile" ? <ChooseFromList companyId={companyId} kind="locations" title="Your locations" empty="No locations found." options={[{ kind: "business_location", label: "Reviews" }]} /> : null}
           {tool.feature === "ads" ? <ChooseFromList companyId={companyId} kind="ads_accounts" title="Your ad accounts" empty="No ad accounts found." options={[{ kind: "ads_account", label: "Ads and leads" }]} /> : null}
           {tool.feature === "conversions" ? <ChooseFromList companyId={companyId} kind="conversion_actions" title="Where to report booked visits" empty="Add a Google Ads account first, then pick a conversion here." options={[{ kind: "conversion_destination", label: "Booked visits" }]} /> : null}
@@ -338,7 +338,7 @@ function CalendarPanel({ companyId, manager }: { companyId: Id<"companies">; man
   return (
     <Panel title="Your calendar">
       <div className="grid gap-3 px-4 py-4 sm:px-5">
-        <p className="text-sm text-muted-foreground">Visits and interviews stay up to date on your calendar. If one is moved or deleted in Google, Selestial asks you before changing anything. Busy times on the calendars you chose are avoided when Selestial offers times, and flagged when someone schedules over them.</p>
+        <p className="text-sm text-muted-foreground">Visits, interviews and Calendar’s own events stay up to date on your calendar; a private event shows only as Busy. If one is moved or deleted in Google, Selestial asks you before changing anything. Busy times on the calendars you chose are avoided when Selestial offers times, and flagged when someone schedules over them.</p>
         {(busyTimes ?? []).some((row) => row.problem) ? <p className="text-xs text-muted-foreground">One of your calendars couldn’t be read. Check it’s still shared with this Google account.</p> : null}
         {overBusy && overBusy.length > 0 ? (
           <div className="grid gap-1 rounded-lg border border-border p-3">
@@ -347,7 +347,7 @@ function CalendarPanel({ companyId, manager }: { companyId: Id<"companies">; man
             <ul className="grid gap-0.5 text-sm">
               {overBusy.map((row) => (
                 <li key={row.id}>
-                  {row.what === "visit" ? "Visit" : "Interview"} · {when(row.startsAt)}
+                  {row.what === "visit" ? "Visit" : row.what === "interview" ? "Interview" : "Calendar event"} · {when(row.startsAt)}
                 </li>
               ))}
             </ul>
@@ -356,7 +356,7 @@ function CalendarPanel({ companyId, manager }: { companyId: Id<"companies">; man
         {changed && changed.length > 0 ? (
           <div className="grid gap-2 rounded-lg border border-border p-3">
             <span className="text-sm font-medium text-strong">Changed in Google, waiting for you</span>
-            <p className="text-xs text-muted-foreground">To keep Google’s time, change the {changed.some((c) => c.what === "visit") ? "visit" : "interview"} in Selestial to match; the calendar then follows. Otherwise put Selestial’s time back.</p>
+            <p className="text-xs text-muted-foreground">To keep Google’s time, change the {changed.some((c) => c.what === "visit") ? "visit" : changed.some((c) => c.what === "interview") ? "interview" : "event"} in Selestial to match; the calendar then follows. Otherwise put Selestial’s time back.</p>
             <ul className="grid gap-2">
               {changed.map((c) => (
                 <li key={c.linkId} className="flex flex-wrap items-start justify-between gap-2 text-sm">

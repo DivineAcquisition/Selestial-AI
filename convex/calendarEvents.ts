@@ -14,9 +14,11 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { owned } from "./lib/access";
 import { companyQuery, managerMutation, managerQuery, type MemberAccess } from "./lib/builders";
 import { EVENT_KINDS, type EventKind } from "./lib/calendar/schema";
-import { checkEvent, type Check } from "./lib/calendar/rules";
+import { checkEvent, peopleOf, type Check } from "./lib/calendar/rules";
 import { notFound, userError } from "./lib/errors";
 import { byMember, recordEvent } from "./lib/events";
+import { syncCalendarSoon } from "./lib/google/syncSoon";
+import { notifyMembers } from "./lib/notify/route";
 import { recordRequirement } from "./lib/recruiter/handoff";
 import { localInstant } from "./lib/sales/cadence";
 import { literals } from "./lib/statuses";
@@ -201,6 +203,16 @@ function settle(ctx: Ctx, check: Check, overrideReason: string | undefined) {
   return { conflicts: check.hard, reason: text(reason, "The reason", 500), by: ctx.member._id, at: Date.now() };
 }
 
+/**
+ * Tells the members on an event, except the person who made the change, once per change. Nobody else is
+ * told: a private event stays between the people on it.
+ */
+async function tellPeople(ctx: MutationCtx & MemberAccess, eventId: Id<"calendarEvents">, memberIds: Id<"members">[], change: "added" | "moved" | "cancelled", revision: number) {
+  const only = memberIds.filter((id) => id !== ctx.member._id);
+  if (only.length === 0) return;
+  await notifyMembers(ctx, { companyId: ctx.companyId, event: "calendar_event", ref: eventId, key: `${change}:${revision}`, facts: { change }, only, except: [ctx.member._id] });
+}
+
 // ── Reads ───────────────────────────────────────────────────────────────────────────────────────────
 
 /** What saving this would run into, for the form. The same check runs again inside the save. */
@@ -347,6 +359,8 @@ export const create = managerMutation({
       subject: { table: "calendarEvents", id: eventId },
       data: { kind: event.kind, startsAt: event.startsAt, endsAt: event.endsAt, overridden: Boolean(override), ...(override ? { reason: override.reason } : {}) },
     });
+    await syncCalendarSoon(ctx, ctx.companyId, ctx.member._id);
+    await tellPeople(ctx, eventId, peopleOf(event).members, "added", 1);
     return eventId;
   },
 });
@@ -371,6 +385,12 @@ export const update = managerMutation({
       subject: { table: "calendarEvents", id: row._id },
       data: { from: scheduleWords(row, row.timezone), to: scheduleWords(event, event.timezone), overridden: Boolean(override), ...(override ? { reason: override.reason } : {}) },
     });
+    await syncCalendarSoon(ctx, ctx.companyId, ctx.member._id);
+    // People already on it hear that it moved; anyone newly put on it hears they are on it.
+    const before = new Set(peopleOf(row).members);
+    const after = peopleOf(event).members;
+    if (moved) await tellPeople(ctx, row._id, after.filter((id) => before.has(id)), "moved", row.revision + 1);
+    await tellPeople(ctx, row._id, after.filter((id) => !before.has(id)), "added", row.revision + 1);
     return null;
   },
 });
@@ -385,6 +405,8 @@ export const cancel = managerMutation({
     const reason = text(args.reason, "The reason", 500);
     await ctx.db.patch(row._id, { status: "cancelled", cancelled: { reason, by: byMember(ctx), at: Date.now() }, revision: row.revision + 1, updatedAt: Date.now() });
     await recordEvent(ctx, { companyId: ctx.companyId, type: "calendar_event.cancelled", actor: byMember(ctx), subject: { table: "calendarEvents", id: row._id }, data: { reason } });
+    await syncCalendarSoon(ctx, ctx.companyId, ctx.member._id);
+    await tellPeople(ctx, row._id, peopleOf(row).members, "cancelled", row.revision + 1);
     return null;
   },
 });

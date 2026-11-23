@@ -73,6 +73,9 @@ async function ownSpans(ctx: Ctx, companyId: Id<"companies">, from: number, to: 
   const spans: Span[] = jobs.filter((job) => job.status !== "cancelled" && job.endsAt > from).map((job) => ({ startsAt: job.startsAt, endsAt: job.endsAt }));
   const interviews = await ctx.db.query("interviews").withIndex("by_company_application", (q) => q.eq("companyId", companyId)).take(500);
   for (const interview of interviews) if (interview.status === "confirmed" && interview.startsAt && interview.endsAt && interview.endsAt > from && interview.startsAt < to) spans.push({ startsAt: interview.startsAt, endsAt: interview.endsAt });
+  // Calendar's own events are written to the same calendar (convex/googleCalendar.ts).
+  const events = await ctx.db.query("calendarEvents").withIndex("by_company_start", (q) => q.eq("companyId", companyId).gte("startsAt", from - 32 * DAY).lt("startsAt", to)).take(1000);
+  for (const event of events) if (event.status !== "cancelled" && event.endsAt > from) spans.push({ startsAt: event.startsAt, endsAt: event.endsAt });
   return spans;
 }
 

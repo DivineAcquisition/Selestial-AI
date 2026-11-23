@@ -177,8 +177,40 @@ business event, an appointment, a dated task and working hours.
 
 Team view is read-only: reassigning a cleaner stays in the visit's record panel (Dispatch's offers).
 
-Not yet: Ask Selestial, Needs attention actions, Google mirroring of Calendar's events and the sync gaps
-(phase 5).
+**Phase 5 (built).** Agents, notices and the connected calendar.
+
+- Google Calendar: Calendar's own events are mirrored through the same mapping (`googleCalendarLinks`
+  accepts `calendarEvents`); a private one is written as "Busy" with nothing else. An edit made in Google
+  is flagged as for visits, in the queue of the work it belongs to (training to Recruiter, inspections to
+  Quality, the rest to Dispatch). Selestial's own events are taken out of busy blocks on the calendar it
+  writes to.
+- Sync gaps closed: an event is removed from Google when its record is gone or cancelled, when an
+  interview's time was cancelled (it goes back to waiting for a time), and when a visit or event moves
+  past the 60-day horizon; past ones stay as history (`isStale`). A change made in Calendar, a visit moved
+  from Calendar and an interview booked or cancelled ask for a sync at once (`syncCalendarSoon`, one per
+  minute) instead of waiting for the sweep. Without a working connection nothing waits on Google.
+- Needs attention: each item has its action. A visit short of crew opens the visit to find a cleaner; an
+  event changed in Google can have Selestial's time put back (`googleCalendar.keepSelestial`) or Google's
+  time used, through the move with its preview; an inspection or training without its result opens it
+  to record it. Also listed: applicants waiting for an interview time (book one), approved corrections
+  with no visit yet (Quality › Corrections), and Google changes outside the dates shown.
+- Notices: the members on a Calendar event are told when someone else puts them on it, moves it or
+  cancels it (`calendar_event`, under "What your agents and team did"), once per change, never the person
+  who made it and nobody else.
+- Ask Selestial: the toolbar opens Company Chat, and the page tells it the view, the dates and the time
+  zone (`useDescribeChatPage`), never record contents. Chat answers from `calendar_schedule` (the same read
+  as the page, with the asker's role; only what needs attention, or only visits not fully staffed) and
+  `calendar_find_time` (Owner and Manager: free times for named people from Calendar's own conflict
+  rules; an ambiguous name is asked about). Both read only; changes are made in Calendar, where the move
+  is previewed. No separate calendar agent: these are Dispatch's tools, and every result names its records.
+
+## Phase 6 (not yet)
+
+A dedicated accessibility, responsive and live-verification pass. What the phases above already did:
+keyboard moves and a form for every drag, words for everything color shows, Agenda as the phone default,
+and browser checks of each view, form and panel with fixture data. Not yet done: a screen-reader and
+keyboard-only walk-through of the whole page, a phone-width pass over every dialog, and a signed-in
+session against a live backend.
 
 ## Open questions
 
