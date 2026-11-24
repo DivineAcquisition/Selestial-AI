@@ -115,6 +115,8 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   { table: "activations", index: "by_company_started" },
   { table: "activationTasks", index: "by_company_state" },
   { table: "memberNotices", index: "by_company_dedupe" },
+  // Business configuration: what was prepared from the owner's answers (convex/lib/configure/schema.ts).
+  { table: "configOutputs", index: "by_company_kind" },
   // Company Chat (convex/lib/chat/schema.ts). The conversations themselves are not here: see NOT_EXPORTED.
   // Admin Support Sessions: when Selestial was in the workspace, why, and what it changed.
   { table: "supportSessions", index: "by_company_started" },

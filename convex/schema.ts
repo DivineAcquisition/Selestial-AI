@@ -33,6 +33,7 @@ import { salesSettingsValidator } from "./lib/sales/agentSchema";
 import { salesTables } from "./lib/sales/schema";
 import { setupTables } from "./lib/setup/schema";
 import { activationTables } from "./lib/activation/schema";
+import { configureTables } from "./lib/configure/schema";
 import { operationsTables } from "./lib/operations/schema";
 import { platformTables } from "./lib/platform/schema";
 import { supportTables } from "./lib/support/schema";
@@ -1100,6 +1101,7 @@ export default defineSchema({
   ...googleTables,
   ...connectorTables,
   ...quickbooksTables,
+  ...configureTables,
   ...quoTables,
   ...migrationTables,
   // ── Cleaners: subcontractors, requirements, crews, portal, follow-ups, coaching, personnel ──────

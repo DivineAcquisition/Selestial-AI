@@ -194,6 +194,8 @@ export function stepsFor(primary: Priority | undefined, secondary: Priority[]): 
     { id: "team", stage: "company", optional: true },
     { id: "priority", stage: "priority", optional: false },
     ...questionsFor(primary, secondary).map((question) => ({ id: `q:${question.id}`, stage: "priority" as const, optional: question.optional })),
+    // Services, costs, ZIP codes and hours for business configuration. Each answer saves to its own record.
+    { id: "offer", stage: "prepare", optional: true },
     { id: "records", stage: "prepare", optional: true },
     { id: "prepare", stage: "prepare", optional: false },
     { id: "review", stage: "review", optional: false },
