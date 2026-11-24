@@ -14,11 +14,12 @@ import { TEMPLATES } from "../../../../convex/lib/services/templates";
 
 let data: Record<string, unknown> = {};
 let pathname = "/app/services";
+let search = "mode=template";
 vi.mock("convex/react", () => ({
   useQuery: (ref: Parameters<typeof getFunctionName>[0], args: unknown) => (args === "skip" ? undefined : data[getFunctionName(ref)]),
   useMutation: () => async () => undefined,
 }));
-vi.mock("next/navigation", () => ({ usePathname: () => pathname, useRouter: () => ({ replace: () => undefined, push: () => undefined }), useSearchParams: () => new URLSearchParams("mode=template") }));
+vi.mock("next/navigation", () => ({ usePathname: () => pathname, useRouter: () => ({ replace: () => undefined, push: () => undefined }), useSearchParams: () => new URLSearchParams(search) }));
 
 const { ServicesLayout } = await import("./layout");
 const { ServicesHome } = await import("./home");
@@ -32,6 +33,8 @@ const { marginStanding, PriceStrip } = await import("./visuals");
 const { ResearchHome } = await import("./research");
 const { PropertyPrices } = await import("./property-prices");
 const { ChatProvider } = await import("@/components/app/chat/chat-context");
+const { gapsOf, finishRequest, FinishBody } = await import("./finish");
+const { Dialog } = await import("@/components/ui/dialog");
 
 const companyId = "company1" as Id<"companies">;
 function render(role: Role, node: React.ReactNode) {
@@ -54,6 +57,7 @@ const spec = (patch: Partial<Spec> = {}): Spec => ({
 beforeEach(() => {
   data = {};
   pathname = "/app/services";
+  search = "mode=template";
 });
 
 const startFixture = (over: Record<string, unknown> = {}) => ({
@@ -187,7 +191,8 @@ describe("the collection of services", () => {
     expect(html).not.toContain("$0.00");
     expect(html).toContain("Set a price for this service.");
     expect(html).toContain("Not online yet");
-    expect(html).toMatch(/>Edit <svg/);
+    expect(html).toMatch(/>Finish <svg/);
+    expect(html).toContain('href="/app/services/b?finish=1"');
   });
 
   it("leads with the drafts Selestial prepared, and a way to review them together", () => {
@@ -709,5 +714,76 @@ describe("property prices on a service", () => {
   it("says plainly when no property has its own price", () => {
     data["propertyPrices:forService"] = prices({ active: [], waiting: [] });
     expect(render("owner", <PropertyPrices serviceId={"s1" as Id<"services">} spec={spec()} />)).toContain("No property has its own price. Every visit uses the service&#x27;s price.");
+  });
+});
+
+describe("finishing a draft with Selestial", () => {
+  const blank = (): Spec => ({ ...blankSpec("residential"), name: "Deep clean" });
+
+  it("splits what is missing into what Selestial drafts and what only the company sets", () => {
+    const gaps = gapsOf({ ...blank(), illustrative: true, requirements: [{ id: "ins", label: "Insurance for work at height", confirmed: false }] });
+    const by = (kind: string) => gaps.filter((g) => g.kind === kind).map((g) => g.id);
+    expect(by("selestial")).toEqual(["summary", "included", "excluded"]);
+    expect(by("price")).toEqual(["price"]);
+    expect(by("confirm")).toEqual(["illustrative", "req-ins"]);
+    // A finished service has nothing left.
+    expect(gapsOf(spec())).toEqual([]);
+  });
+
+  it("asks Selestial only for words and lists, never for an amount", () => {
+    const request = finishRequest(gapsOf(blank()));
+    expect(request).toContain("customer description");
+    expect(request).toContain("included tasks");
+    expect(request).toContain("Don't change any price or amount, and don't submit or publish.");
+    expect(request).not.toMatch(/\$\d/);
+  });
+
+  it("opens the Finish pop-up from a link, with the price set right inside it", () => {
+    search = "finish=1";
+    data["services:service"] = {
+      service: { id: "svc1", key: "deep", name: "Deep clean", category: "residential", status: "draft", origin: "manual", templateId: null, publishedVersion: null, publishedAt: null },
+      live: null,
+      draft: { spec: blank(), revision: 1, baseVersion: null, step: "basics", updatedAt: 1, by: "Dana", rollbackOf: null },
+      versions: [],
+      changes: [],
+      canDraft: true,
+      canPublish: true,
+    };
+    data["services:profile"] = { costs: emptyCosts() };
+    data["services:assistant"] = { conversationId: null };
+    const html = render("owner", <ServiceBuilder serviceId="svc1" />);
+    expect(html).toMatch(/Finish draft.*?>4</);
+    const body = render(
+      "owner",
+      <Dialog open>
+        <FinishBody spec={blank()} edit={() => undefined} disabled={false} kept={[]} costs={null} canPublish onAsk={async () => undefined} onGoTo={() => undefined} onClose={() => undefined} />
+      </Dialog>,
+    );
+    expect(body).toContain("Finish Deep clean");
+    expect(body).toContain("4 things left before it can be published");
+    expect(body).toContain("Selestial can draft these");
+    expect(body).toContain("Ask Selestial to draft 3");
+    expect(body).toContain("How it&#x27;s priced");
+  });
+
+  it("offers the Owner prices worked out from their own costs, with how", () => {
+    const standard = TEMPLATES.find((t) => t.id === "res-standard")!.spec;
+    const costs = { ...emptyCosts(), pay: { model: "hourly", hourlyCents: 2200, burdenPercent: 12 }, targetMarginPercent: 40 } as never;
+    const body = render(
+      "owner",
+      <Dialog open>
+        <FinishBody spec={{ ...standard, illustrative: true }} edit={() => undefined} disabled={false} kept={[]} costs={costs} canPublish onAsk={async () => undefined} onGoTo={() => undefined} onClose={() => undefined} />
+      </Dialog>,
+    );
+    expect(body).toContain("Work it out from your costs");
+    expect(body).toContain("Use these prices");
+    const manager = render(
+      "manager",
+      <Dialog open>
+        <FinishBody spec={{ ...standard, illustrative: true }} edit={() => undefined} disabled={false} kept={[]} costs={null} canPublish={false} onAsk={async () => undefined} onGoTo={() => undefined} onClose={() => undefined} />
+      </Dialog>,
+    );
+    expect(manager).not.toContain("Work it out from your costs");
+    expect(manager).toContain("I&#x27;ve replaced or confirmed every amount for my market");
   });
 });
