@@ -12,12 +12,13 @@
 import { v } from "convex/values";
 
 import type { Doc, Id } from "./_generated/dataModel";
-import type { QueryCtx } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { owned } from "./lib/access";
 import { companyMutation, companyQuery, managerMutation, ownerMutation } from "./lib/builders";
 import { recipientsAt } from "./lib/compliance/recipients";
 import { userError } from "./lib/errors";
 import { recordEvent } from "./lib/events";
+import { queueMemberReply } from "./lib/messaging/outbox";
 import { quoConnectionOf } from "./lib/quo/route";
 import { messageState } from "./lib/messaging/lifecycle";
 
@@ -146,12 +147,52 @@ async function conversationOf(ctx: Parameters<typeof owned>[0], id: Id<"smsConve
   return owned(ctx, id);
 }
 
+/**
+ * The other places a person can hold a conversation (a client's conversation, a Sales opportunity) follow
+ * the Inbox: taking a conversation here holds the client's too, and returning it releases both, so agents
+ * never answer in one place while a person has it in another.
+ */
+async function holdClients(ctx: MutationCtx & { member: Doc<"members">; companyId: Id<"companies"> }, address: string, held: boolean) {
+  for (const row of await recipientsAt(ctx, ctx.companyId, "sms", address)) {
+    if (row.kind !== "customer") continue;
+    const customer = await ctx.db.get(row.id as Id<"customers">);
+    if (!customer || customer.companyId !== ctx.companyId) continue;
+    if (held && !customer.conversationHeld) await ctx.db.patch(customer._id, { conversationHeld: { by: ctx.member._id, since: Date.now() } });
+    if (!held && customer.conversationHeld) await ctx.db.patch(customer._id, { conversationHeld: undefined });
+  }
+}
+
+/**
+ * A person on the team writes in the conversation, from the Inbox. It goes through the same sending policy as
+ * every business text, and the person takes the conversation (agents stop writing in it until it's returned).
+ * Anything that stops it is said in words on the message.
+ */
+export const reply = companyMutation({
+  args: { conversationId: v.id("smsConversations"), body: v.string(), clientKey: v.string() },
+  handler: async (ctx, args) => {
+    const row = await conversationOf(ctx, args.conversationId);
+    const body = args.body.trim();
+    if (!body) throw userError("Write a message first.");
+    if (body.length > 1500) throw userError("That message is too long for a text. Keep it under 1,500 characters.");
+    if (!/^[A-Za-z0-9_-]{8,64}$/.test(args.clientKey)) throw userError("Something went wrong preparing that message. Reload and try again.");
+    const people = await recipientsAt(ctx, ctx.companyId, "sms", row.address);
+    const recipient = people.length === 1 ? { kind: people[0].kind, id: people[0].id } : undefined;
+    if (row.owner.kind !== "member" || row.owner.memberId !== ctx.member._id) {
+      await ctx.db.patch(row._id, { owner: { kind: "member", memberId: ctx.member._id }, ownerReason: `${ctx.member.name} replied from the Inbox.`, ownerChangedAt: Date.now(), ownerChangedBy: ctx.member._id });
+      await holdClients(ctx, row.address, true);
+    }
+    const message = await queueMemberReply(ctx, { companyId: ctx.companyId, to: row.address, memberId: ctx.member._id, body, dedupeKey: `inbox:${row._id}:${args.clientKey}`, ...(recipient ? { recipient } : {}) });
+    return { messageId: message._id, status: message.status, problem: message.problem ?? null };
+  },
+});
+
 /** A person takes the conversation: agents don't write in it until it is returned. */
 export const takeOver = companyMutation({
   args: { conversationId: v.id("smsConversations") },
   handler: async (ctx, args) => {
     const row = await conversationOf(ctx, args.conversationId);
     await ctx.db.patch(row._id, { owner: { kind: "member", memberId: ctx.member._id }, ownerReason: `${ctx.member.name} took over the conversation.`, ownerChangedAt: Date.now(), ownerChangedBy: ctx.member._id });
+    await holdClients(ctx, row.address, true);
     await recordEvent(ctx, { companyId: ctx.companyId, type: "conversation.taken_over", actor: { kind: "member", memberId: ctx.member._id }, subject: { table: "companies", id: ctx.companyId } });
     return null;
   },
@@ -186,6 +227,7 @@ export const returnToAgents = companyMutation({
   handler: async (ctx, args) => {
     const row = await conversationOf(ctx, args.conversationId);
     await ctx.db.patch(row._id, { owner: { kind: "agents" }, agentsPausedAt: undefined, ownerReason: `${ctx.member.name} returned it to the agents.`, ownerChangedAt: Date.now(), ownerChangedBy: ctx.member._id });
+    await holdClients(ctx, row.address, false);
     await recordEvent(ctx, { companyId: ctx.companyId, type: "conversation.returned_to_agents", actor: { kind: "member", memberId: ctx.member._id }, subject: { table: "companies", id: ctx.companyId } });
     return null;
   },

@@ -755,6 +755,8 @@ export default defineSchema({
       v.literal("verification_code"),
       /** The Owner's own test text from Business texting, to their own confirmed phone (convex/businessTexting.ts). */
       v.literal("texting_test"),
+      /** A person on the team writing in a conversation from the Inbox (convex/smsConversations.ts reply). */
+      v.literal("conversation_reply"),
       // Clients & Properties, to a client: a message a person wrote, now or scheduled (convex/clientConversations.ts).
       v.literal("customer_message"),
       // Booking Experiences, to customers (convex/lib/booking/messages.ts).

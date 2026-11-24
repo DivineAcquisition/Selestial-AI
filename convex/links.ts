@@ -122,7 +122,20 @@ export const acceptOffer = linkMutation({
     if (result.status === "refused") return { status: result.code === "filled" ? ("filled" as const) : ("refused" as const), message: refusalFor(result.code), jobToken: null };
     if (result.status !== "accepted") return { status: result.status, message: null, jobToken: null };
     const jobLink = result.jobLinkId ? await ctx.db.get(result.jobLinkId) : null;
-    return { status: "accepted" as const, message: null, jobToken: jobLink ? await tokenFor(jobLink) : null };
+    return { status: "accepted" as const, message: null as string | null, jobToken: jobLink ? await tokenFor(jobLink) : null };
+  },
+  // A second tap after accepting (the offer link closes on acceptance): the same answer, not an error, and nothing
+  // happens again. Only for this link's own cleaner and assignment, and only while it stays accepted.
+  whenClosed: async (ctx) => {
+    if (ctx.link.purpose !== "offer" || ctx.link.revokedAt === undefined) return null;
+    const assignment = await ctx.db.get(ctx.link.assignmentId);
+    if (!assignment || assignment.companyId !== ctx.companyId || assignment.cleanerId !== ctx.link.cleanerId || assignment.status !== "accepted") return null;
+    const links = await ctx.db
+      .query("actionLinks")
+      .withIndex("by_company_assignment", (q) => q.eq("companyId", ctx.companyId).eq("assignmentId", assignment._id))
+      .take(20);
+    const jobLink = links.find((row) => row.purpose === "job" && row.revokedAt === undefined && linkState(row, Date.now()) === "active");
+    return { status: "accepted" as const, message: "You already accepted this job." as string | null, jobToken: jobLink ? await tokenFor(jobLink) : null };
   },
 });
 

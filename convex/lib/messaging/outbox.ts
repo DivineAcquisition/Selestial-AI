@@ -69,6 +69,8 @@ type Plan = {
   intent: SendIntent;
   /** The person it goes to asked for it themselves (their own test text): no contact permission is needed. */
   requestedByRecipient?: boolean;
+  /** The team member who wrote it, when a person did. */
+  authorId?: Id<"members">;
 };
 
 /**
@@ -103,6 +105,7 @@ async function plan(ctx: MutationCtx, input: Plan): Promise<Doc<"messages">> {
     to: input.to ?? undefined,
     body: input.body,
     dedupeKey: input.dedupeKey,
+    ...(input.authorId ? { authorId: input.authorId, draftedBy: "person" as const } : {}),
     status,
     attempts: 0,
     provider: provider?.name,
@@ -200,6 +203,28 @@ export async function queueOwnerTest(ctx: MutationCtx, input: { companyId: Id<"c
     problem: to ? null : "The number is not valid.",
     intent: { category: "operational", origin: "manual" },
     requestedByRecipient: true,
+  });
+}
+
+/**
+ * A person on the team writing in an Inbox conversation. Same path and the same policy as every business text:
+ * the recipient's permission, STOP, sending hours, the company's pause and balance. One per key from the
+ * person's browser, so a double click sends once.
+ */
+export async function queueMemberReply(ctx: MutationCtx, input: { companyId: Id<"companies">; to: string; memberId: Id<"members">; body: string; dedupeKey: string; recipient?: Recipient }): Promise<Doc<"messages">> {
+  const existing = await messageByKey(ctx, input.companyId, input.dedupeKey);
+  if (existing) return existing;
+  const to = sendablePhone(input.to);
+  return plan(ctx, {
+    companyId: input.companyId,
+    purpose: "conversation_reply",
+    to,
+    body: input.body,
+    dedupeKey: input.dedupeKey,
+    actor: { kind: "member", memberId: input.memberId },
+    problem: to ? null : "The number is not valid.",
+    intent: { category: "operational", origin: "manual", ...(input.recipient ? { recipient: input.recipient } : {}) },
+    authorId: input.memberId,
   });
 }
 

@@ -189,7 +189,59 @@ function Thread({ conversationId }: { conversationId: Id<"smsConversations"> }) 
           </li>
         ))}
       </ol>
-      <p className="text-xs text-muted-foreground">To write to them yourself, take over, then reply from their record or from Quo. A reply sent from Quo keeps the agents out of this conversation until it’s returned to them.</p>
+      <Composer conversationId={conversationId} mine={mine} />
     </section>
+  );
+}
+
+/**
+ * A person writing in the conversation. It goes through the same sending policy as every business text
+ * (their permission, STOP, sending hours, the company's pause and balance), and sending takes the
+ * conversation for this person, so agents stop writing in it until it's returned. Whatever stops a message
+ * shows on it in the thread.
+ */
+function Composer({ conversationId, mine }: { conversationId: Id<"smsConversations">; mine: boolean }) {
+  const { companyId } = useCompany();
+  const reply = useMutation(api.smsConversations.reply);
+  const { busy, error, run } = useRun();
+  const [body, setBody] = useState("");
+  const [note, setNote] = useState<string | null>(null);
+  const [key, setKey] = useState(() => crypto.randomUUID());
+  const remaining = 1500 - body.length;
+  return (
+    <form
+      className="grid gap-2 border-t border-border pt-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void run(async () => {
+          const sent = await reply({ companyId, conversationId, body, clientKey: key });
+          setBody("");
+          setKey(crypto.randomUUID());
+          setNote(sent.status === "queued" ? "Sending." : sent.problem ? `Not sent yet: ${sent.problem}` : null);
+        });
+      }}
+    >
+      <label htmlFor={`reply-${conversationId}`} className="text-sm font-medium text-strong">
+        Reply
+      </label>
+      <textarea
+        id={`reply-${conversationId}`}
+        value={body}
+        onChange={(event) => setBody(event.target.value)}
+        rows={3}
+        maxLength={1500}
+        className="w-full resize-y rounded-xl border border-border bg-background px-3 py-2 text-sm text-strong outline-none focus-visible:border-brand-500 focus-visible:ring-2 focus-visible:ring-brand-500/30"
+        aria-describedby={`reply-help-${conversationId}`}
+      />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p id={`reply-help-${conversationId}`} className="text-xs text-muted-foreground">
+          {mine ? "You have this conversation; agents won't write in it until you return it." : "Sending takes this conversation for you; agents stop writing in it until it's returned."} {remaining < 200 ? `${remaining} characters left.` : ""}
+        </p>
+        <Button type="submit" size="sm" loading={busy} disabled={!body.trim()}>
+          Send
+        </Button>
+      </div>
+      {error ? <FormError message={error} /> : note ? <p className="text-xs text-muted-foreground" aria-live="polite">{note}</p> : null}
+    </form>
   );
 }

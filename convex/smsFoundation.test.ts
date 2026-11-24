@@ -8,12 +8,13 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { dispatchTestEnv, flush, setup } from "../tests/dispatchHarness";
+import { accepted, dispatchTestEnv, flush, setup } from "../tests/dispatchHarness";
 import { HOUR, refusal } from "../tests/harness";
 import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { Actor } from "./lib/events";
 import { fingerprint } from "./lib/messaging/fingerprint";
+import { mockOutbox } from "./lib/messaging/provider";
 import { messageState, refusalClassOf } from "./lib/messaging/lifecycle";
 import { queueMessage } from "./lib/messaging/outbox";
 
@@ -260,5 +261,69 @@ describe("SMS foundation: sending hours on the recipient's clock", () => {
     // Two hours after the customer's 8 AM, everything goes.
     vi.setSystemTime(Date.UTC(2027, 2, 1, 18, 0));
     expect(await check(customer, { kind: "customer", id: s.place.customerId })).toMatchObject({ ok: true });
+  });
+});
+
+describe("Inbox: replying in a conversation", () => {
+  let undo = () => {};
+  beforeEach(() => {
+    undo = dispatchTestEnv();
+    // 10 AM in Chicago: inside sending hours.
+    vi.setSystemTime(Date.UTC(2027, 2, 1, 16, 0));
+  });
+  afterEach(() => undo());
+
+  it("sends through the policy, takes the conversation for the person, holds the client's too, and sends once per key", async () => {
+    const s = await setup(["Lena"]);
+    const customer = "+15125550172";
+    await s.t.run(async (ctx) => ctx.db.patch(s.place.customerId, { phone: customer }));
+    await s.as.mutation(api.consent.record, { companyId: s.companyId, recipient: { kind: "customer", id: s.place.customerId }, channel: "sms", category: "operational", status: "granted", source: "web_form", evidence: "Booking form." });
+    await s.t.mutation(internal.inbound.sms, { to: s.smsNumber, from: customer, body: "Do you have Friday open?", receivedAt: Date.now() });
+    const conversation = (await s.as.query(api.smsConversations.list, { companyId: s.companyId })).find((row) => row.address === customer)!;
+    const reply = (body: string, clientKey: string) => s.as.mutation(api.smsConversations.reply, { companyId: s.companyId, conversationId: conversation.conversationId, body, clientKey });
+    expect(await reply("Yes, Friday at 10 works.", "key-0000001")).toMatchObject({ status: "queued" });
+    // The same click again sends nothing more.
+    await reply("Yes, Friday at 10 works.", "key-0000001");
+    await flush(s.t);
+    expect(mockOutbox.filter((row) => row.to === customer && row.body === "Yes, Friday at 10 works.")).toHaveLength(1);
+    const thread = await s.as.query(api.smsConversations.thread, { companyId: s.companyId, conversationId: conversation.conversationId });
+    expect(thread!.owner.kind).toBe("member");
+    expect((await s.t.run(async (ctx) => ctx.db.get(s.place.customerId)))!.conversationHeld).toBeDefined();
+    // Handing it back releases the client's conversation too.
+    await s.as.mutation(api.smsConversations.returnToAgents, { companyId: s.companyId, conversationId: conversation.conversationId });
+    expect((await s.t.run(async (ctx) => ctx.db.get(s.place.customerId)))!.conversationHeld).toBeUndefined();
+  });
+
+  it("says why a reply can't go to a client with no recorded permission, and sends nothing", async () => {
+    const s = await setup(["Lena"]);
+    const client = "+15125550173";
+    // A client on record who never agreed to texts.
+    await s.t.run(async (ctx) => ctx.db.patch(s.place.customerId, { phone: client }));
+    await s.t.mutation(internal.inbound.sms, { to: s.smsNumber, from: client, body: "who is this", receivedAt: Date.now() });
+    const conversation = (await s.as.query(api.smsConversations.list, { companyId: s.companyId })).find((row) => row.address === client)!;
+    const sent = await s.as.mutation(api.smsConversations.reply, { companyId: s.companyId, conversationId: conversation.conversationId, body: "Hi!", clientKey: "key-0000002" });
+    expect(sent).toMatchObject({ status: "not_sent", problem: expect.stringMatching(/no recorded permission/) });
+    await flush(s.t);
+    expect(mockOutbox.filter((row) => row.to === client && row.body === "Hi!")).toHaveLength(0);
+  });
+});
+
+describe("Job offer links: a second tap", () => {
+  let undo = () => {};
+  beforeEach(() => {
+    undo = dispatchTestEnv();
+  });
+  afterEach(() => undo());
+
+  it("answers a second Accept with the same accepted job, and does nothing twice", async () => {
+    const s = await setup(["Lena"]);
+    const { offerToken, jobToken, jobId } = await accepted(s);
+    const confirmations = async () => (await s.t.run(async (ctx) => ctx.db.query("messages").collect())).filter((row) => row.purpose === "assignment_confirmed").length;
+    const before = await confirmations();
+    const again = await s.t.mutation(api.links.acceptOffer, { token: offerToken });
+    expect(again).toEqual({ status: "accepted", message: "You already accepted this job.", jobToken });
+    await flush(s.t);
+    expect(await confirmations()).toBe(before);
+    expect((await s.job(jobId)).assignments.filter((row) => row.status === "accepted")).toHaveLength(1);
   });
 });
