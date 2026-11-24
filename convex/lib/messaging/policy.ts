@@ -16,6 +16,7 @@ import { covers } from "../texting/plan";
 import type { Agent } from "../statuses";
 import { clock } from "../time";
 import { conversationAt, ownerBlocks, quoGaps, smsRouteFor } from "../quo/route";
+import { recipientTimezone, SENDING_FLOOR } from "./recipientTime";
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -23,12 +24,13 @@ const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
 const WEEK = 7 * DAY;
 
-export const POLICY_CODES = ["company_suspended", "agent_paused", "sender_not_ready", "no_address", "not_registered", "suppressed", "no_permission", "quiet_hours", "frequency", "conversation_owned"] as const;
+export const POLICY_CODES = ["company_suspended", "messaging_paused", "agent_paused", "sender_not_ready", "no_address", "not_registered", "suppressed", "no_permission", "quiet_hours", "frequency", "conversation_owned"] as const;
 export type PolicyCode = (typeof POLICY_CODES)[number];
 
 /** The general words for each code. An answer carries more exact words for the case at hand. */
 export const POLICY_WORDS: Record<PolicyCode, string> = {
   company_suspended: "Sending is suspended for this company by Selestial.",
+  messaging_paused: "Texting is paused by the owner. Messages wait and go when it is resumed.",
   agent_paused: "The agent is paused, so it sends nothing. A person can still send.",
   sender_not_ready: "The company's sending setup is not finished.",
   no_address: "There is no usable address for this person on this channel.",
@@ -124,9 +126,20 @@ export function quietUntil(now: number, timezone: string, window: { start: strin
  * the suppression that the STOP just made, it needs no permission because the person wrote first, and
  * it is not held for quiet hours because it answers them right away. Everything else still applies.
  */
+/** A paused company's messages are looked at again this often; resuming sends them at once (companies.resumeMessaging). */
+const PAUSE_RECHECK_MS = 6 * 60 * 60 * 1000;
+/** A text to someone who texted the company within this time answers them, and isn't held by the sending-hours floor. */
+const ANSWERING_WINDOW_MS = 2 * 60 * 60 * 1000;
+
 export async function checkSend(ctx: Ctx, input: PolicyInput): Promise<PolicyAnswer> {
   const company = await ctx.db.get(input.companyId);
   if (!company || company.suspendedAt !== undefined) return no("company_suspended", "Sending is suspended for this company by Selestial. Nothing is sent until Selestial lifts it.");
+
+  // The Owner's pause holds everything to contacts until they resume; nothing is lost or refused. The answer to
+  // a person's own STOP/HELP/START and a code they asked for still go: they are the person's, not the company's.
+  if (company.messagingPause && !input.reply && !input.requestedCode) {
+    return no("messaging_paused", "Texting is paused by the owner. This message waits and goes when texting is resumed.", input.now + PAUSE_RECHECK_MS);
+  }
 
   if (AGENT_ORIGINS.includes(input.origin) && input.agent && company.pausedAgents.includes(input.agent)) {
     return no("agent_paused", `${AGENT_PROFILES[input.agent].name} is paused, so it sends nothing. A person can still send.`);
@@ -166,7 +179,7 @@ export async function checkSend(ctx: Ctx, input: PolicyInput): Promise<PolicyAns
     if (suppression) {
       return no(
         "suppressed",
-        suppression.reason === "stop_keyword"
+        suppression.reason === "stop_keyword" || suppression.reason === "provider_block"
           ? "This number replied STOP, so it gets no texts from this business until it replies START."
           : `This ${input.channel === "sms" ? "number" : "address"} is on the do-not-contact list${suppression.scope === "all" ? "" : ` for ${CATEGORY_WORDS[suppression.scope as Category]} messages`}.`,
       );
@@ -176,11 +189,32 @@ export async function checkSend(ctx: Ctx, input: PolicyInput): Promise<PolicyAns
     if (permission) return permission;
   }
 
-  const quiet = profile.messaging.quietHours;
-  if (!input.reply && !input.requestedCode && quiet && (input.category !== "operational" || quiet.appliesToOperational)) {
-    // The recipient's own time zone is not known, so quiet hours are kept on the company's clock.
-    const until = quietUntil(input.now, company.timezone, quiet);
-    if (until !== null) return no("quiet_hours", `It is within quiet hours (${quiet.start} to ${quiet.end} company time). It can go at ${clock(until, company.timezone)}.`, until);
+  // Sending hours, on the recipient's own clock (lib/messaging/recipientTime.ts). Selestial's floor: no texts to
+  // people outside the company from 9 PM to 8 AM their time. The company's own quiet hours can narrow that further,
+  // never widen it. A reply to STOP/HELP/START and something the person asked for themselves go at once. Texts to
+  // the company's own cleaners about their work follow only the company's quiet hours, when it applies them to work texts.
+  if (!input.reply && !input.requestedCode) {
+    const quiet = profile.messaging.quietHours;
+    const people: Recipient[] = input.recipient ? [input.recipient] : (await recipientsAt(ctx, input.companyId, input.channel, address)).map((row) => ({ kind: row.kind, id: row.id }));
+    const teamWork = input.category === "operational" && people.length > 0 && people.every((row) => row.kind === "cleaner");
+    // Answering someone who wrote in the last two hours isn't an unprompted text: the floor doesn't hold it.
+    const conversation = input.channel === "sms" ? await conversationAt(ctx, input.companyId, address) : null;
+    const answering = conversation?.lastInboundAt !== undefined && input.now - conversation.lastInboundAt < ANSWERING_WINDOW_MS;
+    const zone = (await recipientTimezone(ctx, input.companyId, people)) ?? company.timezone;
+    const waits: number[] = [];
+    if (input.channel === "sms" && !teamWork && !answering) {
+      const until = quietUntil(input.now, zone, SENDING_FLOOR);
+      if (until !== null) waits.push(until);
+    }
+    if (quiet && (input.category !== "operational" || quiet.appliesToOperational)) {
+      const until = quietUntil(input.now, zone, quiet);
+      if (until !== null) waits.push(until);
+    }
+    if (waits.length) {
+      const until = Math.max(...waits);
+      const theirs = zone === company.timezone ? "" : " their time";
+      return no("quiet_hours", `It is within quiet hours for this person (no texts 9 PM to 8 AM their time). It can go at ${clock(until, zone)}${theirs}.`, until);
+    }
   }
 
   if (input.category === "marketing" || input.category === "recruiting") {

@@ -29,7 +29,6 @@ const { QuoteLines, ProfitPanel, CustomerView, TeamView } = await import("./prev
 const { MoneyInput, Toggle, Stepper, InfoTip } = await import("./shared");
 const { PricingStep, ExtrasStep } = await import("./steps");
 const { marginStanding, PriceStrip } = await import("./visuals");
-const { setupSteps } = await import("./home");
 const { ResearchHome } = await import("./research");
 const { PropertyPrices } = await import("./property-prices");
 const { ChatProvider } = await import("@/components/app/chat/chat-context");
@@ -57,33 +56,100 @@ beforeEach(() => {
   pathname = "/app/services";
 });
 
+const startFixture = (over: Record<string, unknown> = {}) => ({
+  known: [
+    { key: "services.categories", label: "Who you clean for", value: "Homes", provenance: "confirmed", from: "you", conflict: null },
+    { key: "services.offered", label: "Services you offer", value: null, provenance: "unknown", from: null, conflict: null },
+    { key: "company.areas", label: "Areas you serve", value: "Austin", provenance: "suggested", from: "your website", conflict: { value: "Round Rock", from: "a file you brought" } },
+  ],
+  costs: "unknown",
+  pricing: "existing",
+  canConfigure: true,
+  ...over,
+});
+const prepFixture = (over: Record<string, unknown> = {}) => ({ started: false, ready: true, categories: ["residential"], preparing: ["Standard home cleaning"], priced: false, cards: [], canEdit: true, ...over });
+const row = (over: Record<string, unknown> = {}) => ({
+  id: "a",
+  key: "a",
+  name: "Standard clean",
+  category: "residential",
+  status: "active",
+  origin: "manual",
+  live: { version: 2, summary: "$150.00 per visit", method: "fixed", publishedAt: 1, description: "", included: 3, addOns: 1, crew: 2, skills: [] },
+  draft: null,
+  openChange: null,
+  prepared: false,
+  booking: { estimate: false, liveForms: 1, forms: 1 },
+  ...over,
+});
+const draftRow = (over: Record<string, unknown> = {}) => ({ revision: 1, updatedAt: 1, by: "Dana", step: "basics", name: "Deep clean", summary: "$0.00 per visit", priced: false, illustrative: false, blockers: 1, firstBlocker: "Set a price for this service.", changed: false, ...over });
+
 describe("the workspace frame", () => {
-  it("offers the four ways to start to Owners and Managers only", () => {
+  it("leads with Add service, then Import prices, with the tools under More", () => {
     data["services:catalog"] = catalog();
     const owner = render("owner", <ServicesLayout>x</ServicesLayout>);
-    for (const action of ["Build with Selestial", "Use a template", "Add a service", "Import existing pricing"]) expect(owner).toContain(action);
+    expect(owner).toContain("Add service");
+    expect(owner).toContain("Import prices");
+    expect(owner).toContain('aria-label="More tools"');
+    expect(owner.indexOf("Import prices")).toBeLessThan(owner.indexOf("Add service"));
+    for (const gone of ["Build with Selestial", "Use a template", "Pricing Studio</a>", 'role="tablist"']) expect(owner).not.toContain(gone);
     const office = render("office", <ServicesLayout>x</ServicesLayout>);
-    expect(office).not.toContain("Build with Selestial");
+    expect(office).not.toContain("Add service");
     expect(office).toContain("Selestial&#x27;s own plans and credits are under Settings");
   });
 
-  it("marks the current tab and counts what is waiting", () => {
+  it("keeps the tools' own addresses, each with a way back and its own heading", () => {
     pathname = "/app/services/changes/abc";
     data["services:catalog"] = catalog({ counts: { active: 1, drafts: 0, waiting: 2, archived: 0 } });
     const html = render("owner", <ServicesLayout>x</ServicesLayout>);
-    expect(html).toMatch(/aria-current="page"[^>]*>Changes|Changes<span[^>]*>2 waiting/);
-    expect(html).toContain("2 waiting");
+    expect(html).toContain('href="/app/services"');
+    expect(html).toMatch(/<h1[^>]*>Review history<\/h1>/);
+    expect(html).not.toContain("Add service");
+  });
+
+  it("lets a single service bring its own header", () => {
+    pathname = "/app/services/svc1";
+    data["services:catalog"] = catalog();
+    const html = render("owner", <ServicesLayout>inside</ServicesLayout>);
+    expect(html).toContain("inside");
+    expect(html).not.toContain("Services &amp; Pricing");
   });
 });
 
 describe("the first visit", () => {
-  it("shows the three ways to begin, not a blank list", () => {
+  it("offers Set up with Selestial first, then Import prices and Create manually, and the two pricing paths", () => {
     data["services:catalog"] = catalog({ setupDone: false });
+    data["configure:workspace"] = prepFixture();
+    data["services:startingPoint"] = startFixture();
     const html = render("owner", <ServicesHome />);
-    expect(html).toContain("Help me build my services");
-    expect(html).toContain("Start with a template");
-    expect(html).toContain("Bring my existing pricing");
-    expect(html).toContain("I&#x27;m not sure");
+    expect(html).toContain("Set up with Selestial");
+    expect(html.indexOf("Set up with Selestial")).toBeLessThan(html.indexOf("Import prices"));
+    expect(html).toContain("Create manually");
+    expect(html).toContain("Standard home cleaning");
+    expect(html).toContain("Use my existing prices");
+    expect(html).toContain("Help me work out my prices");
+    expect(html).toMatch(/Use my existing prices.*?Fits what you told us/);
+  });
+
+  it("says where each fact came from, and shows a conflict instead of picking one", () => {
+    data["services:catalog"] = catalog({ setupDone: false });
+    data["configure:workspace"] = prepFixture();
+    data["services:startingPoint"] = startFixture();
+    const html = render("owner", <ServicesHome />);
+    expect(html).toContain("Confirmed");
+    expect(html).toContain("Suggested · your website");
+    expect(html).toContain("Not known yet");
+    expect(html).toContain("a file you brought says “Round Rock”");
+  });
+
+  it("shows real background preparation, not a spinner for show", () => {
+    data["services:catalog"] = catalog();
+    data["configure:workspace"] = prepFixture({ started: true, cards: [{ kind: "services", status: "preparing", items: [], notes: [], missing: [], kept: [], error: null, retrying: false, changed: false, dependsOn: [], finishedAt: null }] });
+    data["services:startingPoint"] = startFixture();
+    const html = render("owner", <ServicesHome />);
+    expect(html).toContain('role="status"');
+    expect(html).toContain("Preparing your services");
+    expect(html).not.toContain(">Set up with Selestial<");
   });
 
   it("tells Office plainly who adds services", () => {
@@ -96,6 +162,52 @@ describe("the first visit", () => {
     expect(html).toContain("Templates are structure, not your rates");
     expect(html).toContain("Illustrative amounts");
     expect(TEMPLATES.filter((t) => t.category === "residential").every((t) => html.includes(t.name.replace("/", "/")))).toBe(true);
+  });
+});
+
+describe("the collection of services", () => {
+  it("shows each card's price with its unit, how customers get it, its status and what blocks it", () => {
+    data["services:catalog"] = catalog({ services: [row(), row({ id: "b", name: "Deep clean", status: "draft", live: null, draft: draftRow(), booking: { estimate: false, liveForms: 0, forms: 0 } })] });
+    data["configure:workspace"] = prepFixture({ started: true });
+    data["services:startingPoint"] = startFixture();
+    const live = render("owner", <ServicesHome />);
+    expect(live).toContain("$150.00 per visit");
+    expect(live).toContain("Bookable online on 1 live form");
+    expect(live).toContain("Live v2");
+    for (const tab of ["Live", "Drafts", "Archived"]) expect(live).toMatch(new RegExp(`role="tab"[^>]*>${tab} `));
+    expect(live).not.toContain(">All ");
+  });
+
+  it("never shows a draft without a price as $0, and names its first blocker", () => {
+    data["services:catalog"] = catalog({ services: [row({ id: "b", name: "Deep clean", status: "draft", live: null, draft: draftRow(), booking: { estimate: false, liveForms: 0, forms: 0 } })] });
+    data["configure:workspace"] = prepFixture({ started: true });
+    data["services:startingPoint"] = startFixture();
+    const html = render("owner", <ServicesHome />);
+    expect(html).toContain("No price yet");
+    expect(html).not.toContain("$0.00");
+    expect(html).toContain("Set a price for this service.");
+    expect(html).toContain("Not online yet");
+    expect(html).toMatch(/>Edit <svg/);
+  });
+
+  it("leads with the drafts Selestial prepared, and a way to review them together", () => {
+    const prepared = (id: string, name: string) => row({ id, name, status: "draft", live: null, prepared: true, draft: draftRow({ name, priced: true, summary: "$140.00 per visit", blockers: 0, firstBlocker: null, illustrative: false }) });
+    data["services:catalog"] = catalog({ services: [prepared("a", "Standard clean"), prepared("b", "Deep clean")] });
+    data["configure:workspace"] = prepFixture({ started: true });
+    data["services:startingPoint"] = startFixture();
+    const html = render("owner", <ServicesHome />);
+    expect(html).toContain("2 drafts prepared from your setup");
+    expect(html).toContain("2 ready to review");
+    expect(html).toContain('href="/app/services/review"');
+    expect(html).toContain("Prepared by Selestial");
+    expect(html).toMatch(/>Review <svg/);
+  });
+
+  it("calls an estimate service an estimate, and a draft on a live form what will happen on publish", () => {
+    data["services:catalog"] = catalog({ services: [row({ booking: { estimate: true, liveForms: 1, forms: 1 } }), row({ id: "b", status: "draft", live: null, draft: draftRow({ priced: true, blockers: 0, firstBlocker: null }), booking: { estimate: false, liveForms: 1, forms: 1 } })] });
+    data["configure:workspace"] = prepFixture({ started: true });
+    data["services:startingPoint"] = startFixture();
+    expect(render("owner", <ServicesHome />)).toContain("Customers ask for an estimate");
   });
 });
 
@@ -243,15 +355,6 @@ describe("phase two: less to scan", () => {
     expect(html).not.toContain(">Already included as<");
   });
 
-  it("counts the way to a first live service, and says what is next", () => {
-    const steps = setupSteps(catalog({ setupDone: true, services: [{ id: "a", key: "a", name: "A", category: "residential", status: "draft", origin: "manual", live: null, draft: { revision: 1, updatedAt: 1, by: "Dana", step: "basics", name: "A", summary: "", illustrative: false, blockers: 0 }, openChange: null }] }) as never);
-    expect(steps.map((s) => s.done)).toEqual([true, true, false, false]);
-    data["services:catalog"] = catalog({ setupDone: false });
-    const html = render("owner", <ServicesHome />);
-    expect(html).toContain('aria-label="0 of 4 done"');
-    expect(html).toContain("next: tell Selestial your costs");
-  });
-
   it("draws comparable prices on one line, named in full, with the company's starting price marked", () => {
     const html = renderToStaticMarkup(<PriceStrip points={[{ key: "a", cents: 12900, label: "North" }, { key: "b", cents: 14500, label: "East" }, { key: "c", cents: 16900, label: "South" }]} low={12900} high={16900} unit="per visit" kind="Advertised starting prices" mine={{ cents: 13500, label: "Your starting price" }} />);
     expect(html).toContain('aria-label="Advertised starting prices per visit: $129.00, $145.00, $169.00. Range $129.00 to $169.00. Your starting price: $135.00."');
@@ -270,15 +373,15 @@ describe("phase two: less to scan", () => {
       canPublish: true,
     };
     data["services:profile"] = { costs: emptyCosts() };
+    data["services:reviewPreview"] = reviewFixture();
     const html = render("owner", <ServiceBuilder serviceId="svc1" />);
     expect(html).toContain('aria-label="Prices still from the template"');
     expect(html).toMatch(/Base price <span[^>]*>\$120\.00/);
-    expect(html).toContain("Change in Pricing");
     expect(html).toContain("These prices are right for my market");
     expect(html).toMatch(/\d+ prices are still the template&#x27;s example/);
   });
 
-  it("marks steps with nothing to fix, and shows phone progress", () => {
+  it("opens one page with three sections, the preview beside it, and less common settings folded", () => {
     data["services:service"] = {
       service: { id: "svc1", key: "standard-clean", name: "Standard clean", category: "residential", status: "draft", origin: "manual", templateId: null, publishedVersion: null, publishedAt: null },
       live: null,
@@ -290,8 +393,15 @@ describe("phase two: less to scan", () => {
     };
     data["services:profile"] = { costs: emptyCosts() };
     const html = render("owner", <ServiceBuilder serviceId="svc1" />);
-    expect(html).toContain('Basics</span><span class="sr-only">, nothing to fix</span>');
-    expect(html).toMatch(/role="progressbar"[^>]*aria-valuetext="Step 3 of 6: Pricing"/);
+    const order = ["Service &amp; scope", ">Price<", "Booking &amp; team"].map((t) => html.indexOf(t));
+    expect(order.every((i) => i > 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(html).toContain("More options");
+    expect(html).not.toContain("Recurring discounts</");
+    expect(html).not.toContain('aria-current="step"');
+    for (const tab of ["Preview", "Selestial", "Review"]) expect(html).toMatch(new RegExp(`role="tab"[^>]*>${tab}<`));
+    expect(html).toContain("Try an example job");
+    expect(html).toContain("Review &amp; publish");
   });
 });
 
@@ -353,6 +463,18 @@ describe("controls a keyboard can reach", () => {
   });
 });
 
+function reviewFixture(over: Record<string, unknown> = {}) {
+  return {
+    draft: { revision: 1, sameAsLive: false, changes: ["New service: Standard clean"], prices: [{ label: "Usual visit", before: null, after: 15000, note: null }], blockers: [], warnings: [], impact: ["New quotes and visits use it.", "Main booking form shows it as soon as it is live. No booking form is published or changed by this."], ownPrices: 0 },
+    live: null,
+    forms: [{ id: "f1", name: "Main booking form", live: true }],
+    openChange: null,
+    canPublish: true,
+    canSubmit: true,
+    ...over,
+  };
+}
+
 describe("the builder and review", () => {
   const view = (over: Record<string, unknown> = {}) => ({
     service: { id: "svc1", key: "standard-clean", name: "Standard clean", category: "residential", status: "draft", origin: "manual", templateId: null, publishedVersion: null, publishedAt: null },
@@ -365,14 +487,42 @@ describe("the builder and review", () => {
     ...over,
   });
 
-  it("reopens a draft at the step it was left on, with the steps in order", () => {
+  it("reopens a draft with its sections in order and its save state", () => {
     data["services:service"] = view();
     data["services:profile"] = { costs: emptyCosts() };
     const html = render("owner", <ServiceBuilder serviceId="svc1" />);
-    expect(html.indexOf("Basics")).toBeLessThan(html.indexOf("Time &amp; Team"));
-    expect(html).toMatch(/aria-current="step"[^>]*>.*?Pricing/);
-    expect(html).toContain("Illustrative amounts");
+    expect(html.indexOf("Basics")).toBeLessThan(html.indexOf("Time and team"));
+    expect(html).toContain("Example prices");
     expect(html).toContain("Draft saved");
+  });
+
+  it("lets the Owner publish in place, from a review read from the saved draft", () => {
+    data["services:service"] = view({ draft: { spec: spec(), revision: 3, baseVersion: null, step: "review", updatedAt: 1, by: "Dana", rollbackOf: null } });
+    data["services:profile"] = { costs: emptyCosts() };
+    data["services:reviewPreview"] = reviewFixture({ draft: { ...reviewFixture().draft, revision: 3 } });
+    const html = render("owner", <ServiceBuilder serviceId="svc1" />);
+    expect(html).toContain("What publishing does");
+    expect(html).toContain("No booking form is published or changed by this.");
+    expect(html).toMatch(/Main booking form.*?Live form/);
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Publish<\/button>/);
+    expect(html).not.toContain("Saving your latest edits");
+  });
+
+  it("gives a Manager Submit for review, never Publish", () => {
+    data["services:service"] = view({ canPublish: false, draft: { spec: spec(), revision: 3, baseVersion: null, step: "review", updatedAt: 1, by: "Dana", rollbackOf: null } });
+    data["services:profile"] = { costs: emptyCosts() };
+    data["services:reviewPreview"] = reviewFixture({ canPublish: false, draft: { ...reviewFixture().draft, revision: 3 } });
+    const html = render("manager", <ServiceBuilder serviceId="svc1" />);
+    expect(html).toContain("Submit for review");
+    expect(html).not.toMatch(/>Publish</);
+    expect(html).toContain("Only the Owner publishes");
+  });
+
+  it("says a review is behind when the screen has a newer revision than the server read", () => {
+    data["services:service"] = view({ draft: { spec: spec(), revision: 4, baseVersion: null, step: "review", updatedAt: 1, by: "Dana", rollbackOf: null } });
+    data["services:profile"] = { costs: emptyCosts() };
+    data["services:reviewPreview"] = reviewFixture();
+    expect(render("owner", <ServiceBuilder serviceId="svc1" />)).toContain("Saving your latest edits");
   });
 
   it("shows a manager that only the Owner approves, with no approve button", () => {

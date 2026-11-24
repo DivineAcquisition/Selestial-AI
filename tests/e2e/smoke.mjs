@@ -34,7 +34,7 @@ const visible = (html) =>
     .replace(/\s+/g, " ");
 
 // Public pages answer.
-for (const path of ["/", "/agents", "/agents/sales", "/agents/dispatch", "/agents/recruiter", "/agents/retention", "/integrations", "/messaging", "/privacy", "/terms", "/security", "/security/subprocessors", "/cookies", "/assessment"]) {
+for (const path of ["/", "/agents", "/agents/sales", "/agents/dispatch", "/agents/recruiter", "/agents/retention", "/integrations", "/messaging", "/privacy", "/terms", "/eula", "/security", "/security/subprocessors", "/cookies", "/book-a-call"]) {
   const page = await get(path);
   check(`GET ${path} answers`, page.status === 200, `status ${page.status}`);
 }
@@ -49,6 +49,10 @@ check("no trial is promised", !/free trial|7-day trial|seven-day trial|14-day tr
 check("the early-user offer is stated in full", !home.includes("$199") || (/\$199\s*\/month for your first 12 months, then \$299/.test(home) && /first 25 companies/.test(home)));
 check("the four working agents are named", ["Sales", "Recruiter", "Dispatch", "Retention"].every((name) => home.includes(name)));
 check("Team Coordinator is not sold", !/Team Coordinator/.test(home));
+
+// The operations assessment became Book a call: old links and ads land there, campaign tags intact.
+const assessment = await get("/assessment?utm_source=ad");
+check("the old assessment address leads to Book a call", assessment.status === 308 && /\/book-a-call\?utm_source=ad$/.test(assessment.location), `status ${assessment.status} to ${assessment.location}`);
 
 // A retired route still answers (older links keep working).
 const retired = await get("/agents/team-coordinator");

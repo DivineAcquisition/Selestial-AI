@@ -89,6 +89,7 @@ const NAV = [
   { href: "/staff/fields", label: "Form fields" },
   { href: "/staff/texting", label: "Texting" },
   { href: "/staff/texting-config", label: "Texting forms" },
+  { href: "/staff/sms", label: "Texting operations" },
   { href: "/staff/messaging", label: "Messaging money" },
   { href: "/staff/unpaid", label: "Unpaid plans" },
   { href: "/staff/agent-requests", label: "Agent requests" },

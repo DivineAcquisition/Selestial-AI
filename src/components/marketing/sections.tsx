@@ -9,7 +9,7 @@ import { SpotlightCard } from "@/components/marketing/saas-frame";
 import { agentPagePath } from "@/lib/marketing/agent-pages";
 import { BorderBeam } from "@/components/ui/border-beam";
 import { buttonVariants } from "@/components/ui/button-variants";
-import { ASSESSMENT_PATH, SIGNUP_PATH, AGENT_STATUS, AGENTS, CONTROL, INTEGRATIONS, PRICING, PROBLEM } from "@/lib/marketing/content";
+import { BOOK_CALL_PATH, SIGNUP_PATH, AGENT_STATUS, AGENTS, CONTROL, INTEGRATIONS, PRICING, PROBLEM } from "@/lib/marketing/content";
 import { cn } from "@/lib/utils";
 import { INTEGRATIONS_PATH } from "@/lib/marketing/integrations-page";
 
@@ -192,8 +192,8 @@ export function PricingPlans() {
                     Sign up for {plan.offer.price}{plan.offer.period}
                     <ArrowRight aria-hidden className="size-4" />
                   </Link>
-                  <Link href={ASSESSMENT_PATH} className="text-center text-sm font-medium text-brand-600 underline-offset-4 hover:underline dark:text-brand-300">
-                    Not sure yet? Get an assessment first
+                  <Link href={BOOK_CALL_PATH} className="text-center text-sm font-medium text-brand-600 underline-offset-4 hover:underline dark:text-brand-300">
+                    Not sure yet? Book a call first
                   </Link>
                   <p className="text-center text-xs text-muted-foreground">No trial, no setup fee.</p>
                 </div>

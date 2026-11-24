@@ -19,8 +19,10 @@ import { activeConnections } from "./lib/google/connection";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { jobberApp, jobberRedirect } from "./lib/connectors/jobber";
+import { quickbooksApp, quickbooksRedirect } from "./lib/quickbooks/oauth";
 import { secretsConfigured } from "./lib/recruiter/secrets";
 import { stripeState } from "./lib/finance/stripeState";
+import { squareState } from "./lib/finance/squareState";
 
 export type LiveState = "connected" | "in_progress" | "ready" | "not_set_up";
 
@@ -82,8 +84,30 @@ export const overview = companyQuery({
 
     // Stripe is the company's own account (Finance › Payments setup). Only its state is shown here, never amounts.
     const stripe = await stripeState(ctx, ctx.companyId);
+    // Square's card says exactly where it stands: Ready, Setup incomplete, Needs reconnection, Unavailable or Not connected.
+    const square = await squareState(ctx, ctx.companyId, await secretsConfigured());
+    const squareCard: { state: LiveState; detail: string | null } =
+      square.state === "ready"
+        ? { state: "connected", detail: `Ready · ${square.location?.name ?? "Square"}` }
+        : square.state === "needs_location"
+          ? { state: "in_progress", detail: "Setup incomplete" }
+          : square.state === "needs_reconnect"
+            ? { state: "in_progress", detail: "Needs reconnection" }
+            : square.state === "unavailable"
+              ? { state: "not_set_up", detail: "Unavailable" }
+              : { state: "ready", detail: null };
     const stripeCard: { state: LiveState; detail: string | null } =
       stripe.state === "active" ? { state: "connected", detail: stripe.businessName } : stripe.state === "onboarding" || stripe.state === "restricted" ? { state: "in_progress", detail: null } : stripe.state === "not_available" ? { state: "not_set_up", detail: null } : { state: "ready", detail: null };
+
+    // QuickBooks Online: connected (with the company's name once checked), needing reconnection, or ready.
+    const qbo = await ctx.db
+      .query("quickbooksConnections")
+      .withIndex("by_company", (q) => q.eq("companyId", ctx.companyId))
+      .order("desc")
+      .first();
+    const qboAvailable = quickbooksApp() !== null && quickbooksRedirect() !== null && (await secretsConfigured());
+    const quickbooksCard: { state: LiveState; detail: string | null } =
+      qbo?.status === "connected" ? { state: "connected", detail: qbo.companyName ?? null } : qbo?.status === "needs_reconnect" ? { state: "in_progress", detail: "Reconnect needed" } : { state: qboAvailable ? "ready" : "not_set_up", detail: null };
 
     const requests = await ctx.db
       .query("integrationRequests")
@@ -94,6 +118,7 @@ export const overview = companyQuery({
       publicApi: publicApiOrigin(),
       live: {
         stripe: stripeCard,
+        square: squareCard,
         gmail: { state: gmailState, detail: brokenGmail ? "Reconnect needed" : gmail ? gmail.address : null },
         "google-drive": googleCard("drive", ["drive_source", "drive_output"]),
         "google-calendar": googleCard("calendar", ["calendar_sync", "calendar_busy"]),
@@ -104,6 +129,7 @@ export const overview = companyQuery({
         "housecall-pro": await connectorCard(ctx, "housecall_pro", await secretsConfigured()),
         "texting-number": { state: textingState, detail: texting?.status === "active" ? (texting.phoneNumber ?? null) : null },
         quo: quoCard,
+        "quickbooks-online": quickbooksCard,
       },
       requested: requests.map((row) => ({ integrationId: row.integrationId, requestedAt: row.requestedAt })),
     };

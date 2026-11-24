@@ -18,6 +18,7 @@ import { sendablePhone } from "../messaging/provider";
 import { isEmail } from "../text";
 import { followUpBlocker } from "./followUps";
 import { portalLinkState, portalTokenFor } from "./portal";
+import { startingState } from "../messaging/planning";
 
 export type CleanerPurpose = "portal_invitation" | "onboarding_reminder" | "availability_check" | "idle_check_in" | "verification_code";
 
@@ -90,7 +91,8 @@ export async function queueCleanerMessage(ctx: MutationCtx, planned: PlannedClea
       retryAt = answer.retryAt;
     }
   }
-  const status = !problem ? "queued" : retryAt !== undefined ? "held" : "not_sent";
+  const start = startingState({ problem, code: code, retryAt, now });
+  const status = start.status;
   const messageId = await ctx.db.insert("messages", {
     companyId: planned.company._id,
     purpose: planned.purpose,
@@ -107,7 +109,7 @@ export async function queueCleanerMessage(ctx: MutationCtx, planned: PlannedClea
     attempts: 0,
     provider: provider?.name,
     problem: problem ?? undefined,
-    refusal: status === "not_sent" && code ? code : undefined,
+    ...start.fields,
     queuedAt: now,
   });
   if (to && status !== "not_sent") await ctx.db.insert("sendIntents", { companyId: planned.company._id, messageId, channel: planned.channel, address: to, at: now, ...intent });

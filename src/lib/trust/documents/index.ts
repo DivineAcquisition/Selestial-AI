@@ -4,6 +4,7 @@
  */
 import { currentVersion, type DocumentKind } from "../../../../convex/lib/trust/documents";
 import { COOKIES } from "./cookies";
+import { EULA } from "./eula";
 import { MESSAGING } from "./messaging";
 import { PRIVACY } from "./privacy";
 import { SECURITY } from "./security";
@@ -11,7 +12,7 @@ import { TERMS } from "./terms";
 import type { DocumentText } from "./types";
 
 export const DOCUMENT_TEXTS: Record<string, DocumentText> = Object.fromEntries(
-  [TERMS, PRIVACY, COOKIES, MESSAGING, SECURITY].map((text) => [text.versionId, text]),
+  [TERMS, PRIVACY, COOKIES, MESSAGING, SECURITY, EULA].map((text) => [text.versionId, text]),
 );
 
 /** The text of the version in force for a kind. Throws if a listed version has no text, which is a build mistake. */

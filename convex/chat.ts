@@ -191,7 +191,9 @@ export const send = companyMutation({
     model: v.optional(v.string()),
     /** Where a new conversation started (Research & Insights). Kept for every reply; ignored for an existing one. */
     /** Where the chat was opened: Research & Insights, or a booking or proposal draft in the Sales workspace. */
-    origin: v.optional(v.union(v.object({ kind: v.literal("research") }), v.object({ kind: v.literal("sales_draft"), draftId: v.id("salesDrafts") }))),
+    origin: v.optional(v.union(v.object({ kind: v.literal("research") }), v.object({ kind: v.literal("sales_draft"), draftId: v.id("salesDrafts") }), v.object({ kind: v.literal("service_draft"), serviceId: v.id("services") }))),
+    /** From a service workspace: the draft revision on screen when the person asked (see chatMessages.draftRevision). */
+    draftRevision: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const words = requiredText(args.text, "Your message", MESSAGE_MAX);
@@ -227,6 +229,7 @@ export const send = companyMutation({
       let origin: Doc<"conversations">["origin"] = undefined;
       if (args.origin?.kind === "research") origin = { kind: "research", question: words.slice(0, 500) };
       if (args.origin?.kind === "sales_draft") origin = { kind: "sales_draft", draftId: (await owned(ctx, args.origin.draftId))._id };
+      if (args.origin?.kind === "service_draft") origin = { kind: "service_draft", serviceId: (await owned(ctx, args.origin.serviceId))._id };
       const id = await ctx.db.insert("conversations", { companyId: ctx.companyId, createdBy: ctx.member._id, title, titleSource: "generated", visibility: "private", state: "idle", searchText: searchTextFor(title, [words]), shelf: "active", messageCount: 0, modelKey, ...(origin ? { origin } : {}), createdAt: now, updatedAt: now });
       conversation = (await ctx.db.get(id))!;
     } else {
@@ -245,6 +248,7 @@ export const send = companyMutation({
       text: words,
       contextRefs: context.length ? context : undefined,
       page,
+      ...(conversation.origin?.kind === "service_draft" && args.draftRevision !== undefined && Number.isSafeInteger(args.draftRevision) && args.draftRevision >= 0 ? { draftRevision: args.draftRevision } : {}),
       attachments: attachments.length ? attachments : undefined,
       clientKey,
       createdAt: now,

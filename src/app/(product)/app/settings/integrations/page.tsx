@@ -7,7 +7,7 @@ import { SectionPage } from "@/components/app/settings/section-page";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SetupHelpCard } from "@/components/app/tutorials/setup-help";
 
-export const metadata: Metadata = { title: "Integrations" };
+export const metadata: Metadata = { title: "Connected apps" };
 
 export default function Page() {
   return (

@@ -18,6 +18,8 @@ crons.interval("dispatch watches the day of service", { minutes: 5 }, internal.d
 // Finance: card payments and refunds still in flight are read back from Stripe when its notification is late,
 // and payments a customer started and abandoned are stopped. Nothing is ever charged or refunded again here.
 crons.interval("finance reconciles payments with Stripe", { minutes: 10 }, internal.financeStripe.reconcile, {});
+crons.interval("finance reconciles payments with Square", { minutes: 10 }, internal.financeSquarePay.reconcile, {});
+crons.interval("finance refreshes Square authorizations", { hours: 12 }, internal.financeSquare.sweep, {});
 // Finance: Selestial prepares the payment reminders each open invoice is due for. It prepares only; a person approves every send.
 crons.interval("finance prepares payment reminders", { hours: 1 }, internal.financeMessages.sweep, {});
 // Finance: completed jobs get each cleaner's earnings worked out. Nothing is approved or paid here.
@@ -109,12 +111,15 @@ crons.interval("retention reads customer replies in care inboxes", { minutes: 10
 // Activation: steps whose worker never reported back are retried or failed, running batches get their next
 // tick, and blocked first work is checked again. Each step is re-checked before it runs; nothing runs twice.
 crons.interval("activation recovers and resumes first work", { minutes: 5 }, internal.activation.sweep, {});
+crons.interval("business setup recovers interrupted preparation", { minutes: 5 }, internal.configure.sweep, {});
 
 // Operations: each monitoring check runs on its own schedule (convex/lib/operations/detectors.ts). Checks read
 // records through indexes only and never call a provider or a model; what they find becomes an incident.
 crons.interval("operations checks find and verify incidents", { minutes: 5 }, internal.operations.tick, {});
 // Staff alerts go out grouped: one message per staff member with everything waiting (convex/lib/operations/alerts.ts).
 crons.interval("operations alerts reach staff", { minutes: 5 }, internal.operations.sendStaffAlerts, {});
+// Selestial's own Telnyx account, read only: the key still works, Telnyx answers, and the balance (convex/providerHealth.ts).
+crons.interval("providers answer a read-only health check", { hours: 1 }, internal.providerHealth.probe, {});
 // Admin Support Sessions past their hour end and send the owner their summary. Requests already refuse them.
 crons.interval("support sessions end when they expire", { minutes: 1 }, internal.support.expireDue, {});
 

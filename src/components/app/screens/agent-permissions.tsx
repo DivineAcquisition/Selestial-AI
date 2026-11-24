@@ -373,9 +373,9 @@ export function AgentPermissions() {
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 id="controls-overview" className="font-heading text-lg tracking-tight text-strong">
-              Agent Controls
+              Right now
             </h2>
-            <p className="text-sm text-muted-foreground">What each agent may do, whether it can right now, and what happened under each setting.</p>
+            <p className="text-sm text-muted-foreground">Whether each agent can work right now. Each agent&apos;s own rules are under Configure on its card below.</p>
           </div>
           {owner ? (
             <Button variant="outline" size="sm" loading={busy} onClick={() => void run(() => (allPaused ? resumeAll({ companyId, agents: [], expectedRevision: workspace.revision }) : pauseAll({ companyId })))}>

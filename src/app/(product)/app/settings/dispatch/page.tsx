@@ -1,14 +1,6 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { DispatchRules } from "@/components/app/settings/dispatch";
-import { SectionPage } from "@/components/app/settings/section-page";
-
-export const metadata: Metadata = { title: "Dispatch rules" };
-
+/** Dispatch's rules have one editor: its Playbook, in the Dispatch workspace. Old links land there. */
 export default function Page() {
-  return (
-    <SectionPage id="dispatch">
-      <DispatchRules />
-    </SectionPage>
-  );
+  redirect("/app/agents/dispatch/playbook");
 }

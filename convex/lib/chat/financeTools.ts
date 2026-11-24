@@ -4,6 +4,8 @@
  * writes anything off. Every result links to the record it came from, so the conversation and the
  * Finance screens work on the same invoices.
  */
+import { internal } from "../../_generated/api";
+import { recordEvent } from "../events";
 import type { Doc, Id } from "../../_generated/dataModel";
 import { prepareDraft } from "../finance/collections";
 import { amountRequested, depositOutstanding, inDepositStage, invoiceState, STATE_WORDS } from "../finance/invoiceState";
@@ -197,7 +199,21 @@ export const FINANCE_TOOLS: ChatTool[] = [
           deposit: invoice.depositCents ? { amount: dollars(invoice.depositCents), stillOwed: dollars(depositOutstanding(invoice)), askingForDepositOnly: inDepositStage(invoice) } : null,
           payments: rows.payments
             .filter((p) => p.status !== "awaiting_customer" && p.status !== "canceled")
-            .map((p) => ({ amount: dollars(p.amountCents), status: p.status === "succeeded" ? "received" : p.status, method: p.stripe?.methodLabel ?? p.method, on: localDateKey(p.succeededAt ?? p.createdAt, tz), stripeFee: p.stripe?.feeCents !== undefined ? dollars(p.stripe.feeCents) : null, problem: p.problem ?? null, voidedBecause: p.voided?.reason ?? null })),
+            .map((p) => {
+              const fee = p.stripe?.feeCents ?? p.square?.feeCents;
+              return {
+                amount: dollars(p.amountCents),
+                status: p.status === "succeeded" ? "received" : p.status,
+                through: p.source === "stripe" ? "Stripe" : p.source === "square" ? "Square" : "recorded by hand",
+                method: p.stripe?.methodLabel ?? p.square?.methodLabel ?? p.method,
+                on: localDateKey(p.succeededAt ?? p.createdAt, tz),
+                // A fee the provider hasn't reported is unknown, never zero.
+                providerFee: p.source === "manual" ? null : fee !== undefined ? dollars(fee) : "not reported yet",
+                receipt: p.square?.receiptUrl ?? null,
+                problem: p.problem ?? null,
+                voidedBecause: p.voided?.reason ?? null,
+              };
+            }),
           refunds: rows.refunds.map((r) => ({ amount: dollars(r.amountCents), status: REFUND_COUNTS.includes(r.status) ? "returned" : r.status, reason: r.reason })),
           credits: rows.credits.map((c) => ({ amount: dollars(c.amountCents), reason: c.reason, reversed: Boolean(c.reversed) })),
           paid: dollars(invoice.totals.paidCents),
@@ -207,6 +223,29 @@ export const FINANCE_TOOLS: ChatTool[] = [
           messagesToCustomer: messages.slice(0, 10).map((m) => ({ purpose: m.purpose === "invoice_sent" ? "invoice" : "reminder", channel: m.channel ?? "sms", status: m.status, on: localDateKey(m.queuedAt, tz), problem: m.problem ?? null })),
           voided: invoice.voided ? { on: localDateKey(invoice.voided.at, tz), reason: invoice.voided.reason } : null,
         },
+      };
+    },
+  },
+  {
+    name: "check_payment_status",
+    label: "Checking payments with the provider",
+    description:
+      "Asks Stripe or Square again about one invoice's online payments that are still in flight or being checked, instead of waiting for the provider's notice. It never charges, refunds, changes an amount or starts a new payment; whatever the provider answers is recorded the usual way. Takes the invoice id or its number.",
+    kind: "write",
+    minimumRole: "owner",
+    input: { type: "object", properties: { invoice: { type: "string", max: 64, description: "The invoice's id, or its number such as INV-1015." } } },
+    run: async (ctx, args) => {
+      const invoice = await invoiceByRef(ctx, args.invoice);
+      if (!invoice) return refused("No such invoice in this company.");
+      const rows = await invoiceRows(ctx, invoice);
+      const open = rows.payments.filter((p) => p.source !== "manual" && ["awaiting_customer", "processing", "checking"].includes(p.status));
+      for (const p of open) await ctx.scheduler.runAfter(0, p.source === "square" ? internal.financeSquarePay.syncPayment : internal.financeStripe.syncPayment, { paymentId: p._id });
+      await recordEvent(ctx, { companyId: ctx.company._id, type: "payment.recheck_requested", actor: { kind: "member", memberId: ctx.member._id }, subject: { table: "invoices", id: invoice._id }, data: { payments: open.length, via: "chat" } });
+      return {
+        status: "done",
+        summary: open.length ? `Asked the provider again about ${open.length} payment${open.length === 1 ? "" : "s"} on ${invoice.number ?? "the invoice"}` : `${invoice.number ?? "The invoice"} has no online payment in flight`,
+        link: invoiceLink(invoice._id, invoice.number),
+        data: { checked: open.length, note: "Answers arrive in a moment and show on the invoice. Reminders stop on their own once the invoice is paid." },
       };
     },
   },

@@ -16,7 +16,8 @@ export function SettingsLayout({ children }: { children: React.ReactNode }) {
       */}
       <div className="grid grid-cols-[minmax(0,1fr)] gap-5 @4xl/main:grid-cols-[13.5rem_minmax(0,1fr)] @4xl/main:gap-6 @6xl/main:grid-cols-[15rem_minmax(0,1fr)] @6xl/main:gap-8">
         <SettingsNav />
-        <div className="min-w-0">{children}</div>
+        {/* A size container, so forms inside choose their columns from the room they have, not the screen width. */}
+        <div className="@container min-w-0">{children}</div>
       </div>
     </BusinessDraftProvider>
   );

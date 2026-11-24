@@ -178,7 +178,7 @@ function RulesForm({ rules, onClose }: { rules: RulesData; onClose: () => void }
               </Field>
             ))}
           </div>
-          <p className="text-xs text-muted-foreground">Booking hours and ZIP codes come from Business details. The arrival window is when the team arrives, not how long the visit takes; a service&apos;s own window is used when it has one.</p>
+          <p className="text-xs text-muted-foreground">Booking hours and ZIP codes come from Company profile. The arrival window is when the team arrives, not how long the visit takes; a service&apos;s own window is used when it has one.</p>
         </div>
 
         <div className="space-y-4">

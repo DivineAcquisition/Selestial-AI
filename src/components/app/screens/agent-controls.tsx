@@ -135,18 +135,19 @@ export function AgentSummary({ agent, owner, busy, onTogglePause, children }: { 
               <dd className="inline text-strong">{agent.next ? `${agent.next.title}, due ${whenLabel(agent.next.dueAt, now, timezone)}` : "Nothing scheduled"}</dd>
             </div>
           </dl>
-          <p className="mt-1.5 text-xs">
-            <Link href={agent.playbook} className={link}>
-              Open the {AGENT_NAME[agent.agent]} playbook
-            </Link>
-          </p>
         </div>
-        {owner ? (
-          <Button variant="outline" size="sm" disabled={busy} onClick={onTogglePause}>
-            {agent.paused ? <Play aria-hidden /> : <PauseCircleIcon aria-hidden />}
-            {agent.paused ? "Resume" : "Pause"}
+        {/* Every agent is configured the same way: in its own workspace. Permissions and pausing stay here. */}
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button variant="outline" size="sm" render={<Link href={agent.playbook} />} aria-label={`Configure ${AGENT_NAME[agent.agent]}`}>
+            Configure
           </Button>
-        ) : null}
+          {owner ? (
+            <Button variant="outline" size="sm" disabled={busy} onClick={onTogglePause}>
+              {agent.paused ? <Play aria-hidden /> : <PauseCircleIcon aria-hidden />}
+              {agent.paused ? "Resume" : "Pause"}
+            </Button>
+          ) : null}
+        </div>
       </div>
       <div className="border-t border-border">
         <button

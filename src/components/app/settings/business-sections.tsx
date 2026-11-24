@@ -216,7 +216,7 @@ function BookingHours() {
   return (
     <Panel title="Booking hours">
       <p className="mb-3 text-sm text-muted-foreground">When customers can book a cleaning. Each cleaner&apos;s own availability still applies.</p>
-      <fieldset className="grid gap-2 sm:grid-cols-2">
+      <fieldset className="grid gap-2 @lg:grid-cols-2">
         <legend className="sr-only">Booking hours</legend>
         {(
           [
@@ -243,7 +243,7 @@ function BookingHours() {
             const day = windows.filter((w) => w.weekday === weekday).sort((a, b) => a.startMinute - b.startMinute);
             const open = day.length > 0;
             return (
-              <li key={weekday} className="grid gap-2 px-3 py-2.5 sm:grid-cols-[9rem_1fr] sm:items-start">
+              <li key={weekday} className="grid gap-2 px-3 py-2.5 @lg:grid-cols-[9rem_1fr] @lg:items-start">
                 <label className="flex min-h-9 items-center gap-2 text-sm font-medium text-strong">
                   <Checkbox
                    
@@ -307,7 +307,7 @@ function BookingHours() {
 /** Company name and time zone, the ZIP codes it serves, and the hours customers can book. */
 export function BusinessSection() {
   const { draft, saved, canEdit, edit, unavailable } = useBusinessDraft();
-  if (unavailable) return <Unavailable what="Business details" />;
+  if (unavailable) return <Unavailable what="Company profile" />;
   if (!draft || !saved) return <Skeleton className="h-72 rounded-2xl" />;
   const timezoneChanged = draft.timezone !== saved.timezone;
   return (
@@ -315,7 +315,7 @@ export function BusinessSection() {
       <SetupHelpCard tutorialId="setup-company" placement="settings.business" />
       <MigrationEntry />
       <Panel title="Company">
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 @lg:grid-cols-2">
           <Field label="Company name" error={canEdit && !draft.name.trim() ? "Enter your company name." : null}>
             <TextInput value={draft.name} disabled={!canEdit} onChange={(event) => edit((current) => ({ ...current, name: event.target.value }))} required />
           </Field>

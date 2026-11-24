@@ -1,14 +1,16 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { RecruitingRules } from "@/components/app/settings/recruiting";
-import { SectionPage } from "@/components/app/settings/section-page";
+type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
-export const metadata: Metadata = { title: "Recruiting rules" };
-
-export default function Page() {
-  return (
-    <SectionPage id="recruiting">
-      <RecruitingRules />
-    </SectionPage>
-  );
+/**
+ * Recruiting's rules have one editor: Hiring setup, in the Recruiter workspace. Old links land there,
+ * keeping their query, so a Gmail connection that began before the move still finishes (?mailbox=…).
+ */
+export default async function Page({ searchParams }: Props) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(await searchParams)) {
+    for (const one of Array.isArray(value) ? value : value === undefined ? [] : [value]) query.append(key, one);
+  }
+  const rest = query.toString();
+  redirect(`/app/agents/recruiter/hiring-setup${rest ? `?${rest}` : ""}`);
 }

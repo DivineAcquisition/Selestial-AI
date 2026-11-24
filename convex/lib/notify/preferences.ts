@@ -54,6 +54,27 @@ export async function setEmail(ctx: MutationCtx, input: { companyId: Id<"compani
   return { changed: true };
 }
 
+/** Categories that can come by text: the ones that need someone to act. Digest, activity and product news stay email. */
+export const SMS_CATEGORIES: readonly NoticeCategory[] = ["security", "account", "approvals", "escalations"];
+
+/** Whether a notice in this category is texted to this person. Off unless they turned it on. */
+export function smsOn(row: Doc<"notificationPreferences"> | null, category: NoticeCategory): boolean {
+  if (!SMS_CATEGORIES.includes(category)) return false;
+  return row?.sms?.find((entry) => entry.category === category)?.on ?? false;
+}
+
+export const DEFAULT_SMS_QUIET = { start: "21:00", end: "07:00" } as const;
+
+export async function setSms(ctx: MutationCtx, input: { companyId: Id<"companies">; member: Doc<"members">; category: NoticeCategory; on: boolean; now: number }): Promise<{ changed: boolean; refused?: string }> {
+  if (input.on && !SMS_CATEGORIES.includes(input.category)) return { changed: false, refused: "These notices come by email only." };
+  const row = await preferencesOf(ctx, input.companyId, input.member._id);
+  if (smsOn(row, input.category) === input.on) return { changed: false };
+  const entry = { category: input.category, on: input.on, at: input.now };
+  if (row) await ctx.db.patch(row._id, { sms: [...(row.sms ?? []).filter((e) => e.category !== input.category), entry], updatedAt: input.now });
+  else await ctx.db.insert("notificationPreferences", { companyId: input.companyId, memberId: input.member._id, email: [], sms: [entry], updatedAt: input.now });
+  return { changed: true };
+}
+
 /** An address Selestial's notices must not go to, with the reason, or null. */
 export async function noticeSuppression(ctx: Ctx, address: string): Promise<Doc<"noticeSuppressions"> | null> {
   const rows = await ctx.db

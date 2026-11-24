@@ -23,7 +23,17 @@ const nextConfig: NextConfig = {
   // backend's answer, a redirect into the app, comes back to the browser unchanged. Nothing is read or kept here.
   async rewrites() {
     const site = convexSite();
-    return site ? { beforeFiles: [{ source: "/oauth/google/callback", destination: `${site}/oauth/google/callback` }], afterFiles: [], fallback: [] } : [];
+    // QuickBooks' return (convex/lib/quickbooks/oauth.ts, quickbooksRedirect) is passed through the same way.
+    return site
+      ? {
+          beforeFiles: [
+            { source: "/oauth/google/callback", destination: `${site}/oauth/google/callback` },
+            { source: "/oauth/quickbooks/callback", destination: `${site}/oauth/quickbooks/callback` },
+          ],
+          afterFiles: [],
+          fallback: [],
+        }
+      : [];
   },
   async headers() {
     return [
@@ -42,7 +52,7 @@ const nextConfig: NextConfig = {
       },
       // Google's return carries a one-time code in its address: never cached, indexed or sent on.
       {
-        source: "/oauth/google/callback",
+        source: "/oauth/:provider(google|quickbooks)/callback",
         headers: [
           { key: "Referrer-Policy", value: "no-referrer" },
           { key: "Cache-Control", value: "no-store" },

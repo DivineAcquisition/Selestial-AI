@@ -2,13 +2,13 @@
 
 import { useMutation, useQuery } from "convex/react";
 import Link from "next/link";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 import { AddressField } from "@/components/app/address-field";
 import { DeletionStatus } from "@/components/app/closing";
 import { useCompany } from "@/components/app/company";
 import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
-import { TextingEntry } from "@/components/app/texting/entry";
 import { Panel } from "@/components/app/shell";
 import { AlertTriangle, ArrowRight, CircleCheckIcon, Download, ShieldCheck } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
@@ -21,21 +21,29 @@ import { Checkbox, Select } from "@/components/ui/selection";
 import { EmailInput, PhoneInput } from "@/components/ui/fields";
 
 /**
- * Settings → Trust & Compliance. What the company is ready to do, and for each thing it is not, the
- * exact missing piece and where to fix it. Only the operation a gap affects is blocked: a missing
- * texting registration stops texts, not email or the rest of the workspace. Every check shown here is
- * the same one the server runs before a message goes out.
+ * The parts of trust and compliance, each shown where an owner looks for it: legal identity in
+ * Company profile, sending, registration and consent wording in Email & texting, and the company's
+ * data in Privacy & data. Every check shown is the same one the server runs before a message goes out.
+ * Only the operation a gap affects is blocked: a missing texting registration stops texts, not email.
  */
+
+/** Parts that used to live on this page, by their old anchor, and where they live now. */
+const MOVED: Record<string, string> = {
+  identity: "/app/settings/business#identity",
+  messaging: "/app/settings/messaging#messaging",
+  registration: "/app/settings/messaging#registration",
+  disclosures: "/app/settings/messaging#disclosures",
+  readiness: "/app/settings/messaging",
+};
+
+/** Settings → Privacy & data. Old links to the parts that moved are carried to their new page. */
 export function ComplianceScreen() {
-  return (
-    <div className="grid gap-5">
-      <Readiness />
-      <Identity />
-      <Messaging />
-      <Disclosures />
-      <DataAndConnections />
-    </div>
-  );
+  const router = useRouter();
+  useEffect(() => {
+    const target = MOVED[window.location.hash.replace(/^#/, "")];
+    if (target) router.replace(target);
+  }, [router]);
+  return <DataAndConnections />;
 }
 
 const STATE: Record<"ready" | "blocked" | "attention", { label: string; variant: "success" | "error" | "warning" }> = {
@@ -44,11 +52,11 @@ const STATE: Record<"ready" | "blocked" | "attention", { label: string; variant:
   attention: { label: "Needs attention", variant: "warning" },
 };
 
-function Readiness() {
+export function Readiness() {
   const company = useCompany();
   const readiness = useQuery(api.compliance.readiness, { companyId: company.companyId });
   return (
-    <Panel title="Readiness">
+    <Panel title="Can your company send messages?">
       {readiness === undefined ? (
         <div className="grid gap-2">
           <Skeleton className="h-14" />
@@ -101,11 +109,11 @@ function OwnerOnly({ owner }: { owner: boolean }) {
   return owner ? null : <p className="text-xs text-muted-foreground">Only the Owner changes these.</p>;
 }
 
-function Identity() {
+export function Identity() {
   const profile = useProfile();
   return (
     <section id="identity" className="scroll-mt-20">
-      <Panel title="Business identity">{profile === undefined ? <Skeleton className="h-40" /> : <IdentityForm profile={profile} />}</Panel>
+      <Panel title="Legal details">{profile === undefined ? <Skeleton className="h-40" /> : <IdentityForm profile={profile} />}</Panel>
     </section>
   );
 }
@@ -141,7 +149,7 @@ function IdentityForm({ profile }: { profile: Profile }) {
   const hasRep = form.repName.trim() || form.repTitle.trim() || form.repEmail.trim();
   return (
     <form
-      className="grid gap-3 sm:grid-cols-2"
+      className="grid gap-3 @lg:grid-cols-2"
       onSubmit={(event) => {
         event.preventDefault();
         void run(async () => {
@@ -158,7 +166,7 @@ function IdentityForm({ profile }: { profile: Profile }) {
         });
       }}
     >
-      <p className="text-sm text-muted-foreground sm:col-span-2">The business people are dealing with when they hear from you, and who answers for its messages. Carriers check these against your registration.</p>
+      <p className="text-sm text-muted-foreground @lg:col-span-2">The business people deal with when they hear from you, and who answers for its messages. Carriers check these against your texting registration, and Email &amp; texting uses them as they are saved here.</p>
       <Field label="Legal name" hint="As registered.">
         <TextInput value={form.legalName} onChange={set("legalName")} disabled={!owner} autoComplete="organization" />
       </Field>
@@ -167,7 +175,7 @@ function IdentityForm({ profile }: { profile: Profile }) {
       </Field>
       <AddressField
         label="Street address"
-        className="sm:col-span-2"
+        className="@lg:col-span-2"
         value={form.line1}
         disabled={!owner}
         onChange={(line1) => {
@@ -194,7 +202,7 @@ function IdentityForm({ profile }: { profile: Profile }) {
       <Field label="Country">
         <Select value={form.country} onValueChange={(next) => setValue("country", next ?? "")} options={[{ value: "US", label: "United States" }, { value: "CA", label: "Canada" }]} disabled={!owner} />
       </Field>
-      <span className="hidden sm:block" />
+      <span className="hidden @lg:block" />
       <Field label="Authorised representative">
         <TextInput value={form.repName} onChange={set("repName")} disabled={!owner} placeholder="Full name" />
       </Field>
@@ -204,20 +212,20 @@ function IdentityForm({ profile }: { profile: Profile }) {
       <Field label="Their email">
         <EmailInput value={form.repEmail} onChange={(text) => set("repEmail")({ target: { type: "text", value: text } } as unknown as React.ChangeEvent<HTMLInputElement>)} disabled={!owner} />
       </Field>
-      <span className="hidden sm:block" />
+      <span className="hidden @lg:block" />
       <Field label="Support email" hint="Where people can ask for help. Texts that answer HELP name this or the phone.">
         <EmailInput value={form.supportEmail} onChange={(text) => set("supportEmail")({ target: { type: "text", value: text } } as unknown as React.ChangeEvent<HTMLInputElement>)} disabled={!owner} />
       </Field>
       <Field label="Support phone" hint="International form, for example +15125550100.">
         <PhoneInput value={form.supportPhone} onChange={(text) => set("supportPhone")({ target: { type: "text", value: text } } as unknown as React.ChangeEvent<HTMLInputElement>)} disabled={!owner} />
       </Field>
-      <div className="grid gap-2 sm:col-span-2">
+      <div className="grid gap-2 @lg:col-span-2">
         <FormError message={error} />
         {saved ? <p role="status" className="text-sm text-success-foreground">Saved.</p> : null}
         {owner ? (
           <div>
             <Button type="submit" variant="primary" size="sm" loading={busy}>
-              Save business identity
+              Save legal details
             </Button>
           </div>
         ) : (
@@ -236,12 +244,12 @@ const REGISTRATION: Record<string, { label: string; variant: "success" | "error"
   suspended: { label: "Suspended by the carriers", variant: "error" },
 };
 
-function Messaging() {
+export function Messaging() {
   const profile = useProfile();
   const company = useCompany();
   return (
     <section id="messaging" className="scroll-mt-20">
-      <Panel title="Messaging">
+      <Panel title="Sending">
         {profile === undefined ? (
           <Skeleton className="h-40" />
         ) : (
@@ -252,7 +260,6 @@ function Messaging() {
               </p>
             ) : null}
             <MessagingForm profile={profile} />
-            <TextingEntry />
             <Registration profile={profile} />
           </div>
         )}
@@ -286,7 +293,7 @@ function MessagingForm({ profile }: { profile: Profile }) {
   };
   return (
     <form
-      className="grid gap-3 sm:grid-cols-2"
+      className="grid gap-3 @lg:grid-cols-2"
       onSubmit={(event) => {
         event.preventDefault();
         void run(async () => {
@@ -308,15 +315,16 @@ function MessagingForm({ profile }: { profile: Profile }) {
       <Field label="Texting number" hint="Your number with the texting provider. Changing it means registering again.">
         <TextInput type="tel" value={form.smsNumber} onChange={set("smsNumber")} disabled={!owner} placeholder="+15125550100" />
       </Field>
-      <Field label="Emails are sent from" className="sm:col-span-2">
+      <Field label="Emails are sent from" className="@lg:col-span-2">
         <EmailInput value={form.emailFromAddress} onChange={(text) => set("emailFromAddress")({ target: { type: "text", value: text } } as unknown as React.ChangeEvent<HTMLInputElement>)} disabled={!owner} />
       </Field>
-      <fieldset className="grid gap-3 rounded-xl border border-border p-3.5 sm:col-span-2 sm:grid-cols-2">
+      <fieldset className="grid gap-3 rounded-xl border border-border p-3.5 @lg:col-span-2 @lg:grid-cols-2">
         <legend className="px-1 text-sm font-medium text-strong">Quiet hours</legend>
-        <label className="flex items-center gap-2 text-sm sm:col-span-2">
+        <label className="flex items-center gap-2 text-sm @lg:col-span-2">
           <Checkbox checked={form.quiet} onCheckedChange={(checked) => set("quiet")({ target: { type: "checkbox", checked } } as unknown as React.ChangeEvent<HTMLInputElement>)} disabled={!owner} />
           Hold marketing and recruiting texts during quiet hours
         </label>
+        <p className="-mt-1 text-xs text-muted-foreground @lg:col-span-2">These hours apply to every agent. Recruiter also has its own sending hours in Hiring setup; a recruiting text goes out only when both allow it.</p>
         {form.quiet ? (
           <>
             <Field label="From" hint={`On your company clock (${company.timezone}).`}>
@@ -325,7 +333,7 @@ function MessagingForm({ profile }: { profile: Profile }) {
             <Field label="Until">
               <TextInput type="time" value={form.end} onChange={set("end")} disabled={!owner} />
             </Field>
-            <label className="flex items-start gap-2 text-sm sm:col-span-2">
+            <label className="flex items-start gap-2 text-sm @lg:col-span-2">
               <Checkbox checked={form.operational} onCheckedChange={(checked) => set("operational")({ target: { type: "checkbox", checked } } as unknown as React.ChangeEvent<HTMLInputElement>)} disabled={!owner} className="mt-0.5" />
               <span>
                 Hold work texts too
@@ -341,7 +349,7 @@ function MessagingForm({ profile }: { profile: Profile }) {
       <Field label="Recruiting texts per person per week">
         <TextInput type="number" min={0} max={14} value={form.recruiting} onChange={set("recruiting")} disabled={!owner} />
       </Field>
-      <div className="grid gap-2 sm:col-span-2">
+      <div className="grid gap-2 @lg:col-span-2">
         <FormError message={error} />
         {saved ? <p role="status" className="text-sm text-success-foreground">Saved.</p> : null}
         {owner ? (
@@ -366,30 +374,55 @@ function Registration({ profile }: { profile: Profile }) {
   const [reference, setReference] = useState(profile.messaging.registration.reference ?? "");
   const registration = profile.messaging.registration;
   const shown = REGISTRATION[registration.status] ?? REGISTRATION.not_started;
+  const submitted = registration.status !== "not_started";
+  const steps = [
+    { done: Boolean(profile.identity.legalName && profile.identity.address), words: "Your legal details are complete.", fix: { href: "/app/settings/business#identity", label: "Open Company profile" } },
+    { done: submitted, words: "Your texting provider has your registration. Most providers ask for it when you request a number; it uses the legal details above.", fix: null },
+    { done: registration.status === "approved", words: "Selestial checks with the provider and marks it approved. You don't need to do anything for this step.", fix: null },
+  ];
   return (
     <div id="registration" className="grid scroll-mt-20 gap-3 border-t border-border pt-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-strong">Carrier registration</h3>
         <Badge variant={shown.variant}>{shown.label}</Badge>
       </div>
-      <p className="text-sm text-muted-foreground">
-        Carriers in the US and Canada must approve a business before its texts are delivered. Submit the registration with your texting provider, then record it here. Selestial marks it approved only after checking with the provider.
-      </p>
+      <p className="text-sm text-muted-foreground">Carriers in the US and Canada approve a business before its texts are delivered.</p>
+      <ol className="grid gap-1.5 text-sm">
+        {steps.map((step, index) => (
+          <li key={index} className="flex items-start gap-2">
+            {step.done ? <CircleCheckIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-success-foreground" /> : <span aria-hidden className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded-full border border-border text-[0.625rem] text-muted-foreground">{index + 1}</span>}
+            <span className={step.done ? "text-muted-foreground" : "text-strong"}>
+              <span className="sr-only">{step.done ? "Done: " : "To do: "}</span>
+              {step.words}{" "}
+              {!step.done && step.fix ? (
+                <Link href={step.fix.href} className="font-medium text-brand-600 underline-offset-2 hover:underline">
+                  {step.fix.label}
+                </Link>
+              ) : null}
+            </span>
+          </li>
+        ))}
+      </ol>
       {registration.note ? <p className="rounded-lg bg-overlay/[0.04] px-3 py-2 text-sm text-strong">{registration.note}</p> : null}
       {owner && registration.status !== "approved" ? (
         <form
-          className="flex flex-wrap items-end gap-2"
+          className="grid gap-3"
           onSubmit={(event) => {
             event.preventDefault();
-            void run(() => record({ companyId: company.companyId, status: "submitted", reference }));
+            void run(() => record({ companyId: company.companyId, status: "submitted", ...(reference.trim() ? { reference } : {}) }));
           }}
         >
-          <Field label="Provider's reference" className="min-w-56 flex-1">
-            <TextInput value={reference} onChange={(event) => setReference(event.target.value)} />
-          </Field>
-          <Button type="submit" size="sm" loading={busy}>
-            {registration.status === "submitted" ? "Update the reference" : "I have submitted it"}
-          </Button>
+          <details className="rounded-lg border border-border px-3 py-2 text-sm" open={Boolean(registration.reference)}>
+            <summary className="cursor-pointer text-muted-foreground">Did your provider give you a registration or campaign ID? (optional)</summary>
+            <Field label="Registration or campaign ID" hint="It helps Selestial find your registration faster. You can leave it empty." className="mt-2 max-w-sm">
+              <TextInput value={reference} onChange={(event) => setReference(event.target.value)} maxLength={120} />
+            </Field>
+          </details>
+          <div>
+            <Button type="submit" size="sm" loading={busy}>
+              {submitted ? "Update my registration" : "I've submitted my registration"}
+            </Button>
+          </div>
         </form>
       ) : null}
       <FormError message={error} />
@@ -400,7 +433,7 @@ function Registration({ profile }: { profile: Profile }) {
 const CATEGORY_LABEL: Record<string, string> = { operational: "Work messages", marketing: "Marketing", recruiting: "Recruiting" };
 const CHANNEL_LABEL: Record<string, string> = { sms: "Texts", email: "Email" };
 
-function Disclosures() {
+export function Disclosures() {
   const company = useCompany();
   const owner = company.role === "owner";
   const rows = useQuery(api.compliance.disclosures, { companyId: company.companyId });
@@ -438,7 +471,7 @@ function Disclosures() {
         )}
         {owner ? (
           <form
-            className="mt-4 grid gap-3 sm:grid-cols-2"
+            className="mt-4 grid gap-3 @lg:grid-cols-2"
             onSubmit={(event) => {
               event.preventDefault();
               void run(async () => {
@@ -453,10 +486,10 @@ function Disclosures() {
             <Field label="Kind of message">
               <Select value={category} onValueChange={(next) => setCategory((next ?? "") as typeof category)} options={[{ value: "operational", label: "Work messages" }, { value: "marketing", label: "Marketing" }, { value: "recruiting", label: "Recruiting" }]} />
             </Field>
-            <Field label="Wording" className="sm:col-span-2" hint="Name your business, what you will send, that rates may apply, and that replying STOP ends it and HELP gets help.">
+            <Field label="Wording" className="@lg:col-span-2" hint="Name your business, what you will send, that rates may apply, and that replying STOP ends it and HELP gets help.">
               <TextArea value={words} onChange={(event) => setWords(event.target.value)} required maxLength={2000} />
             </Field>
-            <div className="grid gap-2 sm:col-span-2">
+            <div className="grid gap-2 @lg:col-span-2">
               <FormError message={error} />
               <div>
                 <Button type="submit" size="sm" loading={busy} disabled={!words.trim()}>

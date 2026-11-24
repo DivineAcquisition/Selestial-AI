@@ -30,7 +30,9 @@ const FIRST_WORK_PATH = "/app/first-work";
 import { ActivationReview } from "@/components/app/activation/review";
 import { MigrationEntry } from "@/components/app/migration/entry";
 import { MigrationRecordsStep, MigrationReview } from "./migration";
-import { PrepareDrafts, WebsiteProgress } from "./prepare";
+import { WebsiteProgress } from "./prepare";
+import { PrepareBusiness } from "./business";
+import { BusinessInputs } from "./business-inputs";
 import type { Method, Priority } from "../../../../convex/lib/setup/schema";
 import { SetupHelpCard } from "@/components/app/tutorials/setup-help";
 
@@ -444,6 +446,13 @@ function Flow({ view, setup, onReload }: { view: View; setup: Setup; onReload: (
               </>
             ) : null}
 
+            {step.id === "offer" ? (
+              <>
+                <StepHeading eyebrow="Prepare your workspace" title="Your services, costs and hours" lead="Optional, and every answer can be left blank. Selestial uses these to prepare your services, prices, booking form and agreements as drafts for you to review." />
+                <BusinessInputs compact />
+              </>
+            ) : null}
+
             {step.id === "records" ? (
               <>
                 <StepHeading eyebrow="Prepare your workspace" title="Bring in what you already have" lead="Optional. Anything you bring in now saves you typing it later. Nothing is contacted because it was imported." />
@@ -482,7 +491,7 @@ function Flow({ view, setup, onReload }: { view: View; setup: Setup; onReload: (
                     </span>
                   </p>
                 ) : null}
-                <PrepareDrafts priority={priority} secondary={secondary} categories={many(facts["services.categories"])} prepared={view.prepared} />
+                <PrepareBusiness />
                 <h2 className="text-sm font-semibold text-strong">Your team&apos;s first work</h2>
                 <p className="-mt-2 text-sm text-muted-foreground">Each agent reviews your own records and says what it found. Nobody is contacted and nothing is sent.</p>
                 <AgentWork first={info?.agent ?? null} canEdit={view.canEdit} hiringBrief={Boolean(view.prepared.hiringBrief)} />

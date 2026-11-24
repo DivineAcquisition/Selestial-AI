@@ -4,7 +4,7 @@ import { AgentSettings } from "@/components/app/settings/agents";
 import { SectionPage } from "@/components/app/settings/section-page";
 import { SetupHelpCard } from "@/components/app/tutorials/setup-help";
 
-export const metadata: Metadata = { title: "Agent controls" };
+export const metadata: Metadata = { title: "Agent permissions" };
 
 export default function Page() {
   return (

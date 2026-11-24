@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 import { api } from "../../../../convex/_generated/api";
+import { TextPreferences } from "./text-preferences";
 
 const STATUS_WORDS: Record<string, { label: string; tone: "ok" | "wait" | "bad" | "muted" }> = {
   queued: { label: "Sending", tone: "wait" },
@@ -69,7 +70,12 @@ export function NotificationPreferences() {
       </div>
     );
   }
-  return <PreferencesView data={mine} timezone={timezone} busy={busy} error={error} onToggle={(category, on) => void run(() => setEmail({ companyId, category, on }))} onClearBlock={() => void run(() => clearBlock({ companyId }))} />;
+  return (
+    <div className="grid gap-4">
+      <PreferencesView data={mine} timezone={timezone} busy={busy} error={error} onToggle={(category, on) => void run(() => setEmail({ companyId, category, on }))} onClearBlock={() => void run(() => clearBlock({ companyId }))} />
+      <TextPreferences categories={mine.categories} quiet={mine.textQuiet} />
+    </div>
+  );
 }
 
 export function PreferencesView({ data: mine, timezone, busy, error, onToggle, onClearBlock }: { data: PreferencesData; timezone: string; busy: boolean; error: string | null; onToggle: (category: PreferencesData["categories"][number]["category"], on: boolean) => void; onClearBlock: () => void }) {
@@ -94,6 +100,7 @@ export function PreferencesView({ data: mine, timezone, busy, error, onToggle, o
       ) : null}
 
       <Panel flush title="Email me about">
+        <p className="border-b border-border px-4 py-2.5 text-xs text-muted-foreground sm:px-5">Each switch saves as soon as you change it. There is nothing else to save.</p>
         <ul className="divide-y divide-border">
           {mine.categories.map((row) => (
             <Row key={row.category} label={row.label} about={row.about} on={row.on} locked={row.locked} busy={busy} onChange={(on) => onToggle(row.category, on)} />
@@ -102,7 +109,7 @@ export function PreferencesView({ data: mine, timezone, busy, error, onToggle, o
       </Panel>
       {error ? (
         <p role="alert" className="text-sm text-red-700">
-          {error}
+          {error} That change was not saved.
         </p>
       ) : null}
 

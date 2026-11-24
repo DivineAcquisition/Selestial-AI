@@ -127,7 +127,13 @@ export async function conversationFocus(ctx: QueryCtx, conversation: Doc<"conver
       lines.push(`- It began in the Sales workspace on a ${draft.mode === "booking" ? (draft.bookingKind === "recurring" ? "recurring booking" : "one-time booking") : `${draft.segment} proposal`} draft (draft id ${draft._id}) for ${customer ? clip(customer.name, 80) : "a customer not chosen yet"}. Use the sales tools to read the draft and prepare changes to it; a person reviews and applies them in the workspace. Never send, charge, sign or confirm from here.`);
     }
   }
-  if (conversation.origin?.kind === "research") lines.push(`- It began in Services & Pricing › Research & Insights, with the question: "${clip(conversation.origin.question, 500)}". Keep helping with that research unless the person moves on.`);
+  if (conversation.origin?.kind === "service_draft") {
+    const service = await ctx.db.get(conversation.origin.serviceId);
+    if (service && service.companyId === conversation.companyId) {
+      lines.push(`- It is the assistant beside the service "${clip(service.name, 80)}" (service id ${service._id}) in Services & Pricing. The person sees its draft and a live preview next to this chat. Read it with read_service. Make the changes they ask for with edit_service_draft on this service only; it updates their screen at once. Use only amounts the person gave or that are already on the service: ask for any amount you'd need. Never publish, approve or confirm template amounts: the person does that in the workspace. When asked what is missing before it can go live, read the service and list its blockers in plain words.`);
+    }
+  }
+  if (conversation.origin?.kind === "research") lines.push(`- It began in Services & Pricing › Market research, with the question: "${clip(conversation.origin.question, 500)}". Keep helping with that research unless the person moves on.`);
   const briefs = await ctx.db
     .query("researchBriefs")
     .withIndex("by_company_conversation", (q) => q.eq("companyId", conversation.companyId).eq("conversationId", conversation._id))

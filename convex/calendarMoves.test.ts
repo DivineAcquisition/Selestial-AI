@@ -4,7 +4,7 @@
  * Moving a visit from Calendar (convex/calendarMoves.ts): Dispatch's own move, with Calendar's preview of
  * everything it touches, the person's choice of notices, and a client notice that never undoes a move.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { accepted, dispatchTestEnv, flush, setup } from "../tests/dispatchHarness";
 import { addMember, HOUR, JOB_START, refusal } from "../tests/harness";
@@ -88,6 +88,9 @@ describe("Calendar: moving a visit", () => {
     expect((await s.job(a.jobId)).job.startsAt).toBe(JOB_START);
   });
   it("queues one text to the client when they can be texted, and sending twice queues it once", async () => {
+    // Customer texts go only inside sending hours, 8 AM to 9 PM the customer's time. The harness clock is 6 AM in
+    // Chicago, so this runs at 8 AM.
+    vi.setSystemTime(Date.now() + 2 * 60 * 60 * 1000);
     const s = await setup();
     const a = await accepted(s);
     await s.t.run(async (ctx) => {

@@ -21,7 +21,9 @@ export type Blocker = { key: string; words: string; next: string; href?: string 
 export type Operation = { key: OperationKey; label: string; state: "ready" | "blocked" | "attention"; blockers: Blocker[] };
 export type Readiness = { operations: Operation[] };
 
-const SETTINGS = "/app/settings/compliance";
+/** Legal identity is part of Company profile; sending, registration and consent wording are Email & texting. */
+const PROFILE = "/app/settings/business";
+const MESSAGING = "/app/settings/messaging";
 const SUSPENDED: Blocker = { key: "suspended", words: "Selestial has suspended sending for this company.", next: "Contact Selestial support to find out why and what is needed." };
 
 function op(key: OperationKey, ready: string, notReady: string, blockers: Blocker[], attention: Blocker[] = []): Operation {
@@ -53,12 +55,12 @@ export async function readiness(ctx: Ctx, company: Doc<"companies">): Promise<Re
   operations.push(sms);
 
   // Email.
-  const emailGaps = senderGaps(profile.messaging, "email").map((gap) => ({ key: gap.key, words: gap.words, next: "Enter the address emails are sent from.", href: `${SETTINGS}#messaging` }));
+  const emailGaps = senderGaps(profile.messaging, "email").map((gap) => ({ key: gap.key, words: gap.words, next: "Enter the address emails are sent from.", href: `${MESSAGING}#messaging` }));
   operations.push(op("email", "Ready for email", suspended.length ? "Email is suspended" : "Email is not set up", [...suspended, ...emailGaps]));
 
   // Agents.
-  const paused = company.pausedAgents.map((agent) => ({ key: `paused_${agent}`, words: `${AGENT_PROFILES[agent].name} is paused and sends nothing.`, next: "Resume it when you are ready.", href: "/app/settings" }));
-  const agentAttention = sms.state === "ready" ? paused : [...paused, { key: "agents_cannot_text", words: "Agents cannot text anyone until texting is ready.", next: "Finish the texting setup above.", href: `${SETTINGS}#messaging` }];
+  const paused = company.pausedAgents.map((agent) => ({ key: `paused_${agent}`, words: `${AGENT_PROFILES[agent].name} is paused and sends nothing.`, next: "Resume it when you are ready.", href: "/app/settings/agents" }));
+  const agentAttention = sms.state === "ready" ? paused : [...paused, { key: "agents_cannot_text", words: "Agents cannot text anyone until texting is ready.", next: "Finish the texting setup above.", href: `${MESSAGING}#messaging` }];
   operations.push(op("agents", "Agents can send", suspended.length ? "Agents are suspended" : "Agents need attention", suspended, agentAttention));
 
   // Recipient choices on file.
@@ -70,10 +72,10 @@ export async function readiness(ctx: Ctx, company: Doc<"companies">): Promise<Re
   // Who the company is.
   const missing: Blocker[] = [];
   const identity = profile.identity;
-  if (!identity.legalName) missing.push({ key: "legal_name", words: "The company's legal name is missing.", next: "Enter the legal name as registered.", href: `${SETTINGS}#identity` });
-  if (!identity.address) missing.push({ key: "address", words: "The business address is missing.", next: "Enter the business address.", href: `${SETTINGS}#identity` });
-  if (!identity.representative) missing.push({ key: "representative", words: "No authorised representative is named.", next: "Name the person who answers for the company's messaging.", href: `${SETTINGS}#identity` });
-  if (!identity.supportEmail && !identity.supportPhone) missing.push({ key: "support_contact", words: "There is no support contact for people who ask for help.", next: "Enter a support email or phone number.", href: `${SETTINGS}#identity` });
+  if (!identity.legalName) missing.push({ key: "legal_name", words: "The company's legal name is missing.", next: "Enter the legal name as registered.", href: `${PROFILE}#identity` });
+  if (!identity.address) missing.push({ key: "address", words: "The business address is missing.", next: "Enter the business address.", href: `${PROFILE}#identity` });
+  if (!identity.representative) missing.push({ key: "representative", words: "No authorised representative is named.", next: "Name the person who answers for the company's messaging.", href: `${PROFILE}#identity` });
+  if (!identity.supportEmail && !identity.supportPhone) missing.push({ key: "support_contact", words: "There is no support contact for people who ask for help.", next: "Enter a support email or phone number.", href: `${PROFILE}#identity` });
   operations.push(op("identity", "Business details complete", "Business details are incomplete", [], missing));
 
   return { operations };
@@ -108,7 +110,7 @@ async function dataOperation(ctx: Ctx, companyId: Id<"companies">): Promise<Oper
     .withIndex("by_company_channel_category", (q) => q.eq("companyId", companyId).eq("channel", "sms").eq("category", "marketing"))
     .first();
   if (!disclosure) {
-    attention.push({ key: "marketing_disclosure", words: "There is no wording on file for marketing texts, so none can be sent.", next: "Add the exact wording people see when they agree to marketing texts.", href: `${SETTINGS}#disclosures` });
+    attention.push({ key: "marketing_disclosure", words: "There is no wording on file for marketing texts, so none can be sent.", next: "Add the exact wording people see when they agree to marketing texts.", href: `${MESSAGING}#disclosures` });
   }
   return op("data", "Contact permissions on file", "Contact permissions need attention", [], attention);
 }

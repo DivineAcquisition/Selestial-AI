@@ -134,6 +134,8 @@ export function SignupScreen({ policy }: { policy: PasswordPolicy | null }) {
           </p>
         ) : null}
         <ConsentField checked={agreed} onChange={setAgreed} disabled={busy} />
+        {/* Where the sign-in service draws its bot check (CAPTCHA) when it needs one. Empty otherwise. */}
+        <div id="clerk-captcha" data-cl-theme="light" data-cl-size="flexible" />
         <SubmitButton busy={busy} busyLabel="Creating your account" disabled={!signUp || name.trim() === "" || email.trim() === "" || !meets(policy, password) || confirm === "" || !agreed}>
           Create account
         </SubmitButton>

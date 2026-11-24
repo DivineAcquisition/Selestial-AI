@@ -1,25 +1,25 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { IssueCards } from "@/components/app/issues/issue-cards";
-import { EmailPreviews } from "@/components/app/settings/email-previews";
 import { NotificationPreferences } from "@/components/app/settings/notification-preferences";
 import { SectionPage } from "@/components/app/settings/section-page";
 
-export const metadata: Metadata = { title: "Notifications" };
+export const metadata: Metadata = { title: "My notifications" };
 
 export default function Page() {
   return (
     <SectionPage id="notifications">
-      <div className="grid gap-10">
+      <div className="grid gap-6">
         <IssueCards place="notifications" />
         <NotificationPreferences />
-        <section aria-labelledby="email-previews" className="grid gap-3">
-          <div>
-            <h2 id="email-previews" className="font-heading text-lg text-strong">Email previews</h2>
-            <p className="max-w-2xl text-sm text-muted-foreground">Every email Selestial sends to your team, and the ones it sends to your customers, applicants and cleaners on your company&apos;s behalf.</p>
-          </div>
-          <EmailPreviews />
-        </section>
+        <p className="text-sm text-muted-foreground">
+          Looking for the emails Selestial sends your customers, applicants and cleaners? They are in{" "}
+          <Link href="/app/settings/company-messages" className="font-medium text-brand-600 underline-offset-2 hover:underline">
+            Company messages &amp; previews
+          </Link>
+          .
+        </p>
       </div>
     </SectionPage>
   );

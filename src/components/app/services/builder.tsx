@@ -2,40 +2,46 @@
 
 import { useMutation, useQuery } from "convex/react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { ConversationBody } from "@/components/app/chat/thread";
+import { ActionMenu } from "@/components/app/clients/menu";
 import { useCompany } from "@/components/app/company";
 import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
-import { ArrowLeft, ArrowRight, Check, RollbackIcon, Sparkles } from "@/components/icons";
+import { ArrowLeft, ChevronDown, Eye, RollbackIcon, RotateCcw, SendIcon, Sparkles } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button-variants";
+import { useConfirm } from "@/components/ui/fields/confirm";
+import { Sheet, SheetPanel, SheetPopup, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BUILDER_STEPS, changePath, SERVICES_ROOT, stepOf, type BuilderStep } from "@/lib/app/services";
+import { changePath, EDITOR_SECTIONS, SERVICES_ROOT, sectionOf, type EditorSection } from "@/lib/app/services";
+import { newClientKey } from "@/lib/app/chat/session";
 import { cn } from "@/lib/utils";
 
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { checkSpec, priceSummary } from "../../../../convex/lib/services/engine";
 import { CATEGORY_LABELS, type Spec } from "../../../../convex/lib/services/spec";
-import { canonical, describeChanges, keptTemplateAmounts, type KeptAmount } from "../../../../convex/lib/services/store";
+import { canonical, keptTemplateAmounts, type KeptAmount } from "../../../../convex/lib/services/store";
 import { TEMPLATES } from "../../../../convex/lib/services/templates";
 import { ServicePreview } from "./preview";
 import { PropertyPrices } from "./property-prices";
-import { ChangeBadge, day, Empty, Notice, SectionTitle, Toggle, when } from "./shared";
+import { ChangeBadge, day, Empty, formatCents, Notice, SectionTitle, Toggle, when } from "./shared";
 import { BasicsStep, ExtrasStep, PricingStep, ScopeStep, TeamStep, type StepProps } from "./steps";
-import { useConfirm } from "@/components/ui/fields/confirm";
 
 type View = NonNullable<ReturnType<typeof useQuery<typeof api.services.service>>>;
+type Costs = Parameters<typeof ServicePreview>[0]["costs"];
+type Rail = "preview" | "assistant" | "review";
 
-/** One service: the guided builder for its draft, or its live version with its history. */
+/** One service: its workspace while a draft is open, or its live version with its history. */
 export function ServiceBuilder({ serviceId }: { serviceId: string }) {
   const { companyId } = useCompany();
   const view = useQuery(api.services.service, { companyId, serviceId: serviceId as Id<"services"> });
   const profile = useQuery(api.services.profile, { companyId });
   if (view === undefined) return <Skeleton className="h-[32rem] rounded-2xl" />;
-  const main = view.draft && view.canDraft ? <DraftEditor key={`${view.service.id}`} view={view} costs={profile?.costs ?? null} canSeeCosts={view.canPublish} /> : <LiveService view={view} costs={profile?.costs ?? null} />;
+  const main = view.draft && view.canDraft ? <ServiceWorkspace key={`${view.service.id}`} view={view} costs={profile?.costs ?? null} canSeeCosts={view.canPublish} /> : <LiveService view={view} costs={profile?.costs ?? null} />;
   // A property's own price follows the live version, whether or not a draft is open.
   if (!view.live) return main;
   return (
@@ -46,31 +52,44 @@ export function ServiceBuilder({ serviceId }: { serviceId: string }) {
   );
 }
 
-// ── The draft editor ────────────────────────────────────────────────────────────────────────────────
+// ── The service workspace ───────────────────────────────────────────────────────────────────────────
 
 type SaveState = { kind: "saved"; at: number } | { kind: "saving" } | { kind: "unsaved" } | { kind: "conflict"; by: string; at: number; revision: number } | { kind: "error"; message: string };
 
+const RAIL_TABS: { id: Rail; label: string }[] = [
+  { id: "preview", label: "Preview" },
+  { id: "assistant", label: "Selestial" },
+  { id: "review", label: "Review" },
+];
+
 /**
- * Edits are applied here at once and saved after a short pause, naming the revision they started from.
- * If someone (a person, or Selestial in Chat) saved first, the save is refused and both versions are
- * kept: this screen's edits stay on screen until the person chooses. A newer draft from elsewhere is
- * adopted automatically only when this screen has nothing unsaved.
+ * One page for the whole service: three sections edited in place, with the customer preview, Selestial
+ * and Review & publish beside it (a sheet on a phone).
+ *
+ * Edits land on screen at once and are saved after a short pause, naming the revision they started from.
+ * If someone (a person, or Selestial) saved first, the save is refused and both versions are kept until
+ * the person chooses. A newer draft from elsewhere is adopted automatically only when nothing here is
+ * unsaved, so Selestial's edits appear live without ever replacing what the person is typing.
  */
-function DraftEditor({ view, costs, canSeeCosts }: { view: View; costs: Parameters<typeof ServicePreview>[0]["costs"]; canSeeCosts: boolean }) {
+function ServiceWorkspace({ view, costs, canSeeCosts }: { view: View; costs: Costs; canSeeCosts: boolean }) {
   const { companyId } = useCompany();
+  const params = useSearchParams();
   const draft = view.draft!;
   const save = useMutation(api.services.saveDraft);
   const [spec, setSpec] = useState<Spec>(draft.spec);
   const [base, setBase] = useState({ revision: draft.revision, spec: draft.spec });
   const [seen, setSeen] = useState(draft.revision);
-  const [step, setStep] = useState<BuilderStep>(stepOf(draft.step));
   const [state, setState] = useState<SaveState>({ kind: "saved", at: draft.updatedAt });
-  const [pane, setPane] = useState<"edit" | "preview">("edit");
+  const asked = params?.get("panel");
+  const [rail, setRail] = useState<Rail>(asked === "assistant" || asked === "review" ? asked : draft.step === "review" ? "review" : "preview");
+  const [sheet, setSheet] = useState<Rail | null>(null);
+  const [closed, setClosed] = useState<EditorSection[]>([]);
+  const [seed, setSeed] = useState<{ text: string; n: number } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const latest = useRef({ spec: draft.spec, step: stepOf(draft.step), revision: draft.revision });
+  const latest = useRef({ spec: draft.spec, revision: draft.revision });
   const dirty = canonical(spec) !== canonical(base.spec);
 
-  // Someone else saved (Chat, another tab, a teammate). With nothing unsaved here, show theirs at once.
+  // Someone else saved (Selestial, another tab, a teammate). With nothing unsaved here, show theirs at once.
   if (draft.revision !== seen) {
     setSeen(draft.revision);
     if (!dirty) {
@@ -84,22 +103,33 @@ function DraftEditor({ view, costs, canSeeCosts }: { view: View; costs: Paramete
   }, [base.revision]);
 
   const flush = useCallback(
-    async (next: Spec, nextStep: BuilderStep, revision: number) => {
+    async (next: Spec, revision: number): Promise<number | null> => {
       setState({ kind: "saving" });
       try {
-        const result = await save({ companyId, serviceId: view.service.id, expectedRevision: revision, spec: next, step: nextStep });
-        if (!result.ok) setState({ kind: "conflict", by: result.conflict.by, at: result.conflict.at, revision: result.conflict.revision });
-        else {
-          latest.current = { ...latest.current, revision: result.revision };
-          setBase({ revision: result.revision, spec: next });
-          setState({ kind: "saved", at: Date.now() });
+        const result = await save({ companyId, serviceId: view.service.id, expectedRevision: revision, spec: next, step: draft.step });
+        if (!result.ok) {
+          setState({ kind: "conflict", by: result.conflict.by, at: result.conflict.at, revision: result.conflict.revision });
+          return null;
         }
+        latest.current = { ...latest.current, revision: result.revision };
+        setBase({ revision: result.revision, spec: next });
+        setState({ kind: "saved", at: Date.now() });
+        return result.revision;
       } catch (error) {
         setState({ kind: "error", message: (error as { data?: { message?: string } }).data?.message ?? "That could not be saved. Your edits are still here." });
+        return null;
       }
     },
-    [companyId, save, view.service.id],
+    [companyId, draft.step, save, view.service.id],
   );
+
+  /** Saves anything waiting now. The revision the screen shows afterwards, or null when it couldn't save. */
+  const settle = useCallback(async (): Promise<number | null> => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    if (canonical(latest.current.spec) === canonical(base.spec)) return latest.current.revision;
+    return flush(latest.current.spec, latest.current.revision);
+  }, [base.spec, flush]);
 
   // Leaving with unsaved edits asks first.
   useEffect(() => {
@@ -117,8 +147,12 @@ function DraftEditor({ view, costs, canSeeCosts }: { view: View; costs: Paramete
     },
     [],
   );
+  // An address ending in #price (or #service, #booking) opens at that section.
+  useEffect(() => {
+    const id = window.location.hash.slice(1);
+    if (EDITOR_SECTIONS.some((s) => s.id === id)) document.getElementById(`section-${id}`)?.scrollIntoView({ block: "start" });
+  }, []);
 
-  /** Every edit lands on screen at once and is saved after a short pause, against the revision it started from. */
   const edit = (change: (current: Spec) => Spec) => {
     if (state.kind === "conflict") return;
     const next = change(latest.current.spec);
@@ -126,145 +160,207 @@ function DraftEditor({ view, costs, canSeeCosts }: { view: View; costs: Paramete
     setSpec(next);
     setState((s) => (s.kind === "error" || s.kind === "saving" ? s : { kind: "unsaved" }));
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => void flush(latest.current.spec, latest.current.step, latest.current.revision), 900);
-  };
-  const goTo = (next: BuilderStep) => {
-    setStep(next);
-    latest.current = { ...latest.current, step: next };
-    if (timer.current) clearTimeout(timer.current);
-    if (!dirty) void save({ companyId, serviceId: view.service.id, expectedRevision: base.revision, spec, step: next }).catch(() => undefined);
-    else void flush(spec, next, base.revision);
-    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+    timer.current = setTimeout(() => void flush(latest.current.spec, latest.current.revision), 900);
   };
   const problems = useMemo(() => checkSpec(spec), [spec]);
   const blockers = problems.filter((p) => p.severity === "blocker");
   const template = useMemo(() => TEMPLATES.find((t) => t.id === view.service.templateId)?.spec ?? null, [view.service.templateId]);
   const kept = useMemo(() => (spec.illustrative && template ? keptTemplateAmounts(spec, template) : []), [spec, template]);
-  const index = BUILDER_STEPS.findIndex((s) => s.id === step);
   const props: StepProps = { spec, edit, disabled: state.kind === "conflict" };
 
+  const goTo = (target: EditorSection | "review") => {
+    if (target === "review") return open("review");
+    setClosed((list) => list.filter((s) => s !== target));
+    setSheet(null);
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`section-${target}`);
+      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+      el?.querySelector<HTMLElement>("h2 button")?.focus({ preventScroll: true });
+    });
+  };
+  /** Opens a panel: beside the editor on a wide screen, as a sheet on a phone. */
+  const open = (next: Rail) => {
+    setRail(next);
+    if (typeof window !== "undefined" && !window.matchMedia("(min-width: 64rem)").matches) setSheet(next);
+  };
+  const ask = (text: string) => {
+    setSeed((last) => ({ text, n: (last?.n ?? 0) + 1 }));
+    open("assistant");
+  };
+
+  const panel = (which: Rail) =>
+    which === "preview" ? (
+      <ServicePreview spec={spec} costs={costs} canSeeCosts={canSeeCosts} />
+    ) : which === "assistant" ? (
+      <AssistantPanel serviceId={view.service.id} settle={settle} seed={seed} />
+    ) : (
+      <ReviewPanel view={view} spec={spec} edit={edit} kept={kept} revision={base.revision} dirty={dirty || state.kind === "saving"} blockers={blockers.map((b) => ({ message: b.message, section: sectionOf(b.field) }))} goTo={goTo} settle={settle} />
+    );
+
   return (
-    <div className="grid grid-cols-1 gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="grid grid-cols-1 gap-4 pb-20 lg:pb-0">
+      <header className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <Link href={SERVICES_ROOT} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-strong">
+          <Link href={SERVICES_ROOT} className="inline-flex items-center gap-1 rounded-md text-sm text-muted-foreground hover:text-strong focus-visible:outline-2 focus-visible:outline-brand-500/50">
             <ArrowLeft aria-hidden className="size-4" /> All services
           </Link>
-          <h2 className="mt-1 truncate font-heading text-xl tracking-tight text-strong">{spec.name || "New service"}</h2>
+          <h1 className="mt-1 truncate font-heading text-2xl tracking-tight text-strong">{spec.name || "New service"}</h1>
           <p className="text-sm text-muted-foreground">
-            {CATEGORY_LABELS[spec.category]} · {priceSummary(spec)} · {view.live ? `editing a draft of live version ${view.live.version}` : "not live yet"}
+            {CATEGORY_LABELS[spec.category]} · {priceSummary(spec)} · {view.live ? `draft of live version ${view.live.version}` : "not live yet"}
             {draft.rollbackOf ? ` · rolling back to version ${draft.rollbackOf}` : ""}
           </p>
         </div>
-        <SaveStatus state={state} />
-      </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <SaveStatus state={state} />
+          <ActionMenu
+            label="More actions"
+            className="h-8 rounded-lg border border-border bg-card px-2"
+            actions={[
+              { label: "Help me price this", onSelect: () => ask("Help me price this service. Ask me for any amount you'd need, and use only the amounts I give or that are already on it.") },
+              { label: "What's missing before review?", onSelect: () => ask("What's missing before this service can be reviewed? List the blockers in order.") },
+              ...(canSeeCosts ? [{ label: "Check my costs", onSelect: () => open("preview") }] : []),
+              { label: "Compare example jobs", href: `${SERVICES_ROOT}/studio` },
+              { label: "Market research", href: `${SERVICES_ROOT}/research` },
+              { label: "Review history", href: `${SERVICES_ROOT}/changes` },
+            ]}
+          />
+          <Button size="sm" variant="primary" onClick={() => open("review")}>
+            {view.canPublish ? "Review & publish" : "Submit for review"}
+          </Button>
+        </div>
+      </header>
 
       {state.kind === "conflict" ? (
         <ConflictBanner
           by={state.by}
           at={state.at}
           onLoadLatest={() => {
-            latest.current = { spec: draft.spec, step, revision: draft.revision };
+            latest.current = { spec: draft.spec, revision: draft.revision };
             setSpec(draft.spec);
             setBase({ revision: draft.revision, spec: draft.spec });
             setState({ kind: "saved", at: draft.updatedAt });
           }}
           onKeepMine={() => {
             latest.current = { ...latest.current, revision: state.revision };
-            void flush(spec, step, state.revision);
+            void flush(spec, state.revision);
           }}
         />
       ) : null}
       {spec.illustrative ? (
-        <Notice tone="warning" title="Illustrative amounts">
+        <Notice tone="warning" title="Example prices">
           <span className="flex flex-wrap items-center justify-between gap-2">
-            <span>{kept.length ? `${kept.length} price${kept.length === 1 ? " is" : "s are"} still the template's example.` : "Some amounts came from a template or an import."} Check them for your market before review.</span>
-            {step !== "review" ? (
-              <Button size="xs" variant="secondary" onClick={() => goTo("review")}>
-                See which
-              </Button>
-            ) : null}
+            <span className="text-strong">{kept.length ? `${kept.length} price${kept.length === 1 ? " is" : "s are"} still the template's example.` : "Some amounts came from a template or an import."} Confirm or replace them for your market before publishing.</span>
+            <Button size="xs" variant="secondary" onClick={() => open("review")}>
+              See which
+            </Button>
           </span>
         </Notice>
       ) : null}
 
-      {/* On a phone: one column, with a switch between editing and the preview. */}
-      <div role="tablist" aria-label="Builder view" className="flex rounded-lg border border-border bg-card p-1 @5xl/main:hidden">
-        {(["edit", "preview"] as const).map((p) => (
-          <button key={p} type="button" role="tab" aria-selected={pane === p} onClick={() => setPane(p)} className={cn("flex-1 rounded-md py-1.5 text-sm", pane === p ? "bg-brand-500/10 font-medium text-strong" : "text-muted-foreground")}>
-            {p === "edit" ? "Edit" : "Preview"}
-          </button>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 @5xl/main:grid-cols-[10.5rem_minmax(0,1fr)_minmax(0,20rem)] @6xl/main:grid-cols-[11rem_minmax(0,1fr)_minmax(0,22rem)] @7xl/main:grid-cols-[12rem_minmax(0,1fr)_minmax(0,26rem)]">
-        <nav aria-label="Builder steps" className={cn("@5xl/main:sticky @5xl/main:top-app-sticky @5xl/main:self-start", pane === "preview" && "hidden @5xl/main:block")}>
-          <div className="mb-2 grid grid-cols-1 gap-1.5 @5xl/main:hidden">
-            <p className="flex items-baseline justify-between gap-2 text-xs text-muted-foreground">
-              <span>
-                Step {index + 1} of {BUILDER_STEPS.length} · <span className="font-medium text-strong">{BUILDER_STEPS[index].label}</span>
-              </span>
-              <span>{blockers.length ? `${blockers.length} to fix` : "Nothing to fix"}</span>
-            </p>
-            <div role="progressbar" aria-label="Builder progress" aria-valuemin={1} aria-valuemax={BUILDER_STEPS.length} aria-valuenow={index + 1} aria-valuetext={`Step ${index + 1} of ${BUILDER_STEPS.length}: ${BUILDER_STEPS[index].label}`} className="h-1.5 w-full rounded-full bg-brand-500/15">
-              <span className="block h-full rounded-full bg-brand-500 transition-[width] duration-300 motion-reduce:transition-none" style={{ width: `${((index + 1) / BUILDER_STEPS.length) * 100}%` }} />
-            </div>
-          </div>
-          <ol className="flex gap-1 overflow-x-auto pb-1 @5xl/main:grid @5xl/main:gap-0.5 @5xl/main:overflow-visible">
-            {BUILDER_STEPS.map((s, i) => {
-              const issues = problems.filter((p) => p.severity === "blocker" && fieldStep(p.field) === s.id).length;
-              const current = step === s.id;
-              return (
-                <li key={s.id} className="shrink-0">
-                  <button type="button" aria-current={current ? "step" : undefined} onClick={() => goTo(s.id)} className={cn("relative flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-brand-500/40", current ? "bg-brand-500/[0.08] font-medium text-strong" : "text-muted-foreground hover:bg-overlay/[0.04] hover:text-strong")}>
-                    <span aria-hidden className={cn("grid size-6 shrink-0 place-items-center rounded-full text-xs tabular-nums", current ? "bg-brand-500 text-white" : issues ? "bg-destructive/10 text-destructive-foreground ring-1 ring-destructive/30" : s.id === "review" ? "bg-muted text-strong" : "bg-success/10 text-success-foreground")}>
-                      {current || issues || s.id === "review" ? i + 1 : <Check className="size-3.5" />}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] xl:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
+        <div className="grid min-w-0 grid-cols-1 gap-4">
+          {EDITOR_SECTIONS.map((section) => {
+            const issues = blockers.filter((b) => sectionOf(b.field) === section.id).length;
+            const isOpen = !closed.includes(section.id);
+            return (
+              <section key={section.id} id={`section-${section.id}`} aria-labelledby={`title-${section.id}`} className="scroll-mt-24 rounded-2xl border border-border bg-card">
+                <h2 id={`title-${section.id}`} className="text-base">
+                  <button type="button" aria-expanded={isOpen} aria-controls={`body-${section.id}`} onClick={() => setClosed((list) => (isOpen ? [...list, section.id] : list.filter((s) => s !== section.id)))} className="flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-left focus-visible:outline-2 focus-visible:outline-brand-500/50 sm:px-6">
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-heading text-lg tracking-tight text-strong">{section.label}</span>
+                      <span className="block text-sm font-normal text-muted-foreground">{section.blurb}</span>
                     </span>
-                    <span className="whitespace-nowrap">{s.label}</span>
-                    <span className="sr-only">{issues ? `, ${issues} to fix` : s.id === "review" ? "" : ", nothing to fix"}</span>
                     {issues ? (
-                      <span aria-hidden className="ml-auto rounded-full bg-destructive/10 px-1.5 text-[11px] text-destructive-foreground">
-                        {issues}
-                      </span>
+                      <Badge variant="warning" size="sm">
+                        {issues} to fix
+                      </Badge>
                     ) : null}
+                    <ChevronDown aria-hidden className={cn("size-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none", isOpen && "rotate-180")} />
                   </button>
-                </li>
-              );
-            })}
-          </ol>
-          <p className="mt-3 hidden text-xs text-muted-foreground @5xl/main:block">{BUILDER_STEPS[index].blurb}</p>
-          <AssistantCard serviceId={view.service.id} name={spec.name} />
-        </nav>
+                </h2>
+                {isOpen ? (
+                  <div id={`body-${section.id}`} className="grid gap-8 border-t border-border px-4 py-5 sm:px-6">
+                    {section.id === "service" ? (
+                      <>
+                        <BasicsStep {...props} />
+                        <ScopeStep {...props} />
+                      </>
+                    ) : section.id === "price" ? (
+                      <>
+                        <PricingStep {...props} />
+                        <ExtrasStep {...props} part="extras" />
+                        <MoreOptions label="More options" detail="Recurring discounts, condition, travel, rush, demand, promotions and minimum charge">
+                          <ExtrasStep {...props} part="adjustments" />
+                        </MoreOptions>
+                      </>
+                    ) : (
+                      <TeamStep {...props} />
+                    )}
+                  </div>
+                ) : null}
+              </section>
+            );
+          })}
+        </div>
 
-        <section aria-label={BUILDER_STEPS[index].label} className={cn("min-w-0 rounded-2xl border border-border bg-card p-4 sm:p-6", pane === "preview" && "hidden @5xl/main:block")}>
-          {step === "basics" ? <BasicsStep {...props} /> : step === "scope" ? <ScopeStep {...props} /> : step === "pricing" ? <PricingStep {...props} /> : step === "team" ? <TeamStep {...props} /> : step === "extras" ? <ExtrasStep {...props} /> : <ReviewStep view={view} spec={spec} edit={edit} kept={kept} revision={base.revision} dirty={dirty} blockers={blockers.map((b) => ({ message: b.message, step: fieldStep(b.field) }))} warnings={problems.filter((p) => p.severity === "warning").map((p) => p.message)} goTo={goTo} />}
-          <div className="mt-6 flex items-center justify-between gap-2 border-t border-border pt-4">
-            <Button variant="ghost" size="sm" disabled={index === 0} onClick={() => goTo(BUILDER_STEPS[index - 1].id)}>
-              <ArrowLeft aria-hidden /> Back
-            </Button>
-            {index < BUILDER_STEPS.length - 1 ? (
-              <Button variant="secondary" size="sm" onClick={() => goTo(BUILDER_STEPS[index + 1].id)}>
-                Next: {BUILDER_STEPS[index + 1].label} <ArrowRight aria-hidden />
-              </Button>
-            ) : null}
-          </div>
-        </section>
-
-        <aside aria-label="Preview" className={cn("min-w-0 @5xl/main:sticky @5xl/main:top-app-sticky @5xl/main:max-h-app-sticky @5xl/main:self-start @5xl/main:overflow-y-auto", pane === "edit" && "hidden @5xl/main:block")}>
-          <ServicePreview spec={spec} costs={costs} canSeeCosts={canSeeCosts} />
+        {/* Beside the editor on a wide screen. */}
+        <aside aria-label="Preview, Selestial and review" className="hidden min-w-0 lg:sticky lg:top-app-sticky lg:flex lg:max-h-app-sticky lg:flex-col lg:gap-3 lg:self-start">
+          <RailTabs value={rail} onChange={setRail} />
+          <div className="min-h-0 flex-1 overflow-y-auto">{panel(rail)}</div>
         </aside>
       </div>
+
+      {/* On a phone: a bar at the bottom opens each panel as a sheet. */}
+      <nav aria-label="Service panels" className="fixed inset-x-0 bottom-0 z-sticky flex gap-2 border-t border-border bg-background/95 px-4 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur lg:hidden">
+        <Button size="sm" variant="secondary" className="flex-1" onClick={() => setSheet("preview")}>
+          <Eye aria-hidden /> Preview
+        </Button>
+        <Button size="sm" variant="secondary" className="flex-1" onClick={() => setSheet("assistant")}>
+          <Sparkles aria-hidden /> Selestial
+        </Button>
+        <Button size="sm" variant="primary" className="flex-1" onClick={() => setSheet("review")}>
+          {view.canPublish ? "Publish" : "Submit"}
+        </Button>
+      </nav>
+      <Sheet open={sheet !== null} onOpenChange={(next) => !next && setSheet(null)}>
+        <SheetPopup side="bottom" className="max-h-[88dvh] bg-card">
+          <div className="px-4 pt-4 pr-12">
+            <SheetTitle className="text-lg">{sheet === "assistant" ? "Selestial" : sheet === "review" ? (view.canPublish ? "Review & publish" : "Submit for review") : "Customer preview"}</SheetTitle>
+          </div>
+          <SheetPanel className="p-4">{sheet ? panel(sheet) : null}</SheetPanel>
+        </SheetPopup>
+      </Sheet>
     </div>
   );
 }
 
-function fieldStep(field: string): BuilderStep {
-  if (field === "name" || field === "summary") return "basics";
-  if (field.startsWith("included") || field.startsWith("excluded")) return "scope";
-  if (field.startsWith("pricing")) return "pricing";
-  if (field.startsWith("requirements") || field.startsWith("str") || field.startsWith("team")) return "team";
-  if (field.startsWith("addOns") || field.startsWith("modifiers")) return "extras";
-  return "review";
+function RailTabs({ value, onChange }: { value: Rail; onChange: (rail: Rail) => void }) {
+  return (
+    <div role="tablist" aria-label="Beside the editor" className="flex rounded-xl border border-border bg-card p-1">
+      {RAIL_TABS.map((tab) => (
+        <button key={tab.id} type="button" role="tab" aria-selected={value === tab.id} onClick={() => onChange(tab.id)} className={cn("min-h-8 flex-1 rounded-lg text-sm transition-colors focus-visible:outline-2 focus-visible:outline-brand-500/50", value === tab.id ? "bg-brand-500/10 font-medium text-strong" : "text-muted-foreground hover:text-strong")}>
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Settings most services don't need, folded until they are wanted. */
+function MoreOptions({ label, detail, children }: { label: string; detail: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-xl border border-border">
+      <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left focus-visible:outline-2 focus-visible:outline-brand-500/50">
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-medium text-strong">{label}</span>
+          <span className="block text-xs text-muted-foreground">{detail}</span>
+        </span>
+        <ChevronDown aria-hidden className={cn("size-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none", open && "rotate-180")} />
+      </button>
+      {open ? <div className="border-t border-border p-4">{children}</div> : null}
+    </div>
+  );
 }
 
 function SaveStatus({ state }: { state: SaveState }) {
@@ -296,45 +392,175 @@ function ConflictBanner({ by, at, onLoadLatest, onKeepMine }: { by: string; at: 
   );
 }
 
-/** Selestial in Chat, on this same draft. It edits through the same tools; this screen picks the change up. */
-function AssistantCard({ serviceId, name }: { serviceId: string; name: string }) {
+// ── Selestial, beside the service ──────────────────────────────────────────────────────────────────
+
+const STARTERS = ["Help me price this", "What's missing before review?", "Write the customer description", "Suggest what's included and not included"];
+
+/**
+ * Selestial working on this one service, in place. It is the same assistant as Chat, with the same tools
+ * and credits, focused on this draft: each request carries the revision on screen, so an answer that
+ * arrives after newer edits changes nothing. Its edits are listed with what they changed, and each can be
+ * undone without touching anything edited since.
+ */
+function AssistantPanel({ serviceId, settle, seed }: { serviceId: Id<"services">; settle: () => Promise<number | null>; seed: { text: string; n: number } | null }) {
   const { companyId } = useCompany();
+  const found = useQuery(api.services.assistant, { companyId, serviceId });
+  const [started, setStarted] = useState<string | null>(null);
+  const conversationId = started ?? found?.conversationId ?? null;
+  const thread = useQuery(api.chat.thread, conversationId ? { companyId, conversationId } : "skip");
   const send = useMutation(api.chat.send);
-  const [sent, setSent] = useState<string | null>(null);
-  const { busy, run } = useRun();
-  const ask = (text: string) =>
-    run(async () => {
-      const result = await send({ companyId, text: `${text}\n\nThe service is "${name || "this new service"}" (service id ${serviceId}) in Services & Pricing. Read it with read_service. Make changes with edit_service_draft only with amounts I give; ask me for any amount you'd need.`, clientKey: `builder-${serviceId}-${Date.now()}`, page: `${SERVICES_ROOT}/${serviceId}` });
-      setSent(result.conversationId as string);
-    });
+  const stop = useMutation(api.chat.stop);
+  const [text, setText] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  // A request from the More menu fills the box; the person sends it.
+  const [seenSeed, setSeenSeed] = useState(0);
+  if (seed && seed.n !== seenSeed) {
+    setSeenSeed(seed.n);
+    setText(seed.text);
+  }
+  const live = thread?.run?.status === "running" || thread?.run?.status === "queued";
+
+  const submit = useCallback(
+    async (words: string) => {
+      const message = words.trim();
+      if (!message || sending) return;
+      setError(null);
+      setSending(true);
+      try {
+        // Unsaved edits are saved first, so Selestial works from exactly what is on screen.
+        const revision = await settle();
+        if (revision === null) throw new Error("Your latest edits aren't saved yet, so nothing was sent. Resolve the save above, then ask again.");
+        const result = await send({ companyId, conversationId: conversationId ?? undefined, text: message, clientKey: newClientKey(), origin: { kind: "service_draft", serviceId }, draftRevision: revision, page: typeof window === "undefined" ? undefined : window.location.pathname });
+        setStarted(result.conversationId as string);
+        setText("");
+      } catch (caught) {
+        setError((caught as { data?: { message?: string } }).data?.message ?? (caught as Error).message ?? "That couldn't be sent.");
+      } finally {
+        setSending(false);
+      }
+    },
+    [companyId, conversationId, send, sending, serviceId, settle],
+  );
+
   return (
-    <div className="mt-4 hidden rounded-xl border border-brand-500/20 bg-brand-500/[0.04] p-3 @5xl/main:block">
-      <p className="flex items-center gap-1.5 text-sm font-medium text-strong">
-        <Sparkles aria-hidden className="size-4 text-brand-600" /> Selestial
-      </p>
-      <p className="mt-1 text-xs text-muted-foreground">Ask for help on this draft. Changes it makes appear here.</p>
-      <div className="mt-2 grid gap-1">
-        {["Suggest included tasks and exclusions", "Write the customer description", "Check my price against my costs"].map((prompt) => (
-          <button key={prompt} type="button" disabled={busy} onClick={() => void ask(prompt)} className="rounded-lg border border-border bg-card px-2 py-1.5 text-left text-xs text-strong hover:border-brand-500/40 disabled:opacity-60">
-            {prompt}
-          </button>
-        ))}
+    <div className="grid gap-3">
+      <div className="rounded-xl border border-border bg-card p-3">
+        <p className="text-sm font-medium text-strong">Selestial on this service</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">It reads and edits this draft only, uses only amounts you give or that are already here, and never publishes. Each answer uses one Chat credit; a retry of a failed answer isn&apos;t charged again.</p>
       </div>
-      {sent ? (
-        <Link href={`/app/chat/${sent}`} className="mt-2 inline-block text-xs font-medium text-brand-300 underline-offset-4 hover:underline dark:text-brand-300">
-          Open the conversation
-        </Link>
-      ) : null}
+      <DraftEdits serviceId={serviceId} />
+      {conversationId ? (
+        <div className="max-h-[28rem] overflow-y-auto rounded-xl border border-border bg-card px-3">
+          <ConversationBody conversationId={conversationId} compact onChoice={(choice) => void submit(choice)} />
+        </div>
+      ) : (
+        <ul className="grid gap-1.5">
+          {STARTERS.map((starter) => (
+            <li key={starter}>
+              <button type="button" onClick={() => setText(starter)} className="w-full rounded-lg border border-border bg-card px-3 py-2 text-left text-sm text-strong hover:border-brand-500/40 focus-visible:outline-2 focus-visible:outline-brand-500/50">
+                {starter}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form
+        className="grid gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submit(text);
+        }}
+      >
+        <label className="sr-only" htmlFor={`ask-${serviceId}`}>
+          Ask Selestial about this service
+        </label>
+        <TextArea id={`ask-${serviceId}`} rows={3} value={text} onChange={(event) => setText(event.target.value)} placeholder="Ask about this service, or say what to change…" onKeyDown={(event) => {
+          if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+            event.preventDefault();
+            void submit(text);
+          }
+        }} />
+        <FormError message={error} />
+        <div className="flex items-center justify-end gap-2">
+          {live ? (
+            <Button type="button" size="sm" variant="ghost" onClick={() => conversationId && void stop({ companyId, conversationId }).catch(() => undefined)}>
+              Stop
+            </Button>
+          ) : null}
+          <Button type="submit" size="sm" variant="primary" loading={sending} disabled={!text.trim() || live}>
+            <SendIcon aria-hidden /> Send
+          </Button>
+        </div>
+      </form>
     </div>
   );
 }
 
-// ── Review ──────────────────────────────────────────────────────────────────────────────────────────
+/** Selestial's edits to this draft: what each changed, and a safe undo. */
+function DraftEdits({ serviceId }: { serviceId: Id<"services"> }) {
+  const { companyId } = useCompany();
+  const edits = useQuery(api.services.draftEdits, { companyId, serviceId });
+  const undo = useMutation(api.services.undoEdit);
+  const { busy, error, run } = useRun();
+  const [shown, setShown] = useState<string | null>(null);
+  if (!edits?.length) return null;
+  return (
+    <div className="grid gap-2 rounded-xl border border-border bg-card p-3">
+      <p className="text-sm font-medium text-strong">Changes Selestial made</p>
+      <ul className="grid gap-2">
+        {edits.slice(0, 5).map((e) => (
+          <li key={e.id} className="grid gap-1.5 rounded-lg border border-border px-3 py-2 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="min-w-0 text-strong">
+                {e.parts.join(", ")} <span className="text-xs text-muted-foreground">· {when(e.at)}</span>
+              </span>
+              {e.undone ? (
+                <Badge variant="outline" size="sm">
+                  Undone
+                </Badge>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <Button size="xs" variant="ghost" aria-expanded={shown === e.id} onClick={() => setShown(shown === e.id ? null : e.id)}>
+                {shown === e.id ? "Hide changes" : "View changes"}
+              </Button>
+              {e.canUndo ? (
+                <Button size="xs" variant="secondary" loading={busy} onClick={() => void run(() => undo({ companyId, editId: e.id }))}>
+                  <RotateCcw aria-hidden /> Undo
+                </Button>
+              ) : null}
+            </div>
+            {shown === e.id ? (
+              <ul className="grid gap-0.5 text-xs text-muted-foreground">
+                {e.summary.length ? e.summary.map((line) => <li key={line}>• {line}</li>) : <li>• {e.parts.join(", ")} changed</li>}
+              </ul>
+            ) : null}
+            {!e.undone && e.canUndo && e.keptIfUndone.length ? <p className="text-xs text-muted-foreground">Undo keeps {e.keptIfUndone.join(", ")}: changed again since.</p> : null}
+            {e.undone && e.undone.kept.length ? <p className="text-xs text-muted-foreground">Kept {e.undone.kept.join(", ")}: changed again since.</p> : null}
+          </li>
+        ))}
+      </ul>
+      <FormError message={error} />
+    </div>
+  );
+}
 
-function ReviewStep({ view, spec, edit, kept, revision, dirty, blockers, warnings, goTo }: { view: View; spec: Spec; edit: StepProps["edit"]; kept: KeptAmount[]; revision: number; dirty: boolean; blockers: { message: string; step: BuilderStep }[]; warnings: string[]; goTo: (step: BuilderStep) => void }) {
+// ── Review & publish ────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Review & publish, in the workspace. What changes and what publishing does are read from the saved
+ * draft by the server, from what the application really does. The Owner publishes the exact revision
+ * they reviewed; a Manager submits it for the Owner. A change already in review is approved here for its
+ * exact version.
+ */
+function ReviewPanel({ view, spec, edit, kept, revision, dirty, blockers, goTo, settle }: { view: View; spec: Spec; edit: StepProps["edit"]; kept: KeptAmount[]; revision: number; dirty: boolean; blockers: { message: string; section: EditorSection | "review" }[]; goTo: (section: EditorSection | "review") => void; settle: () => Promise<number | null> }) {
   const { companyId } = useCompany();
   const router = useRouter();
+  const preview = useQuery(api.services.reviewPreview, { companyId, serviceId: view.service.id });
   const submit = useMutation(api.services.submit);
+  const publish = useMutation(api.services.publishDraft);
+  const approve = useMutation(api.services.approve);
   const discard = useMutation(api.services.discardDraft);
   const { busy, error, run } = useRun();
   const { ask, element: confirmDialog } = useConfirm();
@@ -342,52 +568,90 @@ function ReviewStep({ view, spec, edit, kept, revision, dirty, blockers, warning
   const [notice, setNotice] = useState({ required: false, note: "" });
   const [contracts, setContracts] = useState({ required: false, note: "" });
   const [startsOn, setStartsOn] = useState("");
-  const changes = describeChanges(view.live?.spec ?? null, spec);
+  const [more, setMore] = useState(false);
   const unconfirmed = spec.requirements.filter((r) => !r.confirmed);
-  const onlyConfirmations = blockers.every((b) => b.step === "review" || /Confirm/.test(b.message));
+  if (!preview) return <Skeleton className="h-64 rounded-xl" />;
+  const d = preview.draft;
+  const behind = dirty || (d !== null && d.revision !== revision);
+  const open = preview.openChange;
+  const nothing = d === null || d.sameAsLive || d.changes.length === 0;
+  const effectiveAt = startsOn ? new Date(`${startsOn}T00:00:00`).getTime() : undefined;
+  const later = effectiveAt && startsOn > localDay(new Date()) ? { effectiveAt } : {};
+  const canAct = !behind && blockers.length === 0 && !nothing && reason.trim().length > 0;
   return (
-    <div className="grid grid-cols-1 gap-6">
+    <div className="grid gap-4">
       {confirmDialog}
-      <SectionTitle title="Review" tip="Check what changes, confirm what only you can, and send it for review. Nothing is live until the Owner publishes it." />
-      <div>
-        <p className="text-sm font-medium text-strong">{view.live ? `What changes from live version ${view.live.version}` : "What this adds"}</p>
-        <ul className="mt-1 grid gap-0.5 text-sm text-muted-foreground">
-          {changes.length ? changes.map((c) => <li key={c}>• {c}</li>) : <li>Nothing yet: this draft matches the live version.</li>}
-        </ul>
-      </div>
+      {behind ? (
+        <p role="status" className="rounded-lg border border-brand-500/30 px-3 py-2 text-sm text-strong">
+          Saving your latest edits. The review below updates when they are saved.
+        </p>
+      ) : null}
+      {open ? (
+        <Notice tone="info" title={open.state === "in_review" ? "Waiting for review" : open.state === "scheduled" ? "Scheduled" : "Approved"}>
+          <span className="grid gap-2">
+            <span>{open.fromThisDraft ? "This draft was submitted" : "An earlier version of this draft was submitted"} {when(open.submittedAt)}.</span>
+            <span className="flex flex-wrap gap-2">
+              {open.state === "in_review" && preview.canPublish && open.fromThisDraft ? (
+                <Button size="xs" variant="primary" loading={busy} onClick={() => void run(async () => approve({ companyId, changeId: open.id, hash: open.hash, publish: true }))}>
+                  Approve and publish
+                </Button>
+              ) : null}
+              <Link href={changePath(open.id)} className={buttonVariants({ size: "xs", variant: "secondary" })}>
+                Open the change
+              </Link>
+            </span>
+          </span>
+        </Notice>
+      ) : null}
+
+      <ReviewBlock title={view.live ? `What changes from live version ${view.live.version}` : "What this adds"}>
+        {d && d.changes.length ? (
+          <ul className="grid gap-0.5 text-sm text-muted-foreground">
+            {d.changes.map((c) => (
+              <li key={c}>• {c}</li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-muted-foreground">Nothing yet: this draft matches the live version.</p>
+        )}
+      </ReviewBlock>
+
+      {d && d.prices.length ? (
+        <ReviewBlock title="Example prices">
+          <table className="w-full text-sm">
+            <thead className="sr-only">
+              <tr>
+                <th>Job</th>
+                <th>Before</th>
+                <th>After</th>
+              </tr>
+            </thead>
+            <tbody>
+              {d.prices.map((p) => (
+                <tr key={p.label} className="border-t border-border first:border-0">
+                  <td className="py-1.5 pr-2 text-muted-foreground">{p.label}</td>
+                  <td className="py-1.5 pr-2 text-right tabular-nums text-muted-foreground">{p.before !== null ? formatCents(p.before) : view.live ? "—" : ""}</td>
+                  <td className="py-1.5 text-right font-medium tabular-nums text-strong">{p.after !== null ? formatCents(p.after) : p.note}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </ReviewBlock>
+      ) : null}
+
       {spec.illustrative || unconfirmed.length ? (
-        <div className="grid grid-cols-1 gap-3 rounded-xl border border-warning/40 bg-warning/[0.07] p-4">
+        <div className="grid gap-3 rounded-xl border border-warning/40 bg-warning/[0.07] p-3">
           <p className="text-sm font-medium text-strong">Only you can confirm these</p>
           {kept.length ? (
-            <div className="grid grid-cols-1 gap-2">
-              <p className="text-xs text-muted-foreground">Still the template&apos;s example prices:</p>
-              <ul aria-label="Prices still from the template" className="grid grid-cols-1 gap-2">
-                {(["pricing", "extras"] as const).map((group) => {
-                  const items = kept.filter((k) => k.step === group);
-                  if (!items.length) return null;
-                  const label = BUILDER_STEPS.find((b) => b.id === group)?.label ?? group;
-                  return (
-                    <li key={group} className="rounded-lg border border-warning/30 bg-card p-2.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                          {label} · {items.length}
-                        </span>
-                        <Button size="xs" variant="ghost" onClick={() => goTo(group)}>
-                          Change in {label}
-                        </Button>
-                      </div>
-                      <ul className="mt-1.5 flex flex-wrap gap-1.5">
-                        {items.map((k) => (
-                          <li key={k.key} className="rounded-full border border-border bg-muted/40 px-2.5 py-0.5 text-xs text-strong">
-                            {k.label} <span className="tabular-nums text-muted-foreground">{k.value}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
+            <ul aria-label="Prices still from the template" className="flex flex-wrap gap-1.5">
+              {kept.map((k) => (
+                <li key={k.key}>
+                  <button type="button" onClick={() => goTo("price")} className="rounded-full border border-border bg-card px-2.5 py-0.5 text-xs text-strong hover:border-brand-500/40 focus-visible:outline-2 focus-visible:outline-brand-500/50">
+                    {k.label} <span className="tabular-nums text-muted-foreground">{k.value}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
           ) : null}
           {spec.illustrative ? <Toggle label={kept.length ? "These prices are right for my market" : "I've replaced or confirmed every amount for my market"} tip="Template and imported amounts are examples until you say otherwise. Confirming is recorded with this version." checked={false} onChange={(on) => on && edit((s) => ({ ...s, illustrative: false }))} /> : null}
           {unconfirmed.map((r) => (
@@ -395,60 +659,114 @@ function ReviewStep({ view, spec, edit, kept, revision, dirty, blockers, warning
           ))}
         </div>
       ) : null}
+
       {blockers.length ? (
-        <div>
-          <p className="text-sm font-medium text-strong">To fix before it can be reviewed</p>
-          <ul className="mt-1 grid gap-1">
+        <ReviewBlock title="To fix first">
+          <ul className="grid gap-1">
             {blockers.map((b, i) => (
               <li key={i} className="flex items-center justify-between gap-2 rounded-lg border border-destructive/30 bg-destructive/[0.05] px-3 py-1.5 text-sm text-strong">
                 {b.message}
-                {b.step !== "review" ? (
-                  <Button size="xs" variant="ghost" onClick={() => goTo(b.step)}>
-                    Go to {BUILDER_STEPS.find((s) => s.id === b.step)?.label}
+                {b.section !== "review" ? (
+                  <Button size="xs" variant="ghost" onClick={() => goTo(b.section)}>
+                    Fix
                   </Button>
                 ) : null}
               </li>
             ))}
           </ul>
-        </div>
+        </ReviewBlock>
       ) : null}
-      {warnings.length ? (
-        <div>
-          <p className="text-sm font-medium text-strong">Worth a look</p>
-          <ul className="mt-1 grid gap-0.5 text-sm text-muted-foreground">
-            {warnings.map((w) => (
+      {d && d.warnings.length ? (
+        <ReviewBlock title="Worth a look">
+          <ul className="grid gap-0.5 text-sm text-muted-foreground">
+            {d.warnings.map((w) => (
               <li key={w}>• {w}</li>
             ))}
           </ul>
-        </div>
+        </ReviewBlock>
       ) : null}
-      <div className="grid grid-cols-1 gap-4 rounded-xl border border-border p-4">
-        <Field label="Why this change" hint="The reviewer reads this first.">
+
+      {d ? (
+        <ReviewBlock title="What publishing does">
+          <ul className="grid gap-1 text-sm text-muted-foreground">
+            {d.impact.map((line) => (
+              <li key={line}>• {line}</li>
+            ))}
+          </ul>
+          {preview.forms.length ? (
+            <ul aria-label="Booking forms that offer it" className="mt-2 grid gap-1">
+              {preview.forms.map((f) => (
+                <li key={f.id}>
+                  <Link href={`/app/agents/sales/booking-forms/${f.id}`} className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-1.5 text-sm text-strong hover:border-brand-500/40">
+                    {f.name}
+                    <Badge variant={f.live ? "success" : "outline"} size="sm">
+                      {f.live ? "Live form" : "Not published"}
+                    </Badge>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </ReviewBlock>
+      ) : null}
+
+      <div className="grid gap-3 rounded-xl border border-border bg-card p-3">
+        <Field label="Why this change" hint="Kept with the version, and read first by whoever reviews it.">
           <TextArea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Our supply and labor costs went up this year." />
         </Field>
-        <Toggle label="Customers need to be told" description="Booked visits keep their price either way. Use this when what customers see changes." checked={notice.required} onChange={(required) => setNotice({ ...notice, required })} />
-        {notice.required ? <TextInput aria-label="What customers should be told" value={notice.note} onChange={(e) => setNotice({ ...notice, note: e.target.value })} placeholder="New price applies to bookings from March 1" /> : null}
-        <Toggle label="Agreements need review" description="Signed agreements keep their terms until amended. Name the ones to look at." checked={contracts.required} onChange={(required) => setContracts({ ...contracts, required })} />
-        {contracts.required ? <TextInput aria-label="Which agreements" value={contracts.note} onChange={(e) => setContracts({ ...contracts, note: e.target.value })} placeholder="Recurring service agreements" /> : null}
-        <Field label="Takes effect" hint="Leave empty to take effect when published.">
-          <TextInput type="date" value={startsOn} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setStartsOn(e.target.value)} />
-        </Field>
+        <button type="button" aria-expanded={more} onClick={() => setMore((v) => !v)} className="inline-flex w-fit items-center gap-1 rounded-md text-sm font-medium text-brand-300 focus-visible:outline-2 focus-visible:outline-brand-500/50">
+          More options <ChevronDown aria-hidden className={cn("size-4 transition-transform motion-reduce:transition-none", more && "rotate-180")} />
+        </button>
+        {more ? (
+          <div className="grid gap-3">
+            <Toggle label="Customers need to be told" description="Booked visits keep their price either way. Use this when what customers see changes." checked={notice.required} onChange={(required) => setNotice({ ...notice, required })} />
+            {notice.required ? <TextInput aria-label="What customers should be told" value={notice.note} onChange={(e) => setNotice({ ...notice, note: e.target.value })} placeholder="New price applies to bookings from March 1" /> : null}
+            <Toggle label="Agreements need review" description="Signed agreements keep their terms until amended. Name the ones to look at." checked={contracts.required} onChange={(required) => setContracts({ ...contracts, required })} />
+            {contracts.required ? <TextInput aria-label="Which agreements" value={contracts.note} onChange={(e) => setContracts({ ...contracts, note: e.target.value })} placeholder="Recurring service agreements" /> : null}
+            <Field label="Takes effect" hint="Leave empty to take effect when published.">
+              <TextInput type="date" value={startsOn} min={localDay(new Date())} onChange={(e) => setStartsOn(e.target.value)} />
+            </Field>
+          </div>
+        ) : null}
         <FormError message={error} />
         <div className="flex flex-wrap gap-2">
-          <Button
-            variant="primary"
-            loading={busy}
-            disabled={blockers.length > 0 || !reason.trim() || dirty || changes.length === 0}
-            onClick={() =>
-              void run(async () => {
-                const effectiveAt = startsOn ? new Date(`${startsOn}T00:00:00`).getTime() : undefined;
-                const { changeId } = await submit({ companyId, serviceId: view.service.id, expectedRevision: revision, reason, customerNotice: notice, contractReview: contracts, ...(effectiveAt && effectiveAt > Date.now() ? { effectiveAt } : {}) });
-                router.push(changePath(changeId));
-              })
-            }
-          >
-            Submit for review
-          </Button>
+          {preview.canPublish ? (
+            <Button
+              variant="primary"
+              loading={busy}
+              disabled={!canAct || open !== null}
+              onClick={() =>
+                void ask({
+                  title: later.effectiveAt ? `Schedule ${spec.name || "this service"}?` : `Publish ${spec.name || "this service"}?`,
+                  body: later.effectiveAt ? `It becomes the live version on ${day(later.effectiveAt)}.` : "It becomes the live version now.",
+                  details: (d?.impact ?? []).slice(0, 4).map((line, i) => ({ label: i === 0 ? "What happens" : "", value: line })),
+                  confirmLabel: later.effectiveAt ? "Schedule it" : "Publish",
+                  cancelLabel: "Not yet",
+                  action: async () => {
+                    const settled = await settle();
+                    if (settled === null || settled !== revision) throw new Error("Your latest edits were saved just now. Check the review again, then publish.");
+                    await publish({ companyId, serviceId: view.service.id, expectedRevision: revision, reason, customerNotice: notice, contractReview: contracts, ...later });
+                  },
+                })
+              }
+            >
+              {later.effectiveAt ? "Schedule" : "Publish"}
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              loading={busy}
+              disabled={!canAct || open !== null}
+              onClick={() =>
+                void run(async () => {
+                  const { changeId } = await submit({ companyId, serviceId: view.service.id, expectedRevision: revision, reason, customerNotice: notice, contractReview: contracts, ...later });
+                  router.push(changePath(changeId));
+                })
+              }
+            >
+              Submit for review
+            </Button>
+          )}
           <Button
             variant="ghost"
             disabled={busy}
@@ -470,10 +788,24 @@ function ReviewStep({ view, spec, edit, kept, revision, dirty, blockers, warning
             Discard draft
           </Button>
         </div>
-        {dirty ? <p className="text-xs text-muted-foreground">Saving your last edits…</p> : null}
-        {!onlyConfirmations && blockers.length ? <p className="text-xs text-muted-foreground">Fix the items above first.</p> : null}
+        {!behind && !reason.trim() && !nothing && blockers.length === 0 ? <p className="text-xs text-muted-foreground">Say why, and it can be {preview.canPublish ? "published" : "submitted"}.</p> : null}
+        {!preview.canPublish ? <p className="text-xs text-muted-foreground">Only the Owner publishes. They see exactly this version.</p> : null}
       </div>
     </div>
+  );
+}
+
+/** A date as the browser's own YYYY-MM-DD, to compare with a date input. */
+function localDay(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function ReviewBlock({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="grid gap-1.5">
+      <h3 className="text-sm font-medium text-strong">{title}</h3>
+      {children}
+    </section>
   );
 }
 
@@ -503,7 +835,7 @@ function LiveService({ view, costs }: { view: View; costs: Parameters<typeof Ser
           <Link href={SERVICES_ROOT} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-strong">
             <ArrowLeft aria-hidden className="size-4" /> All services
           </Link>
-          <h2 className="mt-1 font-heading text-xl tracking-tight text-strong">{spec.name}</h2>
+          <h1 className="mt-1 font-heading text-2xl tracking-tight text-strong">{spec.name}</h1>
           <p className="text-sm text-muted-foreground">
             {CATEGORY_LABELS[spec.category]} · live version {view.live.version}
             {view.service.publishedAt ? ` since ${day(view.service.publishedAt)}` : ""} · {view.service.status === "archived" ? "archived: new visits cannot use it" : "used for new quotes and visits"}

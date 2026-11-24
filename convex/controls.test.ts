@@ -243,7 +243,8 @@ describe("Agent Controls: pause and resume", () => {
     expect((await t.run((ctx) => authorityFor(ctx, companyId, "dispatch.send_reminder"))).kind).toBe("level");
     expect(await t.run((ctx) => authorityFor(ctx, companyId, "sales.follow_up"))).toEqual({ kind: "paused" });
     await as.mutation(api.companies.pauseAll, { companyId });
-    expect((await as.query(api.companies.get, { companyId })).pausedAgents.sort()).toEqual(["dispatch", "recruiter", "retention", "sales"]);
+    // The emergency stop reaches every agent, Quality included.
+    expect((await as.query(api.companies.get, { companyId })).pausedAgents.sort()).toEqual(["dispatch", "quality", "recruiter", "retention", "sales"]);
     const kinds = (await as.query(api.permissions.changes, { companyId })).rows.map((row) => row.kind);
     expect(kinds).toEqual(["pause", "resume", "pause", "pause"]);
   });
