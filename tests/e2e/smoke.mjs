@@ -34,7 +34,7 @@ const visible = (html) =>
     .replace(/\s+/g, " ");
 
 // Public pages answer.
-for (const path of ["/", "/agents", "/agents/sales", "/agents/dispatch", "/agents/recruiter", "/agents/retention", "/integrations", "/messaging", "/privacy", "/terms", "/security", "/security/subprocessors", "/cookies", "/book-a-call"]) {
+for (const path of ["/", "/agents", "/agents/sales", "/agents/dispatch", "/agents/recruiter", "/agents/retention", "/integrations", "/messaging", "/privacy", "/terms", "/eula", "/security", "/security/subprocessors", "/cookies", "/book-a-call"]) {
   const page = await get(path);
   check(`GET ${path} answers`, page.status === 200, `status ${page.status}`);
 }

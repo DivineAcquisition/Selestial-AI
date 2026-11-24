@@ -75,6 +75,7 @@ export const FOOTER_COLUMNS: { id: string; title: string; links: { href: string;
     links: [
       { href: "/privacy", label: "Privacy" },
       { href: "/terms", label: "Terms" },
+      { href: "/eula", label: "License agreement (EULA)" },
       { href: "/cookies", label: "Cookies" },
       { href: "cookies", label: "Cookie preferences" },
       { href: "/privacy/requests", label: "Data requests" },
