@@ -19,25 +19,12 @@ import { staffMutation, staffQuery } from "./lib/builders";
 import { userError } from "./lib/errors";
 import { smsRoute } from "./lib/messagingBilling/routes";
 import { normalAddress } from "./lib/compliance/recipients";
-import { phoneKey } from "./lib/platform/guard";
+import { CHECK_WORDS, checkCode, CODE_TTL_MS, codeHash, sixDigits } from "./lib/platform/phoneCheck";
 import { platformSender } from "./lib/platform/senders";
 import { allow } from "./lib/rateLimit";
 import { queueNoticeIn } from "./platformSms";
 
-const MINUTE = 60_000;
-const HOUR = 60 * MINUTE;
-const CODE_TTL = 10 * MINUTE;
-const MAX_TRIES = 5;
-
-function sixDigits(): string {
-  const value = new Uint32Array(1);
-  crypto.getRandomValues(value);
-  return String(value[0] % 1_000_000).padStart(6, "0");
-}
-
-async function codeHash(staffId: string, phone: string, code: string): Promise<string> {
-  return phoneKey(`staff-alert:${staffId}:${phone}:${code}`);
-}
+const HOUR = 60 * 60_000;
 
 export const mine = staffQuery({
   args: {},
@@ -58,9 +45,9 @@ export const startPhone = staffMutation({
     if (!(await allow(ctx, `staff-alert-code:${ctx.staff._id}`, 3, HOUR))) throw userError("Too many codes in the last hour. Try again later.");
     const code = sixDigits();
     const now = Date.now();
-    await ctx.db.patch(ctx.staff._id, { alertPhoneCheck: { phone, codeHash: await codeHash(ctx.staff._id, phone, code), expiresAt: now + CODE_TTL, attempts: 0 } });
+    await ctx.db.patch(ctx.staff._id, { alertPhoneCheck: { phone, codeHash: await codeHash(`staff:${ctx.staff._id}`, phone, code), expiresAt: now + CODE_TTL_MS, attempts: 0 } });
     await queueNoticeIn(ctx, { kind: "security_notice", reason: "staff alert phone check", dedupeKey: `staff-alert-code:${ctx.staff._id}:${now}`, to: phone, staffId: ctx.staff._id, body: `Selestial: ${code} is your code to confirm this phone for staff alerts. It expires in 10 minutes.`, transient: true });
-    return { last4: phone.slice(-4), expiresAt: now + CODE_TTL };
+    return { last4: phone.slice(-4), expiresAt: now + CODE_TTL_MS };
   },
 });
 
@@ -68,14 +55,12 @@ export const confirmPhone = staffMutation({
   args: { code: v.string() },
   handler: async (ctx, args) => {
     const check = ctx.staff.alertPhoneCheck;
-    if (!check || check.expiresAt <= Date.now()) throw userError("That code has expired. Ask for a new one.");
-    if (check.attempts >= MAX_TRIES) throw userError("Too many wrong codes. Ask for a new one.");
-    const matches = (await codeHash(ctx.staff._id, check.phone, args.code.replace(/\D/g, ""))) === check.codeHash;
-    if (!matches) {
-      await ctx.db.patch(ctx.staff._id, { alertPhoneCheck: { ...check, attempts: check.attempts + 1 } });
-      throw userError("That code isn't right.");
-    }
     const now = Date.now();
+    const answer = await checkCode(`staff:${ctx.staff._id}`, check, args.code, now);
+    if (answer !== "ok" || !check) {
+      if (answer === "wrong" && check) await ctx.db.patch(ctx.staff._id, { alertPhoneCheck: { ...check, attempts: check.attempts + 1 } });
+      throw userError(CHECK_WORDS[answer === "ok" ? "expired" : answer]);
+    }
     await ctx.db.patch(ctx.staff._id, { alertPhone: check.phone, alertPhoneVerifiedAt: now, alertPhoneCheck: undefined });
     await ctx.db.insert("staffAudit", { by: ctx.staff._id, staffId: ctx.staff._id, kind: "alert_phone_set", at: now });
     return { last4: check.phone.slice(-4) };

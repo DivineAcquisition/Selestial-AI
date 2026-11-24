@@ -78,17 +78,19 @@ export const queueNotice = internalMutation({
  * `transient`: the words carry a code. They are not stored on the record; they travel only in the scheduled
  * call that sends them, and a send that fails is not tried again (the person asks for a new code).
  */
-export async function queueNoticeIn(ctx: MutationCtx, args: { kind: Doc<"platformMessages">["kind"]; reason: string; dedupeKey: string; to: string; body: string; userId?: string; staffId?: Id<"staff">; transient?: boolean }): Promise<Id<"platformMessages">> {
+export async function queueNoticeIn(ctx: MutationCtx, args: { kind: Doc<"platformMessages">["kind"]; reason: string; dedupeKey: string; to: string; body: string; userId?: string; staffId?: Id<"staff">; transient?: boolean; sender?: PlatformSender; notBefore?: number }): Promise<Id<"platformMessages">> {
   if (args.kind === "auth_code") throw new Error("Sign-in codes come only from Clerk (codeRequested).");
   const existing = await ctx.db
     .query("platformMessages")
     .withIndex("by_dedupe", (q) => q.eq("dedupeKey", args.dedupeKey))
     .first();
   if (existing) return existing._id;
-  const sender = platformSender("notices");
+  // Codes a person asked for (confirming their phone) go from the code sender, everything else from the notice sender.
+  const which: PlatformSender = args.sender ?? "notices";
+  const sender = platformSender(which);
   const id = await ctx.db.insert("platformMessages", {
     kind: args.kind,
-    sender: "notices",
+    sender: which,
     reason: args.reason.slice(0, 80),
     dedupeKey: args.dedupeKey,
     ...(args.userId ? { userId: args.userId } : {}),
@@ -99,11 +101,12 @@ export async function queueNoticeIn(ctx: MutationCtx, args: { kind: Doc<"platfor
     ...(args.transient ? {} : { body: args.body.slice(0, 1600) }),
     segments: countSegments(args.body).segments,
     status: sender ? "queued" : "not_sent",
-    ...(sender ? {} : { refusal: "sender_not_ready", problem: "Selestial's notice sender isn't set up (PLATFORM_SMS_NOTICES_FROM / _PROFILE_ID)." }),
+    ...(sender ? {} : { refusal: "sender_not_ready", problem: `Selestial's ${which === "codes" ? "code" : "notice"} sender isn't set up.` }),
     attempts: 0,
     queuedAt: Date.now(),
   });
-  if (sender) await ctx.scheduler.runAfter(0, internal.platformSms.deliverNotice, { id, ...(args.transient ? { body: args.body.slice(0, 1600) } : {}) });
+  // A notice that should wait (a person's quiet hours) is sent at that time; nothing else holds it.
+  if (sender) await ctx.scheduler.runAfter(Math.max(0, (args.notBefore ?? 0) - Date.now()), internal.platformSms.deliverNotice, { id, ...(args.transient ? { body: args.body.slice(0, 1600) } : {}) });
   return id;
 }
 

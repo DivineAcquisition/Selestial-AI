@@ -62,4 +62,18 @@ export const platformTables = {
     .index("by_kind_queued", ["kind", "queuedAt"])
     .index("by_to_queued", ["toKey", "queuedAt"])
     .index("by_status_queued", ["status", "queuedAt"]),
+
+  /**
+   * A person's own phone for Selestial's notices to them (convex/myPhone.ts), per sign-in and across every
+   * company they belong to. `phone` is set only once they entered the code texted to it. It is not a
+   * sign-in method and grants nothing in any company.
+   */
+  userPhones: defineTable({
+    userId: v.string(),
+    phone: v.optional(v.string()),
+    verifiedAt: v.optional(v.number()),
+    /** A confirmation in progress: the number, a keyed hash of the code (never the code), expiry and tries. */
+    check: v.optional(v.object({ phone: v.string(), codeHash: v.string(), expiresAt: v.number(), attempts: v.number() })),
+    updatedAt: v.number(),
+  }).index("by_user", ["userId"]),
 };

@@ -572,6 +572,7 @@ import type * as messagingNotices from "../messagingNotices.js";
 import type * as messagingUsage from "../messagingUsage.js";
 import type * as migration from "../migration.js";
 import type * as migrationImports from "../migrationImports.js";
+import type * as myPhone from "../myPhone.js";
 import type * as notifications from "../notifications.js";
 import type * as onboarding from "../onboarding.js";
 import type * as onboardingSetup from "../onboardingSetup.js";
@@ -1225,6 +1226,7 @@ declare const fullApi: ApiFromModules<{
   messagingUsage: typeof messagingUsage;
   migration: typeof migration;
   migrationImports: typeof migrationImports;
+  myPhone: typeof myPhone;
   notifications: typeof notifications;
   onboarding: typeof onboarding;
   onboardingSetup: typeof onboardingSetup;
