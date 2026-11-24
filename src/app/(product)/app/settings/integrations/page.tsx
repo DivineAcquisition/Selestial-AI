@@ -6,7 +6,7 @@ import { IntegrationsScreen } from "@/components/app/screens/integrations";
 import { SectionPage } from "@/components/app/settings/section-page";
 import { Skeleton } from "@/components/ui/skeleton";
 
-export const metadata: Metadata = { title: "Integrations" };
+export const metadata: Metadata = { title: "Connected apps" };
 
 export default function Page() {
   return (

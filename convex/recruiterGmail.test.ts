@@ -225,7 +225,7 @@ describe("connecting Gmail and working through it", () => {
     google.add({ id: "g1", receivedAt: MONDAY_10AM, from: "Indeed <no-reply@indeed.com>", subject: "New application for House Cleaner", text: "Maria Lopez applied to House Cleaner.\nEmail: maria.lopez@example.test", attachments: [] });
     const { state, response } = await connect(s);
     expect(response.status).toBe(302);
-    expect(response.headers.get("Location")).toMatch(/^https:\/\/app\.selestial\.test\/app\/settings\/recruiting\?mailbox=confirm&pending=[A-Za-z0-9_-]{20,}$/);
+    expect(response.headers.get("Location")).toMatch(/^https:\/\/app\.selestial\.test\/app\/agents\/recruiter\/hiring-setup\?mailbox=confirm&pending=[A-Za-z0-9_-]{20,}$/);
     const stored = await s.t.run(async (ctx) => ({ connections: await ctx.db.query("mailboxConnections").collect(), credentials: await ctx.db.query("mailboxCredentials").collect() }));
     const gmail = stored.connections.find((row) => row.provider === "gmail")!;
     expect(gmail).toMatchObject({ address: "hiring@alpha-cleaning.test", status: "connected", canSend: true });

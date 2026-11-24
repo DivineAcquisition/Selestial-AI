@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { PlanBilling } from "@/components/app/settings/billing";
 import { SectionPage } from "@/components/app/settings/section-page";
 
-export const metadata: Metadata = { title: "Plan & Usage" };
+export const metadata: Metadata = { title: "Plan & usage" };
 
 export default function Page() {
   return (

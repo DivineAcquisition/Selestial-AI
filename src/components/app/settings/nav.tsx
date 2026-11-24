@@ -2,17 +2,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useId, useMemo, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
 import { SectionMark } from "@/components/app/settings/marks";
-import { ChevronDown, Search, X } from "@/components/icons";
-import { menuSectionForPath, menuSections, SETTINGS_GROUPS, SETTINGS_ROOT, searchSections, sectionsFor, type SettingsSection } from "@/lib/app/settings";
+import { ArrowUpRight, ChevronDown, Search } from "@/components/icons";
+import { Sheet, SheetPopup, SheetTitle } from "@/components/ui/sheet";
+import { menuSectionForPath, menuSections, SETTINGS_GROUPS, SETTINGS_ROOT, searchSections, searchShortcuts, sectionsFor, type SettingsRole, type SettingsSection, type SettingsShortcut } from "@/lib/app/settings";
 import { cn } from "@/lib/utils";
 
 /** The list itself, free of hooks, so it renders the same on the server and is easy to check. */
-export function SettingsNavList({ sections, activeId, onNavigate, showPurpose = false }: { sections: readonly SettingsSection[]; activeId: string | undefined; onNavigate?: () => void; showPurpose?: boolean }) {
-  if (sections.length === 0) return <p className="px-2 py-3 text-sm text-muted-foreground">No settings match that. Try another word, like &ldquo;hours&rdquo; or &ldquo;invoices&rdquo;.</p>;
+export function SettingsNavList({ sections, shortcuts = [], activeId, onNavigate, showPurpose = false }: { sections: readonly SettingsSection[]; shortcuts?: readonly SettingsShortcut[]; activeId: string | undefined; onNavigate?: () => void; showPurpose?: boolean }) {
+  if (sections.length === 0 && shortcuts.length === 0) return <p className="px-2 py-3 text-sm text-muted-foreground">No settings match that. Try another word, like &ldquo;hours&rdquo; or &ldquo;invoices&rdquo;.</p>;
   return (
     <div className="grid gap-4">
       {SETTINGS_GROUPS.map((group) => {
@@ -48,8 +49,38 @@ export function SettingsNavList({ sections, activeId, onNavigate, showPurpose = 
           </div>
         );
       })}
+      {shortcuts.length > 0 ? (
+        <div>
+          <p className="px-2 text-[0.6875rem] font-semibold tracking-wide text-muted-foreground uppercase">Elsewhere in Selestial</p>
+          <ul className="mt-1 grid gap-0.5">
+            {shortcuts.map((row) => (
+              <li key={row.id}>
+                <Link href={row.href} onClick={onNavigate} className="flex items-start gap-2.5 rounded-lg px-2 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-strong focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-500">
+                  <ArrowUpRight aria-hidden className="mt-1 size-4 shrink-0" />
+                  <span className="min-w-0">
+                    <span className="block text-strong">
+                      {row.label} <span className="font-normal text-muted-foreground">· {row.where}</span>
+                    </span>
+                    <span className="mt-0.5 block text-xs leading-snug">{row.purpose}</span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
+}
+
+/**
+ * What the menu lists for a search. Empty: the menu itself. Otherwise every page the role may open
+ * that matches, including pages reached from another page, and settings that live in other workspaces.
+ */
+export function navResults(query: string, role: SettingsRole) {
+  const open = sectionsFor(role).filter((row) => !row.oldAddress);
+  const searching = query.trim().length > 0;
+  return { sections: searching ? searchSections(query, open) : menuSections(open), shortcuts: searchShortcuts(query, role), searching };
 }
 
 function SearchBox({ id, value, onChange, autoFocus }: { id: string; value: string; onChange: (value: string) => void; autoFocus?: boolean }) {
@@ -84,28 +115,27 @@ export function SettingsNav() {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const id = useId();
-  const sheet = useRef<HTMLDivElement>(null);
-  const sections = useMemo(() => searchSections(query, menuSections(sectionsFor(role))), [query, role]);
+  const { sections, shortcuts, searching } = useMemo(() => navResults(query, role), [query, role]);
   const current = menuSectionForPath(pathname);
   const onOverview = pathname.replace(/\/+$/, "") === SETTINGS_ROOT;
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("keydown", onKey);
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = "";
-    };
-  }, [open]);
-
-  const close = () => {
-    setOpen(false);
-    setQuery("");
+  // The shared sheet traps focus, returns it to "All settings" on close, locks the page behind it and closes on Escape.
+  const onOpenChange = (next: boolean) => {
+    setOpen(next);
+    if (!next) setQuery("");
   };
+  const close = () => onOpenChange(false);
+
+  const overviewLink = (onClick?: () => void) => (
+    <Link
+      href={SETTINGS_ROOT}
+      onClick={onClick}
+      aria-current={onOverview ? "page" : undefined}
+      className={cn("mb-3 block rounded-lg px-2 py-1.5 text-sm", onOverview ? "bg-brand-500/10 font-medium text-strong" : "text-muted-foreground hover:bg-muted hover:text-strong")}
+    >
+      Overview
+    </Link>
+  );
 
   return (
     <>
@@ -119,8 +149,8 @@ export function SettingsNav() {
         </div>
         <button
           type="button"
+          aria-haspopup="dialog"
           aria-expanded={open}
-          aria-controls={`${id}-sheet`}
           onClick={() => setOpen(true)}
           className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-strong focus-visible:outline-2 focus-visible:outline-brand-500"
         >
@@ -129,49 +159,22 @@ export function SettingsNav() {
         </button>
       </div>
 
-      {open ? (
-        <div className="fixed inset-0 z-modal @4xl/main:hidden">
-          <button type="button" aria-label="Close settings menu" className="absolute inset-0 bg-black/30" onClick={close} />
-          <div
-            ref={sheet}
-            id={`${id}-sheet`}
-            role="dialog"
-            aria-modal="true"
-            aria-label="All settings"
-            className="absolute inset-x-0 bottom-0 max-h-[85dvh] overflow-y-auto rounded-t-2xl border-t border-border bg-card p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-xl"
-          >
-            <div className="mb-3 flex items-center justify-between">
-              <p className="font-heading text-base text-strong">All settings</p>
-              <button type="button" onClick={close} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-strong focus-visible:outline-2 focus-visible:outline-brand-500">
-                <X aria-hidden className="size-5" />
-                <span className="sr-only">Close</span>
-              </button>
-            </div>
+      <Sheet open={open} onOpenChange={onOpenChange}>
+        <SheetPopup side="bottom" className="max-h-[85dvh] rounded-t-2xl bg-card">
+          <div className="min-h-0 overflow-y-auto p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+            <SheetTitle className="mb-3 pr-10 text-base text-strong">All settings</SheetTitle>
             <SearchBox id={`${id}-search-sheet`} value={query} onChange={setQuery} />
-            <Link
-              href={SETTINGS_ROOT}
-              onClick={close}
-              aria-current={onOverview ? "page" : undefined}
-              className={cn("mb-3 block rounded-lg px-2 py-2 text-sm", onOverview ? "bg-brand-500/10 font-medium text-strong" : "text-muted-foreground hover:bg-muted hover:text-strong")}
-            >
-              Overview
-            </Link>
-            <SettingsNavList sections={sections} activeId={onOverview ? undefined : current?.id} onNavigate={close} showPurpose={query.trim().length > 0} />
+            {overviewLink(close)}
+            <SettingsNavList sections={sections} shortcuts={shortcuts} activeId={onOverview ? undefined : current?.id} onNavigate={close} showPurpose={searching} />
           </div>
-        </div>
-      ) : null}
+        </SheetPopup>
+      </Sheet>
 
       {/* With room beside the form: a grouped menu. */}
       <nav aria-label="Settings" className="hidden rounded-2xl border border-border bg-card p-3 @4xl/main:sticky @4xl/main:top-app-sticky @4xl/main:block @4xl/main:max-h-app-sticky @4xl/main:self-start @4xl/main:overflow-y-auto">
         <SearchBox id={`${id}-search`} value={query} onChange={setQuery} />
-        <Link
-          href={SETTINGS_ROOT}
-          aria-current={onOverview ? "page" : undefined}
-          className={cn("mb-3 block rounded-lg px-2 py-1.5 text-sm", onOverview ? "bg-brand-500/10 font-medium text-strong" : "text-muted-foreground hover:bg-muted hover:text-strong")}
-        >
-          Overview
-        </Link>
-        <SettingsNavList sections={sections} activeId={onOverview ? undefined : current?.id} showPurpose={query.trim().length > 0} />
+        {overviewLink()}
+        <SettingsNavList sections={sections} shortcuts={shortcuts} activeId={onOverview ? undefined : current?.id} showPurpose={searching} />
       </nav>
     </>
   );

@@ -105,8 +105,8 @@ function Health({ policy }: { policy: Policy }) {
       {settings ? (
         <p className="mt-3 text-xs text-muted-foreground">
           Texting setup is in{" "}
-          <Link href={`${settings}/compliance`} className="font-medium text-brand-300 underline-offset-4 hover:underline">
-            Settings
+          <Link href={`${settings}/messaging`} className="font-medium text-brand-300 underline-offset-4 hover:underline">
+            Settings › Email &amp; texting
           </Link>
           .
         </p>
@@ -117,8 +117,7 @@ function Health({ policy }: { policy: Policy }) {
 
 function NumbersForm({ section, policy, settings, canEdit }: { section: Exclude<SectionId, "communication" | "permissions">; policy: Policy; settings: Settings; canEdit: boolean }) {
   const { companyId } = useCompany();
-  const savePolicy = useMutation(api.dispatchOps.setPolicy);
-  const saveSettings = useMutation(api.dispatch.setSettings);
+  const saveRules = useMutation(api.dispatchOps.setRules);
   const { busy, error, run } = useRun();
   const current = (key: NumberKey) => String(SETTINGS_KEYS.includes(key) ? settings[key as "offerWindowMinutes"] : policy[key as Exclude<NumberKey, "offerWindowMinutes" | "travelBufferMinutes" | "lookAheadDays">]);
   const rows = ROWS[section];
@@ -128,26 +127,26 @@ function NumbersForm({ section, policy, settings, canEdit }: { section: Exclude<
   const changed = rows.some((row) => form[row.key] !== current(row.key)) || toggles.broadcastEnabled !== policy.broadcastEnabled || toggles.sendBeforePhotoLink !== policy.sendBeforePhotoLink || toggles.crewPayMode !== policy.crewPayMode;
   return (
     <form
-      className="grid gap-4"
+      className="@container grid gap-4"
       onSubmit={(event) => {
         event.preventDefault();
         setSaved(false);
         void run(async () => {
           const settingRows = rows.filter((row) => SETTINGS_KEYS.includes(row.key));
-          if (settingRows.some((row) => form[row.key] !== current(row.key))) {
-            await saveSettings({
-              companyId,
-              offerWindowMinutes: Number(form.offerWindowMinutes ?? settings.offerWindowMinutes),
-              travelBufferMinutes: Number(form.travelBufferMinutes ?? settings.travelBufferMinutes),
-              lookAheadDays: Number(form.lookAheadDays ?? settings.lookAheadDays),
-            });
-          }
+          const nextSettings = settingRows.some((row) => form[row.key] !== current(row.key))
+            ? {
+                offerWindowMinutes: Number(form.offerWindowMinutes ?? settings.offerWindowMinutes),
+                travelBufferMinutes: Number(form.travelBufferMinutes ?? settings.travelBufferMinutes),
+                lookAheadDays: Number(form.lookAheadDays ?? settings.lookAheadDays),
+              }
+            : undefined;
           const policyRows = rows.filter((row) => !SETTINGS_KEYS.includes(row.key) && form[row.key] !== current(row.key));
           const next: Record<string, number | boolean | string> = Object.fromEntries(policyRows.map((row) => [row.key, Number(form[row.key])]));
           if (section === "coverage" && toggles.broadcastEnabled !== policy.broadcastEnabled) next.broadcastEnabled = toggles.broadcastEnabled;
           if (section === "day-of" && toggles.sendBeforePhotoLink !== policy.sendBeforePhotoLink) next.sendBeforePhotoLink = toggles.sendBeforePhotoLink;
           if (section === "assignment" && toggles.crewPayMode !== policy.crewPayMode) next.crewPayMode = toggles.crewPayMode;
-          if (Object.keys(next).length > 0) await savePolicy({ companyId, policy: next });
+          // One call: timing and policy are saved together or not at all.
+          if (nextSettings || Object.keys(next).length > 0) await saveRules({ companyId, ...(nextSettings ? { settings: nextSettings } : {}), ...(Object.keys(next).length > 0 ? { policy: next } : {}) });
           setSaved(true);
         });
       }}
@@ -175,7 +174,7 @@ function NumbersForm({ section, policy, settings, canEdit }: { section: Exclude<
           </span>
         </label>
       ) : null}
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 @lg:grid-cols-2">
         {rows.map((row) => {
           const limit = SETTINGS_KEYS.includes(row.key) ? settings.limits[row.key as "offerWindowMinutes"] : policy.limits[row.key as keyof Policy["limits"]];
           return (

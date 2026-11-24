@@ -57,7 +57,7 @@ export const setAutoTopUp = ownerMutation({
   handler: async (ctx, args) => {
     const state = connectedOrRefuse();
     const account = await accountFor(ctx, ctx.companyId, state.env);
-    if (!account) throw userError("Billing hasn't loaded for this company yet. Refresh Plan & Usage and try again.");
+    if (!account) throw userError("Billing hasn't loaded for this company yet. Refresh Plan & usage and try again.");
     const threshold = centsToUnits(wholeDollars(args.thresholdCents, "The balance to top up at", 0, 50_000));
     const amount = centsToUnits(wholeDollars(args.amountCents, "The top-up amount", TOP_UP_MIN_CENTS, 50_000));
     const monthlyMax = centsToUnits(wholeDollars(args.monthlyMaxCents, "The monthly limit", TOP_UP_MIN_CENTS, 200_000));
@@ -180,7 +180,7 @@ export const setControls = ownerMutation({
   handler: async (ctx, args) => {
     const state = connectedOrRefuse();
     const account = await accountFor(ctx, ctx.companyId, state.env);
-    if (!account) throw userError("Billing hasn't loaded for this company yet. Refresh Plan & Usage and try again.");
+    if (!account) throw userError("Billing hasn't loaded for this company yet. Refresh Plan & usage and try again.");
     const units = (cents: number, label: string) => centsToUnits(wholeDollars(cents, label, 0, 1_000_000));
     const agents = ["sales", "dispatch", "recruiter", "retention"];
     const agentLimits: Record<string, number> = {};

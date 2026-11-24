@@ -14,10 +14,10 @@ export const SETTINGS_ROOT = "/app/settings";
 export type SettingsRole = "owner" | "manager" | "office";
 
 export const SETTINGS_GROUPS = [
-  { id: "company", label: "Company" },
-  { id: "agents", label: "Your agents" },
-  { id: "apps", label: "Apps & billing" },
-  { id: "account", label: "Account & privacy" },
+  { id: "business", label: "Business" },
+  { id: "automation", label: "Automation & communication" },
+  { id: "subscription", label: "Subscription" },
+  { id: "account", label: "Account & security" },
 ] as const;
 export type SettingsGroupId = (typeof SETTINGS_GROUPS)[number]["id"];
 
@@ -39,6 +39,8 @@ export type SettingsSection = {
    * menu, and searching finds the page that links to it.
    */
   parent?: string;
+  /** An old address kept so links still work. It is never listed as a page of its own. */
+  oldAddress?: boolean;
 };
 
 const section = (id: string, label: string, group: SettingsGroupId, purpose: string, access: string, keywords: string[], minimumRole: SettingsRole = "office", parent?: string): SettingsSection => ({
@@ -56,21 +58,43 @@ const section = (id: string, label: string, group: SettingsGroupId, purpose: str
 const OWNER_CHANGES = "Only the Owner can change these settings. You can view them.";
 
 export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
-  section("business", "Business details", "company", "Your company name, time zone, the ZIP codes you serve and the hours customers can book.", OWNER_CHANGES, ["company", "name", "timezone", "time zone", "clock", "areas", "service area", "zip", "postal", "hours", "open", "opening", "schedule", "booking hours"]),
-  section("people", "People & access", "company", "Who works in Selestial with you, what each person can do, and invitations.", "Only the Owner can invite people, change roles or remove access.", ["members", "team", "staff", "roles", "owner", "manager", "office", "invite", "invitation", "remove", "access"]),
-  section("agents", "Agent controls", "agents", "What each agent may do on its own, what needs your approval, and pausing an agent.", OWNER_CHANGES, ["permissions", "approvals", "approve", "pause", "resume", "authority", "limits", "spending", "automatic", "ask me first"]),
-  section("dispatch", "Dispatch rules", "agents", "How jobs are offered to cleaners, how replacements are found, and what a finished job needs.", OWNER_CHANGES, ["offers", "offering jobs", "replacement", "backup", "coverage", "buffer", "travel", "reminder", "arrival", "late", "no-show", "photos", "completion", "cleaner links"]),
-  section("recruiting", "Recruiting rules", "agents", "How applicants are invited and followed up with, interviews, and what new hires need before their first job.", OWNER_CHANGES, ["applicants", "hiring", "recruiting", "follow-ups", "reminders", "interview", "new hire", "onboarding", "requirements", "gmail", "hiring inbox", "sender", "reply"]),
-  section("integrations", "Connected apps", "apps", "The apps Selestial works with for you, like Google, Gmail and your texting number, whether each one is connected, and what to do next.", "Only the Owner can connect apps, choose what Selestial may use, or request a new one.", ["apps", "integrations", "connect", "connections", "google", "drive", "docs", "sheets", "calendar", "gmail", "business profile", "reviews", "google ads", "local services", "leads", "conversions", "texting", "sms", "text messages", "number", "stripe", "quickbooks", "payments", "import", "jobber"]),
-  section("billing", "Plan & Usage", "apps", "Your plan, Selestial Credits and AI features, what your agents used, payment details and invoices.", "Only the Owner can see billing.", ["plan", "subscription", "invoice", "invoices", "payment", "card", "operate", "expand", "price", "credits", "usage", "top-up", "billing", "ai", "ai features", "ai usage", "images", "video", "photo review", "document search", "chat models", "allowance"], "owner"),
-  section("security", "Account security", "account", "Your own sign-in: password, two-step verification and signed-in devices.", "These settings are for your own account.", ["password", "two-factor", "2fa", "mfa", "two-step", "sessions", "devices", "sign in", "login"]),
-  section("notifications", "Notifications", "account", "What Selestial emails you about, and a preview of every email it sends for your company.", "Each person chooses their own notifications.", ["notifications", "email", "emails", "alerts", "digest", "weekly summary", "approvals", "escalations", "templates", "preview", "unsubscribe", "inbox"]),
-  section("compliance", "Privacy & messaging", "account", "Your business identity for texting, customer consent, quiet hours and data requests.", OWNER_CHANGES, ["privacy", "messaging", "texting number", "identity", "ein", "consent", "quiet hours", "opt out", "do not contact", "tcpa", "data", "export", "delete", "registration"]),
-  section("agreements", "Selestial terms", "account", "The Selestial terms your company has accepted, who accepted them and when.", "Only the Owner can accept updated terms.", ["terms", "terms of service", "accept", "selestial", "platform", "versions", "legal"]),
-  section("support-access", "Support access", "account", "When Selestial Support opened your workspace, why, what it changed, and whether it may make changes.", "Only the Owner can see support access or allow changes.", ["support", "selestial support", "help", "access", "admin", "staff", "who looked", "history", "permission", "troubleshoot"], "owner"),
-  section("activity", "Activity", "account", "A history of changes in your company and who made them.", "Only the Owner can see activity.", ["audit", "history", "log", "activity log", "events", "who changed", "changes"], "owner"),
-  // Old address: AI features are part of Plan & Usage now.
-  section("ai", "AI features", "apps", "Which AI features your team can use, and this month's limits.", "Only the Owner can switch AI features.", ["ai", "features"], "owner", "billing"),
+  // Business
+  section("business", "Company profile", "business", "Your company's name, time zone, service area and booking hours, and the legal details carriers and customers see.", OWNER_CHANGES, ["company", "profile", "name", "timezone", "time zone", "clock", "areas", "service area", "zip", "postal", "hours", "open", "opening", "schedule", "booking hours", "legal name", "ein", "tax id", "address", "representative", "support email", "support phone", "identity"]),
+  section("people", "Office team & access", "business", "Who works in Selestial with you, what each person can do, and invitations.", "Only the Owner can invite people, change roles or remove access.", ["members", "team", "office", "staff", "roles", "owner", "manager", "invite", "invitation", "remove", "access"]),
+  // Automation & communication
+  section("agents", "Agent permissions", "automation", "What each agent may do on its own, what needs your approval, and pausing an agent. Each agent's own rules are under Configure.", OWNER_CHANGES, ["agents", "permissions", "approvals", "approve", "pause", "resume", "authority", "limits", "spending", "automatic", "ask me first", "configure", "dispatch", "recruiter", "sales", "retention", "quality"]),
+  section("messaging", "Email & texting", "automation", "Whether your company can text and email, who messages come from, carrier registration, quiet hours and consent wording.", OWNER_CHANGES, ["messaging", "email", "texting", "sms", "text messages", "texting number", "sender", "from address", "registration", "10dlc", "carrier", "quiet hours", "consent", "opt out", "tcpa", "frequency", "disclosure", "wording"]),
+  section("integrations", "Connected apps", "automation", "The apps Selestial works with for you, like Google, Gmail and your texting number: what needs attention, what is connected, and what you can add.", "Only the Owner can connect apps, choose what Selestial may use, or request a new one.", ["apps", "integrations", "connect", "connections", "google", "drive", "docs", "sheets", "calendar", "gmail", "business profile", "reviews", "google ads", "local services", "leads", "conversions", "quo", "openphone", "stripe", "quickbooks", "payments", "import", "jobber"]),
+  section("company-messages", "Company messages & previews", "automation", "Every email Selestial sends for your company, to your team, customers, applicants and cleaners, as it looks today.", "Anyone in the company can read these previews.", ["templates", "preview", "previews", "emails", "customer emails", "applicant emails", "cleaner emails", "what customers see"], "office", "messaging"),
+  // Subscription
+  section("billing", "Plan & usage", "subscription", "Your Selestial plan, credits and AI features, what your agents used, payment details and invoices.", "Only the Owner can see billing.", ["plan", "subscription", "invoice", "invoices", "payment", "card", "operate", "expand", "price", "credits", "usage", "top-up", "billing", "ai", "ai features", "ai usage", "images", "video", "photo review", "document search", "chat models", "allowance", "messaging balance"], "owner"),
+  // Account & security
+  section("security", "My account & security", "account", "Your own sign-in: password, two-step verification and signed-in devices. The Owner also finds Support access, Activity history and Selestial terms here.", "These settings are for your own account.", ["password", "two-factor", "2fa", "mfa", "two-step", "sessions", "devices", "sign in", "login", "account"]),
+  section("notifications", "My notifications", "account", "What Selestial emails you about, and what happened to the notices it sent you.", "Each person chooses their own notifications.", ["notifications", "my email", "alerts", "digest", "weekly summary", "approvals", "escalations", "unsubscribe", "inbox"]),
+  section("compliance", "Privacy & data", "account", "Download everything your company holds, erase a person's details, or ask for the company to be deleted.", "Only the Owner can export or erase data.", ["privacy", "data", "export", "download", "delete", "erase", "gdpr", "ccpa", "data request", "close company"]),
+  section("support-access", "Support access", "account", "When Selestial Support opened your workspace, why, what it changed, and whether it may make changes.", "Only the Owner can see support access or allow changes.", ["support", "selestial support", "help", "access", "admin", "staff", "who looked", "history", "permission", "troubleshoot"], "owner", "security"),
+  section("activity", "Activity history", "account", "A history of changes in your company and who made them.", "Only the Owner can see activity.", ["audit", "history", "log", "activity", "activity log", "events", "who changed", "changes"], "owner", "security"),
+  section("agreements", "Selestial terms", "account", "The Selestial terms your company has accepted, who accepted them and when.", "Only the Owner can accept updated terms.", ["terms", "terms of service", "accept", "selestial", "platform", "versions", "legal"], "office", "security"),
+  // Old address: AI features are part of Plan & usage now.
+  { ...section("ai", "AI features", "subscription", "Which AI features your team can use, and this month's limits.", "Only the Owner can switch AI features.", ["ai", "features"], "owner", "billing"), oldAddress: true },
+];
+
+/**
+ * Settings that belong to another workspace. Each has one editor, and it is there; Settings search
+ * finds it so nobody has to know where it moved.
+ */
+export type SettingsShortcut = { id: string; label: string; where: string; href: string; purpose: string; keywords: readonly string[]; minimumRole: SettingsRole };
+
+export const SETTINGS_SHORTCUTS: readonly SettingsShortcut[] = [
+  { id: "services", label: "Services & pricing", where: "Company", href: "/app/services", purpose: "What you sell, how long it takes and what it costs.", keywords: ["services", "pricing", "prices", "catalog", "rates", "add-ons"], minimumRole: "owner" },
+  { id: "customer-agreements", label: "Customer & cleaner agreements", where: "Agreements", href: "/app/agreements", purpose: "Agreements with your own customers and cleaners, and their templates.", keywords: ["agreements", "contracts", "templates", "signatures", "renewals"], minimumRole: "office" },
+  { id: "dispatch", label: "Dispatch rules", where: "Dispatch", href: "/app/agents/dispatch/playbook", purpose: "How jobs are offered to cleaners, replacements, reminders, arrival checks, photos and checklists.", keywords: ["dispatch", "offers", "offering jobs", "replacement", "backup", "coverage", "buffer", "travel", "reminder", "arrival", "late", "no-show", "photos", "completion", "checklist", "crew pay"], minimumRole: "office" },
+  { id: "recruiting", label: "Hiring setup", where: "Recruiter", href: "/app/agents/recruiter/hiring-setup", purpose: "Application links, follow-ups, interviews and the hiring inbox.", keywords: ["recruiting", "recruiter", "hiring", "applicants", "follow-ups", "interview", "gmail", "hiring inbox"], minimumRole: "office" },
+  { id: "onboarding", label: "Cleaner onboarding", where: "Cleaners", href: "/app/cleaners/onboarding", purpose: "What a new cleaner needs before their first job, and who is ready.", keywords: ["onboarding", "new hire", "requirements", "documents", "background check", "ready to work"], minimumRole: "office" },
+  { id: "sales", label: "Sales playbook", where: "Sales", href: "/app/agents/sales/playbook", purpose: "How Sales answers leads, quotes and follows up.", keywords: ["sales", "leads", "quotes", "follow-ups", "booking"], minimumRole: "office" },
+  { id: "retention", label: "Retention playbook", where: "Retention", href: "/app/agents/retention/playbook", purpose: "How Retention keeps customers and wins them back.", keywords: ["retention", "churn", "win back", "renewals", "recovery"], minimumRole: "office" },
+  { id: "quality", label: "Quality playbook", where: "Quality", href: "/app/agents/quality/playbook", purpose: "Standards, reviews and how complaints are handled.", keywords: ["quality", "standards", "reviews", "complaints", "corrections"], minimumRole: "office" },
+  { id: "finance", label: "Customer invoices & payments", where: "Finance", href: "/app/finance/setup", purpose: "Your own Stripe account, invoice settings, cleaner pay and tips. Not your Selestial plan.", keywords: ["invoices", "customer payments", "stripe", "tax", "terms", "numbering", "pay tiers", "tips", "expenses", "payroll"], minimumRole: "owner" },
 ];
 
 /** The sections listed in the Settings menu. Pages with a parent are reached from that page. */
@@ -106,6 +130,19 @@ export function searchSections(query: string, list: readonly SettingsSection[] =
   });
 }
 
+/** Shortcuts a role may follow whose words match every word typed. An empty query matches none. */
+export function searchShortcuts(query: string, role: SettingsRole): SettingsShortcut[] {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [];
+  return SETTINGS_SHORTCUTS.filter((row) => RANK[role] >= RANK[row.minimumRole]).filter((row) => {
+    const haystack = `${row.label} ${row.where} ${row.purpose} ${row.keywords.join(" ")}`.toLowerCase();
+    return words.every((word) => haystack.includes(word));
+  });
+}
+
+/** Pages reached from a page: support access, activity and terms from My account & security, for example. */
+export const childSections = (parentId: string, list: readonly SettingsSection[] = SETTINGS_SECTIONS) => list.filter((row) => row.parent === parentId && !row.oldAddress);
+
 /**
  * Old links that pointed at a part of one long Settings page, and the page that part lives on now.
  * A hash never reaches the server, so the overview reads it in the browser.
@@ -113,10 +150,12 @@ export function searchSections(query: string, list: readonly SettingsSection[] =
 export const LEGACY_HASHES: Readonly<Record<string, string>> = {
   security: `${SETTINGS_ROOT}/security`,
   agents: `${SETTINGS_ROOT}/agents`,
-  dispatch: `${SETTINGS_ROOT}/dispatch`,
+  dispatch: "/app/agents/dispatch/playbook",
   people: `${SETTINGS_ROOT}/people`,
   company: `${SETTINGS_ROOT}/business`,
   compliance: `${SETTINGS_ROOT}/compliance`,
+  messaging: `${SETTINGS_ROOT}/messaging`,
+  recruiting: "/app/agents/recruiter/hiring-setup",
   services: "/app/services",
 };
 
