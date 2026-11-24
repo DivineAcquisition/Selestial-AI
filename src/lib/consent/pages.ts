@@ -3,7 +3,7 @@
  * Never: the signed-in workspace, sign-in and account recovery, invitations, the cleaner and applicant
  * task pages, the privacy and security request forms, or any address carrying a token.
  */
-const ALLOWED_EXACT = new Set(["/", "/security", "/security/subprocessors", "/privacy", "/terms", "/cookies", "/messaging", "/assessment"]);
+const ALLOWED_EXACT = new Set(["/", "/security", "/security/subprocessors", "/privacy", "/terms", "/cookies", "/messaging", "/book-a-call"]);
 
 /** Query parameters that may carry a secret. An address with any of them is never tracked. */
 const SECRET_PARAMS = /(^|[?&])(token|t|code|key|secret|ticket|__clerk[^=]*|invite|sig|signature)=/i;
