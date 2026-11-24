@@ -7,7 +7,7 @@ import { ShieldCheck } from "@/components/icons";
 import { textFor } from "@/lib/trust/documents";
 import { formatDay, loadPublicTrust } from "@/lib/trust/public";
 
-import { currentVersion } from "../../../convex/lib/trust/documents";
+import { currentVersion, inForce } from "../../../convex/lib/trust/documents";
 
 export const metadata: Metadata = { title: "Security", description: textFor("security").lead, alternates: { canonical: "/security" } };
 export const revalidate = 300;
@@ -19,7 +19,7 @@ export const revalidate = 300;
 export default async function Page() {
   const trust = await loadPublicTrust();
   const version = currentVersion("security");
-  const published = trust.publications.some((row) => row.documentId === version.id && row.status === "published");
+  const published = inForce(version, trust.publications);
   const extra = (
     <div className="mt-10 grid gap-6">
       {trust.claims.length > 0 ? (

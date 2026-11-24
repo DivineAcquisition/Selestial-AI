@@ -122,10 +122,11 @@ export const admin = staffQuery({
           title: version.title,
           effectiveOn: version.effectiveOn,
           recorded: Boolean(row),
-          status: row?.status ?? ("draft" as const),
+          // A version the owner approved directly is in force until staff withdraw it.
+          status: row?.status ?? (version.ownerApproved ? ("published" as const) : ("draft" as const)),
           publishedAt: row?.publishedAt ?? null,
           publishedBy: row?.publishedBy ?? null,
-          approvalNote: row?.approvalNote ?? null,
+          approvalNote: row?.approvalNote ?? version.ownerApproved?.note ?? null,
         };
       }),
       viewer: { role: ctx.staff.role, canEdit: ctx.staff.role === "admin" },
