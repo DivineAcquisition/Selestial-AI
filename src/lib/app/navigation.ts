@@ -277,15 +277,16 @@ export const SALES_PAGES: readonly { path: string; label: string; purpose: strin
 ];
 
 export const SERVICES_PAGES: readonly { path: string; label: string; purpose: string }[] = [
-  { path: `${APP_ROOT}/services/studio`, label: "Pricing Studio", purpose: "Test example jobs against live or draft services: price, time, crew, costs and what remains." },
-  { path: `${APP_ROOT}/services/research`, label: "Research & Insights", purpose: "Research briefs: what was found, what is comparable, what is uncertain, with every source." },
+  { path: `${APP_ROOT}/services/studio`, label: "Compare example jobs", purpose: "Test example jobs against live or draft services: price, time, crew, costs and what remains." },
+  { path: `${APP_ROOT}/services/research`, label: "Market research", purpose: "Research briefs: what was found, what is comparable, what is uncertain, with every source." },
   { path: `${APP_ROOT}/services/research/[id]`, label: "Research brief", purpose: "One brief, its findings labeled by kind, and its sources." },
-  { path: `${APP_ROOT}/services/changes`, label: "Changes", purpose: "Every change waiting for review, scheduled or published, and the history of each service." },
+  { path: `${APP_ROOT}/services/changes`, label: "Review history", purpose: "Every change waiting for review, scheduled or published, and the history of each service." },
   { path: `${APP_ROOT}/services/changes/[id]`, label: "Change", purpose: "One change: what it changes, prices before and after, evidence, specialists' checks, approval." },
-  { path: `${APP_ROOT}/services/new`, label: "New service", purpose: "Build with Selestial, use a template, import existing pricing, or add a service." },
+  { path: `${APP_ROOT}/services/new`, label: "New service", purpose: "Describe a service to Selestial, use a template, import prices, or create one manually." },
+  { path: `${APP_ROOT}/services/review`, label: "Review services", purpose: "Several drafts reviewed together, each published or submitted on its own for the version shown." },
   { path: `${APP_ROOT}/services/setup`, label: "Pricing setup", purpose: "What the company told setup: areas, team, costs, margin and strategy." },
   { path: `${APP_ROOT}/services/imports/[id]`, label: "Import review", purpose: "Rows read from a spreadsheet or pasted text, each reviewed before it becomes a draft." },
-  { path: `${APP_ROOT}/services/[id]`, label: "Service", purpose: "One service: the guided builder for its draft, its live version and its history." },
+  { path: `${APP_ROOT}/services/[id]`, label: "Service", purpose: "One service: its workspace (editor, customer preview, Selestial, Review & publish), its live version and its history." },
 ];
 
 /** Pages inside Finance, reached from it. They have no sidebar entry of their own. */

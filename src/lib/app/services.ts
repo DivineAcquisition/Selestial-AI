@@ -1,35 +1,45 @@
 /**
- * Services & Pricing, as the screens know it: its routes, its tabs, the builder's steps, and small helpers
+ * Services & Pricing, as the screens know it: its routes, its tools, the editor's sections, and small helpers
  * for reading money people type. The record and every rule live in convex/lib/services.
  */
 
 export const SERVICES_ROOT = "/app/services";
 
-export const SERVICES_TABS = [
-  { id: "services", label: "Services", href: SERVICES_ROOT },
-  { id: "studio", label: "Pricing Studio", href: `${SERVICES_ROOT}/studio` },
-  { id: "research", label: "Research & Insights", href: `${SERVICES_ROOT}/research` },
-  { id: "changes", label: "Changes", href: `${SERVICES_ROOT}/changes` },
+/**
+ * The tools that used to be tabs. They open from the workspace's More menu, or from the service they
+ * concern; their own addresses still work, so old links and bookmarks land where they did.
+ */
+export const SERVICES_TOOLS = [
+  { id: "studio", label: "Compare example jobs", href: `${SERVICES_ROOT}/studio`, blurb: "Price sample jobs across services, side by side." },
+  { id: "research", label: "Market research", href: `${SERVICES_ROOT}/research`, blurb: "Local prices with their sources and dates." },
+  { id: "setup", label: "Costs and pricing setup", href: `${SERVICES_ROOT}/setup`, blurb: "Your pay, supplies and margin, for profit checks.", ownerOnly: true },
+  { id: "changes", label: "Review history", href: `${SERVICES_ROOT}/changes`, blurb: "Every change submitted, approved and published." },
 ] as const;
 
 export const servicePath = (serviceId: string) => `${SERVICES_ROOT}/${serviceId}`;
 export const changePath = (changeId: string) => `${SERVICES_ROOT}/changes/${changeId}`;
 export const briefPath = (briefId: string) => `${SERVICES_ROOT}/research/${briefId}`;
 export const importPath = (importId: string) => `${SERVICES_ROOT}/imports/${importId}`;
+export const REVIEW_ALL_PATH = `${SERVICES_ROOT}/review`;
 
-/** The guided builder, in order. Each step is a short page, never a giant form. */
-export const BUILDER_STEPS = [
-  { id: "basics", label: "Basics", blurb: "Name, kind of work and what the customer reads." },
-  { id: "scope", label: "Scope", blurb: "What is included, what is not, and the crew's checklist." },
-  { id: "pricing", label: "Pricing", blurb: "How it is priced, with the unit beside every amount." },
-  { id: "team", label: "Time & Team", blurb: "Crew, time, skills and when a walkthrough is needed." },
-  { id: "extras", label: "Extras", blurb: "Add-ons, recurring discounts and adjustments." },
-  { id: "review", label: "Review", blurb: "Check it, confirm it, and send it for review." },
+/**
+ * The service editor's three sections, on one page. Every amount sits beside its unit; less common
+ * settings stay folded under More options until they are wanted.
+ */
+export const EDITOR_SECTIONS = [
+  { id: "service", label: "Service & scope", blurb: "Name, kind of work, what customers read, and what is and isn't included." },
+  { id: "price", label: "Price", blurb: "How it is priced, with the unit beside every amount, and any extras." },
+  { id: "booking", label: "Booking & team", blurb: "Crew, time, skills, questions and when a walkthrough is needed." },
 ] as const;
-export type BuilderStep = (typeof BUILDER_STEPS)[number]["id"];
+export type EditorSection = (typeof EDITOR_SECTIONS)[number]["id"];
 
-export function stepOf(value: string | null | undefined): BuilderStep {
-  return (BUILDER_STEPS.find((step) => step.id === value)?.id ?? "basics") as BuilderStep;
+/** Where a check's field is edited. The old wizard's step names (saved on drafts) map the same way. */
+export function sectionOf(field: string | null | undefined): EditorSection | "review" {
+  const f = field ?? "";
+  if (f === "name" || f === "summary" || f === "basics" || f === "scope" || f.startsWith("included") || f.startsWith("excluded") || f === "category" || f === "visitWord") return "service";
+  if (f === "pricing" || f === "extras" || f.startsWith("pricing") || f.startsWith("addOns") || f.startsWith("modifiers")) return "price";
+  if (f === "team" || f.startsWith("team") || f.startsWith("requirements") || f.startsWith("str") || f.startsWith("questions") || f.startsWith("walkthrough")) return "booking";
+  return "review";
 }
 
 /** "12.50", "$1,200" or "120" to cents, or null when it is not an amount. */

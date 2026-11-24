@@ -90,6 +90,60 @@ export async function closeChange(ctx: MutationCtx, change: Doc<"serviceChanges"
 }
 
 
+/** The booking forms that offer a service: live (published, serving it now) or still drafts. */
+export async function bookingForms(ctx: QueryCtx, companyId: Id<"companies">, serviceKey: string): Promise<{ id: Id<"bookingExperiences">; name: string; live: boolean }[]> {
+  const out: { id: Id<"bookingExperiences">; name: string; live: boolean }[] = [];
+  for (const status of ["published", "draft", "unpublished"] as const) {
+    const rows = await ctx.db
+      .query("bookingExperiences")
+      .withIndex("by_company_status", (q) => q.eq("companyId", companyId).eq("status", status))
+      .take(100);
+    for (const row of rows) {
+      let offers = row.draft.services.offered.some((o) => o.serviceKey === serviceKey);
+      if (status === "published" && row.publishedVersion !== undefined) {
+        const version = await ctx.db
+          .query("bookingExperienceVersions")
+          .withIndex("by_company_experience_version", (q) => q.eq("companyId", companyId).eq("experienceId", row._id).eq("version", row.publishedVersion!))
+          .first();
+        if (version) offers = version.definition.services.offered.some((o) => o.serviceKey === serviceKey);
+      }
+      if (offers) out.push({ id: row._id, name: row.name, live: status === "published" });
+    }
+  }
+  return out;
+}
+
+/**
+ * What publishing this version does to everything connected, in words, from what the application really
+ * does (docs/services/00-architecture.md): live booking forms show it at once; booked visits, accepted
+ * proposals, recurring plans and property prices keep their own prices; nothing publishes a booking form.
+ */
+export async function impactLines(ctx: QueryCtx & { companyId: Id<"companies"> }, input: { service: Doc<"services">; liveName: string | null; spec: Spec; version: number | null; effectiveAt?: number }): Promise<string[]> {
+  const upcoming = await upcomingVisits(ctx, ctx.companyId, input.liveName ?? input.spec.name);
+  const ownPrices = (
+    await ctx.db
+      .query("propertyPrices")
+      .withIndex("by_company_service_state", (q) => q.eq("companyId", ctx.companyId).eq("serviceId", input.service._id).eq("state", "active"))
+      .take(200)
+  ).length;
+  const forms = await bookingForms(ctx, ctx.companyId, input.service.key);
+  const liveForms = forms.filter((f) => f.live);
+  const when = input.effectiveAt ? "the start date" : "publishing";
+  return [
+    `From ${when}, new quotes and new visits for "${input.spec.name}" use ${input.version === null ? "this version" : `version ${input.version}`}.`,
+    liveForms.length
+      ? `${liveForms.length === 1 ? `Your live booking form "${liveForms[0].name}" shows` : `Your ${liveForms.length} live booking forms show`} it from ${when}. No booking form is published or changed by this.`
+      : forms.length
+        ? "Booking forms that offer it aren't live, so customers can't book it online yet. Publishing a service never publishes a booking form."
+        : "No booking form offers it yet, so customers can't book it online. Publishing a service never publishes a booking form.",
+    upcoming ? `${upcoming} visit${upcoming === 1 ? "" : "s"} already booked keep${upcoming === 1 ? "s" : ""} the scope and price ${upcoming === 1 ? "it was" : "they were"} booked with.` : "No booked visit is affected: visits keep the scope and price they were booked with.",
+    "Sent and accepted proposals keep their prices.",
+    "Recurring customers keep their price. If a recurring plan from Sales is changed later (its schedule, for example), its price is worked out again from the live service; when the price would change, that waits for the Owner's approval unless the Owner made the change.",
+    ...(ownPrices ? [`${ownPrices} propert${ownPrices === 1 ? "y has its" : "ies have their"} own price for this service and keep${ownPrices === 1 ? "s" : ""} it. Extras, discounts and the minimum there follow this version.`] : []),
+    "Signed agreements keep their terms until they are amended.",
+  ];
+}
+
 export async function submitDraft(
   ctx: MutationCtx & MemberAccess,
   args: { serviceId: Id<"services">; expectedRevision: number; reason: string; customerNotice: { required: boolean; note: string }; contractReview: { required: boolean; note: string }; effectiveAt?: number; evidence?: Doc<"serviceChanges">["evidence"]; actor: Actor },
@@ -126,19 +180,8 @@ export async function submitDraft(
     createdAt: now,
   });
   await ctx.db.patch(service._id, { latestVersion: version, updatedAt: now });
-  const upcoming = await upcomingVisits(ctx, ctx.companyId, live?.spec.name ?? draft.spec.name);
-  const ownPrices = (
-    await ctx.db
-      .query("propertyPrices")
-      .withIndex("by_company_service_state", (q) => q.eq("companyId", ctx.companyId).eq("serviceId", service._id).eq("state", "active"))
-      .take(200)
-  ).length;
   const impact = [
-    `From ${effectiveAt ? "the start date" : "publishing"}, new quotes and new visits for "${draft.spec.name}" use version ${version}.`,
-    upcoming ? `${upcoming} visit${upcoming === 1 ? "" : "s"} already booked keep${upcoming === 1 ? "s" : ""} the scope and price ${upcoming === 1 ? "it was" : "they were"} booked with.` : "No booked visit is affected: visits keep the scope and price they were booked with.",
-    "Recurring customers are not repriced by this. Changing what an existing customer pays is a separate step with that customer.",
-    ...(ownPrices ? [`${ownPrices} propert${ownPrices === 1 ? "y has its" : "ies have their"} own price for this service and keep${ownPrices === 1 ? "s" : ""} it. Extras, discounts and the minimum there follow this version.`] : []),
-    "Signed agreements keep their terms until they are amended.",
+    ...(await impactLines(ctx, { service, liveName: live?.spec.name ?? null, spec: draft.spec, version, effectiveAt })),
     ...(args.customerNotice.required ? [`Customers should be told: ${args.customerNotice.note || "(no note)"}`] : []),
     ...(args.contractReview.required ? [`Agreements to review: ${args.contractReview.note || "(no note)"}`] : []),
   ];

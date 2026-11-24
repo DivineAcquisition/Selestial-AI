@@ -49,10 +49,143 @@ under Settings › Plan & Usage.
 | Public functions | `convex/services.ts`, `convex/servicesImports.ts`, `convex/servicesResearch.ts` |
 | Chat tools | `convex/lib/chat/serviceTools.ts` |
 | Screens | `src/components/app/services/*`, pages under `src/app/(product)/app/services` |
-| Routes and tabs | `src/lib/app/services.ts`; navigation entry in `src/lib/app/navigation.ts` |
+| Routes, tools and the editor's sections | `src/lib/app/services.ts`; navigation entry in `src/lib/app/navigation.ts` |
+| The service workspace (one-page editor, Selestial panel, Review & publish) | `src/components/app/services/builder.tsx` |
+| Reviewing several drafts together | `src/components/app/services/review-all.tsx`, page `/app/services/review` |
+| Selestial's draft edits and safe undo | `convex/lib/services/edits.ts`; table `serviceDraftEdits` |
 | Tips, switches, labeled fields | `src/components/app/services/shared.tsx` |
 | Animated price, price-split bar, margin meter | `src/components/app/services/visuals.tsx` |
 | The Property prices panel on a service | `src/components/app/services/property-prices.tsx` |
+
+## The workspace (November 24, 2026)
+
+Services & Pricing is a collection of the company's services, with one workspace per service. It stays under
+Company and is about the company's prices for its customers, never Selestial's own plans.
+
+**The main page** (`home.tsx`)
+
+- Add service is the primary action, and Import prices the secondary one. Comparing example jobs (the
+  Studio), market research, costs and pricing setup (Owner) and review history sit under More. Each keeps
+  its own address, so old links still work, and each tool page has a way back.
+- Live, Drafts and Archived filter the cards. A "waiting for review" link appears only when something is
+  waiting, or when several drafts are ready to review together.
+- Each card shows the name, the kind of work, and the price with its unit, or "No price yet": a draft is
+  never shown as $0. It also shows how customers get the service (`bookingWords`): "Customers ask for an
+  estimate", "Bookable online on N live forms", or "Not online yet". Then come its status, the first thing
+  blocking it (`catalog().draft.firstBlocker`), and Review, Edit or Open.
+- **Drafts Selestial prepared lead the page** until they are reviewed. "Prepared" means `services.createdBy`
+  is not a member, which covers business configuration, setup and activation. While configuration is
+  building, the page says so from the real `configOutputs` state: a spinner only while the row is queued
+  or working, and the error if it failed.
+- **What Selestial used** (`services.startingPoint`) shows who the company cleans for, what it offers, its
+  areas, and whether costs are known, each marked by where it came from:
+  - **Confirmed**: the Owner said or checked it.
+  - **Imported**: read from a file they brought.
+  - **Suggested**: found, for example on their website, and not checked yet.
+  - **Not known yet**: nothing yet.
+
+  A conflicting value is shown beside the fact and never picked. Facts change only in company details.
+- **Two pricing paths**: "Use my existing prices" (the import reader) and "Help me work out my prices"
+  (costs, then cost-based prices with the arithmetic shown). The path that matches the setup answer
+  `pricing.state` is marked "Fits what you told us".
+- **The first visit** offers Set up with Selestial first, then Import prices and Create manually:
+  - **Owner, when setup knows who the company cleans for**: Set up with Selestial runs
+    `configure.regenerate({ kind: "services" })`. This is the same idempotent build onboarding uses. It
+    adopts drafts already made from the same template, never duplicates them, and never rewrites a draft
+    someone edited (`buildServices`).
+  - **Owner, when setup doesn't know yet**: it links to company setup.
+  - **Manager**: it opens Describe it.
+
+**One service** (`builder.tsx`) is one page with three sections instead of the six-step wizard:
+
+- **Service & scope**: Basics and Scope.
+- **Price**: the method, then Extras. Adjustments are folded under More options.
+- **Booking & team**: crew, time, skills, questions, walkthroughs, requirements and turnover details.
+
+The step components are the same as before. Every check's field maps to its section (`sectionOf`). A
+blocker's Fix button opens its section and moves focus to it. An address ending `#price` opens at that
+section, and `?panel=review` or `?panel=assistant` opens that panel.
+
+Autosave and conflicts work as before: edits are saved after 900 ms against the revision they started from,
+and a refused save keeps both versions. A newer draft is adopted only when nothing on screen is unsaved.
+
+Beside the editor are three panels: Preview, Selestial and Review. On a wide screen they sit in a sticky
+rail; on a phone, a bottom bar opens each as a sheet.
+
+**The customer preview** uses the same engine booking uses (`engine.quote`):
+
+- It shows whether the job is a firm price, an estimate or a walkthrough first, with the reason.
+- It shows the questions customers answer, the recurring options with their discounts, and that
+  requirements are confirmed by the team, not shown to customers.
+- "Try an example job" changes the inputs locally. Nothing is booked, quoted or saved.
+
+### Selestial in the workspace
+
+The panel is Chat, focused on one service. It uses the same `chat.send`, run, tools, credits and
+retry (`ConversationBody` from `chat/thread.tsx`). It is not a second assistant and does not send the person
+to Chat.
+
+- **Its conversation.** The first message creates a conversation with `origin: { kind: "service_draft",
+  serviceId }`. `conversationFocus` tells the model to:
+  - work on that service only, with `read_service` and `edit_service_draft`;
+  - use only amounts the person gave or that are already on the service;
+  - never publish.
+
+  `services.assistant` finds the person's own conversation again, since conversations are private.
+- **Stale answers change nothing.**
+  - Before sending, the panel saves any unsaved edits. It then sends the draft revision on screen
+    (`draftRevision`, stored on the chat message).
+  - `edit_service_draft` refuses if the draft has moved since (`staleRequest`, `edits.ts`). It tells the
+    model why, so a late answer never overwrites newer manual edits.
+  - Edits the same answer already made don't count as moved.
+- **View changes and Undo.**
+  - Each edit Selestial makes is recorded part by part, before and after, in `serviceDraftEdits`, with its
+    summary from `describeChanges`.
+  - Undo (`services.undoEdit`, Owner or Manager) puts back only the parts that still hold what Selestial
+    wrote. Parts changed since are kept and named, both before you undo ("Undo keeps Description") and
+    after.
+  - A second Undo changes nothing.
+- **Honest states.** Thinking, failure, retry and stop are the chat run's own states. Credits follow
+  `aiExecutions`: one per answer, and a retry of a failed answer isn't charged again (`docs/chat`).
+- **Describe it** (`/app/services/new?mode=selestial`) creates the draft, sends the description to
+  Selestial beside it, and opens the service with the panel showing.
+
+### Review & publish in the workspace
+
+`services.reviewPreview` reads everything from the saved draft on the server:
+
+- what changes, and example prices before and after (`priceComparison`);
+- blockers and warnings;
+- what publishing does (`impactLines`);
+- the booking forms that offer the service, live or not (`bookingForms`);
+- any change already open.
+
+The panel says when the screen is ahead of what was read ("Saving your latest edits"), and acts only when the
+two match.
+
+The impact text matches what the application does:
+
+- New quotes and visits use the new version.
+- Live booking forms that offer the service show it as soon as it is live. No booking form is published or
+  changed by publishing a service.
+- Booked visits keep their scope and price, and sent and accepted proposals keep theirs.
+- Recurring customers keep their price. If a Sales recurring plan is changed later, it is re-priced from
+  the live service, with the Owner's approval unless the Owner made the change.
+- Property prices and signed agreements keep theirs.
+
+No blanket grandfathering is promised.
+
+What each role sees:
+
+- **Owner: Review & publish** (`services.publishDraft`). The revision they reviewed is submitted, approved
+  for its exact hash, and published or scheduled, in one step. Every check of submit, approve and publish
+  still runs. A retry finds no draft and changes nothing.
+- **Manager: Submit for review** (`services.submit`). Agents can do neither.
+- **A change already in review**: the Owner can approve and publish it there for its hash.
+
+**Several at once** (`/app/services/review`): drafts that are complete and differ from what is live are
+listed with checkboxes and one shared reason. Each is published, or submitted, on its own for the revision
+shown. One that fails says why, and the rest keep their results.
 
 ## Showing, not explaining
 
@@ -88,17 +221,14 @@ The screens keep configuration copy short. These rules apply to every Services s
   - Each extra is one row showing its name, its price with unit (or "Included"), and its time. Its fields
     open beneath it, and a new extra opens straight away.
   - On a live service, versions read as a timeline, with "Roll back to this" on each earlier version.
-- **Progress is shown, not described.**
-  - The builder's step rail marks a step with a check when it has nothing to fix, or with a count when it
-    does. On a phone, a bar shows "Step 3 of 6".
-  - Owners and Managers see a four-step checklist with a ring on the Services home until a first service
-    is live: costs, a draft, review, publish.
+- **Progress is shown, not described.** Each editor section shows how many things in it need fixing, and
+  the Review panel lists them with a Fix button that opens the section.
 - **Template prices are named.** `keptTemplateAmounts` (`convex/lib/services/store.ts`) lists the money
   amounts in a draft that still exactly match its template's illustrative numbers. Review groups them by
-  step, each with a way to change it, so the owner confirms specific prices rather than "every amount".
+  amount, each opening the Price section, so the owner confirms specific prices rather than "every amount".
   Times and counts are not listed: they describe the work, not a market's prices.
 - **Research starts a real Chat conversation.**
-  - Research & Insights opens on Chat's own composer, centered on the page, with four starter ideas built
+  - Market research (under More) opens on Chat's own composer, centered on the page, with four starter ideas built
     from the company's area.
   - Sending creates a conversation with `origin: research` (`chat.send`) and opens it in Chat. The first
     question is kept with the conversation for every reply (`<conversation>`), alongside the business and
@@ -380,6 +510,8 @@ member chatting, with their role as it is now:
 **Rules Chat works under:**
 
 - Edits land on the same draft the workspace shows, attributed "Selestial, asked by <name> in Chat".
+- From the workspace's Selestial panel, an edit for a screen that has since moved is refused, and each edit
+  can be undone part by part ("Selestial in the workspace" above).
 - A workspace tab that was open at an older revision is refused on its next save, and its edits are kept on
   screen.
 - Chat never publishes, approves, or confirms that template amounts suit the market.

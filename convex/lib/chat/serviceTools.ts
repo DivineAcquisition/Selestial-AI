@@ -23,6 +23,7 @@ import { templateById, TEMPLATES } from "../services/templates";
 import { createDraft, submitDraft, writeDraft } from "../services/workflow";
 import { dayOf, engineInput, priceInForce, propertyName, proposePropertyPrice, reviewProposal, untilWords, type Proposal } from "../services/propertyPrices";
 import { formatCents, lowerFirst } from "../services/words";
+import { recordEdit, staleRequest } from "../services/edits";
 import { type Field, stableHash } from "./fields";
 import type { ChatTool, Outcome, ToolCtx } from "./tools";
 
@@ -475,6 +476,9 @@ export const SERVICE_TOOLS: ChatTool[] = [
       if (!service) return refused("No service by that name or id. Use list_services.");
       try {
         let draft = await draftOf(ctx, ctx.company._id, service._id);
+        // From the service workspace: never over work saved after the person asked.
+        const stale = await staleRequest(ctx, { conversationId: ctx.conversationId, runId: ctx.runId, service, draft });
+        if (stale) return refused(stale);
         if (!draft) {
           const live = await publishedSpec(ctx, service);
           if (!live) return refused("This service has nothing to edit.");
@@ -484,12 +488,15 @@ export const SERVICE_TOOLS: ChatTool[] = [
         }
         const { spec, done, notFound } = applyEdit(draft.spec, args.changes as Record<string, unknown>);
         if (done.length === 0) return refused(`Nothing was changed.${notFound.length ? ` Not found: ${notFound.join(", ")}.` : ""}`);
-        const saved = await writeDraft(asMember(ctx), service, draft, normalizeSpec(spec), draft.step, CHAT(ctx), "chat");
+        const next = normalizeSpec(spec);
+        const saved = await writeDraft(asMember(ctx), service, draft, next, draft.step, CHAT(ctx), "chat");
+        // Kept part by part, so the person can see it and undo it without losing anything edited since.
+        const editId = await recordEdit(ctx, { companyId: ctx.company._id, serviceId: service._id, before: draft.spec, after: next, fromRevision: draft.revision, toRevision: saved.revision, actor: CHAT(ctx), conversationId: ctx.conversationId, runId: ctx.runId });
         const problems = checkSpec(spec);
         return {
           status: "done",
           summary: `Updated the draft of ${spec.name}: ${done.join(", ")}`,
-          data: { revision: saved.revision, price: priceSummary(spec), notFound, returnedReviews: saved.returned, blockers: problems.filter((p) => p.severity === "blocker").map((p) => p.message), warnings: problems.filter((p) => p.severity === "warning").map((p) => p.message) },
+          data: { revision: saved.revision, editId, price: priceSummary(spec), notFound, returnedReviews: saved.returned, blockers: problems.filter((p) => p.severity === "blocker").map((p) => p.message), warnings: problems.filter((p) => p.severity === "warning").map((p) => p.message) },
           link: link(service._id),
         };
       } catch (error) {
@@ -537,7 +544,7 @@ export const SERVICE_TOOLS: ChatTool[] = [
         status: "needs_approval",
         preview: {
           summary: `Submit ${draft.spec.name} for the Owner's review`,
-          lines: [`Price: ${priceSummary(draft.spec)}`, `Reason: ${String(args.reason)}`, "It becomes a new version waiting in Changes. Nothing is live until the Owner publishes it, and visits already booked keep their price."],
+          lines: [`Price: ${priceSummary(draft.spec)}`, `Reason: ${String(args.reason)}`, "It becomes a new version waiting for the Owner's review. Nothing is live until the Owner publishes it, and visits already booked keep their price."],
           bindsTo: stableHash({ service: service._id, revision: draft.revision, reason: args.reason, notice: args.customersToBeTold ?? false, contracts: args.agreementsToReview ?? false }),
         },
       };
@@ -615,7 +622,7 @@ export const SERVICE_TOOLS: ChatTool[] = [
     name: "start_research",
     label: "Starting research",
     description:
-      "Start a research brief in Services & Pricing › Research & Insights that answers one pricing or market question. web: true searches public web pages (up to 5 searches) and costs 10 Selestial Credits, charged only if it finishes. web: false uses only the company's own completed visits and sources, free. The person approves first. A web brief runs in the background and this conversation is told when it is ready. It never changes a price.",
+      "Start a research brief in Services & Pricing › Market research that answers one pricing or market question. web: true searches public web pages (up to 5 searches) and costs 10 Selestial Credits, charged only if it finishes. web: false uses only the company's own completed visits and sources, free. The person approves first. A web brief runs in the background and this conversation is told when it is ready. It never changes a price.",
     kind: "write",
     minimumRole: "manager",
     confirm: true,
@@ -684,7 +691,7 @@ export const SERVICE_TOOLS: ChatTool[] = [
           .withIndex("by_company_created", (q) => q.eq("companyId", ctx.company._id))
           .order("desc")
           .take(10);
-        return { status: "done", summary: `${rows.length} recent brief${rows.length === 1 ? "" : "s"}`, data: { briefs: rows.map((row) => ({ briefId: row._id, question: row.question, area: row.geography, mode: row.mode, state: row.state, findings: row.findings.length, startedHere: row.conversationId === ctx.conversationId })) }, link: { href: "/app/services/research", label: "Research & Insights" } };
+        return { status: "done", summary: `${rows.length} recent brief${rows.length === 1 ? "" : "s"}`, data: { briefs: rows.map((row) => ({ briefId: row._id, question: row.question, area: row.geography, mode: row.mode, state: row.state, findings: row.findings.length, startedHere: row.conversationId === ctx.conversationId })) }, link: { href: "/app/services/research", label: "Market research" } };
       }
       const id = ctx.db.normalizeId("researchBriefs", String(args.briefId));
       const brief = id ? await ctx.db.get(id) : null;

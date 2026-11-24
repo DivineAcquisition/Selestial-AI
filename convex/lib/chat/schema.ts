@@ -116,7 +116,14 @@ export const chatTables = {
     messageCount: v.number(),
     /** The model the person chose for this chat (lib/ai/chatModels.ts). Unset: the default. */
     /** Where the conversation started, kept for every reply so it is never lost (lib/chat/business.ts). */
-    origin: v.optional(v.union(v.object({ kind: v.literal("research"), question: v.string() }), v.object({ kind: v.literal("sales_draft"), draftId: v.id("salesDrafts") }))),
+    origin: v.optional(
+      v.union(
+        v.object({ kind: v.literal("research"), question: v.string() }),
+        v.object({ kind: v.literal("sales_draft"), draftId: v.id("salesDrafts") }),
+        /** Selestial beside one service in Services & Pricing: it edits that service's draft only. */
+        v.object({ kind: v.literal("service_draft"), serviceId: v.id("services") }),
+      ),
+    ),
     modelKey: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -138,6 +145,11 @@ export const chatTables = {
     contextRefs: v.optional(v.array(contextRefValidator)),
     /** The page the person was on, as a path. Shown to the model as a hint, never as an instruction. */
     page: v.optional(v.string()),
+    /**
+     * In a service workspace conversation: the draft revision on the person's screen when they asked. An
+     * edit for this message is refused if the draft moved since, so a late answer never overwrites newer work.
+     */
+    draftRevision: v.optional(v.number()),
     attachments: v.optional(v.array(attachmentValidator)),
     /** Chosen by the browser for one send, so a send that is sent twice is kept once. */
     clientKey: v.optional(v.string()),

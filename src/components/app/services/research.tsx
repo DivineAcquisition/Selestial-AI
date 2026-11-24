@@ -88,7 +88,7 @@ export function ResearchHome() {
           <div className="grid gap-1.5">
             <h2 id="research-ask" className="flex items-center justify-center gap-0.5 font-heading text-2xl tracking-tight text-strong sm:text-3xl">
               What do you want to find out?
-              <InfoTip label="Research & Insights">This opens a Chat conversation that already knows your business: where you work, what you sell and how your team works. Chat can start a research brief that searches public web pages (10 Selestial Credits, with your approval) and tells the conversation when it is ready. Research proposes; it never changes a price.</InfoTip>
+              <InfoTip label="Market research">This opens a Chat conversation that already knows your business: where you work, what you sell and how your team works. Chat can start a research brief that searches public web pages (10 Selestial Credits, with your approval) and tells the conversation when it is ready. Research proposes; it never changes a price.</InfoTip>
             </h2>
             <p className="text-sm text-muted-foreground">Ask about prices, demand or your area. Selestial answers in Chat and can research it for you.</p>
           </div>
@@ -108,7 +108,7 @@ export function ResearchHome() {
           </ul>
         </section>
       ) : (
-        <SectionTitle title="Research & Insights" tip="Research answers one question: a new kind of service, an unfamiliar area, or where to position. It proposes; it never changes a price.">Briefs your Owner and Managers started.</SectionTitle>
+        <SectionTitle title="Briefs" tip="Research answers one question: a new kind of service, an unfamiliar area, or where to position. It proposes; it never changes a price.">Briefs your Owner and Managers started.</SectionTitle>
       )}
 
       <div className="mx-auto grid w-full max-w-3xl grid-cols-1 gap-8">

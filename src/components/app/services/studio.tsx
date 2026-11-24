@@ -42,7 +42,7 @@ export function PricingStudio() {
   if (data.services.length === 0) {
     return (
       <Empty title="Nothing to test yet" action={<Link href={`${SERVICES_ROOT}/new`} className={buttonVariants({ variant: "secondary", size: "sm" })}>Add a service</Link>}>
-        Pricing Studio prices example jobs with your services, live or still in draft.
+        This prices example jobs with your services, live or still in draft.
       </Empty>
     );
   }
@@ -71,7 +71,7 @@ function Studio({ services, costs, canSeeCosts }: { services: Services; costs: C
   return (
     <div className="grid grid-cols-1 gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <SectionTitle title="Pricing Studio" tip="It shows what your services would charge for an example job and what each job would leave you. Nothing here changes a price.">Try example jobs side by side.</SectionTitle>
+        <SectionTitle title="Example jobs" tip="It shows what your services would charge for an example job and what each job would leave you. Nothing here changes a price.">Try example jobs side by side.</SectionTitle>
         <div className="flex flex-wrap gap-2">
           {presets.map((p) => (
             <Button key={p.label} size="sm" variant="secondary" onClick={p.run}>

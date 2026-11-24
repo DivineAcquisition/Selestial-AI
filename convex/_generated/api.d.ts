@@ -511,6 +511,7 @@ import type * as lib_sales_schema from "../lib/sales/schema.js";
 import type * as lib_sales_settings from "../lib/sales/settings.js";
 import type * as lib_sales_visits from "../lib/sales/visits.js";
 import type * as lib_sales_words from "../lib/sales/words.js";
+import type * as lib_services_edits from "../lib/services/edits.js";
 import type * as lib_services_engine from "../lib/services/engine.js";
 import type * as lib_services_imports from "../lib/services/imports.js";
 import type * as lib_services_operations from "../lib/services/operations.js";
@@ -1178,6 +1179,7 @@ declare const fullApi: ApiFromModules<{
   "lib/sales/settings": typeof lib_sales_settings;
   "lib/sales/visits": typeof lib_sales_visits;
   "lib/sales/words": typeof lib_sales_words;
+  "lib/services/edits": typeof lib_services_edits;
   "lib/services/engine": typeof lib_services_engine;
   "lib/services/imports": typeof lib_services_imports;
   "lib/services/operations": typeof lib_services_operations;
