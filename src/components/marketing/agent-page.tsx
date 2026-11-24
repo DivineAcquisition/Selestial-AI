@@ -150,7 +150,7 @@ export function AgentPageView({ agent }: { agent: AgentPage }) {
           <div className="mt-14 grid justify-items-center gap-4 rounded-3xl border border-border bg-card px-6 py-12 text-center shadow-sm">
             <h2 className={cn(marketingSectionTitle, "max-w-2xl")}>Find out what your cleaning business can delegate.</h2>
             <p className={cn(marketingLead, "mx-auto")}>Tell us how your company operates, and we&apos;ll show you where {agent.name} and the rest of the team could help.</p>
-            <EarlyAccessLink position={`agent-${agent.id}-footer`}>Start the assessment</EarlyAccessLink>
+            <EarlyAccessLink position={`agent-${agent.id}-footer`}>Book a call</EarlyAccessLink>
           </div>
         </div>
       </section>

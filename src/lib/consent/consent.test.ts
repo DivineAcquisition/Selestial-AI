@@ -59,7 +59,7 @@ describe("what may run", () => {
 
 describe("where tracking may run", () => {
   it("only on the public marketing pages", () => {
-    for (const path of ["/", "/security", "/privacy", "/terms", "/cookies", "/messaging", "/assessment", "/security/subprocessors"]) expect(trackingAllowedOn(path), path).toBe(true);
+    for (const path of ["/", "/security", "/privacy", "/terms", "/cookies", "/messaging", "/book-a-call", "/security/subprocessors"]) expect(trackingAllowedOn(path), path).toBe(true);
     for (const path of ["/app", "/app/settings", "/login", "/signup", "/forgot-password", "/reset-password", "/auth/callback", "/invite/abc.def", "/c/offer/abc", "/c/job/abc/photos", "/privacy/requests", "/security/report", "/security/review", "/apply/abc"]) expect(trackingAllowedOn(path), path).toBe(false);
   });
 
@@ -74,9 +74,9 @@ describe("where tracking may run", () => {
 describe("server-side events", () => {
   it("follow the browser's choice, the signal and the page rule", () => {
     const yes = header(makeChoice(true, true, false, NOW));
-    expect(serverEventAllowed(request(yes), "advertising", { pathname: "/assessment" }, NOW)).toBe(true);
-    expect(serverEventAllowed(request(null), "advertising", { pathname: "/assessment" }, NOW)).toBe(false);
-    expect(serverEventAllowed(request(yes, true), "advertising", { pathname: "/assessment" }, NOW)).toBe(false);
+    expect(serverEventAllowed(request(yes), "advertising", { pathname: "/book-a-call" }, NOW)).toBe(true);
+    expect(serverEventAllowed(request(null), "advertising", { pathname: "/book-a-call" }, NOW)).toBe(false);
+    expect(serverEventAllowed(request(yes, true), "advertising", { pathname: "/book-a-call" }, NOW)).toBe(false);
     expect(serverEventAllowed(request(yes), "advertising", { pathname: "/app" }, NOW)).toBe(false);
     expect(serverEventAllowed(request(header(makeChoice(false, false, false, NOW))), "analytics", { pathname: "/" }, NOW)).toBe(false);
     expect(gpcFromHeaders(request(null, true).headers)).toBe(true);

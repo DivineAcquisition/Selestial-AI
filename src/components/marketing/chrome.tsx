@@ -5,17 +5,17 @@ import { Logo } from "@/components/brand/logo";
 import { SiteNav } from "@/components/marketing/site-nav";
 import { CookiePreferencesLink } from "@/components/consent/banner";
 import { Button, type ButtonSize } from "@/components/ui/button";
-import { ASSESSMENT_PATH, FOOTER, NAV } from "@/lib/marketing/content";
+import { BOOK_CALL_PATH, FOOTER, NAV } from "@/lib/marketing/content";
 import { marketingPageGutter, marketingShell } from "@/lib/marketing/ui";
 import { AGENT_PAGE_IDS, AGENT_PAGES, agentPagePath } from "@/lib/marketing/agent-pages";
 import { cn } from "@/lib/utils";
 
 const ctaShape = "h-12! rounded-[8px]! before:rounded-[7px]!";
 
-/** "Get early access". Every one of these goes to the operations assessment, on its own page. */
+/** "Get early access". Every one of these goes to the Book a call page. */
 export function EarlyAccessLink({ position, size = "xl", className, children }: { position: string; size?: ButtonSize; className?: string; children: ReactNode }) {
   return (
-    <Button variant="gradient" size={size} className={cn(ctaShape, className)} render={<Link href={ASSESSMENT_PATH} data-cta-position={position} />}>
+    <Button variant="gradient" size={size} className={cn(ctaShape, className)} render={<Link href={BOOK_CALL_PATH} data-cta-position={position} />}>
       {children}
     </Button>
   );
@@ -42,7 +42,7 @@ export const FOOTER_COLUMNS: { id: string; title: string; links: { href: string;
       { href: "/#platform", label: "Platform" },
       { href: "/integrations", label: "Integrations" },
       { href: "/#pricing", label: "Pricing" },
-      { href: ASSESSMENT_PATH, label: "Operations assessment" },
+      { href: BOOK_CALL_PATH, label: "Book a call" },
     ],
   },
   {
