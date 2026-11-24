@@ -241,6 +241,7 @@ export const SETTINGS_PAGES: readonly { path: string; label: string; purpose: st
 
 /** Pages inside Settings › Integrations, reached from their card there. They have no navigation entry of their own. */
 export const INTEGRATION_PAGES: readonly { path: string; label: string; purpose: string }[] = [
+  { path: `${APP_ROOT}/settings/integrations/quickbooks`, label: "QuickBooks Online", purpose: "Connect the company's QuickBooks Online company, check the connection, reconnect or disconnect it." },
   { path: `${APP_ROOT}/settings/integrations/quo`, label: "Quo", purpose: "Connect the company's own Quo (formerly OpenPhone) account: numbers, agents, the test text and recovery." },
 ];
 

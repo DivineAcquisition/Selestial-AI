@@ -47,6 +47,7 @@ export const CHECKS = [
   "mailboxes",
   "google",
   "connectors",
+  "quickbooks",
   "texting",
   "ai_billing",
   "messaging_billing",
@@ -80,6 +81,7 @@ export const KINDS = [
   "google_job_failed",
   "google_job_uncertain",
   "connector_reconnect",
+  "quickbooks_reconnect",
   // Billing
   "ai_settlement_unverified",
   "ai_settlement_overdue",
@@ -121,6 +123,7 @@ export const KIND_LABELS: Record<Kind, string> = {
   google_job_failed: "Google work failed",
   google_job_uncertain: "Google write outcome unknown",
   connector_reconnect: "Connected system needs reconnecting",
+  quickbooks_reconnect: "QuickBooks needs reconnecting",
   ai_settlement_unverified: "AI credit charge unsettled",
   ai_settlement_overdue: "AI credit settlement overdue",
   ai_work_unbilled: "Finished AI work not charged",
