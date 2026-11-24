@@ -97,12 +97,12 @@ export function BusinessTexting() {
           </ul>
         ) : null}
 
-        {view.next && owner ? (
+        {view.next && owner && !view.blockers.some((row) => row.action?.href === view.next?.href) ? (
           <Link href={view.next.href} className="inline-flex h-9 w-fit items-center gap-1.5 rounded-lg bg-brand-600 px-3 text-sm font-medium text-white hover:bg-brand-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500">
             {view.next.label}
             <ArrowRight className="size-4" aria-hidden />
           </Link>
-        ) : view.next ? (
+        ) : view.next && !owner ? (
           <p className="text-xs text-muted-foreground">Your company&apos;s Owner sets this up.</p>
         ) : null}
 

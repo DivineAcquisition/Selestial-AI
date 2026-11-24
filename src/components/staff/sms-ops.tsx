@@ -35,6 +35,10 @@ function ago(now: number, at: number | null): string {
   return minutes < 60 ? `${minutes} min` : minutes < 2880 ? `${Math.round(minutes / 60)} h` : `${Math.round(minutes / 1440)} days`;
 }
 
+function waiting(now: number, row: { count: number; oldest: number | null }): string {
+  return row.count === 0 ? "0" : `${row.count} · oldest ${ago(now, row.oldest)}`;
+}
+
 function Stat({ label, value, tone }: { label: string; value: React.ReactNode; tone?: "bad" | "warn" }) {
   return (
     <div className="rounded-xl bg-muted/50 px-3 py-2.5">
@@ -68,9 +72,9 @@ export function SmsOperations() {
 
           <Panel title="Send queue (company texts)">
             <div className="grid gap-3 sm:grid-cols-4">
-              <Stat label="Queued" value={`${view.queue.queued.count} · oldest ${ago(view.now, view.queue.queued.oldest)}`} />
-              <Stat label="Held (hours, funds, pause)" value={`${view.queue.held.count} · oldest ${ago(view.now, view.queue.held.oldest)}`} />
-              <Stat label="Sending now" value={`${view.queue.sending.count} · oldest ${ago(view.now, view.queue.sending.oldest)}`} tone={view.queue.sending.count > 0 && view.queue.sending.oldest !== null && view.now - view.queue.sending.oldest > 10 * 60_000 ? "warn" : undefined} />
+              <Stat label="Queued" value={waiting(view.now, view.queue.queued)} />
+              <Stat label="Held (hours, funds, pause)" value={waiting(view.now, view.queue.held)} />
+              <Stat label="Sending now" value={waiting(view.now, view.queue.sending)} tone={view.queue.sending.count > 0 && view.queue.sending.oldest !== null && view.now - view.queue.sending.oldest > 10 * 60_000 ? "warn" : undefined} />
               <Stat label="Not known whether sent" value={view.queue.unconfirmed.count} tone={view.queue.unconfirmed.count > 0 ? "warn" : undefined} />
             </div>
           </Panel>

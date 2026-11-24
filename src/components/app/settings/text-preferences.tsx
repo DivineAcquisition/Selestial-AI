@@ -140,7 +140,7 @@ export function TextPreferences({ categories, quiet }: { categories: Category[];
               });
             }}
           >
-            <Field label="No texts from" hint="Urgent ones still come.">
+            <Field label="No texts from">
               <Input type="time" value={quietStart} onChange={(event) => setQuietStart(event.target.value)} />
             </Field>
             <Field label="Until">
@@ -149,6 +149,7 @@ export function TextPreferences({ categories, quiet }: { categories: Category[];
             <Button type="submit" size="sm" variant="secondary" loading={busy} disabled={quietStart === quiet.start && quietEnd === quiet.end}>
               Save quiet hours
             </Button>
+            <p className="basis-full text-xs text-muted-foreground">Urgent texts still come during quiet hours.</p>
           </form>
         </>
       ) : null}
