@@ -637,6 +637,7 @@ import type * as setupWebsite from "../setupWebsite.js";
 import type * as setupWork from "../setupWork.js";
 import type * as sign from "../sign.js";
 import type * as smsConversations from "../smsConversations.js";
+import type * as smsOps from "../smsOps.js";
 import type * as staff from "../staff.js";
 import type * as staffAlerts from "../staffAlerts.js";
 import type * as statement from "../statement.js";
@@ -1292,6 +1293,7 @@ declare const fullApi: ApiFromModules<{
   setupWork: typeof setupWork;
   sign: typeof sign;
   smsConversations: typeof smsConversations;
+  smsOps: typeof smsOps;
   staff: typeof staff;
   staffAlerts: typeof staffAlerts;
   statement: typeof statement;

@@ -21,6 +21,8 @@ import { recordEvent } from "./lib/events";
 import { queueMemberReply } from "./lib/messaging/outbox";
 import { quoConnectionOf } from "./lib/quo/route";
 import { messageState } from "./lib/messaging/lifecycle";
+import { meteringOn } from "./lib/messagingBilling/ledger";
+import { rateCardAt } from "./lib/messagingBilling/rates";
 
 
 const ASSIGNMENT_WORDS: Record<string, string> = { offered: "Offer open", accepted: "Cleaner accepted the job", declined: "Cleaner declined", expired: "Offer expired", cancelled: "Offer withdrawn", completed: "Visit completed", in_progress: "Visit in progress" };
@@ -139,6 +141,9 @@ export const thread = companyQuery({
       connection: row.provider === "quo" ? { status: connection?.status ?? "missing", problem: connection?.problem?.words ?? null } : null,
       items,
       me: ctx.member._id,
+      // What a reply costs, per segment, from the company's messaging balance. Null when texts aren't metered on this
+      // backend, or the conversation runs through the company's own Quo account (Quo bills those, not Selestial).
+      pricePerSegment: meteringOn() && row.provider !== "quo" ? rateCardAt(Date.now()).rates.sms_out : null,
     };
   },
 });

@@ -14,6 +14,8 @@ import { cn } from "@/lib/utils";
 
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
+import { countSegments } from "../../../../convex/lib/messagingBilling/segments";
+import { formatUnits } from "../../../../convex/lib/messagingBilling/money";
 
 type Row = NonNullable<ReturnType<typeof useQuery<typeof api.smsConversations.list>>>[number];
 
@@ -189,7 +191,7 @@ function Thread({ conversationId }: { conversationId: Id<"smsConversations"> }) 
           </li>
         ))}
       </ol>
-      <Composer conversationId={conversationId} mine={mine} />
+      <Composer conversationId={conversationId} mine={mine} pricePerSegment={thread.pricePerSegment} />
     </section>
   );
 }
@@ -200,7 +202,7 @@ function Thread({ conversationId }: { conversationId: Id<"smsConversations"> }) 
  * conversation for this person, so agents stop writing in it until it's returned. Whatever stops a message
  * shows on it in the thread.
  */
-function Composer({ conversationId, mine }: { conversationId: Id<"smsConversations">; mine: boolean }) {
+function Composer({ conversationId, mine, pricePerSegment }: { conversationId: Id<"smsConversations">; mine: boolean; pricePerSegment: number | null }) {
   const { companyId } = useCompany();
   const reply = useMutation(api.smsConversations.reply);
   const { busy, error, run } = useRun();
@@ -208,6 +210,9 @@ function Composer({ conversationId, mine }: { conversationId: Id<"smsConversatio
   const [note, setNote] = useState<string | null>(null);
   const [key, setKey] = useState(() => crypto.randomUUID());
   const remaining = 1500 - body.length;
+  // Before sending: how many SMS segments it uses (encoding-aware) and what that costs from the balance.
+  const count = body.trim() ? countSegments(body) : null;
+  const estimate = count ? `${count.segments} text segment${count.segments === 1 ? "" : "s"}${count.encoding === "ucs2" ? " (emoji or special characters make segments shorter)" : ""}${pricePerSegment !== null ? ` · about ${formatUnits(count.segments * pricePerSegment)} from your messaging balance` : ""}.` : null;
   return (
     <form
       className="grid gap-2 border-t border-border pt-3"
@@ -235,6 +240,7 @@ function Composer({ conversationId, mine }: { conversationId: Id<"smsConversatio
       />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p id={`reply-help-${conversationId}`} className="text-xs text-muted-foreground">
+          {estimate ? `${estimate} ` : ""}
           {mine ? "You have this conversation; agents won't write in it until you return it." : "Sending takes this conversation for you; agents stop writing in it until it's returned."} {remaining < 200 ? `${remaining} characters left.` : ""}
         </p>
         <Button type="submit" size="sm" loading={busy} disabled={!body.trim()}>

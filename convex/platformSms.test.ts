@@ -142,6 +142,32 @@ describe("Platform SMS: sign-in codes from Clerk", () => {
   });
 });
 
+describe("Platform SMS: Texting operations for staff", () => {
+  const STAFF = { subject: "user_staff_ops2", email: "ops2@selestial.example", emailVerified: true, name: "Ops" };
+  let undo = () => {};
+  beforeEach(() => {
+    undo = dispatchTestEnv();
+    process.env.STAFF_BOOTSTRAP_EMAIL = STAFF.email;
+    process.env.CLERK_WEBHOOK_SECRET = SECRET;
+    process.env.PLATFORM_SMS_CODES_FROM = CODES_FROM;
+    process.env.PLATFORM_SMS_CODES_PROFILE_ID = "profile-codes";
+  });
+  afterEach(() => {
+    undo();
+    for (const name of ["STAFF_BOOTSTRAP_EMAIL", "CLERK_WEBHOOK_SECRET", "PLATFORM_SMS_CODES_FROM", "PLATFORM_SMS_CODES_PROFILE_ID"]) delete process.env[name];
+  });
+
+  it("counts codes sent and refused by reason, for staff only, without numbers or codes", async () => {
+    const s = await setup(["Lena"]);
+    await clerk(s, smsCreated(PERSON), "ops_1");
+    await clerk(s, smsCreated("+14165550123"), "ops_2");
+    const view = await s.t.withIdentity(STAFF).query(api.smsOps.overview, {});
+    expect(view.platform).toMatchObject({ codesSent: 1, codesRefused: { unsupported_route: 1 } });
+    expect(JSON.stringify(view)).not.toContain(PERSON);
+    await expect(s.as.query(api.smsOps.overview, {})).rejects.toThrow(/Not found/);
+  });
+});
+
 describe("Platform SMS: replies to Selestial's numbers", () => {
   let undo = () => {};
   beforeEach(() => {
