@@ -42,6 +42,11 @@ export type FindingInput = {
   /** Card payments that failed or need checking, on invoices still open. */
   troubledPayments: Doc<"payments">[];
   stripe: { state: "not_available" | "not_connected" | "onboarding" | "active" | "restricted" | "disconnected"; problem: string | null };
+  /** Which provider takes new online payments, and where the company's Square connection stands. */
+  provider?: "stripe" | "square";
+  square?: { state: "unavailable" | "not_connected" | "needs_location" | "ready" | "needs_reconnect" | "disconnected"; problem: string | null; locationProblem: string | null; openLinksAtLoss: number };
+  /** Square payments that arrived and need a look in Square: a different amount, or more than one payment on one checkout. */
+  squareExceptions?: Doc<"payments">[];
   money: (cents: number) => string;
   /** Invoices Selestial sent to the customer through the outbox, as the Owner approved. */
   sentByMessage: ReadonlySet<string>;
@@ -86,18 +91,35 @@ export function findings(input: FindingInput): Finding[] {
     });
   }
 
-  const checking = input.troubledPayments.filter((p) => p.status === "checking");
-  if (checking.length) {
+  for (const provider of ["stripe", "square"] as const) {
+    const name = provider === "stripe" ? "Stripe" : "Square";
+    const checking = input.troubledPayments.filter((p) => p.status === "checking" && p.source === provider);
+    if (!checking.length) continue;
     out.push({
-      id: "checking",
+      id: provider === "stripe" ? "checking" : "checking_square",
       tone: "warning",
       state: "needs_attention",
-      title: `${plural(checking.length, "payment")} being confirmed with Stripe`,
-      noticed: `Stripe didn't give a clear answer for ${plural(checking.length, "payment")}. Selestial is asking again with the same request, so nothing can be charged twice.`,
-      recommend: "Nothing to do yet. If it stays unconfirmed, check the payment in your Stripe Dashboard before asking the customer to pay again.",
-      records: checking.slice(0, 5).map((p) => ({ kind: "payment", id: p._id, invoiceId: p.invoiceId, label: input.customerName(p.customerId), detail: "Checking with Stripe", amountCents: p.amountCents })),
+      title: `We're checking whether ${checking.length === 1 ? "a payment" : `${checking.length} payments`} completed`,
+      noticed: `${name} didn't give a clear answer for ${plural(checking.length, "payment")}. Selestial is asking again with the same request, so nothing can be charged twice.`,
+      recommend: `Nothing to do yet. If it stays unconfirmed, check the payment in your ${name} Dashboard before asking the customer to pay again.`,
+      records: checking.slice(0, 5).map((p) => ({ kind: "payment", id: p._id, invoiceId: p.invoiceId, label: input.customerName(p.customerId), detail: `Checking with ${name}`, amountCents: p.amountCents })),
       action: { label: "Open the invoice", kind: "open_invoice" },
       totalCents: checking.reduce((s, p) => s + p.amountCents, 0),
+    });
+  }
+
+  const odd = input.squareExceptions ?? [];
+  if (odd.length) {
+    out.push({
+      id: "square_exceptions",
+      tone: "warning",
+      state: "needs_attention",
+      title: `${plural(odd.length, "Square payment")} to check in Square`,
+      noticed: odd.length === 1 ? (odd[0].problem ?? "Square's record of this payment doesn't match what was asked for.") : "Square's records of these payments don't match what was asked for: a different amount, or more than one payment on one checkout.",
+      recommend: "Open the payment in your Square Dashboard. If the customer paid too much, refund the difference from the invoice.",
+      records: odd.slice(0, 5).map((p) => ({ kind: "payment", id: p._id, invoiceId: p.invoiceId, label: input.customerName(p.customerId), detail: p.problem ?? "Check in Square", amountCents: p.amountCents })),
+      action: { label: "Open the invoice", kind: "open_invoice" },
+      totalCents: odd.reduce((s, p) => s + p.amountCents, 0),
     });
   }
 
@@ -108,7 +130,7 @@ export function findings(input: FindingInput): Finding[] {
       tone: "warning",
       state: "needs_attention",
       title: `${plural(failed.length, "card payment")} didn't go through`,
-      noticed: `${plural(failed.length, "attempt")} totaling ${money(failed.reduce((s, p) => s + p.amountCents, 0))} ${failed.length === 1 ? "was" : "were"} declined. The invoices are still open and the pay links still work.`,
+      noticed: `${plural(failed.length, "attempt")} totaling ${money(failed.reduce((s, p) => s + p.amountCents, 0))} ${failed.length === 1 ? "was" : "were"} declined or couldn't be started. The invoices are still unpaid and the pay links still work.`,
       recommend: "Let the customer know the payment didn't go through and share the pay link again.",
       records: failed.slice(0, 5).map((p) => ({ kind: "payment", id: p._id, invoiceId: p.invoiceId, label: input.customerName(p.customerId), detail: p.problem ?? "Declined", amountCents: p.amountCents })),
       action: { label: "Open the invoice", kind: "open_invoice" },
@@ -332,7 +354,46 @@ export function findings(input: FindingInput): Finding[] {
     });
   }
 
-  if (input.stripe.state === "not_connected" || input.stripe.state === "onboarding" || input.stripe.state === "restricted" || input.stripe.state === "disconnected") {
+  const square = input.square;
+  if (square && square.state === "needs_reconnect") {
+    out.push({
+      id: "square_reconnect",
+      tone: "danger",
+      state: "needs_attention",
+      title: "Reconnect Square to accept new payments",
+      noticed: `${square.problem ?? "Square stopped accepting Selestial's access to your account."}${square.openLinksAtLoss ? ` ${plural(square.openLinksAtLoss, "Square checkout was", "Square checkouts were")} still open; payments made on them show here once you reconnect, and meanwhile in your Square Dashboard.` : ""}`,
+      recommend: "Reconnect the same Square account in Payments setup.",
+      records: [],
+      action: { label: "Reconnect Square", kind: "open_setup" },
+      totalCents: null,
+    });
+  } else if (square && input.provider === "square" && square.state === "needs_location") {
+    out.push({
+      id: "square_location",
+      tone: "warning",
+      state: "needs_attention",
+      title: "Choose a location for payments",
+      noticed: square.locationProblem ?? "Square is connected, but no location is chosen to take your customers' payments, so they can't pay online yet.",
+      recommend: "Choose the Square location payments should go to.",
+      records: [],
+      action: { label: "Choose a location", kind: "open_setup" },
+      totalCents: null,
+    });
+  } else if (square && input.provider === "square" && square.state !== "ready") {
+    out.push({
+      id: "square_setup",
+      tone: "warning",
+      state: "needs_attention",
+      title: "Customers can't pay online",
+      noticed: "Square takes your new payment requests, but Square isn't connected, so customers can only pay you outside Selestial.",
+      recommend: "Connect your Square account, or choose Stripe for new payment requests.",
+      records: [],
+      action: { label: "Set up payments", kind: "open_setup" },
+      totalCents: null,
+    });
+  }
+
+  if (input.provider !== "square" && (input.stripe.state === "not_connected" || input.stripe.state === "onboarding" || input.stripe.state === "restricted" || input.stripe.state === "disconnected")) {
     out.push({
       id: "stripe",
       tone: input.stripe.state === "restricted" ? "warning" : "info",

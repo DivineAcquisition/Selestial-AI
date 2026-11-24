@@ -119,6 +119,22 @@ export const expenseCategoryValidator = v.object({
 const readNumber = v.object({ value: v.union(v.number(), v.null()), clear: v.boolean() });
 const readText = v.object({ value: v.union(v.string(), v.null()), clear: v.boolean() });
 
+/** Which provider takes a company's new online payment requests. Existing payments keep theirs. */
+export const PAYMENT_PROVIDERS = ["stripe", "square"] as const;
+export type PaymentProvider = (typeof PAYMENT_PROVIDERS)[number];
+export const paymentProviderValidator = literals(PAYMENT_PROVIDERS);
+
+/**
+ * A company's Square connection (docs/finance/square.md):
+ *  needs_location   authorized and confirmed; no eligible location chosen yet, so no payments.
+ *  ready            a location that can take online card payments is chosen.
+ *  needs_reconnect  Square stopped accepting the authorization (revoked, or the refresh was refused).
+ *  disconnected     ended from Selestial; the history stays.
+ */
+export const SQUARE_CONNECTION_STATUSES = ["needs_location", "ready", "needs_reconnect", "disconnected"] as const;
+export type SquareConnectionStatus = (typeof SQUARE_CONNECTION_STATUSES)[number];
+export const squareEnvironmentValidator = v.union(v.literal("sandbox"), v.literal("production"));
+
 export const STRIPE_ACCOUNT_STATUSES = ["onboarding", "active", "restricted", "disconnected"] as const;
 export type StripeAccountStatus = (typeof STRIPE_ACCOUNT_STATUSES)[number];
 export const stripeAccountStatusValidator = literals(STRIPE_ACCOUNT_STATUSES);
@@ -181,6 +197,8 @@ export const financeTables = {
     replyTo: v.optional(v.string()),
     /** Customers may add a tip on the pay page, all of it for the job's cleaners. Absent means on. */
     tipsOn: v.optional(v.boolean()),
+    /** Which provider takes new online payment requests. Absent means Stripe, as before Square was built. */
+    paymentProvider: v.optional(paymentProviderValidator),
     /** The categories expenses are filed under. Absent means the cleaning-business set in code. */
     expenseCategories: v.optional(v.array(expenseCategoryValidator)),
     /** The next number to give an invoice when it is issued. Drafts have no number. */
@@ -232,6 +250,80 @@ export const financeTables = {
   })
     .index("by_company", ["companyId", "createdAt"])
     .index("by_account", ["accountId"]),
+
+  /**
+   * The company's own Square account, authorized through Square OAuth by the Owner (docs/finance/square.md).
+   * Tokens are sealed (AES-GCM, bound to this row) and never leave the backend. One live row per company
+   * and environment; a disconnected row is kept for the history. A Square account is never live on two
+   * companies at once.
+   */
+  squareConnections: defineTable({
+    companyId: v.id("companies"),
+    environment: squareEnvironmentValidator,
+    status: literals(SQUARE_CONNECTION_STATUSES),
+    merchantId: v.string(),
+    businessName: v.optional(v.string()),
+    country: v.optional(v.string()),
+    sealedAccessToken: v.string(),
+    sealedRefreshToken: v.string(),
+    accessExpiresAt: v.number(),
+    /** Counts token changes, so a refresh that finishes after a newer one can't put older tokens back. */
+    tokenVersion: v.number(),
+    /** A refresh in progress, so two can't run at once. */
+    refreshingUntil: v.optional(v.number()),
+    refreshedAt: v.optional(v.number()),
+    scopes: v.array(v.string()),
+    /** The business's locations as Square last listed them, with whether each can take online card payments and why not. */
+    locations: v.optional(v.array(v.object({ id: v.string(), name: v.string(), currency: v.union(v.string(), v.null()), eligible: v.boolean(), why: v.union(v.string(), v.null()) }))),
+    /** The location new payments are taken at. Set only when Square said it can take online card payments. */
+    location: v.optional(v.object({ id: v.string(), name: v.string(), currency: v.string() })),
+    /** Why there is no usable location, or why the chosen one stopped working, in words. */
+    locationProblem: v.optional(v.string()),
+    /** What needs the Owner, in words. */
+    problem: v.optional(v.string()),
+    connectedBy: v.id("members"),
+    confirmedAt: v.number(),
+    checkedAt: v.optional(v.number()),
+    disconnectedAt: v.optional(v.number()),
+    disconnectedBy: v.optional(v.id("members")),
+    /** Square checkout links still open when access ended, which Selestial could no longer close. */
+    openLinksAtLoss: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_company", ["companyId", "createdAt"])
+    .index("by_merchant", ["environment", "merchantId"])
+    .index("by_status_expires", ["status", "accessExpiresAt"]),
+
+  /**
+   * One Square authorization the Owner started. The state is stored only as its hash, used once, and
+   * expires. When Square sends the browser back, the tokens are sealed to this row and wait (pending) for
+   * the signed-in member who started to confirm the business; unconfirmed, they are discarded.
+   */
+  squareOAuthStates: defineTable({
+    companyId: v.id("companies"),
+    memberId: v.id("members"),
+    environment: squareEnvironmentValidator,
+    stateHash: v.string(),
+    returnOrigin: v.optional(v.string()),
+    expiresAt: v.number(),
+    usedAt: v.optional(v.number()),
+    pending: v.optional(
+      v.object({
+        merchantId: v.string(),
+        businessName: v.optional(v.string()),
+        country: v.optional(v.string()),
+        sealedAccessToken: v.string(),
+        sealedRefreshToken: v.string(),
+        accessExpiresAt: v.number(),
+        confirmHash: v.string(),
+        until: v.number(),
+      }),
+    ),
+  })
+    .index("by_hash", ["stateHash"])
+    .index("by_confirm", ["pending.confirmHash"])
+    .index("by_expires", ["expiresAt"]),
 
   /**
    * A bill to a customer. A draft can change freely and has no number. Issuing it gives it a number and
@@ -303,7 +395,7 @@ export const financeTables = {
     customerId: v.id("customers"),
     amountCents: v.number(),
     method: paymentMethodValidator,
-    source: v.union(v.literal("stripe"), v.literal("manual")),
+    source: v.union(v.literal("stripe"), v.literal("square"), v.literal("manual")),
     status: paymentStatusValidator,
     /** Chosen by the browser for one attempt, so a double click or a retried request makes one payment. */
     clientKey: v.string(),
@@ -320,6 +412,35 @@ export const financeTables = {
         methodLabel: v.optional(v.string()),
         /** How many times Selestial asked Stripe to create this payment, with the same request key each time. */
         createTries: v.number(),
+      }),
+    ),
+    /**
+     * A payment through the company's Square account: one hosted checkout link and its order, made for this
+     * attempt only. The link and order ids map the attempt to Square; the Square payment id is set once a
+     * buyer paid (or is paying) through it.
+     */
+    square: v.optional(
+      v.object({
+        connectionId: v.id("squareConnections"),
+        environment: squareEnvironmentValidator,
+        merchantId: v.string(),
+        locationId: v.string(),
+        linkId: v.optional(v.string()),
+        orderId: v.optional(v.string()),
+        /** Where Square sends the customer back: their own pay page (or booking page), which then reads the payment from Square. */
+        returnUrl: v.string(),
+        /** Square's hosted checkout address. Cleared once the attempt settles either way. */
+        checkoutUrl: v.optional(v.string()),
+        paymentId: v.optional(v.string()),
+        receiptUrl: v.optional(v.string()),
+        /** Square's processing fee once Square reports it. Absent is unknown, never zero. */
+        feeCents: v.optional(v.number()),
+        methodLabel: v.optional(v.string()),
+        createTries: v.number(),
+        /** Selestial closed the link (another payment settled the invoice, or it was replaced). */
+        linkClosed: v.optional(v.boolean()),
+        /** Other Square payments found on the same order, which need checking in Square. */
+        extraPaymentIds: v.optional(v.array(v.string())),
       }),
     ),
     manual: v.optional(
@@ -351,6 +472,8 @@ export const financeTables = {
     .index("by_company_succeeded", ["companyId", "succeededAt"])
     .index("by_company_clientKey", ["companyId", "clientKey"])
     .index("by_intent", ["stripe.paymentIntentId"])
+    .index("by_square_order", ["square.orderId"])
+    .index("by_square_payment", ["square.paymentId"])
     .index("by_status_updated", ["status", "updatedAt"]),
 
   /** Money given back on one payment. A Stripe refund follows Stripe's answer; a manual one is recorded. */
@@ -365,12 +488,13 @@ export const financeTables = {
     /** Whether the customer also owes less by the same amount. Recorded as a credit with the same reason. */
     alsoCredit: v.boolean(),
     stripeRefundId: v.optional(v.string()),
+    squareRefundId: v.optional(v.string()),
     tries: v.number(),
     problem: v.optional(v.string()),
     /** Absent on a refund the Owner made in their Stripe Dashboard (`origin`), which no member asked Selestial for. */
     requestedBy: v.optional(v.id("members")),
-    /** "stripe_dashboard": made in Stripe, not in Selestial, and recorded here from Stripe's own record of it. */
-    origin: v.optional(v.literal("stripe_dashboard")),
+    /** Made in the provider's own dashboard, not in Selestial, and recorded here from the provider's own record of it. */
+    origin: v.optional(v.union(v.literal("stripe_dashboard"), v.literal("square_dashboard"))),
     clientKey: v.string(),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -381,6 +505,7 @@ export const financeTables = {
     .index("by_company_clientKey", ["companyId", "clientKey"])
     .index("by_company_settled", ["companyId", "settledAt"])
     .index("by_stripe_refund", ["stripeRefundId"])
+    .index("by_square_refund", ["squareRefundId"])
     .index("by_status_updated", ["status", "updatedAt"]),
 
   /**
