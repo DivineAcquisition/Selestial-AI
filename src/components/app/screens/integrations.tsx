@@ -38,15 +38,21 @@ function Status({ integration, live, requested }: { integration: Integration; li
   const look =
     status.kind === "available"
       ? live?.state === "connected"
-        ? { dot: "bg-success", word: live.detail ? `Connected · ${live.detail}` : "Connected", pulse: false, title: undefined }
+        ? { dot: "bg-success", word: live.detail ? (live.detail.startsWith("Ready") ? live.detail : `Connected · ${live.detail}`) : "Connected", pulse: false, title: undefined }
         : live?.state === "in_progress"
-          ? live.detail === "Reconnect needed"
+          ? live.detail === "Needs reconnection"
+            ? { dot: "bg-destructive", word: "Needs reconnection", pulse: true, title: "Access ended. Reconnect to accept new payments." }
+            : live.detail === "Setup incomplete"
+              ? { dot: "bg-warning", word: "Setup incomplete", pulse: false, title: "Choose a location for payments." }
+              : live.detail === "Reconnect needed"
             ? { dot: "bg-destructive", word: "Needs attention", pulse: true, title: "Access ended. Reconnect to keep it working." }
             : live.detail === "Choose what Selestial may use"
               ? { dot: "bg-warning", word: "Setup needed", pulse: false, title: "Choose what Selestial may use." }
               : { dot: "bg-warning", word: "Being set up", pulse: true, title: undefined }
           : live?.state === "not_set_up"
-            ? { dot: "bg-warning", word: "Setup needed", pulse: false, title: "Selestial's team needs to finish setting this up for your account." }
+            ? live.detail === "Unavailable"
+              ? { dot: "bg-muted-foreground/50", word: "Unavailable", pulse: false, title: "Selestial's team is finishing this setup. You can't connect it yet." }
+              : { dot: "bg-warning", word: "Setup needed", pulse: false, title: "Selestial's team needs to finish setting this up for your account." }
             : { dot: "bg-muted-foreground/50", word: "Not connected", pulse: false, title: undefined }
       : status.kind === "built_in"
         ? mapsKey()

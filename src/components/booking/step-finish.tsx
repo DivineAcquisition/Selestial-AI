@@ -311,7 +311,8 @@ function PayForm({ paymentId, amountCents }: { paymentId: string; amountCents: n
 
 function Payment() {
   const { token, view, actions } = useBooking();
-  const [paymentId, setPaymentId] = useState<string | null>(view?.payment.paymentId && (view.payment.state === "started" || view.payment.state === "processing") ? view.payment.paymentId : null);
+  const squareBack = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("square");
+  const [paymentId, setPaymentId] = useState<string | null>(squareBack ?? (view?.payment.paymentId && (view.payment.state === "started" || view.payment.state === "processing") ? view.payment.paymentId : null));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const attempt = useQuery(api.bookingSessions.paymentAttempt, token && paymentId ? { token, paymentId: paymentId as Id<"payments"> } : "skip");
@@ -320,7 +321,9 @@ function Payment() {
   const stripe = useMemo(() => (publishableKey && accountId ? stripeFor(publishableKey, accountId) : null), [publishableKey, accountId]);
   useEffect(() => {
     if (!paymentId || typeof window === "undefined") return;
-    if (new URLSearchParams(window.location.search).get("redirect_status")) void actions.paymentReturned(paymentId);
+    const search = new URLSearchParams(window.location.search);
+    // Back from a card check or Square's checkout: ask the provider now. Being sent back proves nothing.
+    if (search.get("redirect_status") || search.get("square") === paymentId) void actions.paymentReturned(paymentId);
   }, [paymentId, actions]);
   if (!view) return null;
   const ready = view.blockers.every((b) => b === "The payment hasn't been received.");
@@ -373,6 +376,27 @@ function Payment() {
   }
   if (attempt?.status === "processing") return <Notice tone="info" title="Your payment is processing">This page updates when it clears. You don&apos;t need to pay again.</Notice>;
   if (attempt?.status === "succeeded") return <Notice tone="good" title="Payment received">Finishing your booking…</Notice>;
+  if (attempt?.checkoutUrl !== undefined && attempt?.checkoutUrl !== null && squareBack === paymentId && !attempt.problem) {
+    return (
+      <Notice tone="info" title="We're checking whether your payment completed">
+        This page updates on its own. Please don&apos;t pay again; nothing will be charged twice.{" "}
+        <a href={attempt.checkoutUrl} target="_top" className="font-semibold underline underline-offset-4">
+          I didn&apos;t finish paying
+        </a>
+      </Notice>
+    );
+  }
+  if (attempt?.checkoutUrl) {
+    return (
+      <div className="space-y-3">
+        {attempt.problem ? <Notice tone="bad" title="Square declined the payment">{attempt.problem}</Notice> : null}
+        <a href={attempt.checkoutUrl} target="_top" className="bk-btn flex h-14 w-full items-center justify-center text-lg">
+          {attempt.problem ? "Try another card on Square" : `Continue to Square to pay ${moneyExact(attempt.amountCents)}`}
+        </a>
+        <p className="text-center text-xs text-[color:var(--bk-muted-text)]">You&apos;ll pay on Square&apos;s secure checkout, then come back here to finish.</p>
+      </div>
+    );
+  }
   if (!stripe || !attempt?.clientSecret) return <div className="h-40 animate-pulse rounded-lg bg-[var(--bk-muted)] motion-reduce:animate-none" />;
   return (
     <Elements stripe={stripe} options={{ clientSecret: attempt.clientSecret, appearance: { theme: "stripe", variables: { colorPrimary: getComputedStyle(document.documentElement).getPropertyValue("--bk-brand") || "#6838ef", borderRadius: "10px" } } }}>

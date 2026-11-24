@@ -23,6 +23,9 @@ import { emptyTotals } from "../finance/ledger";
 import { cleanLines } from "../finance/money";
 import { newPublicId } from "../finance/payLinks";
 import { invoiceNumber, settingsOf, settingsRow } from "../finance/settings";
+import { startSquareAttempt } from "../../financeSquarePay";
+import { onlinePaymentState } from "../finance/provider";
+import { returnOrigin } from "../invitations";
 import { stripeConfig } from "../finance/stripe";
 import { currentStripeAccount } from "../finance/stripeState";
 import type { InvoiceLine } from "../finance/schema";
@@ -55,7 +58,7 @@ export function invoiceLines(quote: NonNullable<Doc<"bookingSessions">["quote"]>
  * a firm, accepted price, a live hold on the time, a signed agreement when one is required, and (unless
  * the experience takes details after payment) every required detail.
  */
-export async function startBookingPayment(ctx: MutationCtx, session: Doc<"bookingSessions">, clientKey: string): Promise<{ paymentId: Id<"payments"> } | { refused: string }> {
+export async function startBookingPayment(ctx: MutationCtx, session: Doc<"bookingSessions">, clientKey: string, returnTo?: string): Promise<{ paymentId: Id<"payments"> } | { refused: string }> {
   if (!/^[\w-]{8,80}$/.test(clientKey)) throw userError("Reload the page and try again.");
   const repeat = await ctx.db
     .query("payments")
@@ -77,9 +80,15 @@ export async function startBookingPayment(ctx: MutationCtx, session: Doc<"bookin
   if (session.agreementState === "pending") throw userError("Please sign the agreement first.");
   if (L.def.behavior.detailsTiming === "before_payment" && session.answersState !== "complete") throw userError("Please finish the property details first.");
   if (!L.eligible.ok) throw userError(L.eligible.why ?? "This company isn't taking online bookings right now.");
+  const online = await onlinePaymentState(ctx, company._id);
   const config = stripeConfig();
   const account = await currentStripeAccount(ctx, company._id);
-  if (!config || !account?.accountId || account.status !== "active" || account.livemode !== config.livemode || !config.publishableKey) throw userError(`${L.settings.profile.displayName || company.name} can't take card payments right now. Please contact them directly.`);
+  const unavailable = `${L.settings.profile.displayName || company.name} can't take card payments right now. Please contact them directly.`;
+  // Square sends the customer back to this booking page, which must be one of Selestial's own addresses.
+  const back = online.provider === "square" ? bookingReturn(returnTo) : null;
+  if (online.provider === "square") {
+    if (!online.connection || !back) throw userError(unavailable);
+  } else if (!config || !account?.accountId || account.status !== "active" || account.livemode !== config.livemode || !config.publishableKey) throw userError(unavailable);
 
   const kind = KIND[L.experience.kind];
   const customerId = await ensureCustomer(ctx, session, kind);
@@ -136,22 +145,26 @@ export async function startBookingPayment(ctx: MutationCtx, session: Doc<"bookin
     await ctx.db.patch(session._id, { invoiceId });
   }
 
-  const paymentId = await ctx.db.insert("payments", {
-    companyId: company._id,
-    invoiceId: invoice._id,
-    customerId,
-    amountCents: quote.dueNowCents,
-    method: "card",
-    source: "stripe",
-    status: "awaiting_customer",
-    clientKey,
-    stripe: { accountId: account.accountId, livemode: account.livemode, createTries: 0 },
-    refundedCents: 0,
-    createdAt: now,
-    updatedAt: now,
-  });
+  const paymentId =
+    online.provider === "square"
+      ? await startSquareAttempt(ctx, { invoice, connection: online.connection!, amountCents: quote.dueNowCents, tipCents: 0, clientKey, returnTo: back! })
+      : await ctx.db.insert("payments", {
+          companyId: company._id,
+          invoiceId: invoice._id,
+          customerId,
+          amountCents: quote.dueNowCents,
+          method: "card",
+          source: "stripe",
+          status: "awaiting_customer",
+          clientKey,
+          stripe: { accountId: account!.accountId!, livemode: account!.livemode, createTries: 0 },
+          refundedCents: 0,
+          createdAt: now,
+          updatedAt: now,
+        });
   await cancelStartedPayments(ctx, invoice._id, paymentId);
-  await recordEvent(ctx, { companyId: company._id, type: "payment.started", actor: { kind: "system" }, subject: { table: "payments", id: paymentId }, data: { amountCents: quote.dueNowCents, source: "booking" } });
+  // A Square attempt records its own start (financeSquarePay.startSquareAttempt).
+  if (online.provider === "stripe") await recordEvent(ctx, { companyId: company._id, type: "payment.started", actor: { kind: "system" }, subject: { table: "payments", id: paymentId }, data: { amountCents: quote.dueNowCents, source: "booking" } });
   // The time stays held while the customer is paying.
   const holdId = fresh.schedule?.holdId;
   if (holdId) {
@@ -160,8 +173,20 @@ export async function startBookingPayment(ctx: MutationCtx, session: Doc<"bookin
   }
   await ctx.db.patch(session._id, { paymentId, paymentState: "started", updatedAt: now });
   await funnel(ctx, (await ctx.db.get(session._id))!, "payment_started", { amountCents: quote.dueNowCents });
-  await ctx.scheduler.runAfter(0, internal.financeStripe.createIntent, { paymentId });
+  if (online.provider === "stripe") await ctx.scheduler.runAfter(0, internal.financeStripe.createIntent, { paymentId });
   return { paymentId };
+}
+
+/** The booking page Square returns the customer to: an allowed Selestial address on a booking path, or nothing. */
+export function bookingReturn(candidate: string | undefined): string | null {
+  if (!candidate || candidate.length > 2000) return null;
+  const origin = returnOrigin(candidate);
+  if (!origin) return null;
+  const url = new URL(candidate);
+  if (!url.pathname.startsWith("/b/")) return null;
+  url.searchParams.delete("square");
+  url.hash = "";
+  return `${origin}${url.pathname}${url.search}`;
 }
 
 /**

@@ -27,6 +27,8 @@ import { companyServices } from "./lib/finance/services";
 import { dueAfterDays, endOfLocalDate, invoiceNumber, localDateKey, periodRange, periodValidator, settingsOf, settingsRow } from "./lib/finance/settings";
 import { stripeConfig } from "./lib/finance/stripe";
 import { stripeState } from "./lib/finance/stripeState";
+import { squareState } from "./lib/finance/squareState";
+import { secretsConfigured } from "./lib/recruiter/secrets";
 import { addLocalDays, startOfLocalDay } from "./lib/time";
 
 type Ctx = (QueryCtx | MutationCtx) & MemberAccess;
@@ -252,7 +254,9 @@ export const overview = ownerQuery({
 
     const outstanding = open.filter((invoice) => invoice.totals.balanceCents > 0);
     const overdue = open.filter((invoice) => invoiceState(invoice, now) === "overdue");
-    const feeKnown = counted.filter((p) => p.source === "stripe");
+    // Fees are known only from the provider's own record; a fee it hasn't reported is counted as missing, never as zero.
+    const feeKnown = counted.filter((p) => p.source === "stripe" || p.source === "square");
+    const feeOf = (p: Doc<"payments">) => p.stripe?.feeCents ?? p.square?.feeCents;
 
     // Eight weeks, Monday to Sunday on the company's clock, ending with this week.
     const todayStart = startOfLocalDay(now, tz);
@@ -294,7 +298,7 @@ export const overview = ownerQuery({
       )
     )
       .flat()
-      .filter((p) => (p.status === "succeeded" ? p.dispute !== undefined : true))
+      .filter((p) => (p.status === "succeeded" ? p.dispute !== undefined || (p.source === "square" && Boolean(p.problem)) : true))
       .filter((p) => p.status !== "failed" || open.some((invoice) => invoice._id === p.invoiceId));
     // A failed attempt that was followed by a successful one is not a problem any more.
     const failedStill = troubled.filter((p) => p.status !== "failed" || !received.some((r) => r.invoiceId === p.invoiceId && r.createdAt > p.createdAt));
@@ -302,6 +306,8 @@ export const overview = ownerQuery({
     const jobs = await uninvoicedJobs(ctx, ctx.companyId, now);
     const jobNames = await namesFor(ctx, jobs.map((job) => job.customerId));
     const stripe = await stripeState(ctx, ctx.companyId);
+    const square = await squareState(ctx, ctx.companyId, await secretsConfigured());
+    const provider = settingsOf(await settingsRow(ctx, ctx.companyId)).paymentProvider;
     const approvedMessages = await ctx.db
       .query("financeMessages")
       .withIndex("by_company_status", (q) => q.eq("companyId", ctx.companyId).eq("status", "approved"))
@@ -324,8 +330,11 @@ export const overview = ownerQuery({
       invoices,
       customerName: name,
       uninvoicedJobs: jobs.map((job) => ({ job, customer: jobNames.get(job.customerId) ?? "Customer", label: jobLabel(job, tz) })),
-      troubledPayments: failedStill,
+      troubledPayments: failedStill.filter((p) => !(p.status === "succeeded" && p.source === "square" && !p.dispute)),
+      squareExceptions: failedStill.filter((p) => p.status === "succeeded" && p.source === "square" && Boolean(p.problem)),
       stripe: { state: stripe.state, problem: stripe.problem },
+      provider,
+      square: { state: square.state, problem: square.problem, locationProblem: square.locationProblem, openLinksAtLoss: square.openLinksAtLoss },
       money: dollars,
     });
 
@@ -341,7 +350,7 @@ export const overview = ownerQuery({
     return {
       period: { id: args.period, label: range.label, from: range.from, to: range.to },
       metrics: {
-        collected: { cents: counted.reduce((s, p) => s + p.amountCents, 0), count: counted.length, feesCents: feeKnown.reduce((s, p) => s + (p.stripe?.feeCents ?? 0), 0), feesMissing: feeKnown.filter((p) => p.stripe?.feeCents === undefined).length },
+        collected: { cents: counted.reduce((s, p) => s + p.amountCents, 0), count: counted.length, feesCents: feeKnown.reduce((s, p) => s + (feeOf(p) ?? 0), 0), feesMissing: feeKnown.filter((p) => feeOf(p) === undefined).length },
         refunded: { cents: refunded.reduce((s, r) => s + r.amountCents, 0), count: refunded.length },
         invoiced: { cents: invoicedRows.reduce((s, invoice) => s + invoice.totals.totalCents, 0), count: invoicedRows.length },
         outstanding: { cents: outstanding.reduce((s, invoice) => s + invoice.totals.balanceCents, 0), count: outstanding.length, processingCents: open.reduce((s, invoice) => s + invoice.totals.processingCents, 0) },
@@ -360,7 +369,7 @@ export const overview = ownerQuery({
   },
 });
 
-const FINANCE_EVENT = /^(?:(?:invoice|payment|refund|credit|stripe|finance_settings|collection|team_payment|tip)\.|expense\.(?:recorded|filed_by_rule|edited|voided|repaid|imported)$)/;
+const FINANCE_EVENT = /^(?:(?:invoice|payment|refund|credit|stripe|square|finance_settings|collection|team_payment|tip)\.|expense\.(?:recorded|filed_by_rule|edited|voided|repaid|imported)$)/;
 
 const EVENT_WORDS: Record<string, string> = {
   "invoice.created": "Draft invoice created",
@@ -387,6 +396,17 @@ const EVENT_WORDS: Record<string, string> = {
   "stripe.connect_started": "Stripe setup started",
   "stripe.connected": "Stripe connected",
   "stripe.updated": "Stripe account updated",
+  "payment.recheck_requested": "Asked the provider about payments in flight",
+  "square.connect_started": "Square authorization started",
+  "square.connected": "Square connected",
+  "square.reconnected": "Square reconnected",
+  "square.connect_refused": "Square account refused: connected to another business",
+  "square.location_chosen": "Square location chosen",
+  "square.updated": "Square connection changed",
+  "square.disconnected": "Square disconnected",
+  "finance_settings.provider": "Payment provider changed",
+  "refund.found_in_square": "Refund made in Square",
+  "payment.canceled": "Unfinished payment closed",
   "finance_settings.saved": "Invoice settings changed",
   "team_payment.started": "Team payment started",
   "team_payment.paid": "Team payment recorded as paid",
@@ -408,6 +428,8 @@ const EVENT_WORDS: Record<string, string> = {
 function whoDid(event: Doc<"events">): string {
   if (event.actor.kind === "member") return "You";
   if (event.type === "payment.started") return "Customer";
+  if (event.actor.kind === "system" && /^square\./.test(event.type)) return "Square";
+  if (event.actor.kind === "system" && /^(payment|refund|invoice\.paid)/.test(event.type) && (event.data as { provider?: string } | undefined)?.provider === "square") return "Square";
   if (event.actor.kind === "system" && /^(payment|refund|invoice\.paid|stripe)/.test(event.type)) return "Stripe";
   return "Selestial";
 }
@@ -472,12 +494,20 @@ function paymentView(payment: Doc<"payments">, timezone: string) {
     status: payment.status,
     statusWords: PAYMENT_WORDS[payment.status],
     method: payment.method,
-    methodWords: payment.stripe?.methodLabel ?? METHOD_WORDS[payment.method],
+    methodWords: payment.stripe?.methodLabel ?? payment.square?.methodLabel ?? METHOD_WORDS[payment.method],
     source: payment.source,
     receivedOn: payment.manual?.receivedOn ?? (payment.succeededAt ? localDateKey(payment.succeededAt, timezone) : null),
     reference: payment.manual?.reference ?? null,
     note: payment.manual?.note ?? null,
-    feeCents: payment.stripe?.feeCents ?? null,
+    feeCents: payment.stripe?.feeCents ?? payment.square?.feeCents ?? null,
+    /** The provider's receipt, when it gave one. */
+    receiptUrl: payment.square?.receiptUrl ?? null,
+    /** For support: the provider's own references. Shown under details, never as the main words. */
+    references: payment.square
+      ? { provider: "Square", ids: [payment.square.paymentId && `Payment ${payment.square.paymentId}`, payment.square.orderId && `Order ${payment.square.orderId}`, payment.square.linkId && `Checkout link ${payment.square.linkId}`, `Location ${payment.square.locationId}`, ...(payment.square.extraPaymentIds ?? []).map((id) => `Other payment on the same checkout ${id}`)].filter(Boolean) as string[] }
+      : payment.stripe?.paymentIntentId
+        ? { provider: "Stripe", ids: [`Payment intent ${payment.stripe.paymentIntentId}`, `Account ${payment.stripe.accountId}`] }
+        : null,
     problem: payment.problem ?? null,
     refundedCents: payment.refundedCents,
     refundableCents: Math.max(0, refundable),
@@ -485,7 +515,7 @@ function paymentView(payment: Doc<"payments">, timezone: string) {
     voided: payment.voided ? { at: payment.voided.at, reason: payment.voided.reason } : null,
     createdAt: payment.createdAt,
     succeededAt: payment.succeededAt ?? null,
-    livemode: payment.stripe?.livemode ?? null,
+    livemode: payment.stripe?.livemode ?? (payment.square ? payment.square.environment === "production" : null),
   };
 }
 
@@ -528,6 +558,9 @@ export const invoice = ownerQuery({
       .map((event) => ({ id: event._id, at: event.at, title: EVENT_WORDS[event.type] ?? "Updated", amountCents: typeof event.data?.amountCents === "number" ? event.data.amountCents : null, by: whoDid(event) }));
     const state = invoiceState(invoice, now);
     const stripe = await stripeState(ctx, ctx.companyId);
+    const square = await squareState(ctx, ctx.companyId, await secretsConfigured());
+    const provider = settings.paymentProvider;
+    const onlineReady = provider === "square" ? square.canPay : stripe.state === "active";
     return {
       id: invoice._id,
       number: invoice.number ?? null,
@@ -559,13 +592,15 @@ export const invoice = ownerQuery({
       payLink: token ? payUrl(token) : null,
       payLinksConfigured: payLinksConfigured(),
       payments: rows.payments.filter((p) => p.status !== "awaiting_customer" && p.status !== "canceled").sort((a, b) => b.createdAt - a.createdAt).map((p) => paymentView(p, tz)),
-      refunds: rows.refunds.sort((a, b) => b.createdAt - a.createdAt).map((r) => ({ id: r._id, paymentId: r.paymentId, amountCents: r.amountCents, reason: r.reason, status: r.status, statusWords: REFUND_WORDS[r.status], problem: r.problem ?? null, createdAt: r.createdAt, settledAt: r.settledAt ?? null, inFlight: REFUND_IN_FLIGHT.includes(r.status), madeInStripe: r.origin === "stripe_dashboard" })),
+      refunds: rows.refunds.sort((a, b) => b.createdAt - a.createdAt).map((r) => ({ id: r._id, paymentId: r.paymentId, amountCents: r.amountCents, reason: r.reason, status: r.status, statusWords: REFUND_WORDS[r.status], problem: r.problem ?? null, createdAt: r.createdAt, settledAt: r.settledAt ?? null, inFlight: REFUND_IN_FLIGHT.includes(r.status), madeInStripe: r.origin === "stripe_dashboard", madeInSquare: r.origin === "square_dashboard" })),
       credits: rows.credits.sort((a, b) => b.at - a.at).map((c) => ({ id: c._id, amountCents: c.amountCents, reason: c.reason, at: c.at, reversed: c.reversed ? { at: c.reversed.at, reason: c.reversed.reason } : null, fromRefund: c.refundId !== undefined })),
       timeline,
       taxSettings: { rateBps: settings.taxRateBps, label: settings.taxLabel },
       termsDueDate: localDateKey(dueAfterDays(now, settings.paymentTermsDays, tz), tz),
       taxableServiceIds: settings.taxableServiceIds,
-      cardPayments: stripe.state === "active",
+      cardPayments: onlineReady,
+      /** Who takes the customer's next online payment on this invoice, and whether they can now. */
+      online: { provider, name: provider === "square" ? "Square" : "Stripe", ready: onlineReady, where: provider === "square" ? (square.location?.name ?? null) : null },
       stripe,
       today: localDateKey(now, tz),
     };
@@ -593,7 +628,7 @@ export const statement = ownerQuery({
       if (invoice.voided) entries.push({ at: invoice.voided.at, kind: "void", label: `${number} voided`, invoiceId: invoice._id, chargeCents: -linesTotal(invoice.lines, invoice.taxRateBps).totalCents, paidCents: 0, pending: false });
       const rows = await invoiceRows(ctx, invoice);
       for (const p of rows.payments) {
-        if (p.status === "succeeded") entries.push({ at: p.succeededAt ?? p.createdAt, kind: "payment", label: `Payment · ${p.stripe?.methodLabel ?? METHOD_WORDS[p.method]} · ${number}`, invoiceId: invoice._id, chargeCents: 0, paidCents: p.amountCents, pending: false });
+        if (p.status === "succeeded") entries.push({ at: p.succeededAt ?? p.createdAt, kind: "payment", label: `Payment · ${p.stripe?.methodLabel ?? p.square?.methodLabel ?? METHOD_WORDS[p.method]} · ${number}`, invoiceId: invoice._id, chargeCents: 0, paidCents: p.amountCents, pending: false });
         if (p.status === "processing") entries.push({ at: p.createdAt, kind: "payment", label: `Payment processing · ${number}`, invoiceId: invoice._id, chargeCents: 0, paidCents: 0, pending: true });
       }
       for (const r of rows.refunds) {
@@ -654,11 +689,86 @@ export const settings = ownerQuery({
       .withIndex("by_company_status", (q) => q.eq("companyId", ctx.companyId).eq("status", "ready"))
       .take(500);
     const tiers = (ctx.company.payTiers ?? []).filter((t) => !t.archived).map((t) => ({ ...t, cleaners: cleaners.filter((c) => c.pay?.kind === "tier" && c.pay.tierId === t.id).length }));
-    return { settings: settingsOf(await settingsRow(ctx, ctx.companyId)), services, tiers, stripe: await stripeState(ctx, ctx.companyId), payLinksConfigured: payLinksConfigured(), cardsConfigured: stripeConfig() !== null };
+    return { settings: settingsOf(await settingsRow(ctx, ctx.companyId)), services, tiers, stripe: await stripeState(ctx, ctx.companyId), square: await squareState(ctx, ctx.companyId, await secretsConfigured()), payLinksConfigured: payLinksConfigured(), cardsConfigured: stripeConfig() !== null };
   },
 });
 
 // ── Settings ─────────────────────────────────────────────────────────────────────────────────────
+
+/** Payments that stop or block a provider switch: still being confirmed (block), or unfinished checkouts (closed by the switch). */
+async function switchFacts(ctx: QueryCtx | MutationCtx, companyId: Id<"companies">) {
+  const of = (status: Doc<"payments">["status"]) =>
+    ctx.db
+      .query("payments")
+      .withIndex("by_company_status", (q) => q.eq("companyId", companyId).eq("status", status))
+      .take(1000);
+  const inFlight = [...(await of("processing")), ...(await of("checking"))].filter((p) => p.source !== "manual");
+  const unfinished = (await of("awaiting_customer")).filter((p) => p.source !== "manual");
+  return { inFlight, unfinished };
+}
+
+/**
+ * What choosing another provider for new payment requests does, before the Owner confirms. Existing
+ * payments, refunds and links to them never change provider. A payment still being confirmed blocks the
+ * switch; unfinished checkouts are closed, so no invoice has two ways to collect the same money.
+ */
+export const providerPreview = ownerQuery({
+  args: { provider: v.union(v.literal("stripe"), v.literal("square")) },
+  handler: async (ctx, args) => {
+    requireFinance(ctx, "edit");
+    const current = settingsOf(await settingsRow(ctx, ctx.companyId)).paymentProvider;
+    const stripe = await stripeState(ctx, ctx.companyId);
+    const square = await squareState(ctx, ctx.companyId, await secretsConfigured());
+    const name = args.provider === "square" ? "Square" : "Stripe";
+    const ready = args.provider === "square" ? square.canPay : stripe.canPayByCard;
+    const facts = await switchFacts(ctx, ctx.companyId);
+    const blocked =
+      current === args.provider
+        ? `${name} already takes new payment requests.`
+        : !ready
+          ? args.provider === "square"
+            ? square.state === "needs_location"
+              ? "Choose a location for payments in Square first."
+              : "Connect Square first."
+            : "Finish connecting Stripe first."
+          : facts.inFlight.length
+            ? `${facts.inFlight.length} online payment${facts.inFlight.length === 1 ? " is" : "s are"} still being confirmed. Switch once ${facts.inFlight.length === 1 ? "it settles" : "they settle"}, so nothing is collected twice.`
+            : null;
+    return {
+      blocked,
+      lines: [
+        `New payment requests, and the pay links customers already have, take payments through ${name}${args.provider === "square" && square.location ? ` at ${square.location.name}` : ""}.`,
+        facts.unfinished.length ? `${facts.unfinished.length} unfinished checkout${facts.unfinished.length === 1 ? " is" : "s are"} closed now; those customers start again on the same pay link.` : "No checkout is open right now.",
+        "Payments, refunds and receipts already recorded keep their provider. Refunds of earlier payments still go back through the provider that took them.",
+      ],
+      bindsTo: `${current}>${args.provider}:${facts.inFlight.length}:${facts.unfinished.map((p) => p._id).join(",")}`,
+    };
+  },
+});
+
+export const setPaymentProvider = ownerMutation({
+  args: { provider: v.union(v.literal("stripe"), v.literal("square")), bindsTo: v.string() },
+  handler: async (ctx, args) => {
+    requireFinance(ctx, "edit");
+    const row = await settingsRow(ctx, ctx.companyId);
+    const current = settingsOf(row).paymentProvider;
+    const facts = await switchFacts(ctx, ctx.companyId);
+    if (args.bindsTo !== `${current}>${args.provider}:${facts.inFlight.length}:${facts.unfinished.map((p) => p._id).join(",")}`) throw userError("Something changed since you looked. Review the switch again.");
+    if (current === args.provider) return { ok: true };
+    const ready = args.provider === "square" ? (await squareState(ctx, ctx.companyId, await secretsConfigured())).canPay : (await stripeState(ctx, ctx.companyId)).canPayByCard;
+    if (!ready) throw userError(args.provider === "square" ? "Connect Square and choose a location first." : "Finish connecting Stripe first.");
+    if (facts.inFlight.length) throw userError("Wait until online payments being confirmed settle, then switch.");
+    const now = Date.now();
+    if (row) await ctx.db.patch(row._id, { paymentProvider: args.provider, revision: row.revision + 1, updatedBy: ctx.member._id, updatedAt: now });
+    else {
+      const d = settingsOf(null);
+      await ctx.db.insert("financeSettings", { companyId: ctx.companyId, taxableServiceIds: [], paymentTermsDays: d.paymentTermsDays, allowPartialPayments: d.allowPartialPayments, nextInvoiceNumber: d.nextInvoiceNumber, invoicePrefix: d.invoicePrefix, paymentProvider: args.provider, revision: 1, updatedBy: ctx.member._id, updatedAt: now });
+    }
+    for (const invoiceId of new Set(facts.unfinished.map((p) => p.invoiceId))) await cancelStartedPayments(ctx, invoiceId);
+    await recordEvent(ctx, { companyId: ctx.companyId, type: "finance_settings.provider", actor: byMember(ctx), subject: { table: "companies", id: ctx.companyId }, data: { from: current, to: args.provider, closed: facts.unfinished.length } });
+    return { ok: true };
+  },
+});
 
 export const saveSettings = ownerMutation({
   args: {
@@ -931,7 +1041,15 @@ export async function cancelStartedPayments(ctx: MutationCtx, invoiceId: Id<"inv
   for (const payment of started) {
     if (payment._id === except) continue;
     const declinedButOpen = payment.status === "failed" && Boolean(payment.stripe?.paymentIntentId);
-    if (payment.status !== "awaiting_customer" && !declinedButOpen) continue;
+    // A Square checkout being confirmed may still be open for the buyer: it is closed too, then read back.
+    const squareOpen = payment.source === "square" && (payment.status === "awaiting_customer" || (payment.status === "checking" && !payment.square?.linkClosed));
+    if (payment.status !== "awaiting_customer" && !declinedButOpen && !squareOpen) continue;
+    if (payment.source === "square") {
+      // Marked canceled now, so a checkout Square is still making is closed the moment it exists (financeSquarePay.linkCreated).
+      if (!payment.square?.linkId) await ctx.db.patch(payment._id, { status: "canceled", updatedAt: Date.now() });
+      await ctx.scheduler.runAfter(0, internal.financeSquarePay.closeLink, { paymentId: payment._id });
+      continue;
+    }
     await ctx.scheduler.runAfter(0, internal.financeStripe.cancelStarted, { paymentId: payment._id });
   }
 }
@@ -1124,12 +1242,14 @@ export const refundPreview = ownerQuery({
     const customer = await ctx.db.get(payment.customerId);
     const facts = await refundFacts(ctx, payment, args.amountCents, args.alsoCredit);
     const room = refundRoom(payment, facts.inFlight);
-    const stripe = payment.source === "stripe";
+    const provider = payment.source === "stripe" ? "Stripe" : payment.source === "square" ? "Square" : null;
     const blocked =
       payment.status !== "succeeded"
         ? "Only a payment that was received can be refunded."
         : payment.dispute
           ? "This payment is disputed. Handle it in your Stripe Dashboard instead."
+          : payment.source === "square" && !payment.square?.paymentId
+            ? "Selestial doesn't have Square's reference for this payment yet. Try again in a few minutes."
           : !Number.isInteger(args.amountCents) || args.amountCents <= 0
             ? "Enter the amount to refund."
             : args.amountCents > room
@@ -1140,11 +1260,11 @@ export const refundPreview = ownerQuery({
       blocked,
       roomCents: Math.max(0, room),
       lines: [
-        stripe
-          ? `Stripe returns ${dollars(args.amountCents)} to ${customer?.name ?? "the customer"}'s ${payment.stripe?.methodLabel ?? "card"}. It usually reaches them in 5 to 10 business days.`
+        provider
+          ? `${provider} returns ${dollars(args.amountCents)} to ${customer?.name ?? "the customer"}'s ${payment.stripe?.methodLabel ?? payment.square?.methodLabel ?? "card"}. ${provider === "Square" ? "Square usually finishes a card refund within a few days; it can take up to 14." : "It usually reaches them in 5 to 10 business days."}`
           : `You return ${dollars(args.amountCents)} to ${customer?.name ?? "the customer"} yourself. Selestial records that you did.`,
         args.alsoCredit ? `${invoice.number} is also credited ${dollars(args.amountCents)}, so they won't owe it again.` : `${invoice.number} will show ${dollars(Math.max(0, owedAfter))} owed after the refund.`,
-        stripe ? "Stripe keeps its original processing fee. A refund can't be undone." : "No money moves through Selestial.",
+        provider ? `${provider === "Square" ? "Square's" : "Stripe's"} fees on the original payment follow ${provider}'s own refund rules. A refund can't be undone.` : "No money moves through Selestial.",
       ],
       owedAfterCents: owedAfter,
       source: payment.source,
@@ -1173,6 +1293,7 @@ export const requestRefund = ownerMutation({
     await requireSame(args.bindsTo, "refund", facts);
     if (payment.status !== "succeeded") throw userError("Only a payment that was received can be refunded.");
     if (payment.dispute) throw userError("This payment is disputed. Handle it in your Stripe Dashboard instead.");
+    if (payment.source === "square" && !payment.square?.paymentId) throw userError("Selestial doesn't have Square's reference for this payment yet. Try again in a few minutes.");
     if (!Number.isInteger(args.amountCents) || args.amountCents <= 0 || args.amountCents > refundRoom(payment, facts.inFlight)) throw userError("That amount can't be refunded from this payment.");
     const reason = args.reason.trim();
     if (!reason) throw userError("Say why, so the customer's statement makes sense.");
@@ -1204,7 +1325,7 @@ export const requestRefund = ownerMutation({
       if (args.alsoCredit) await addRefundCredit(ctx, refundId);
       await recompute(ctx, payment.invoiceId);
     } else {
-      await ctx.scheduler.runAfter(0, internal.financeStripe.sendRefund, { refundId });
+      await ctx.scheduler.runAfter(0, payment.source === "square" ? internal.financeSquarePay.sendRefund : internal.financeStripe.sendRefund, { refundId });
     }
     return { refundId, repeated: false };
   },

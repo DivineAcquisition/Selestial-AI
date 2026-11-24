@@ -115,7 +115,9 @@ export function useSessionActions(token: string | null, server: { start: (postal
       startPayment: async () => {
         clientKey.current ??= `bk-${crypto.randomUUID()}`;
         const key = clientKey.current;
-        const r = await attempt(() => startPayment({ token: t, clientKey: key }));
+        // Where Square's checkout sends the customer back: this booking page (the server checks it is Selestial's own).
+        const returnTo = typeof window === "undefined" ? undefined : window.location.href;
+        const r = await attempt(() => startPayment({ token: t, clientKey: key, returnTo }));
         clientKey.current = null;
         if (!r.ok) return r;
         return { ok: true, paymentId: (r.value as { paymentId?: string }).paymentId };

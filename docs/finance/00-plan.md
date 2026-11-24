@@ -45,6 +45,7 @@ Settings › Plan & Usage (`docs/billing/README.md`), and the two never share a 
 |---|---|---|
 | 0 Foundations | Money records with an audit trail, separate finance capabilities checked on the server, Finance in the sidebar with its tabs, shared money UI | **Built** |
 | 1 Stripe and getting paid | Connect the company's Stripe account; invoices with deposits and partial payments; branded pay page; Stripe webhooks; payments recorded by hand; customer statements; refunds and credits behind a confirmation; recovery from unclear Stripe answers | **Built** |
+| 1b Square | Each company's own Square account through Square OAuth, as the provider for new payment requests: hosted checkout for invoices and online bookings, refunds, webhooks, reconciliation (`docs/finance/square.md`) | **Built**; Sandbox and production setup pending |
 | 2 Collections with Selestial | Invoices and reminders to customers by email or text through the shared sending rules; Selestial drafts on a schedule; the Owner edits and approves each, or Send all; "Ready for you" queue; Chat tools and invoice context | **Built** |
 | 3 Team Pay | Fixed, hourly, % share and % tiers; check-out and corrected hours; tips; Calculated → Needs review → Approved → Payment started → Paid; cleaner statements | **Built** |
 | 4 Expenses | 4a: receipts read into drafts, manual entry, bank/card CSV import, categories, the Owner's rules, possible repeats, visit links, paid personally and owed back. 4b: bills and reminders, cleaner reimbursements through the portal and Team Pay, Gmail receipts label | **4a built** |
@@ -189,6 +190,8 @@ On the Convex deployment (`npx convex env set`):
 | `STRIPE_PUBLISHABLE_KEY` | The matching `pk_…` key, for the pay page |
 | `STRIPE_CONNECT_WEBHOOK_SECRET` | The `whsec_…` of a **Connect** webhook endpoint at `https://<deployment>.convex.site/webhooks/stripe`, listening for events on connected accounts: `account.updated`, `account.application.deauthorized`, `payment_intent.processing`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.canceled`, `charge.refunded`, `refund.created`, `refund.updated`, `refund.failed`, `charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed` |
 | `ACTION_LINK_SECRET`, `LINK_ORIGIN`, `APP_ORIGIN` | Already used by cleaner links and invitations. Pay links need the first two; Stripe's return address after onboarding uses `APP_ORIGIN` |
+
+Square's settings, addresses and activation steps are in `docs/finance/square.md`.
 
 In Stripe: enable Connect on Selestial's platform account. Accounts are created through the API with the
 full Stripe Dashboard, Stripe collecting fees and covering losses (Managed Risk), and Stripe-hosted
