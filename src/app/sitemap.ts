@@ -15,6 +15,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${origin}/agents`, changeFrequency: "monthly", priority: 0.8 },
     { url: `${origin}${INTEGRATIONS_PATH}`, changeFrequency: "monthly", priority: 0.7 },
     ...AGENT_PAGE_IDS.map((id) => ({ url: `${origin}${agentPagePath(id)}`, changeFrequency: "monthly" as const, priority: 0.7 })),
-    ...["/security", "/security/subprocessors", "/security/report", "/security/review", "/privacy", "/privacy/requests", "/terms", "/cookies", "/messaging"].map((path) => ({ url: `${origin}${path}`, changeFrequency: "monthly" as const, priority: 0.4 })),
+    ...["/security", "/security/subprocessors", "/security/report", "/security/review", "/privacy", "/privacy/requests", "/terms", "/eula", "/cookies", "/messaging"].map((path) => ({ url: `${origin}${path}`, changeFrequency: "monthly" as const, priority: 0.4 })),
   ];
 }

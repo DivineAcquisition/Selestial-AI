@@ -5,7 +5,7 @@
  *
  * Pure: no Convex or Next.js imports, so both sides can use it.
  */
-export const DOCUMENT_KINDS = ["terms", "privacy", "cookies", "messaging", "security"] as const;
+export const DOCUMENT_KINDS = ["terms", "privacy", "cookies", "messaging", "security", "eula"] as const;
 export type DocumentKind = (typeof DOCUMENT_KINDS)[number];
 
 export type DocumentVersion = {
@@ -25,6 +25,7 @@ export const DOCUMENT_TITLES: Record<DocumentKind, string> = {
   cookies: "Cookies and Tracking",
   messaging: "Messaging Practices",
   security: "Security Overview",
+  eula: "End-User License Agreement",
 };
 
 /** Every version ever published, oldest first within a kind. */
@@ -34,6 +35,7 @@ export const DOCUMENT_VERSIONS: readonly DocumentVersion[] = [
   { id: "cookies-2026-11-16", kind: "cookies", title: DOCUMENT_TITLES.cookies, effectiveOn: "2026-11-16", summary: "First version." },
   { id: "messaging-2026-11-16", kind: "messaging", title: DOCUMENT_TITLES.messaging, effectiveOn: "2026-11-16", summary: "First version." },
   { id: "security-2026-11-16", kind: "security", title: DOCUMENT_TITLES.security, effectiveOn: "2026-11-16", summary: "First version." },
+  { id: "eula-2026-11-24", kind: "eula", title: DOCUMENT_TITLES.eula, effectiveOn: "2026-11-24", summary: "First version." },
 ];
 
 /** The newest version of a kind: the one in force and the one a person accepts. */
