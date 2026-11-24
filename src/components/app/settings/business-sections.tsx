@@ -15,6 +15,7 @@ import { addPostalCodes, clockLabel, hoursSummary, minuteToTime, type HoursWindo
 import { filterTimeZones, timeZoneLabel, timeZoneOptions } from "@/lib/app/timezones";
 import { cn } from "@/lib/utils";
 import { Checkbox, SearchableSelect } from "@/components/ui/selection";
+import { SetupHelpCard } from "@/components/app/tutorials/setup-help";
 
 /** Save and discard for the business draft. */
 export function SaveBar() {
@@ -311,6 +312,7 @@ export function BusinessSection() {
   const timezoneChanged = draft.timezone !== saved.timezone;
   return (
     <div className="grid gap-5">
+      <SetupHelpCard tutorialId="setup-company" placement="settings.business" />
       <MigrationEntry />
       <Panel title="Company">
         <div className="grid gap-4 sm:grid-cols-2">

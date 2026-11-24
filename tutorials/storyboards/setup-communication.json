@@ -1,0 +1,432 @@
+{
+  "tutorial": "setup-communication",
+  "version": 1,
+  "title": "Connect your email and phone",
+  "voice": "default",
+  "mark": false,
+  "sampleData": "Juniper Cleaning Co. after tutorial 1 (seed.mjs company). Synthetic business details: the IRS's own example EIN 12-3456789, example.com website and email, a 555-01xx phone. Nothing is submitted, no number is searched, held or bought, and no Google account is signed in.",
+  "scenes": [
+    {
+      "id": "title",
+      "narration": "Let's set up how your agents reach customers and cleaners, by email and by text.",
+      "capture": {
+        "kind": "card",
+        "eyebrow": "Setup guide · 5 of 6",
+        "title": "Connect your email and phone",
+        "body": "Where your email comes from, and how to request your business texting number.",
+        "left": "Juniper Cleaning Co. is fictional. Nothing is submitted in this video.",
+        "seconds": 7
+      },
+      "minSeconds": 5
+    },
+    {
+      "id": "email",
+      "narration": "Connected apps shows each connection and what it's waiting on. Email works from day one: until you connect an inbox, it goes from Selestial's address, with your company's name on it.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/settings/integrations",
+        "actions": [
+          {
+            "do": "scroll",
+            "target": "text=Microsoft Outlook and 365"
+          },
+          {
+            "do": "scroll",
+            "y": -120
+          },
+          {
+            "do": "highlight",
+            "target": "text=email goes from Selestial's address with your company's name",
+            "note": "Works before you connect anything",
+            "ms": 3000
+          },
+          {
+            "do": "pause",
+            "ms": 600
+          }
+        ]
+      },
+      "minSeconds": 9
+    },
+    {
+      "id": "gmail",
+      "narration": "Connecting Gmail lets agents reply from your own address, in the same thread. Where it shows Setup needed, Selestial switches it on for your account first.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/settings/integrations",
+        "actions": [
+          {
+            "do": "scroll",
+            "target": "text=Connect your company's Gmail"
+          },
+          {
+            "do": "scroll",
+            "y": -160
+          },
+          {
+            "do": "highlight",
+            "target": "text=Connect your company's Gmail >> xpath=..",
+            "note": "Your own address, in the same thread",
+            "ms": 2400
+          },
+          {
+            "do": "highlight",
+            "target": "text=Connect your company's Gmail >> xpath=.. >> text=Selestial still has to switch this on for your account.",
+            "ms": 2000
+          }
+        ]
+      },
+      "minSeconds": 8
+    },
+    {
+      "id": "texting",
+      "narration": "For texting, choose Connect texting number. Selestial gives your company a local number and handles the carrier registration.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/settings/integrations",
+        "actions": [
+          {
+            "do": "scroll",
+            "target": "text=Business texting number"
+          },
+          {
+            "do": "highlight",
+            "target": "text=Business texting number >> xpath=..",
+            "ms": 1800
+          },
+          {
+            "do": "click",
+            "target": "text=Connect texting number"
+          },
+          {
+            "do": "waitFor",
+            "target": {
+              "role": "heading",
+              "name": "Set up business texting"
+            },
+            "cut": true
+          },
+          {
+            "do": "pause",
+            "ms": 900
+          }
+        ]
+      },
+      "minSeconds": 7
+    },
+    {
+      "id": "business",
+      "narration": "Start with your business, exactly as it appears on your tax records. Carriers check these details, so they need to match.",
+      "speed": 2,
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/texting",
+        "actions": [
+          {
+            "do": "tag",
+            "text": "Sped up 2×"
+          },
+          {
+            "do": "click",
+            "target": "text=Company with an EIN"
+          },
+          {
+            "do": "scroll",
+            "target": {
+              "role": "textbox",
+              "name": "Legal business name"
+            }
+          },
+          {
+            "do": "type",
+            "target": {
+              "role": "textbox",
+              "name": "Legal business name"
+            },
+            "text": "Juniper Cleaning Company LLC",
+            "delay": 25
+          },
+          {
+            "do": "type",
+            "target": {
+              "role": "textbox",
+              "name": "EIN"
+            },
+            "text": "12-3456789",
+            "delay": 40
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "Save securely"
+            }
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "It's right"
+            }
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "It's right"
+            }
+          },
+          {
+            "do": "scroll",
+            "target": {
+              "role": "textbox",
+              "name": "Street address"
+            }
+          },
+          {
+            "do": "type",
+            "target": {
+              "role": "textbox",
+              "name": "Street address"
+            },
+            "text": "500 Example Ave",
+            "delay": 25
+          },
+          {
+            "do": "fill",
+            "target": {
+              "role": "textbox",
+              "name": "City"
+            },
+            "text": "Austin"
+          },
+          {
+            "do": "fill",
+            "target": {
+              "role": "textbox",
+              "name": "State"
+            },
+            "text": "TX"
+          },
+          {
+            "do": "fill",
+            "target": {
+              "role": "textbox",
+              "name": "ZIP code"
+            },
+            "text": "78701"
+          },
+          {
+            "do": "fill",
+            "target": {
+              "role": "textbox",
+              "name": "Website"
+            },
+            "text": "https://juniper-cleaning.example.com"
+          },
+          {
+            "do": "fill",
+            "target": {
+              "role": "textbox",
+              "name": "Support email"
+            },
+            "text": "hello@juniper-cleaning.example.com"
+          },
+          {
+            "do": "fill",
+            "target": {
+              "role": "textbox",
+              "name": "Support phone"
+            },
+            "text": "512-555-0100"
+          },
+          {
+            "do": "pause",
+            "ms": 600
+          },
+          {
+            "do": "tag"
+          },
+          {
+            "do": "pause",
+            "ms": 1500
+          }
+        ]
+      },
+      "minSeconds": 7
+    },
+    {
+      "id": "sends",
+      "narration": "Then choose what you'll text about. Carriers approve what you register, and your agents only send what's covered. Selestial drafts the consent wording and texting terms for you to check.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/texting",
+        "actions": [
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "/^Continue/",
+              "nth": -1
+            }
+          },
+          {
+            "do": "waitFor",
+            "target": "h2:has-text('send') >> visible=true",
+            "cut": true
+          },
+          {
+            "do": "click",
+            "target": "text=Booking conversations"
+          },
+          {
+            "do": "click",
+            "target": "text=Job offers"
+          },
+          {
+            "do": "click",
+            "target": "text=Arrival reminders"
+          },
+          {
+            "do": "pause",
+            "ms": 600
+          },
+          {
+            "do": "scroll",
+            "target": "text=What Selestial will register"
+          },
+          {
+            "do": "highlight",
+            "target": "text=What Selestial will register >> xpath=..",
+            "ms": 1800
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "/^Continue/",
+              "nth": -1
+            }
+          },
+          {
+            "do": "waitFor",
+            "target": "text=Text permission wording",
+            "cut": true
+          },
+          {
+            "do": "scroll",
+            "target": "text=Text permission wording"
+          },
+          {
+            "do": "highlight",
+            "target": "text=Text permission wording >> xpath=..",
+            "note": "Drafted for you to check",
+            "ms": 2200
+          }
+        ]
+      },
+      "minSeconds": 11
+    },
+    {
+      "id": "number",
+      "narration": "Next, choose a new local number in your area code. Choosing a number doesn't hold it or buy it.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/texting",
+        "actions": [
+          {
+            "do": "click",
+            "target": "button:has-text('Number') >> nth=0"
+          },
+          {
+            "do": "waitFor",
+            "target": "text=Find a number",
+            "cut": true
+          },
+          {
+            "do": "highlight",
+            "target": "text=Get a new local number",
+            "ms": 1400
+          },
+          {
+            "do": "type",
+            "target": {
+              "role": "textbox",
+              "name": "Area code"
+            },
+            "text": "512",
+            "delay": 120
+          },
+          {
+            "do": "highlight",
+            "target": "text=Choosing a number doesn't hold it",
+            "note": "Bought only after carriers approve",
+            "ms": 2600
+          }
+        ]
+      },
+      "minSeconds": 7
+    },
+    {
+      "id": "review",
+      "narration": "Finally, review everything, including what it costs, and submit it for Selestial's review. Nothing is filed with the carriers, and nothing is bought, before that review.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/texting",
+        "actions": [
+          {
+            "do": "click",
+            "target": "button:has-text('Review') >> nth=0"
+          },
+          {
+            "do": "waitFor",
+            "target": "text=What it costs",
+            "cut": true
+          },
+          {
+            "do": "scroll",
+            "target": "text=What it costs"
+          },
+          {
+            "do": "highlight",
+            "target": "text=What it costs >> xpath=..",
+            "note": "Charged only as each step happens",
+            "ms": 2600
+          },
+          {
+            "do": "scroll",
+            "target": {
+              "role": "button",
+              "name": "Submit for Selestial review"
+            }
+          },
+          {
+            "do": "highlight",
+            "target": {
+              "role": "button",
+              "name": "Submit for Selestial review"
+            },
+            "note": "Not pressed in this demo",
+            "ms": 2200
+          }
+        ]
+      },
+      "minSeconds": 10,
+      "poster": true
+    },
+    {
+      "id": "next",
+      "narration": "Next, put your agents to work.",
+      "capture": {
+        "kind": "card",
+        "eyebrow": "Up next",
+        "title": "Put your agents to work",
+        "whereLabel": "In Settings:",
+        "where": "Agent controls",
+        "left": "Setup guide · 5 of 6",
+        "seconds": 5
+      },
+      "minSeconds": 3
+    }
+  ]
+}

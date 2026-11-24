@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { api } from "../../../../convex/_generated/api";
 import { CATEGORY_LABELS, METHOD_LABELS } from "../../../../convex/lib/services/spec";
 import { ChangeBadge, Empty, Notice, when } from "./shared";
+import { SetupHelpCard } from "@/components/app/tutorials/setup-help";
 
 type Catalog = NonNullable<ReturnType<typeof useQuery<typeof api.services.catalog>>>;
 type Row = Catalog["services"][number];
@@ -39,6 +40,7 @@ export function ServicesHome() {
   const shown = catalog.services.filter((row) => matches(row, filter));
   return (
     <div className="grid grid-cols-1 gap-5">
+      <SetupHelpCard tutorialId="setup-services" placement="services.home" />
       <SetupChecklist catalog={catalog} />
       <div role="tablist" aria-label="Show" className="flex flex-wrap gap-1.5">
         {FILTERS.map((item) => {
@@ -234,6 +236,7 @@ function FirstTime({ catalog }: { catalog: Catalog }) {
         </p>
       </div>
       <SetupChecklist catalog={catalog} />
+      <SetupHelpCard tutorialId="setup-services" placement="services.home" />
     </div>
   );
 }

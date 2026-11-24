@@ -16,7 +16,6 @@ import { cn } from "@/lib/utils";
 
 import type { Media } from "../../../../convex/lib/tutorials/catalog";
 
-import { Select } from "@/components/ui/selection";
 
 export type PlayerEvent = "play_started" | "play_completed" | "play_failed";
 
@@ -151,72 +150,75 @@ export function TutorialPlayer({ media, title, onEvent }: { media: Media; title:
   return (
     <div
       ref={frame}
-      className={cn("group/player relative overflow-hidden rounded-xl bg-black text-white", full && "flex items-center")}
+      className={cn("group/player relative overflow-hidden rounded-xl bg-black text-white", full && "flex flex-col justify-center")}
       role="group"
       aria-label={`Video: ${title}`}
       onKeyDown={onKeyDown}
     >
-      <video
-        key={attempt}
-        ref={video}
-        className="aspect-video w-full bg-black"
-        poster={media.poster}
-        preload="metadata"
-        playsInline
-        crossOrigin="anonymous"
-        onClick={toggle}
-        onPlay={() => {
-          setPlaying(true);
-          if (!started.current) {
-            started.current = true;
-            event.current?.("play_started");
-          }
-        }}
-        onPause={() => setPlaying(false)}
-        onEnded={() => {
-          setPlaying(false);
-          event.current?.("play_completed");
-        }}
-        onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
-        onLoadedMetadata={(e) => {
-          if (Number.isFinite(e.currentTarget.duration)) setDuration(e.currentTarget.duration);
-          e.currentTarget.playbackRate = speed;
-          e.currentTarget.volume = volume;
-          e.currentTarget.muted = muted;
-        }}
-        onError={() => {
-          setFailed(true);
-          setPlaying(false);
-          event.current?.("play_failed");
-        }}
-      >
-        <source src={media.video} type="video/mp4" />
-        <track kind="captions" src={media.captions} srcLang="en" label="English" default />
-      </video>
-
-      {failed ? (
-        <div className="absolute inset-0 grid place-items-center bg-black/85 p-4 text-center" role="alert">
-          <div className="grid max-w-sm justify-items-center gap-3">
-            <TriangleAlert className="size-6 text-amber-300" aria-hidden />
-            <p className="text-sm">The video didn&apos;t load. The written steps below cover the same thing.</p>
-            <button type="button" onClick={retry} className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-medium text-black hover:bg-white/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
-              <RefreshCw className="size-4" aria-hidden />
-              Try again
-            </button>
-          </div>
-        </div>
-      ) : !playing && time === 0 ? (
-        <button
-          type="button"
+      <div className="relative">
+        <video
+          key={attempt}
+          ref={video}
+          className={cn("tutorial-video aspect-video w-full bg-black", full && "max-h-[calc(100dvh-3.5rem)] object-contain")}
+          poster={media.poster}
+          preload="metadata"
+          playsInline
+          crossOrigin="anonymous"
           onClick={toggle}
-          className="absolute inset-0 m-auto grid size-16 place-items-center rounded-full bg-white/95 text-black shadow-lg hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white motion-reduce:transition-none"
-          aria-label={`Play video, ${clock(shown)}`}
+          onPlay={() => {
+            setPlaying(true);
+            if (!started.current) {
+              started.current = true;
+              event.current?.("play_started");
+            }
+          }}
+          onPause={() => setPlaying(false)}
+          onEnded={() => {
+            setPlaying(false);
+            event.current?.("play_completed");
+          }}
+          onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
+          onLoadedMetadata={(e) => {
+            if (Number.isFinite(e.currentTarget.duration)) setDuration(e.currentTarget.duration);
+            e.currentTarget.playbackRate = speed;
+            e.currentTarget.volume = volume;
+            e.currentTarget.muted = muted;
+          }}
+          onError={() => {
+            setFailed(true);
+            setPlaying(false);
+            event.current?.("play_failed");
+          }}
         >
-          <Play className="ml-0.5 size-7" weight="fill" aria-hidden />
-        </button>
-      ) : null}
+          <source src={media.video} type="video/mp4" />
+          <track kind="captions" src={media.captions} srcLang="en" label="English" default />
+        </video>
 
-      <div className={cn("absolute inset-x-0 bottom-0 flex flex-wrap items-center gap-x-1 gap-y-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-2 pt-6 pb-1.5", failed && "hidden")}>
+        {failed ? (
+          <div className="absolute inset-0 grid place-items-center bg-black/85 p-4 text-center" role="alert">
+            <div className="grid max-w-sm justify-items-center gap-3">
+              <TriangleAlert className="size-6 text-amber-300" aria-hidden />
+              <p className="text-sm">The video didn&apos;t load. The written steps below cover the same thing.</p>
+              <button type="button" onClick={retry} className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-medium text-black hover:bg-white/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+                <RefreshCw className="size-4" aria-hidden />
+                Try again
+              </button>
+            </div>
+          </div>
+        ) : !playing && time === 0 ? (
+          <button
+            type="button"
+            onClick={toggle}
+            className="absolute inset-0 m-auto grid size-16 place-items-center rounded-full bg-white/95 text-black shadow-lg hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white motion-reduce:transition-none"
+            aria-label={`Play video, ${clock(shown)}`}
+          >
+            <Play className="ml-0.5 size-7" weight="fill" aria-hidden />
+          </button>
+        ) : null}
+      </div>
+
+      {/* Beneath the picture, not over it, so captions are never covered. */}
+      <div className={cn("flex flex-wrap items-center gap-x-1 gap-y-0 border-t border-white/10 bg-black px-2 pt-1 pb-1.5", failed && "hidden")}>
         <button type="button" className={control} onClick={toggle} aria-label={playing ? "Pause" : "Play"}>
           {playing ? <Pause className="size-5" weight="fill" aria-hidden /> : <Play className="size-5" weight="fill" aria-hidden />}
         </button>
@@ -264,11 +266,23 @@ export function TutorialPlayer({ media, title, onEvent }: { media: Media; title:
         <label className="sr-only" htmlFor={`speed-${attempt}`}>
           Playback speed
         </label>
-        <Select value={String(speed)} onValueChange={(picked) => {
-            const next = Number(picked ?? "") as (typeof SPEEDS)[number];
+        {/* A native select: compact on the dark bar, and the platform's own picker on phones. */}
+        <select
+          id={`speed-${attempt}`}
+          value={String(speed)}
+          onChange={(e) => {
+            const next = Number(e.target.value) as (typeof SPEEDS)[number];
             setSpeed(next);
             if (video.current) video.current.playbackRate = next;
-          }} options={SPEEDS.map((value) => ({ value: String(value), label: `${value}×` }))} className="h-9 shrink-0 cursor-pointer rounded-lg bg-transparent px-1.5 text-xs font-medium text-white hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-white [&>option]:text-black" id={`speed-${attempt}`} />
+          }}
+          className="h-9 shrink-0 cursor-pointer appearance-none rounded-lg bg-transparent px-2 text-xs font-medium text-white tabular-nums hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-white [&>option]:text-black"
+        >
+          {SPEEDS.map((value) => (
+            <option key={value} value={String(value)}>
+              {value}×
+            </option>
+          ))}
+        </select>
         <button type="button" className={cn(control, captions && "bg-white/15")} onClick={toggleCaptions} aria-label="Captions" aria-pressed={captions}>
           <Captions className="size-5" aria-hidden />
         </button>

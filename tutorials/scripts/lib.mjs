@@ -11,6 +11,41 @@ export function loadStoryboard(id) {
   return board;
 }
 
+/** The series voice (tutorials/voice/voice.json), or a storyboard's own when it names one. */
+export function loadVoice(board) {
+  if (board && board.voice && board.voice !== "default") return board.voice;
+  return JSON.parse(readFileSync(join(ROOT, "tutorials/voice/voice.json"), "utf8"));
+}
+
+/** Applies the voice's `say` spellings. Each must keep the length, so character timings still match the written text. */
+export function spoken(voice, text) {
+  let out = text;
+  for (const [written, said] of Object.entries(voice.say ?? {})) {
+    if (written.length !== said.length) throw new Error(`"${said}" must have as many characters as "${written}".`);
+    out = out.split(written).join(said);
+  }
+  return out;
+}
+
+/**
+ * One ElevenLabs request: speech with character timings. The key comes from ELEVENLABS_API_KEY, or the network
+ * proxy injects it (then any placeholder value is sent and replaced). Returns the parsed body.
+ */
+export async function speak(voice, text, { previous, next, raw = false } = {}) {
+  const key = process.env.ELEVENLABS_API_KEY || "proxy-injected";
+  const say = raw ? text : spoken(voice, text);
+  const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice.voiceId}/with-timestamps?output_format=${voice.outputFormat ?? "mp3_44100_128"}`, {
+    method: "POST",
+    headers: { "xi-api-key": key, "Content-Type": "application/json" },
+    body: JSON.stringify({ text: say, model_id: voice.model, voice_settings: voice.settings, previous_text: previous && spoken(voice, previous), next_text: next && spoken(voice, next) }),
+  });
+  if (!response.ok) throw new Error(`ElevenLabs refused the request: ${response.status} ${(await response.text()).slice(0, 300)}`);
+  const body = await response.json();
+  // Timings are for the spoken spelling; the written text has the same length, so put its characters back.
+  if (!raw && body.alignment) body.alignment.characters = [...text];
+  return body;
+}
+
 export const buildDir = (board) => join(ROOT, "tutorials/build", board.tutorial, `v${board.version}`);
 
 /** Seconds as a WebVTT timestamp. */

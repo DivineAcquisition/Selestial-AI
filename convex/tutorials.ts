@@ -19,6 +19,8 @@ import { allow } from "./lib/rateLimit";
 import { optionalText } from "./lib/text";
 import { TUTORIALS, tutorialById, WRITTEN_CRITERIA, WRITTEN_MAX_AGE_DAYS, type Media, type State, type Tutorial } from "./lib/tutorials/catalog";
 import { activeConfig } from "./lib/texting/case";
+import { businessSettingsOf } from "./lib/settings/business";
+import { SETUP_TUTORIALS } from "./lib/tutorials/setup";
 import { mediaValidator, placementValidator, stateValidator, tutorialEventValidator, TUTORIAL_EVENTS } from "./lib/tutorials/schema";
 
 type Settings = Doc<"tutorialSettings">;
@@ -34,7 +36,7 @@ function effective(tutorial: Tutorial, settings: Settings | undefined): { state:
 
 /** A media address must be https, or a path on Selestial's own site. */
 function checkMedia(media: Media) {
-  for (const value of [media.video, media.poster, media.captions]) {
+  for (const value of [media.video, media.poster, media.captions, ...(media.transcript ? [media.transcript] : [])]) {
     if (!/^https:\/\/[^\s]+$/.test(value) && !/^\/[^\s]*$/.test(value)) throw userError("Media addresses must start with https:// or /.");
   }
   if (!Number.isInteger(media.version) || media.version < 1) throw userError("The media version must be a whole number from 1.");
@@ -60,6 +62,34 @@ export const published = companyQuery({
       const guide = tutorial.interfaceVerifiedOn ? ("walkthrough" as const) : ("written" as const);
       return [{ ...tutorial, placements: [...new Set([...tutorial.placements, ...extra])], media: guide === "written" ? null : now.media, guide, reported: now.reportedAt !== null }];
     });
+  },
+});
+
+/**
+ * Whether each setup guide's task is done, read from the company's own records at this moment. Watching a guide
+ * never counts: the getting-started lists show this beside each guide, so "Done" always means the work exists.
+ */
+export const setupStatus = companyQuery({
+  args: {},
+  handler: async (ctx) => {
+    const company = await ctx.db.get(ctx.companyId);
+    const business = company ? businessSettingsOf(company) : { serviceAreas: [], hours: [] };
+    const liveService = await ctx.db.query("services").withIndex("by_company_status", (q) => q.eq("companyId", ctx.companyId).eq("status", "active")).first();
+    const client = await ctx.db.query("customers").withIndex("by_company_status", (q) => q.eq("companyId", ctx.companyId).eq("status", "active")).first();
+    const cleaner = await ctx.db.query("cleaners").withIndex("by_company_status", (q) => q.eq("companyId", ctx.companyId).eq("status", "ready")).first();
+    const inboxes = await ctx.db.query("mailboxConnections").withIndex("by_company", (q) => q.eq("companyId", ctx.companyId)).take(20);
+    const texting = await ctx.db.query("textingRequests").withIndex("by_company_requested", (q) => q.eq("companyId", ctx.companyId)).order("desc").first();
+    const quo = await ctx.db.query("quoConnections").withIndex("by_company", (q) => q.eq("companyId", ctx.companyId)).first();
+    const activation = await ctx.db.query("activations").withIndex("by_company_started", (q) => q.eq("companyId", ctx.companyId)).first();
+    const done: Record<string, boolean> = {
+      "setup-company": business.serviceAreas.length > 0 || business.hours.length > 0,
+      "setup-services": Boolean(liveService),
+      "setup-clients": Boolean(client),
+      "setup-cleaners": Boolean(cleaner),
+      "setup-communication": inboxes.some((row) => row.status === "connected" && row.provider !== "mock") || texting?.status === "active" || quo?.status === "ready",
+      "setup-agents": Boolean(activation),
+    };
+    return SETUP_TUTORIALS.map((tutorial) => ({ id: tutorial.id, done: done[tutorial.id] ?? false }));
   },
 });
 

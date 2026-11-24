@@ -33,6 +33,7 @@ import { OrganizeStep } from "./step-organize";
 import { ReviewStep } from "./step-review";
 import { SourceStep } from "./step-source";
 import { VerifyStep } from "./step-verify";
+import { SetupHelpCard } from "@/components/app/tutorials/setup-help";
 
 export function MigrationWorkspace() {
   const { companyId, role } = useCompany();
@@ -100,6 +101,7 @@ function Frame() {
         <div className="max-w-2xl">
           <h1 className="font-heading text-2xl tracking-tight text-strong">Bring your business to Selestial</h1>
           <p className="mt-1 text-sm text-muted-foreground">Move your customers, team, and upcoming work into one place. We&apos;ll help organize your records and show you what needs attention before anything goes live.</p>
+          <SetupHelpCard tutorialId="setup-clients" placement="migration.start" className="mt-3" />
         </div>
         <div className="flex items-center gap-2">
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground" role="status" aria-live="polite">

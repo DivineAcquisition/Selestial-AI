@@ -1,0 +1,18 @@
+{
+  "provider": "elevenlabs",
+  "voiceId": "cjVigY5qzO86Huf0OWal",
+  "name": "Eric",
+  "model": "eleven_multilingual_v2",
+  "outputFormat": "mp3_44100_128",
+  "settings": {
+    "stability": 0.55,
+    "similarity_boost": 0.75,
+    "style": 0.1,
+    "use_speaker_boost": true
+  },
+  "say": {
+    "Selestial": "Celestial"
+  },
+  "note": "Stock (premade) ElevenLabs voice chosen by the Owner on 2026-11-20. No cloning. `say` maps a written word to how the voice should read it; the replacement must be the same length so caption timings stay exact.",
+  "pronunciation": "\"Selestial\" is read like the word \"celestial\" (suh-LES-chul). Pending the Owner's confirmation from the two samples (tutorials/build/voice-sample)."
+}

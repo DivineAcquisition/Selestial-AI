@@ -9,10 +9,12 @@
  * the upload control the screen gave. No action here imports, approves or starts anything.
  */
 import { useMutation, useQuery } from "convex/react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { BookOpen, Check, ChevronDown, Download, ExternalLink, Flag, LifeBuoy, Upload } from "@/components/icons";
+import { ArrowRight, BookOpen, Check, ChevronDown, Download, ExternalLink, FileText, Flag, LifeBuoy, Upload } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogDescription, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "@/components/ui/dialog";
@@ -28,6 +30,11 @@ type TrackKind = "opened" | "play_started" | "play_completed" | "steps_expanded"
 type OpenOptions = {
   /** Called after the dialog closes when the owner picks the upload action: focus the screen's upload control here. */
   onUpload?: () => void;
+  /**
+   * The screen the dialog opened over is where the guide's task happens (a setup step, a form): the next action
+   * closes the dialog and returns there with this label, instead of leaving and losing what was typed.
+   */
+  continueLabel?: string;
 };
 
 type Tutorials = {
@@ -45,14 +52,32 @@ export function useTutorials(): Tutorials {
   return value;
 }
 
+/** The same, or null outside a TutorialHost (a page rendered on its own): a help card then shows nothing. */
+export function useOptionalTutorials(): Tutorials | null {
+  return useContext(TutorialsContext);
+}
+
 export const SUPPORT_EMAIL = "support@selestial.io";
 
 /** The support email, with the tutorial and screen it came from. Never the owner's records or answers. */
-export function supportHref(tutorial: Pick<Tutorial, "id" | "title"> | null, placement: Placement): string {
-  const subject = tutorial ? `Migration help: ${tutorial.title}` : "Migration help";
-  const body = [`I need help moving my records into Selestial.`, "", tutorial ? `Tutorial: ${tutorial.id}` : null, `Screen: ${placement}`].filter((line) => line !== null).join("\n");
+export function supportHref(tutorial: Pick<Tutorial, "id" | "title" | "platform"> | null, placement: Placement): string {
+  const setup = tutorial?.platform === "selestial";
+  const subject = tutorial ? `${setup ? "Setup" : "Migration"} help: ${tutorial.title}` : "Migration help";
+  const body = [setup ? "I need help setting up Selestial." : `I need help moving my records into Selestial.`, "", tutorial ? `Tutorial: ${tutorial.id}` : null, `Screen: ${placement}`].filter((line) => line !== null).join("\n");
   return `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
+
+/** A video's real length in words: "48 sec", "1 min 25 sec", "2 min". */
+export function lengthWords(seconds: number): string {
+  const whole = Math.max(1, Math.round(seconds));
+  const minutes = Math.floor(whole / 60);
+  const rest = whole % 60;
+  if (!minutes) return `${rest} sec`;
+  return rest ? `${minutes} min ${rest} sec` : `${minutes} min`;
+}
+
+/** Whether a tutorial is one of Selestial's own setup guides, rather than a migration tutorial. */
+export const isSetupGuide = (tutorial: Pick<Tutorial, "platform">) => tutorial.platform === "selestial";
 
 export function formatDay(day: string): string {
   const [y, m, d] = day.split("-").map(Number);
@@ -117,6 +142,8 @@ export function TutorialHost({ children }: { children: React.ReactNode }) {
                 tutorial={tutorial}
                 placement={current.placement}
                 track={track}
+                continueLabel={current.options.continueLabel}
+                onClose={() => setIsOpen(false)}
                 onUpload={
                   current.options.onUpload
                     ? () => {
@@ -152,9 +179,15 @@ function Unavailable({ tutorialId, placement }: { tutorialId: string; placement:
             <ExternalLink className="size-3.5" aria-hidden />
           </a>
         ) : null}
+        {tutorial && isSetupGuide(tutorial) && tutorial.action.kind === "open" ? (
+          <Link href={tutorial.action.href} className="inline-flex items-center gap-1.5 font-medium text-brand-300 underline-offset-4 hover:underline">
+            {tutorial.action.label}
+            <ArrowRight className="size-3.5" aria-hidden />
+          </Link>
+        ) : null}
         <a href={supportHref(tutorial ?? null, placement)} className="inline-flex items-center gap-1.5 font-medium text-strong underline-offset-4 hover:underline">
           <LifeBuoy className="size-4" aria-hidden />
-          Get migration help
+          {tutorial && isSetupGuide(tutorial) ? "Get setup help" : "Get migration help"}
         </a>
       </DialogPanel>
     </>
@@ -179,7 +212,7 @@ function Section({ title, defaultOpen = false, onOpen, children }: { title: stri
   );
 }
 
-function TutorialBody({ tutorial, placement, track, onUpload }: { tutorial: PublishedTutorial; placement: Placement; track: Tutorials["track"]; onUpload?: () => void }) {
+function TutorialBody({ tutorial, placement, track, onUpload, continueLabel, onClose }: { tutorial: PublishedTutorial; placement: Placement; track: Tutorials["track"]; onUpload?: () => void; continueLabel?: string; onClose: () => void }) {
   const [stepsTracked, setStepsTracked] = useState(false);
   const onPlayer = useCallback((event: PlayerEvent) => track(tutorial.id, event, placement), [track, tutorial.id, placement]);
   const expanded = () => {
@@ -187,15 +220,18 @@ function TutorialBody({ tutorial, placement, track, onUpload }: { tutorial: Publ
     setStepsTracked(true);
     track(tutorial.id, "steps_expanded", placement);
   };
-  const platform = tutorial.platform === "spreadsheet" ? null : PLATFORM_WORDS[tutorial.platform];
+  const setup = isSetupGuide(tutorial);
+  const platform = tutorial.platform === "spreadsheet" || setup ? null : PLATFORM_WORDS[tutorial.platform];
+  const help = setup ? "Get setup help" : "Get migration help";
 
   return (
     <>
       <DialogHeader className="pr-12">
         <div className="flex flex-wrap items-center gap-1.5">
           {platform ? <Badge variant="outline">{platform}</Badge> : null}
-          <Badge variant="outline">{tutorial.media ? `Video · ${Math.max(1, Math.round(tutorial.media.durationSeconds / 60))} min` : "Written guide"}</Badge>
-          {tutorial.interfaceVerifiedOn ? null : <Badge variant="outline">Checked against {platform ? `${platform}'s` : "the"} help article</Badge>}
+          {setup && tutorial.order ? <Badge variant="outline">Setup guide {tutorial.order} of 6</Badge> : null}
+          <Badge variant="outline">{tutorial.media ? `Video · ${lengthWords(tutorial.media.durationSeconds)}` : "Written guide"}</Badge>
+          {tutorial.interfaceVerifiedOn || setup ? null : <Badge variant="outline">Checked against {platform ? `${platform}'s` : "the"} help article</Badge>}
         </div>
         <DialogTitle className="text-balance">{tutorial.title}</DialogTitle>
         <DialogDescription>{tutorial.purpose}</DialogDescription>
@@ -210,11 +246,11 @@ function TutorialBody({ tutorial, placement, track, onUpload }: { tutorial: Publ
         {tutorial.media ? <TutorialPlayer media={tutorial.media} title={tutorial.title} onEvent={onPlayer} /> : null}
 
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-          <ActionButton tutorial={tutorial} placement={placement} track={track} onUpload={onUpload} />
+          <ActionButton tutorial={tutorial} placement={placement} track={track} onUpload={onUpload} continueLabel={continueLabel} onClose={onClose} />
           {tutorial.action.kind !== "support" ? (
             <Button variant="ghost" render={<a href={supportHref(tutorial, placement)} />} onClick={() => track(tutorial.id, "action_selected", placement)}>
               <LifeBuoy aria-hidden />
-              Get migration help
+              {help}
             </Button>
           ) : null}
         </div>
@@ -273,8 +309,14 @@ function TutorialBody({ tutorial, placement, track, onUpload }: { tutorial: Publ
             ) : null}
           </Section>
           {tutorial.transcript ? (
-            <Section title="Transcript" onOpen={expanded}>
+            <Section title="Transcript" defaultOpen={setup && !tutorial.media} onOpen={expanded}>
               <div className="grid gap-2 whitespace-pre-line text-strong">{tutorial.transcript}</div>
+              {tutorial.media?.transcript ? (
+                <a href={tutorial.media.transcript} download className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-brand-300 underline-offset-4 hover:underline">
+                  <FileText className="size-4" aria-hidden />
+                  Download the transcript (.txt)
+                </a>
+              ) : null}
             </Section>
           ) : null}
         </div>
@@ -282,7 +324,11 @@ function TutorialBody({ tutorial, placement, track, onUpload }: { tutorial: Publ
         <footer className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-border pt-3 text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1.5">
             <Check className="size-3.5" aria-hidden />
-            {tutorial.interfaceVerifiedOn ? `Followed in a real account on ${formatDay(tutorial.interfaceVerifiedOn)}` : `Checked against the help article on ${formatDay(tutorial.docsCheckedOn)}; not yet followed in a real account`}
+            {setup
+              ? `Recorded in Selestial on ${formatDay(tutorial.interfaceVerifiedOn ?? tutorial.docsCheckedOn)}, with a fictional demo company`
+              : tutorial.interfaceVerifiedOn
+                ? `Followed in a real account on ${formatDay(tutorial.interfaceVerifiedOn)}`
+                : `Checked against the help article on ${formatDay(tutorial.docsCheckedOn)}; not yet followed in a real account`}
             {tutorial.sources.filter((source) => source.url.startsWith("https://")).map((source) => (
               <a key={source.url} href={source.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline-offset-4 hover:text-strong hover:underline">
                 · {source.title.replace(/^[^:]+: /, "")}
@@ -330,9 +376,25 @@ function Steps({ tutorial }: { tutorial: PublishedTutorial }) {
   );
 }
 
-function ActionButton({ tutorial, placement, track, onUpload }: { tutorial: PublishedTutorial; placement: Placement; track: Tutorials["track"]; onUpload?: () => void }) {
+function ActionButton({ tutorial, placement, track, onUpload, continueLabel, onClose }: { tutorial: PublishedTutorial; placement: Placement; track: Tutorials["track"]; onUpload?: () => void; continueLabel?: string; onClose?: () => void }) {
   const action = tutorial.action;
+  const pathname = usePathname();
   const picked = () => track(tutorial.id, "action_selected", placement);
+  // Already where the task is: close and go back to it, so nothing typed on the screen underneath is lost.
+  const here = action.kind === "open" && onClose && (continueLabel || action.href.split("#")[0] === pathname);
+  if (here)
+    return (
+      <Button
+        variant="primary"
+        onClick={() => {
+          picked();
+          onClose();
+        }}
+      >
+        <ArrowRight aria-hidden />
+        {continueLabel ?? action.label}
+      </Button>
+    );
   if (action.kind === "upload") {
     // Opened somewhere with no upload control (the help directory): send the owner to where the upload is.
     if (!onUpload) {
@@ -366,8 +428,11 @@ function ActionButton({ tutorial, placement, track, onUpload }: { tutorial: Publ
     );
   if (action.kind === "open")
     return (
-      <Button variant="primary" render={<a href={action.href} />} onClick={picked}>
-        <BookOpen aria-hidden />
+      <Button variant="primary" render={<Link href={action.href} />} onClick={() => {
+          picked();
+          onClose?.();
+        }}>
+        {isSetupGuide(tutorial) ? <ArrowRight aria-hidden /> : <BookOpen aria-hidden />}
         {action.label}
       </Button>
     );

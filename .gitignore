@@ -50,3 +50,9 @@ supabase/config.toml.bak
 # Tutorial production: builds are regenerated; demo sign-ins never leave the machine.
 tutorials/build/
 tutorials/.auth/
+
+# Local tutorial demo helper: never committed (tutorials/SETUP-SERIES.md)
+convex/tutorialDemo.ts
+
+# Local preview of tutorial media (production files live in Vercel Blob)
+public/tutorial-media/

@@ -1,0 +1,611 @@
+{
+  "tutorial": "setup-clients",
+  "version": 1,
+  "title": "Bring in your clients and upcoming work",
+  "voice": "default",
+  "mark": false,
+  "viewport": {
+    "width": 1440,
+    "height": 810
+  },
+  "sampleData": "Juniper Cleaning Co. with one published service (seed.mjs company + service). Files: tutorials/sample/juniper-clients.csv and juniper-visits.csv, fictional people, example.com emails, 555-01xx numbers.",
+  "scenes": [
+    {
+      "id": "title",
+      "narration": "Let's bring in your clients and the work you already have booked.",
+      "capture": {
+        "kind": "card",
+        "eyebrow": "Setup guide · 3 of 6",
+        "title": "Bring in your clients and upcoming work",
+        "body": "Import from your current system or a spreadsheet, review what needs attention, or add a client by hand.",
+        "left": "Every client shown is fictional.",
+        "seconds": 6
+      },
+      "minSeconds": 4
+    },
+    {
+      "id": "source",
+      "narration": "If your records live in Jobber, Housecall Pro, BookingKoala or a spreadsheet, start in Bring your business to Selestial, and choose where they are today.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/migration",
+        "actions": [
+          {
+            "do": "hover",
+            "target": "[role=radio] >> nth=0",
+            "ms": 600
+          },
+          {
+            "do": "hover",
+            "target": "[role=radio] >> nth=1",
+            "ms": 600
+          },
+          {
+            "do": "click",
+            "target": "[role=radio] >> nth=3"
+          },
+          {
+            "do": "pause",
+            "ms": 700
+          },
+          {
+            "do": "click",
+            "target": "button:has-text('Continue') >> nth=-1"
+          },
+          {
+            "do": "waitFor",
+            "target": {
+              "role": "heading",
+              "name": "Add your files"
+            },
+            "cut": true
+          }
+        ]
+      },
+      "minSeconds": 8
+    },
+    {
+      "id": "files",
+      "narration": "Add your exported CSV files. Selestial works out what each one holds. Check it, and change it if it guessed wrong.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/migration",
+        "actions": [
+          {
+            "do": "hover",
+            "target": "text=Choose files",
+            "ms": 700
+          },
+          {
+            "do": "upload",
+            "target": "#migration-files",
+            "file": [
+              "tutorials/sample/juniper-clients.csv",
+              "tutorials/sample/juniper-visits.csv"
+            ]
+          },
+          {
+            "do": "waitFor",
+            "target": "text=juniper-visits.csv",
+            "cut": true
+          },
+          {
+            "do": "pause",
+            "ms": 1500,
+            "cut": true
+          },
+          {
+            "do": "scroll",
+            "target": {
+              "role": "heading",
+              "name": "Your files"
+            }
+          },
+          {
+            "do": "scroll",
+            "y": 200
+          },
+          {
+            "do": "highlight",
+            "target": "text=Customers >> visible=true >> nth=0",
+            "note": "What Selestial thinks it holds",
+            "ms": 2600
+          }
+        ]
+      },
+      "minSeconds": 7
+    },
+    {
+      "id": "organize",
+      "narration": "Next, check each suggested column against the sample values beside it, and confirm. Say how your dates are written and confirm your time zone, so visits land on the right day and hour.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/migration",
+        "actions": [
+          {
+            "do": "click",
+            "target": "button:has-text('Continue') >> nth=-1"
+          },
+          {
+            "do": "waitFor",
+            "target": {
+              "role": "heading",
+              "name": "Organize your information"
+            },
+            "cut": true
+          },
+          {
+            "do": "scroll",
+            "y": 300
+          },
+          {
+            "do": "highlight",
+            "target": "text=First values >> nth=0",
+            "note": "Sample values from your file",
+            "ms": 1800
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "Confirm columns"
+            }
+          },
+          {
+            "do": "pause",
+            "ms": 900
+          },
+          {
+            "do": "scroll",
+            "target": {
+              "role": "button",
+              "name": "Confirm columns"
+            }
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "Confirm columns"
+            }
+          },
+          {
+            "do": "pause",
+            "ms": 900
+          },
+          {
+            "do": "scroll",
+            "target": "text=Dates and times"
+          },
+          {
+            "do": "click",
+            "target": "text=Month / day / year"
+          },
+          {
+            "do": "pause",
+            "ms": 600
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "Confirm America/Chicago"
+            }
+          },
+          {
+            "do": "pause",
+            "ms": 900
+          }
+        ]
+      },
+      "minSeconds": 12
+    },
+    {
+      "id": "services",
+      "narration": "Then match the services in your file to the ones you've published. This office visit has no matching service yet, so we'll leave it unmatched.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/migration",
+        "actions": [
+          {
+            "do": "scroll",
+            "target": "text=Match your services"
+          },
+          {
+            "do": "highlight",
+            "target": "text=“Standard home cleaning” >> xpath=..",
+            "note": "Matched by name",
+            "ms": 1800
+          },
+          {
+            "do": "highlight",
+            "target": "text=“Office cleaning” >> xpath=..",
+            "note": "Not published yet",
+            "ms": 2000
+          },
+          {
+            "do": "click",
+            "target": "button:has-text('Continue') >> nth=-1"
+          },
+          {
+            "do": "waitFor",
+            "target": {
+              "role": "heading",
+              "name": "Review & fix"
+            },
+            "cut": true
+          }
+        ]
+      },
+      "minSeconds": 8
+    },
+    {
+      "id": "review",
+      "narration": "Review and fix shows what will happen to every record before anything goes live. Fix what's flagged, or leave it out. Flagged records aren't imported until you decide.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/migration",
+        "actions": [
+          {
+            "do": "highlight",
+            "target": "text=Ready to create >> xpath=..",
+            "ms": 1400
+          },
+          {
+            "do": "highlight",
+            "target": "text=Needs correction >> nth=0 >> xpath=..",
+            "note": "Needs your attention",
+            "ms": 1600
+          },
+          {
+            "do": "click",
+            "target": "text=Upcoming bookings >> nth=0"
+          },
+          {
+            "do": "scroll",
+            "target": "text=Office cleaning · Lakeview Family Dental"
+          },
+          {
+            "do": "highlight",
+            "target": "text=Office cleaning · Lakeview Family Dental >> xpath=../..",
+            "note": "Match it, or leave it out",
+            "ms": 2400
+          }
+        ]
+      },
+      "minSeconds": 10
+    },
+    {
+      "id": "import",
+      "narration": "Then start the import. Importing contacts no one. Visits stay on hold until you review what each workflow will do, and turn it on.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/migration",
+        "actions": [
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "Continue to import"
+            }
+          },
+          {
+            "do": "waitFor",
+            "target": "text=Nothing goes live yet",
+            "cut": true
+          },
+          {
+            "do": "highlight",
+            "target": "text=Nothing goes live yet >> xpath=..",
+            "ms": 2000
+          },
+          {
+            "do": "scroll",
+            "target": {
+              "role": "button",
+              "name": "Start the import"
+            }
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "Start the import"
+            }
+          },
+          {
+            "do": "waitFor",
+            "target": "text=Import finished",
+            "cut": true,
+            "timeout": 60000
+          },
+          {
+            "do": "click",
+            "target": "button:has-text('Verify the results') >> nth=-1"
+          },
+          {
+            "do": "waitFor",
+            "target": "text=Activation review",
+            "cut": true
+          },
+          {
+            "do": "scroll",
+            "target": "text=Activation review"
+          },
+          {
+            "do": "highlight",
+            "target": "text=Dispatch offers your imported visits >> xpath=../..",
+            "note": "Off until you turn it on",
+            "ms": 2600
+          }
+        ]
+      },
+      "minSeconds": 10
+    },
+    {
+      "id": "manual",
+      "narration": "Not importing? In Clients and Properties, choose Add client. Enter their details and first property.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/clients",
+        "actions": [
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "Add client"
+            }
+          },
+          {
+            "do": "waitFor",
+            "target": {
+              "role": "dialog"
+            },
+            "cut": true
+          },
+          {
+            "do": "type",
+            "target": {
+              "role": "textbox",
+              "name": "Name"
+            },
+            "text": "Nora Lindqvist",
+            "delay": 40
+          },
+          {
+            "do": "type",
+            "target": {
+              "role": "textbox",
+              "name": "Email"
+            },
+            "text": "nora.lindqvist@example.com",
+            "delay": 18
+          },
+          {
+            "do": "scroll",
+            "target": {
+              "role": "textbox",
+              "name": "Address"
+            }
+          },
+          {
+            "do": "type",
+            "target": {
+              "role": "textbox",
+              "name": "Address"
+            },
+            "text": "1902 Kinney Ave",
+            "delay": 18
+          },
+          {
+            "do": "fill",
+            "target": {
+              "role": "textbox",
+              "name": "City"
+            },
+            "text": "Austin"
+          },
+          {
+            "do": "fill",
+            "target": {
+              "role": "textbox",
+              "name": "State"
+            },
+            "text": "TX"
+          },
+          {
+            "do": "fill",
+            "target": {
+              "role": "textbox",
+              "name": "Postal code"
+            },
+            "text": "78704"
+          },
+          {
+            "do": "pause",
+            "ms": 700
+          },
+          {
+            "do": "click",
+            "target": "[role=dialog] button:has-text('Add client')"
+          },
+          {
+            "do": "wait",
+            "ms": 2500,
+            "cut": true
+          }
+        ]
+      },
+      "minSeconds": 8
+    },
+    {
+      "id": "book",
+      "narration": "Then book a visit. Choose the service and answer what its price needs, then the day, the time and how many cleaners. Dispatch takes it from there, within the permissions you set.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/clients",
+        "actions": [
+          {
+            "do": "goto",
+            "path": "/app/clients",
+            "cut": true
+          },
+          {
+            "do": "click",
+            "target": "text=Nora Lindqvist >> nth=0"
+          },
+          {
+            "do": "waitFor",
+            "target": {
+              "role": "button",
+              "name": "Book a visit"
+            },
+            "cut": true
+          },
+          {
+            "do": "click",
+            "target": "button:has-text('Book a visit') >> nth=0"
+          },
+          {
+            "do": "waitFor",
+            "target": {
+              "role": "dialog"
+            },
+            "cut": true
+          },
+          {
+            "do": "tag",
+            "text": "Sped up 2×"
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "combobox",
+              "name": "Service"
+            }
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "option",
+              "name": "Standard home cleaning"
+            }
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "More: Bedrooms"
+            },
+            "ms": 250
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "More: Bedrooms"
+            },
+            "ms": 250
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "More: Bedrooms"
+            },
+            "ms": 250
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "More: Full bathrooms"
+            },
+            "ms": 250
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "More: Full bathrooms"
+            },
+            "ms": 250
+          },
+          {
+            "do": "pause",
+            "ms": 900
+          },
+          {
+            "do": "scroll",
+            "target": {
+              "role": "textbox",
+              "name": "Day"
+            }
+          },
+          {
+            "do": "fill",
+            "target": "[role=dialog] input[type=date] >> nth=0",
+            "text": "2026-12-04"
+          },
+          {
+            "do": "fill",
+            "target": "[role=dialog] input[type=time] >> nth=0",
+            "text": "09:00"
+          },
+          {
+            "do": "fill",
+            "target": "[role=dialog] input[type=time] >> nth=1",
+            "text": "11:30"
+          },
+          {
+            "do": "highlight",
+            "target": {
+              "role": "textbox",
+              "name": "Cleaners needed"
+            },
+            "note": "Staffed once this many accept",
+            "ms": 1800
+          },
+          {
+            "do": "scroll",
+            "target": {
+              "role": "button",
+              "name": "Schedule the visit"
+            }
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "Schedule the visit"
+            }
+          },
+          {
+            "do": "tag"
+          },
+          {
+            "do": "wait",
+            "ms": 2600
+          }
+        ]
+      },
+      "minSeconds": 10,
+      "poster": true,
+      "speed": 2
+    },
+    {
+      "id": "next",
+      "narration": "Next, get your cleaners ready to receive that work.",
+      "capture": {
+        "kind": "card",
+        "eyebrow": "Up next",
+        "title": "Get your cleaners ready",
+        "whereLabel": "In the sidebar:",
+        "where": "Cleaners",
+        "left": "Setup guide · 3 of 6",
+        "seconds": 6
+      },
+      "minSeconds": 4
+    }
+  ]
+}

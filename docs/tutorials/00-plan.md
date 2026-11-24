@@ -1,5 +1,8 @@
 # Migration tutorials and contextual help
 
+The six setup guides for new owners (company, services, clients, cleaners, email and phone, agents) share this
+system: see `01-setup-guides.md`.
+
 **"An owner can open relevant help without leaving their migration, follow a verified narrated walkthrough,
 obtain the correct file, and return directly to the next step in Selestial."**
 

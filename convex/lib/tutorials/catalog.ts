@@ -1,6 +1,7 @@
 /**
- * Migration tutorials: the one list of every tutorial Selestial can offer an owner moving their records in,
- * and where each one is offered. Pure data, shared by the server (publication, analytics) and the screens.
+ * Tutorials: the one list of every tutorial Selestial can offer an owner, and where each one is offered. Two
+ * families share it: migration tutorials (moving records in from another system, below) and the setup
+ * guides (Selestial's own screens, in setup.ts, platform "selestial"). Pure data, shared by the server (publication, analytics) and the screens.
  *
  * What lives here is what a tutorial says and where its sources are. What staff change without a release
  * lives in Convex (tutorialSettings): the publication state and the media version. A screen asks for a
@@ -12,7 +13,9 @@
  * platform's own article and a way to ask for help, never a guess.
  */
 
-export const PLATFORMS = ["jobber", "housecall_pro", "bookingkoala", "gohighlevel", "spreadsheet"] as const;
+import { SETUP_TUTORIALS } from "./setup";
+
+export const PLATFORMS = ["jobber", "housecall_pro", "bookingkoala", "gohighlevel", "spreadsheet", "selestial"] as const;
 export type Platform = (typeof PLATFORMS)[number];
 
 export const PLATFORM_WORDS: Record<Platform, string> = {
@@ -21,10 +24,11 @@ export const PLATFORM_WORDS: Record<Platform, string> = {
   bookingkoala: "BookingKoala",
   gohighlevel: "GoHighLevel",
   spreadsheet: "a spreadsheet",
+  selestial: "Selestial",
 };
 
 /** What an owner is trying to bring in, or check. One tutorial does one task. */
-export const TASKS = ["customers", "properties", "appointments", "recurring", "team", "history", "spreadsheet_prep", "import_errors", "review"] as const;
+export const TASKS = ["customers", "properties", "appointments", "recurring", "team", "history", "spreadsheet_prep", "import_errors", "review", "setup_company", "setup_services", "setup_clients", "setup_cleaners", "setup_communication", "setup_agents"] as const;
 export type Task = (typeof TASKS)[number];
 
 export const TASK_WORDS: Record<Task, string> = {
@@ -37,6 +41,12 @@ export const TASK_WORDS: Record<Task, string> = {
   spreadsheet_prep: "Preparing a spreadsheet",
   import_errors: "Fixing import errors",
   review: "Reviewing imported records",
+  setup_company: "Your company",
+  setup_services: "Services and pricing",
+  setup_clients: "Clients and upcoming work",
+  setup_cleaners: "Cleaners",
+  setup_communication: "Email and phone",
+  setup_agents: "Agents",
 };
 
 /** Publication states. Only "published" is ever shown to an owner. */
@@ -65,6 +75,17 @@ export const PLACEMENTS = [
   "import.history",
   "migration.review",
   "help",
+  // Setup guides (setup.ts): beside the task they teach, and in the getting-started collections.
+  "setup.flow",
+  "settings.business",
+  "services.home",
+  "clients.directory",
+  "migration.start",
+  "cleaners.directory",
+  "integrations.apps",
+  "texting.setup",
+  "agents.controls",
+  "home.getting_started",
 ] as const;
 export type Placement = (typeof PLACEMENTS)[number];
 
@@ -84,6 +105,8 @@ export type Media = {
   poster: string;
   captions: string;
   durationSeconds: number;
+  /** The plain-text transcript beside the video, for download. The catalog's `transcript` is the same text. */
+  transcript?: string;
 };
 
 export type Tutorial = {
@@ -121,6 +144,10 @@ export type Tutorial = {
   mapping?: { from: string; to: string }[];
   /** Problems owners meet with this export, and how to recover. */
   errors?: { problem: string; fix: string }[];
+  /** Setup guides: their place in the getting-started series (1 is first). */
+  order?: number;
+  /** Setup guides: the shorter name used in the getting-started lists and the help card ("set up your services"). */
+  short?: string;
 };
 
 /**
@@ -170,7 +197,7 @@ const CHECKED = "2026-11-20";
 const RECHECKED = "2026-11-22";
 const GHL_EXPORT: Source = { title: "HighLevel: How to Export Contacts to a CSV in HighLevel", url: "https://help.gohighlevel.com/support/solutions/articles/48001238482-contacts-export-as-csv-upgrade", updated: "2025-12-24" };
 
-export const TUTORIALS: Tutorial[] = [
+const MIGRATION_TUTORIALS: Tutorial[] = [
   // ── Spreadsheet and Selestial (verified in Selestial itself) ──────────────────────────────────
   {
     id: "spreadsheet-prepare-clients",
@@ -690,6 +717,8 @@ export const NO_EXPORT: Partial<Record<Platform, Partial<Record<Task, string>>>>
   housecall_pro: { team: "Housecall Pro's help center has no export for employees. Use the cleaner template instead." },
 };
 
+export const TUTORIALS: Tutorial[] = [...MIGRATION_TUTORIALS, ...SETUP_TUTORIALS];
+
 const BY_ID = new Map(TUTORIALS.map((tutorial) => [tutorial.id, tutorial]));
 
 export function tutorialById(id: string): Tutorial | undefined {
@@ -700,6 +729,8 @@ export function tutorialById(id: string): Tutorial | undefined {
 export function matches(tutorial: Tutorial, placement: Placement, platform: Platform | null): boolean {
   if (!tutorial.placements.includes(placement)) return false;
   if (placement === "help") return true;
+  // A setup guide teaches Selestial itself, whatever system the owner came from.
+  if (tutorial.platform === "selestial") return true;
   // Selestial's own tutorials (fixing errors, reviewing) fit any source; export tutorials only their own.
   if (tutorial.platform === "spreadsheet") return platform === null || platform === "spreadsheet" || tutorial.task === "import_errors" || tutorial.task === "review" || tutorial.task === "team";
   return tutorial.platform === platform;

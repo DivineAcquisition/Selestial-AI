@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<style>
+  :root { --violet: #6838ef; --ink: #0d0a18; }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1280px; height: 720px; overflow: hidden; background: var(--ink); color: #fff; }
+  body {
+    font-family: "Inter Tutorial", Inter, ui-sans-serif, system-ui, sans-serif;
+    background:
+      radial-gradient(900px 520px at 88% -10%, rgba(104, 56, 239, 0.42), transparent 62%),
+      radial-gradient(700px 420px at -8% 110%, rgba(104, 56, 239, 0.18), transparent 60%),
+      var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+  .grid { position: absolute; inset: 0; opacity: 0.07;
+    background-image: linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px);
+    background-size: 48px 48px; mask-image: radial-gradient(800px 500px at 80% 0%, #000, transparent 70%); }
+  .wrap { position: relative; height: 100%; display: grid; grid-template-rows: auto 1fr auto; padding: 56px 84px; }
+  .logo { height: 34px; }
+  .main { align-self: center; max-width: 900px; }
+  .eyebrow { display: inline-flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #c9b8ff; }
+  .eyebrow::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--violet); box-shadow: 0 0 0 4px rgba(104, 56, 239, 0.25); }
+  h1 { margin-top: 18px; font-size: 60px; line-height: 1.06; font-weight: 700; letter-spacing: -0.02em; text-wrap: balance; }
+  p { margin-top: 20px; font-size: 22px; line-height: 1.45; color: rgba(255, 255, 255, 0.78); max-width: 760px; text-wrap: pretty; }
+  .where { margin-top: 30px; display: inline-flex; align-items: center; gap: 12px; padding: 12px 18px; border-radius: 14px;
+    background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.14); font-size: 19px; font-weight: 600; }
+  .where[hidden] { display: none; }
+  .where span { color: rgba(255, 255, 255, 0.6); font-weight: 500; }
+  .foot { display: flex; justify-content: space-between; font-size: 14px; color: rgba(255, 255, 255, 0.5); }
+</style>
+</head>
+<body>
+<div class="grid"></div>
+<div class="wrap">
+  <img class="logo" id="logo" alt="" />
+  <div class="main">
+    <div class="eyebrow" id="eyebrow"></div>
+    <h1 id="title"></h1>
+    <p id="body"></p>
+    <div class="where" id="where" hidden></div>
+  </div>
+  <div class="foot"><span id="left"></span><span id="right"></span></div>
+</div>
+<script>
+  window.render = async ({ eyebrow, title, body, where, whereLabel, left, right, logo, font }) => {
+    if (font) {
+      const face = new FontFace("Inter Tutorial", `url(${font})`, { weight: "100 900" });
+      document.fonts.add(await face.load());
+    }
+    document.getElementById("logo").src = logo;
+    document.getElementById("eyebrow").textContent = eyebrow ?? "";
+    document.getElementById("title").textContent = title ?? "";
+    document.getElementById("body").textContent = body ?? "";
+    const w = document.getElementById("where");
+    if (where) {
+      w.hidden = false;
+      w.innerHTML = "";
+      if (whereLabel) { const s = document.createElement("span"); s.textContent = whereLabel; w.append(s); }
+      w.append(document.createTextNode(where));
+    }
+    document.getElementById("left").textContent = left ?? "";
+    document.getElementById("right").textContent = right ?? "";
+  };
+</script>
+</body>
+</html>

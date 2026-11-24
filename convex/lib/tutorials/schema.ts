@@ -23,6 +23,7 @@ export const mediaValidator = v.object({
   poster: v.string(),
   captions: v.string(),
   durationSeconds: v.number(),
+  transcript: v.optional(v.string()),
 });
 
 export const tutorialTables = {

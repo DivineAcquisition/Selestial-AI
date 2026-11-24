@@ -1,0 +1,398 @@
+{
+  "tutorial": "setup-cleaners",
+  "version": 1,
+  "title": "Get your cleaners ready",
+  "voice": "default",
+  "mark": false,
+  "sampleData": "Juniper Cleaning Co. after tutorial 1 (seed.mjs company). One fictional cleaner, Maya Torres, with an example.com email and no phone, so nothing could be texted. Invite to portal is never pressed.",
+  "scenes": [
+    {
+      "id": "title",
+      "narration": "Let's get your cleaners ready to receive work.",
+      "capture": {
+        "kind": "card",
+        "eyebrow": "Setup guide · 4 of 6",
+        "title": "Get your cleaners ready",
+        "body": "Add a cleaner, see what they still need, and set their hours and pay.",
+        "left": "Maya Torres is a fictional demo cleaner.",
+        "seconds": 5
+      },
+      "minSeconds": 4
+    },
+    {
+      "id": "add",
+      "narration": "In Cleaners, choose Add cleaner. Enter their name, how they work with you, how to reach them, the ZIP codes they cover, and the days they can work. Adding someone doesn't message them.",
+      "speed": 1.6,
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/cleaners",
+        "actions": [
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "Add cleaner"
+            }
+          },
+          {
+            "do": "waitFor",
+            "target": {
+              "role": "dialog"
+            },
+            "cut": true
+          },
+          {
+            "do": "tag",
+            "text": "Sped up 1.6×"
+          },
+          {
+            "do": "type",
+            "target": {
+              "role": "textbox",
+              "name": "Full name"
+            },
+            "text": "Maya Torres",
+            "delay": 40
+          },
+          {
+            "do": "click",
+            "target": "text=Independent contractor"
+          },
+          {
+            "do": "type",
+            "target": {
+              "role": "textbox",
+              "name": "Email"
+            },
+            "text": "maya.torres@example.com",
+            "delay": 20
+          },
+          {
+            "do": "type",
+            "target": {
+              "role": "textbox",
+              "name": "Service areas"
+            },
+            "text": "78701, 78702, 78704, 78745",
+            "delay": 20
+          },
+          {
+            "do": "scroll",
+            "target": {
+              "role": "checkbox",
+              "name": "Mon"
+            }
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "checkbox",
+              "name": "Mon"
+            },
+            "ms": 150
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "checkbox",
+              "name": "Tue"
+            },
+            "ms": 150
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "checkbox",
+              "name": "Wed"
+            },
+            "ms": 150
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "checkbox",
+              "name": "Thu"
+            },
+            "ms": 150
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "checkbox",
+              "name": "Fri"
+            },
+            "ms": 300
+          },
+          {
+            "do": "tag"
+          },
+          {
+            "do": "highlight",
+            "target": "[role=dialog] button[type=submit]",
+            "note": "Sends them nothing",
+            "ms": 1500
+          },
+          {
+            "do": "click",
+            "target": "[role=dialog] button[type=submit]"
+          },
+          {
+            "do": "wait",
+            "ms": 2200,
+            "cut": true
+          }
+        ]
+      },
+      "minSeconds": 10
+    },
+    {
+      "id": "readiness",
+      "narration": "They start in onboarding. Their profile lists exactly what's still needed before Dispatch can offer them work.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/cleaners",
+        "actions": [
+          {
+            "do": "click",
+            "target": "li > button:has-text('Maya Torres')"
+          },
+          {
+            "do": "waitFor",
+            "target": "text=Still needed before work",
+            "cut": true
+          },
+          {
+            "do": "highlight",
+            "target": "text=Still needed before work >> xpath=..",
+            "note": "What's missing before work",
+            "ms": 2800
+          },
+          {
+            "do": "pause",
+            "ms": 600
+          }
+        ]
+      },
+      "minSeconds": 7
+    },
+    {
+      "id": "onboarding",
+      "narration": "Cleaners complete most of these in their own portal, once you invite them. You can also mark an item done, record a signed copy, or waive it.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/cleaners",
+        "actions": [
+          {
+            "do": "click",
+            "target": "li > button:has-text('Maya Torres')"
+          },
+          {
+            "do": "waitFor",
+            "target": "nav[aria-label='Profile sections']",
+            "cut": true
+          },
+          {
+            "do": "click",
+            "target": "nav[aria-label='Profile sections'] >> text=Onboarding & Documents"
+          },
+          {
+            "do": "pause",
+            "ms": 900
+          },
+          {
+            "do": "scroll",
+            "target": "text=How your jobs work >> visible=true"
+          },
+          {
+            "do": "highlight",
+            "target": "text=How your jobs work >> visible=true >> xpath=../..",
+            "note": "Done, a file, or waived",
+            "ms": 2600
+          },
+          {
+            "do": "goto",
+            "path": "/app/cleaners",
+            "cut": true
+          },
+          {
+            "do": "highlight",
+            "target": {
+              "role": "button",
+              "name": "Invite to portal"
+            },
+            "note": "Sends their link when you're ready",
+            "ms": 2400
+          }
+        ]
+      },
+      "minSeconds": 9
+    },
+    {
+      "id": "availability",
+      "narration": "Availability shows the weekly hours Dispatch works within, and any time away.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/cleaners",
+        "actions": [
+          {
+            "do": "click",
+            "target": "li > button:has-text('Maya Torres')"
+          },
+          {
+            "do": "waitFor",
+            "target": "nav[aria-label='Profile sections']",
+            "cut": true
+          },
+          {
+            "do": "click",
+            "target": "nav[aria-label='Profile sections'] >> text=Availability & Jobs"
+          },
+          {
+            "do": "pause",
+            "ms": 900
+          },
+          {
+            "do": "highlight",
+            "target": "text=Weekly hours >> visible=true >> xpath=../..",
+            "note": "Never offered outside these hours",
+            "ms": 2600
+          },
+          {
+            "do": "pause",
+            "ms": 600
+          }
+        ]
+      },
+      "minSeconds": 6
+    },
+    {
+      "id": "pay",
+      "narration": "Pay is set in Finance, under Team pay. Until a cleaner has a pay arrangement, Dispatch leaves them out of offers.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/cleaners",
+        "actions": [
+          {
+            "do": "click",
+            "target": "li > button:has-text('Maya Torres')"
+          },
+          {
+            "do": "waitFor",
+            "target": "nav[aria-label='Profile sections']",
+            "cut": true
+          },
+          {
+            "do": "click",
+            "target": "nav[aria-label='Profile sections'] >> text=Pay"
+          },
+          {
+            "do": "pause",
+            "ms": 700
+          },
+          {
+            "do": "highlight",
+            "target": "text=Open in Team Pay",
+            "ms": 1200
+          },
+          {
+            "do": "click",
+            "target": "text=Open in Team Pay"
+          },
+          {
+            "do": "waitFor",
+            "target": {
+              "role": "button",
+              "name": "Save pay method"
+            },
+            "cut": true
+          },
+          {
+            "do": "click",
+            "target": "text=Their own %"
+          },
+          {
+            "do": "type",
+            "target": "input[placeholder='40']",
+            "text": "45",
+            "delay": 90
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "Save pay method"
+            }
+          },
+          {
+            "do": "pause",
+            "ms": 1400
+          }
+        ]
+      },
+      "minSeconds": 8
+    },
+    {
+      "id": "active",
+      "narration": "When you're ready, choose Make active. They're offered work once every requirement for work is met.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/cleaners",
+        "actions": [
+          {
+            "do": "click",
+            "target": "li > button:has-text('Maya Torres')"
+          },
+          {
+            "do": "waitFor",
+            "target": {
+              "role": "button",
+              "name": "Make active"
+            },
+            "cut": true
+          },
+          {
+            "do": "highlight",
+            "target": {
+              "role": "button",
+              "name": "Make active"
+            },
+            "ms": 1200
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "Make active"
+            }
+          },
+          {
+            "do": "pause",
+            "ms": 1500
+          },
+          {
+            "do": "highlight",
+            "target": "text=so no work can be offered >> visible=true",
+            "note": "Active, but still waiting on these",
+            "ms": 2600
+          }
+        ]
+      },
+      "minSeconds": 7,
+      "poster": true
+    },
+    {
+      "id": "next",
+      "narration": "Next, connect your email and phone, so your agents can reach customers and cleaners.",
+      "capture": {
+        "kind": "card",
+        "eyebrow": "Up next",
+        "title": "Connect your email and phone",
+        "whereLabel": "In Settings:",
+        "where": "Connected apps",
+        "left": "Setup guide · 4 of 6",
+        "seconds": 6
+      },
+      "minSeconds": 5
+    }
+  ]
+}

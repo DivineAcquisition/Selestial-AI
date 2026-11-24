@@ -29,6 +29,7 @@ import { Avatar, Chips, ENGAGEMENT_SHORT, Progress, ReadinessLine, StatusBadge, 
 import { CleanerDrawer } from "./drawer";
 import { InviteManyDialog } from "./onboarding-review";
 import { CLEANERS_PATH, useDirectoryState, type DirectoryState } from "./state";
+import { SetupHelpCard } from "@/components/app/tutorials/setup-help";
 
 export type Directory = FunctionReturnType<typeof api.workforce.directory>;
 export type Row = Directory["rows"][number];
@@ -467,6 +468,7 @@ export function CleanersScreen() {
           </>
         }
       />
+      {manager ? <SetupHelpCard tutorialId="setup-cleaners" placement="cleaners.directory" className="mb-5" /> : null}
 
       {!data ? (
         <div className="grid gap-5" aria-busy="true" aria-label="Loading the workforce">
