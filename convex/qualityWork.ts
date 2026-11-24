@@ -37,6 +37,7 @@ const RECORD_ONLY = new Set<Doc<"qualityRuns">["kind"]>(["correction_completed",
 async function preService(ctx: MutationCtx, company: Doc<"companies">, job: Doc<"jobs">): Promise<{ result: string; found: string[] }> {
   if (job.status !== "scheduled" || job.startsAt < Date.now()) return { result: "The visit is no longer ahead.", found: [] };
   if (await isHistorical(ctx, job)) return { result: "Imported visit: not checked.", found: [] };
+  if (job.migration?.held) return { result: "Held by a migration until the Owner releases it: not checked yet.", found: [] };
   const gaps: string[] = [];
   const scopeLines = job.scope.split("\n").filter((l) => l.trim().startsWith("- ")).length;
   if (!scopeLines) gaps.push("The visit's scope lists no individual tasks.");
@@ -116,7 +117,7 @@ export const run = internalMutation({
         // Visits in the coming day get their check before service, once each.
         if (state.ok) {
           const soon = await ctx.db.query("jobs").withIndex("by_company_status_start", (q) => q.eq("companyId", company._id).eq("status", "scheduled").gte("startsAt", Date.now()).lte("startsAt", Date.now() + DAY)).take(100);
-          for (const visit of soon) if (!visit.recovery) await enqueueQualityRun(ctx, { companyId: company._id, kind: "pre_service", key: `pre:${visit._id}`, jobId: visit._id });
+          for (const visit of soon) if (!visit.recovery && !visit.migration?.held) await enqueueQualityRun(ctx, { companyId: company._id, kind: "pre_service", key: `pre:${visit._id}`, jobId: visit._id });
         }
         return finishRun(ctx, run, { status: "done", ...out });
       }

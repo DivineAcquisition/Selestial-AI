@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-// @ts-expect-error: a plain ESM script with no type declarations
 import { SKIPPED, TABLES } from "../../../../../scripts/migration/instant-shine/export.mjs";
 import { adaptInstantShine, realEmail, realPhone, slotMinutes } from "./adapt";
 import { CATALOG, CATALOG_BY_TABLE } from "./catalog";

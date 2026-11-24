@@ -89,7 +89,8 @@ export const plan = internalQuery({
     const desired: (EventDraft & { subject: Subject })[] = [];
     const jobs = await ctx.db.query("jobs").withIndex("by_company_start", (q) => q.eq("companyId", args.companyId).gte("startsAt", now - DAY).lt("startsAt", now + HORIZON)).take(1000);
     for (const job of jobs) {
-      if (job.status === "cancelled") continue;
+      // A visit held by a migration isn't live yet: nothing about it goes to an outside calendar until release.
+      if (job.status === "cancelled" || job.migration?.held) continue;
       const customer = await ctx.db.get(job.customerId);
       const property = await ctx.db.get(job.propertyId);
       const location = property ? `${property.address.line1}, ${property.address.city}, ${property.address.region} ${property.address.postalCode}` : undefined;

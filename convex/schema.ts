@@ -621,6 +621,11 @@ export default defineSchema({
     completion: v.optional(v.object({ submittedAt: v.number(), incomplete: v.boolean(), note: v.optional(v.string()) })),
     /** The job's start when this was offered, so an answer about an old time is not held against a new one. */
     jobStartsAt: v.optional(v.number()),
+    /**
+     * Accepted in another system and moved by a migration: never offered here. The pay is the share recorded
+     * there (locked or still provisional), kept as it was, and `acceptedAt` is when the cleaner accepted there.
+     */
+    imported: v.optional(v.object({ source: v.string(), ref: v.string(), payLocked: v.boolean(), acceptedAt: v.number() })),
   })
     .index("by_company_job", ["companyId", "jobId"])
     .index("by_company_cleaner_status", ["companyId", "cleanerId", "status"])

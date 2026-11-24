@@ -51,7 +51,10 @@ export async function undoBlocker(ctx: Ctx, link: Doc<"migrationLinks">, sets: U
       if (!job) return null;
       if (job.status !== "scheduled") return "It started, finished or was cancelled. Change it on the schedule.";
       if (!job.migration?.held) return "It was released to Dispatch. Cancel it on the schedule instead.";
-      if (await ctx.db.query("assignments").withIndex("by_company_job", (q) => q.eq("companyId", companyId).eq("jobId", job._id)).first()) return "A cleaner was offered it.";
+      // An accepted crew moved with the visit goes with it; anything offered or done here keeps it.
+      const crew = await ctx.db.query("assignments").withIndex("by_company_job", (q) => q.eq("companyId", companyId).eq("jobId", job._id)).take(20);
+      if (crew.some((a) => !a.imported)) return "A cleaner was offered it.";
+      if (crew.some((a) => a.checkIn || a.completion || a.status !== "accepted")) return "Its crew has started on it.";
       if (await ctx.db.query("invoices").withIndex("by_company_job", (q) => q.eq("companyId", companyId).eq("jobId", job._id)).first()) return "It has an invoice.";
       if (await ctx.db.query("messages").withIndex("by_company_job", (q) => q.eq("companyId", companyId).eq("jobId", job._id)).first()) return "Messages were sent about it.";
       return null;
@@ -80,7 +83,10 @@ export async function undoBlocker(ctx: Ctx, link: Doc<"migrationLinks">, sets: U
       if (!cleaner) return null;
       if (!cleaner.migration?.held) return "They were released to your team. End their engagement on their profile instead.";
       if (cleaner.status !== "onboarding") return "Their status was changed after the import.";
-      if (await ctx.db.query("assignments").withIndex("by_company_cleaner_status", (q) => q.eq("companyId", companyId).eq("cleanerId", cleaner._id)).first()) return "They were offered work.";
+      const work = await ctx.db.query("assignments").withIndex("by_company_cleaner_status", (q) => q.eq("companyId", companyId).eq("cleanerId", cleaner._id)).take(100);
+      if (work.some((a) => !a.imported)) return "They were offered work.";
+      // Moved already accepted: fine only if every one of those visits is being undone too.
+      if (work.some((a) => classify(sets, a.jobId) !== "going")) return "They're on an imported visit that stays.";
       const requirements = await ctx.db.query("workerRequirements").withIndex("by_company_cleaner", (q) => q.eq("companyId", companyId).eq("cleanerId", cleaner._id)).take(50);
       if (requirements.some((r) => r.submittedAt !== undefined || r.evidence !== undefined)) return "They've started their onboarding steps.";
       if (await ctx.db.query("messages").withIndex("by_company_cleaner", (q) => q.eq("companyId", companyId).eq("cleanerId", cleaner._id)).first()) return "Messages were sent to them.";
@@ -157,7 +163,10 @@ export async function undoRecord(ctx: MutationCtx, link: Doc<"migrationLinks">):
   switch (link.table as UndoTable) {
     case "jobs": {
       const job = await own(ctx, "jobs", link.recordId, companyId);
-      if (job) await ctx.db.delete(job._id);
+      if (!job) return;
+      // Its imported crew goes with it (undoBlocker allowed only an untouched, imported crew).
+      for (const a of await ctx.db.query("assignments").withIndex("by_company_job", (q) => q.eq("companyId", companyId).eq("jobId", job._id)).take(20)) if (a.imported) await ctx.db.delete(a._id);
+      await ctx.db.delete(job._id);
       return;
     }
     case "servicePlans": {

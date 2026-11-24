@@ -35,7 +35,7 @@ import { byMember, recordEvent, type Actor } from "./lib/events";
 import { analyze, type Existing, type RowIn } from "./lib/migration/analyze";
 import { CATEGORIES, FIELDS, guessKind, guessMapping, IMPORTABLE, valuesOf, type FileKind, type Importable } from "./lib/migration/rules";
 import { categoryValidator, CHOICES, fileKindValidator, MIGRATION_STEPS, sourceValidator } from "./lib/migration/schema";
-import { effective, writeRow, type WriteCtx } from "./lib/migration/write";
+import { effective, linkSource, writeRow, type WriteCtx } from "./lib/migration/write";
 import { allow } from "./lib/rateLimit";
 import { roleOf } from "./lib/roles";
 import { dayOf } from "./lib/services/propertyPrices";
@@ -67,13 +67,13 @@ async function migrationOf(ctx: QueryCtx, companyId: Id<"companies">): Promise<D
     .first();
 }
 
-async function requireMigration(ctx: Ctx): Promise<Doc<"migrations">> {
+export async function requireMigration(ctx: Ctx): Promise<Doc<"migrations">> {
   const row = await migrationOf(ctx, ctx.companyId);
   if (!row) throw userError("Open the migration first.");
   return row;
 }
 
-function editable(migration: Doc<"migrations">) {
+export function editable(migration: Doc<"migrations">) {
   if (migration.status === "importing") throw userError("Your import is running. Changes can be made once it finishes.");
 }
 
@@ -90,7 +90,7 @@ async function ownFile(ctx: Ctx, migration: Doc<"migrations">, id: Id<"migration
 }
 
 /** Re-checks the whole migration shortly. A newer request replaces an older one, which then writes nothing. */
-async function scheduleCheck(ctx: MutationCtx & Partial<MemberAccess>, migration: Doc<"migrations">) {
+export async function scheduleCheck(ctx: MutationCtx & Partial<MemberAccess>, migration: Doc<"migrations">) {
   if (ctx.support) await noteAssist(ctx as MutationCtx & MemberAccess, (await ctx.db.get(migration._id))!);
   const token = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   await ctx.db.patch(migration._id, { dirty: true, checking: { token, startedAt: Date.now() }, updatedAt: Date.now() });
@@ -569,7 +569,7 @@ export const check = internalAction({
       if (!cursor) break;
     }
     if (!migration) return null;
-    const source = migration.source === "jobber" || migration.source === "housecall_pro" ? migration.source : "csv";
+    const source = linkSource(migration);
     const existing = await ctx.runQuery(internal.migration.existingFor, { companyId: migration.companyId, source });
     const result = analyze({ rows, existing, context: { today: existing.today, dateOrder: migration.dateOrder, serviceMap: migration.serviceMap, groups: migration.groups } });
     const stamps = new Map(rows.map((row) => [row.id, row.stamp]));

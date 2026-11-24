@@ -37,8 +37,8 @@ const failRow = (reason: string): never => {
 export const effective = (row: Doc<"migrationRows">): Record<string, string> => ({ ...row.values, ...row.edits });
 
 /** The old system's name for links: what importing the same export again is matched by. */
-export function linkSource(migration: Doc<"migrations">): string {
-  return migration.source === "jobber" || migration.source === "housecall_pro" ? migration.source : "csv";
+export function linkSource(migration: { source: string | null }): string {
+  return migration.source === "jobber" || migration.source === "housecall_pro" || migration.source === "instant_shine" ? migration.source : "csv";
 }
 
 /** The key a record is found again by: the old system's id, or else what identifies it in the file. */
@@ -402,6 +402,8 @@ async function writeVisit(ctx: WriteCtx, migration: Doc<"migrations">, row: Doc<
   if (already && already.status !== "cancelled") return { outcome: "linked", table: "jobs", id: already._id, reason: "A visit at this property and time was already on the schedule." };
   const values = effective(row);
   const cents = typeof p.cents === "number" ? p.cents : undefined;
+  // Every check on an accepted crew runs before anything is written, so a refused visit leaves nothing behind.
+  const crew = await crewOf(ctx, migration, values.crew, startsAt, endsAt);
   const id = await ctx.db.insert("jobs", {
     companyId: ctx.companyId,
     customerId: customer._id,
@@ -414,7 +416,7 @@ async function writeVisit(ctx: WriteCtx, migration: Doc<"migrations">, row: Doc<
     startsAt,
     endsAt,
     status: "scheduled",
-    ...(live.spec.team.crewSize > 1 ? { requiredCrew: live.spec.team.crewSize } : {}),
+    ...(Math.max(live.spec.team.crewSize, crew.length) > 1 ? { requiredCrew: Math.max(live.spec.team.crewSize, crew.length) } : {}),
     ...(values.notes ? { instructions: values.notes.slice(0, 4000) } : {}),
     ...(plan ? plan : {}),
     ...(await preferredOf(ctx, row).then((ids) => (ids.length ? { preferredCleanerIds: ids } : {}))),
@@ -422,8 +424,56 @@ async function writeVisit(ctx: WriteCtx, migration: Doc<"migrations">, row: Doc<
     migration: { migrationId: migration._id, held: true },
     createdAt: Date.now(),
   });
+  // The crew the old system already confirmed: accepted, with its pay as recorded there. No offer, message or link.
+  for (const member of crew) {
+    await ctx.db.insert("assignments", {
+      companyId: ctx.companyId,
+      jobId: id,
+      cleanerId: member.cleanerId,
+      status: "accepted",
+      scope: visitScope(live.spec).slice(0, 2000),
+      payCents: member.payCents,
+      offeredAt: member.acceptedAt,
+      respondBy: member.acceptedAt,
+      respondedAt: member.acceptedAt,
+      jobStartsAt: startsAt,
+      imported: { source: linkSource(migration), ref: member.ref, payLocked: member.payLocked, acceptedAt: member.acceptedAt },
+    });
+  }
   await refreshClient(ctx, customer._id);
-  return { outcome: "created", table: "jobs", id, reason: plan ? "Part of its recurring service." : undefined };
+  const crewWords = crew.length ? ` With ${crew.length} accepted cleaner${crew.length === 1 ? "" : "s"} from the old system.` : "";
+  return { outcome: "created", table: "jobs", id, reason: plan ? `Part of its recurring service.${crewWords}` : crewWords.trim() || undefined };
+}
+
+/**
+ * An accepted crew sent by a source adapter as `cleaner ref|pay cents|locked or provisional|accepted at`, one
+ * per cleaner, separated by `;`. Each cleaner must already be imported by this migration's source, and must not
+ * already be accepted on another visit at the same time. Only adapter sources send it; a CSV column can't.
+ */
+async function crewOf(ctx: WriteCtx, migration: Doc<"migrations">, raw: string | undefined, startsAt: number, endsAt: number) {
+  if (!raw?.trim() || migration.source !== "instant_shine") return [];
+  const out: { cleanerId: Id<"cleaners">; payCents: number; payLocked: boolean; acceptedAt: number; ref: string }[] = [];
+  for (const entry of raw.split(";").map((s) => s.trim()).filter(Boolean)) {
+    const [ref, pay, lock, at] = entry.split("|");
+    const link = await ctx.db
+      .query("migrationLinks")
+      .withIndex("by_company_source_kind_external", (q) => q.eq("companyId", ctx.companyId).eq("source", linkSource(migration)).eq("kind", "cleaners").eq("externalId", (ref ?? "").slice(0, 120)))
+      .first();
+    if (!link) failRow("One of its accepted cleaners wasn't imported. Import that cleaner, or skip this visit.");
+    const cleanerId = link!.recordId as Id<"cleaners">;
+    const payCents = Number(pay);
+    if (!Number.isSafeInteger(payCents) || payCents < 0) failRow("An accepted cleaner's pay isn't a whole number of cents.");
+    const acceptedAt = Date.parse(at ?? "");
+    if (!Number.isFinite(acceptedAt)) failRow("An accepted cleaner has no acceptance time, so the acceptance can't be shown as it happened.");
+    if (out.some((m) => m.cleanerId === cleanerId)) failRow("The same cleaner is on its crew twice.");
+    const theirs = await ctx.db.query("assignments").withIndex("by_company_cleaner_status", (q) => q.eq("companyId", ctx.companyId).eq("cleanerId", cleanerId).eq("status", "accepted")).take(500);
+    for (const a of theirs) {
+      const job = await ctx.db.get(a.jobId);
+      if (job && job.status !== "cancelled" && job.startsAt < endsAt && startsAt < job.endsAt) failRow("One of its accepted cleaners is already on another visit at that time. Check the schedule in the old system.");
+    }
+    out.push({ cleanerId, payCents, payLocked: lock === "locked", acceptedAt, ref: (ref ?? "").slice(0, 120) });
+  }
+  return out;
 }
 
 // ── Cleaners ─────────────────────────────────────────────────────────────────────────────────────────

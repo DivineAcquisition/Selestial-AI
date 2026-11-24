@@ -20,7 +20,7 @@ import { selestialPayRule, type RateBracket } from "./pay";
 export type Row = Record<string, unknown>;
 export type Snapshot = { manifest?: { version?: number; source?: { instance?: string }; startedAt?: string; consistent?: boolean; moved?: string[] }; tables: Record<string, Row[]> };
 
-export type Kind = "customers" | "recurring" | "cleaners" | "bookings" | "history";
+export type Kind = "customers" | "properties" | "recurring" | "cleaners" | "bookings" | "history";
 export type Outcome = "staged" | "merged" | "review" | "archived" | "retained" | "excluded";
 export type RecordOutcome = { table: string; id: string; outcome: Outcome; kind?: Kind; ref?: string; label?: string; reason: string };
 export type StagedFile = { kind: Kind; name: string; header: string[]; rows: { sourceId: string; cells: string[] }[] };
@@ -104,13 +104,14 @@ const FREQUENCY: Record<string, string> = { weekly: "every week", biweekly: "eve
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 const HEADERS: Record<Kind, string[]> = {
+  properties: ["externalId", "customerRef", "customerName", "line1", "line2", "city", "region", "postalCode"],
   customers: ["externalId", "firstName", "lastName", "name", "email", "phone", "line1", "line2", "city", "region", "postalCode", "notes", "smsOptOut"],
   recurring: ["externalId", "customerRef", "customerName", "line1", "city", "region", "postalCode", "service", "frequency", "nextVisit", "time", "durationMinutes", "price", "status", "notes"],
   cleaners: ["externalId", "firstName", "lastName", "name", "email", "phone", "engagement", "status", "notes"],
   bookings: ["externalId", "customerRef", "customerName", "line1", "city", "region", "postalCode", "service", "date", "time", "durationMinutes", "price", "status", "crew", "notes"],
   history: ["externalId", "customerRef", "customerName", "line1", "city", "region", "postalCode", "date", "service", "price", "status", "notes"],
 };
-const FILE_NAMES: Record<Kind, string> = { customers: "Instant Shine customers", recurring: "Instant Shine recurring services", cleaners: "Instant Shine cleaners", bookings: "Instant Shine upcoming visits", history: "Instant Shine visit history" };
+const FILE_NAMES: Record<Kind, string> = { properties: "Instant Shine service addresses", customers: "Instant Shine customers", recurring: "Instant Shine recurring services", cleaners: "Instant Shine cleaners", bookings: "Instant Shine upcoming visits", history: "Instant Shine visit history" };
 
 // ── The adapter ───────────────────────────────────────────────────────────────────────────────────────
 
@@ -121,7 +122,7 @@ export function adaptInstantShine(snapshot: Snapshot, options: { instance?: stri
   const rows = (table: string): Row[] => tables[table] ?? [];
   const include = new Set(options.include ?? []);
   const records: RecordOutcome[] = [];
-  const staged: Record<Kind, { sourceId: string; values: Record<string, string> }[]> = { customers: [], recurring: [], cleaners: [], bookings: [], history: [] };
+  const staged: Record<Kind, { sourceId: string; values: Record<string, string> }[]> = { customers: [], properties: [], recurring: [], cleaners: [], bookings: [], history: [] };
   const heldBack: Adapted["flags"]["heldBack"] = [];
   const out = (r: RecordOutcome) => records.push(r);
   const stage = (kind: Kind, sourceId: string, values: Record<string, string | null | undefined>) => {
@@ -170,6 +171,18 @@ export function adaptInstantShine(snapshot: Snapshot, options: { instance?: stri
   let placeholderContacts = 0;
   let outOfArea = 0;
 
+  const ownAddress = new Map<string, string>();
+  const addressKey = (a: { line1: string; postalCode: string }) => `${a.line1.toLowerCase().replace(/[^a-z0-9]/g, "")}|${a.postalCode}`;
+  const extraProperty = new Set<string>();
+  /** A visit at an address that isn't the customer's own needs that property first; one per customer and address. */
+  const propertyFor = (customerRef: string, customerName: string, address: { line1: string; city: string; region: string; postalCode: string }) => {
+    if (!customerRef || !address.line1 || !address.city || !address.region || !address.postalCode) return;
+    const key = addressKey(address);
+    if (ownAddress.get(customerRef) === key || extraProperty.has(`${customerRef}#${key}`)) return;
+    extraProperty.add(`${customerRef}#${key}`);
+    const ref = `${customerRef}#${key}`.slice(0, 120);
+    stage("properties", ref, { externalId: ref, customerRef, customerName, ...address });
+  };
   const customerValues = (table: string, r: Row, address: { line1: string; line2?: string; city: string; region: string; postalCode: string }, extraNotes: string[]) => {
     const email = realEmail(r.email);
     const phone = realPhone(r.phone);
@@ -207,6 +220,7 @@ export function adaptInstantShine(snapshot: Snapshot, options: { instance?: stri
       continue;
     }
     stage("customers", ref, { externalId: ref, firstName: c.first, lastName: c.last, name: c.first || c.last ? undefined : c.name, email: c.email, phone: c.phone, ...address, notes: c.notes.join(" "), smsOptOut: c.optOut ? "yes" : undefined });
+    ownAddress.set(ref, addressKey(address));
     out({ table: "customers", id: str(r.id), outcome: "staged", kind: "customers", ref, label: c.name, reason: "Customer." });
   }
 
@@ -228,6 +242,7 @@ export function adaptInstantShine(snapshot: Snapshot, options: { instance?: stri
       continue;
     }
     stage("customers", customerRef, { externalId: customerRef, firstName: c.first, lastName: c.last, name: c.name, email: c.email, phone: c.phone, ...address, notes: c.notes.join(" "), smsOptOut: c.optOut ? "yes" : undefined });
+    ownAddress.set(customerRef, addressKey(address));
     if (status === "ended") {
       out({ table: "payroll_recurring_clients", id: str(r.id), outcome: "staged", kind: "customers", ref: customerRef, label, reason: "Customer. Their recurring service had ended, so no plan was staged." });
       continue;
@@ -326,6 +341,7 @@ export function adaptInstantShine(snapshot: Snapshot, options: { instance?: stri
       continue;
     }
     if (status === "completed" || b.completed_at) {
+      propertyFor(customerRef, str(b.customer_name), address);
       stage("history", ref, { externalId: ref, ...base, date, status: "completed", notes: `From Instant Shine. Paid status: ${paymentStatus}.` });
       out({ table: "bookings", id, outcome: "staged", kind: "history", ref, label, reason: "Completed visit, kept as read-only history." });
       continue;
@@ -339,6 +355,7 @@ export function adaptInstantShine(snapshot: Snapshot, options: { instance?: stri
       out({ table: "bookings", id, outcome: "retained", ref, label, reason: "An online checkout that was never paid: not a confirmed visit. It stays in Instant Shine." });
       continue;
     }
+    propertyFor(customerRef, str(b.customer_name), address);
     const crewField = crew.map((a) => [cleanerRef.get(str(a.subcontractor_id)) ?? "", str(a.share_cents), a.pay_locked_at ? "locked" : "provisional", str(a.accepted_at)].join("|")).filter((s) => !s.startsWith("|")).join(";");
     stage("bookings", ref, {
       externalId: ref,
@@ -381,7 +398,8 @@ export function adaptInstantShine(snapshot: Snapshot, options: { instance?: stri
   ];
 
   // Files.
-  const files: StagedFile[] = (Object.keys(staged) as Kind[])
+  const ORDER: Kind[] = ["customers", "properties", "cleaners", "recurring", "bookings", "history"];
+  const files: StagedFile[] = ORDER
     .filter((kind) => staged[kind].length)
     .map((kind) => ({ kind, name: FILE_NAMES[kind], header: HEADERS[kind], rows: staged[kind].map((s) => ({ sourceId: s.sourceId, cells: HEADERS[kind].map((key) => s.values[key] ?? "") })) }));
 

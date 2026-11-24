@@ -274,6 +274,7 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   { table: "migrationLinks", index: "by_company_source_kind_external" },
   { table: "importedHistory", index: "by_company_customer_day" },
   { table: "openingBalances", index: "by_company_customer" },
+  { table: "migrationSourceReports", index: "by_company" },
 ];
 
 /** Company tables kept out of the export, and why. */
