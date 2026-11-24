@@ -131,7 +131,7 @@ export function InternalBookingScreen() {
                         {row.by ? ` by ${row.by}` : ""}
                       </span>
                       <Chip tone={TONE[row.status] ?? "neutral"}>{row.statusWords}</Chip>
-                      <span className="inline-flex items-center gap-1 text-sm font-medium text-brand-700 group-hover:underline dark:text-brand-300">
+                      <span className="inline-flex items-center gap-1 text-sm font-medium text-brand-300 group-hover:underline">
                         {row.status === "confirmed" ? "Open" : "Continue"}
                         <ArrowRight aria-hidden className="size-4" />
                         <span className="sr-only">{row.label ? ` booking for ${row.label}` : " booking"}</span>

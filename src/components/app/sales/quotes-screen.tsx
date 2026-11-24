@@ -95,7 +95,7 @@ export function QuotesProposalsScreen() {
                     </div>
                     <span className="text-sm font-semibold text-strong tabular-nums">{money(q.firstCents ?? q.totalCents)}</span>
                     <Chip tone={QUOTE_TONE[q.status] ?? "neutral"}>{q.status === "saved" ? `Held until ${shortDay(q.expiresAt)}` : (QUOTE_WORDS[q.status] ?? q.status)}</Chip>
-                    <span className="inline-flex items-center gap-1 text-sm font-medium text-brand-700 group-hover:underline dark:text-brand-300">
+                    <span className="inline-flex items-center gap-1 text-sm font-medium text-brand-300 group-hover:underline">
                       {q.status === "saved" || q.status === "sent" ? "Continue to booking" : "Open"}
                       <ArrowRight aria-hidden className="size-4" />
                     </span>
@@ -150,7 +150,7 @@ export function QuotesProposalsScreen() {
                       </p>
                     </div>
                     <Chip tone="neutral">{DRAFT_WORDS[d.status] ?? d.status.replace(/_/g, " ")}</Chip>
-                    <span className="inline-flex items-center gap-1 text-sm font-medium text-brand-700 group-hover:underline dark:text-brand-300">
+                    <span className="inline-flex items-center gap-1 text-sm font-medium text-brand-300 group-hover:underline">
                       Continue
                       <ArrowRight aria-hidden className="size-4" />
                     </span>
