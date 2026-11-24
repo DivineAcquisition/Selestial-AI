@@ -804,7 +804,7 @@ async function planPriceChange(ctx: MutationCtx, company: Doc<"companies">, ref:
     subject: `Your Selestial price changes to ${full} a month on ${date}`,
     heading: `Your early-user price ends on ${date}`,
     body: `Your first 12 months of Operate at ${money(EARLY_OFFER_CENTS)} a month end on ${date}. From that date Operate is ${full} a month, charged on your usual billing day. Nothing else changes: the same agents, features and monthly credits.`,
-    note: "You don't need to do anything. If you'd rather not continue, you can cancel in Plan & Usage before that date and the plan stays active until it.",
+    note: "You don't need to do anything. If you'd rather not continue, you can cancel in Plan & usage before that date and the plan stays active until it.",
     facts: [
       { label: "Changes on", value: date },
       { label: "Price until then", value: `${money(EARLY_OFFER_CENTS)} a month` },

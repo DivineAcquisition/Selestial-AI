@@ -386,6 +386,22 @@ describe("Dispatch", () => {
     expect(offer.respondBy - NOW).toBeLessThan(61 * MINUTE);
   });
 
+  it("saves timing and policy together, or neither when one part is refused", async () => {
+    const s = await setup(["Lena"]);
+    const before = await s.as.query(api.dispatch.settings, { companyId: s.companyId });
+    const settings = { offerWindowMinutes: 60, travelBufferMinutes: 10, lookAheadDays: 3 };
+    // The policy part is out of range, so the valid timing beside it is not saved either.
+    expect(await refusal(s.as.mutation(api.dispatchOps.setRules, { companyId: s.companyId, settings, policy: { leadPremiumPercent: 150 } }))).toContain("from 0 to 100");
+    expect(await s.as.query(api.dispatch.settings, { companyId: s.companyId })).toMatchObject({ offerWindowMinutes: before.offerWindowMinutes, usingDefaults: true });
+
+    await s.as.mutation(api.dispatchOps.setRules, { companyId: s.companyId, settings, policy: { broadcastEnabled: true, broadcastSize: 3 } });
+    expect(await s.as.query(api.dispatch.settings, { companyId: s.companyId })).toMatchObject({ ...settings, usingDefaults: false });
+    expect(await s.as.query(api.dispatchOps.policy, { companyId: s.companyId })).toMatchObject({ broadcastEnabled: true, broadcastSize: 3 });
+
+    const manager = await addMember(s.t, s.as, s.companyId, "manager-rules", "manager");
+    expect(await refusal(manager.mutation(api.dispatchOps.setRules, { companyId: s.companyId, settings }))).toBe(NOT_ALLOWED);
+  });
+
   it("shows who it would ask and why, with pay amounts for the Owner only", async () => {
     const s = await setup(["Rosa"]);
     const hourly = await dispatchCleaner(s.as, s.companyId, "Hana", { hourlyCents: 2200 });

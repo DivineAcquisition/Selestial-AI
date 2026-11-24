@@ -1230,8 +1230,8 @@ export const activationReview = managerQuery({
     const dispatchPaused = company.pausedAgents.includes("dispatch");
     const offerLevel = await level("dispatch.request_acceptance");
     const dispatchMissing = [
-      ...(dispatchPaused ? ["Dispatch is paused for your company. Nothing is offered until you resume it in Agent controls."] : []),
-      ...(offerLevel === "off" ? ["Dispatch's first offers are set to Off, so it won't offer these visits until you change that in Agent controls."] : []),
+      ...(dispatchPaused ? ["Dispatch is paused for your company. Nothing is offered until you resume it in Agent permissions."] : []),
+      ...(offerLevel === "off" ? ["Dispatch's first offers are set to Off, so it won't offer these visits until you change that in Agent permissions."] : []),
       ...(readyCleaners.length === 0 ? ["No cleaner is active yet, so there's no one to offer visits to. Dispatch will list the visits that need cover."] : []),
       ...(!textingReady ? ["Business texting isn't set up, so offers go by email where cleaners have one."] : []),
     ];
@@ -1296,7 +1296,7 @@ export const activationReview = managerQuery({
         count: held.cleaners.length,
         records: held.cleaners.length ? `${held.cleaners.length} imported team ${held.cleaners.length === 1 ? "member" : "members"}, all onboarding.` : "No imported team members are waiting.",
         does: ["Sends each person the usual reminders about the onboarding steps they still owe, as your cleaner settings say.", "Doesn't make anyone active or offer them work: you do that on each profile once their requirements are met."],
-        missing: [...(unreachable ? [`${unreachable} ${unreachable === 1 ? "has" : "have"} no phone or email, so they can't be reminded.`] : []), ...(reminderLevel === "off" ? ["Onboarding reminders are set to Off in Agent controls."] : []), ...(!textingReady ? ["Business texting isn't set up, so reminders go by email where people have one."] : [])],
+        missing: [...(unreachable ? [`${unreachable} ${unreachable === 1 ? "has" : "have"} no phone or email, so they can't be reminded.`] : []), ...(reminderLevel === "off" ? ["Onboarding reminders are set to Off in Agent permissions."] : []), ...(!textingReady ? ["Business texting isn't set up, so reminders go by email where people have one."] : [])],
         approvals: reminderLevel === "propose" ? ["Onboarding reminders are set to Ask me first: each waits for your approval."] : [],
         level: LEVEL_WORDS[reminderLevel] ?? reminderLevel,
         messages: held.cleaners.length - unreachable,

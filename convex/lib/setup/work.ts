@@ -155,7 +155,7 @@ export async function recruiterWork(ctx: QueryCtx, company: Doc<"companies">, re
         : screening > 0
           ? { words: `Review ${plural(screening, "application")} waiting`, href: "/app/agents/recruiter/screening" }
           : !hasInbox
-            ? { words: "Connect the hiring inbox to find people who already applied", href: "/app/settings/recruiting" }
+            ? { words: "Connect the hiring inbox to find people who already applied", href: "/app/agents/recruiter/hiring-setup" }
             : { words: "Share where people can apply", href: "/app/agents/recruiter/hiring-needs" };
 
   return {

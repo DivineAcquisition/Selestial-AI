@@ -166,7 +166,7 @@ export const SHARED_ITEMS: readonly NavItem[] = [
     path: `${APP_ROOT}/services`,
     availability: LIVE,
     minimumRole: "office",
-    accessNote: "Everyone reads the catalog. Owners and Managers draft and submit changes. Only the Owner approves and publishes, and only the Owner sees costs and profitability. Not Selestial's own plans or credits, which are under Settings › Plan & Usage.",
+    accessNote: "Everyone reads the catalog. Owners and Managers draft and submit changes. Only the Owner approves and publishes, and only the Owner sees costs and profitability. Not Selestial's own plans or credits, which are under Settings › Plan & usage.",
   },
   {
     id: "customers",
@@ -197,7 +197,7 @@ export const SHARED_ITEMS: readonly NavItem[] = [
     path: `${APP_ROOT}/agreements`,
     availability: LIVE,
     minimumRole: "office",
-    accessNote: "Customer documents are open to everyone who works customers. Workforce documents are the Owner's and Managers', and pay or classification documents are the Owner's alone. Selestial's own terms are under Settings › Selestial Terms & Agreements.",
+    accessNote: "Customer documents are open to everyone who works customers. Workforce documents are the Owner's and Managers', and pay or classification documents are the Owner's alone. Selestial's own terms are under Settings › My account & security › Selestial terms.",
   },
   {
     id: "finance",
@@ -226,7 +226,7 @@ export const FOOTER_ITEMS: readonly NavItem[] = [
     id: "settings",
     label: "Settings",
     section: "footer",
-    purpose: "Business hours and services, people, agent permissions and rules, connections, security, compliance and Selestial's own plans.",
+    purpose: "Company profile, office team, agent permissions, email and texting, connected apps, Selestial's own plan, and each person's account and notifications.",
     path: `${APP_ROOT}/settings`,
     availability: LIVE,
     minimumRole: "office",
@@ -514,6 +514,8 @@ export const EXISTING_ROUTES: readonly { pattern: string; today: string; becomes
   { pattern: `${APP_ROOT}/agents/recruiter/screening`, today: "Redirects to Recruiter › Applicants, the decisions view (November 23, 2026).", becomes: "Removed once old links have had time to move." },
   { pattern: `${APP_ROOT}/agents/recruiter/offers-agreements`, today: "Redirects to Recruiter › Applicants, the offers view (November 23, 2026).", becomes: "Removed once old links have had time to move." },
   { pattern: `${APP_ROOT}/agents/recruiter/onboarding-readiness`, today: "Redirects to Recruiter › Applicants, the onboarding view (November 23, 2026).", becomes: "Removed once old links have had time to move." },
+  { pattern: `${APP_ROOT}/settings/dispatch`, today: "Redirects to Dispatch › Playbook, the one editor of Dispatch's rules (Settings reorganized November 24, 2026).", becomes: "Removed once old links have had time to move." },
+  { pattern: `${APP_ROOT}/settings/recruiting`, today: "Redirects to Recruiter › Hiring setup, keeping its query so a Gmail connection begun before the move finishes (Settings reorganized November 24, 2026).", becomes: "Removed once old links have had time to move." },
   { pattern: `${APP_ROOT}/settings/connections`, today: "Redirects to Settings › Integrations (Connections was folded in on November 16, 2026).", becomes: "Removed once old links have had time to move." },
   { pattern: `${APP_ROOT}/insights`, today: "The week's measures.", becomes: "Reports, at /app/reports, with a redirect from here." },
   {

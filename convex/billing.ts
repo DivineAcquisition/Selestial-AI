@@ -246,7 +246,7 @@ export const storeAccount = internalMutation({
     }
     const low = account.controls.lowBalance;
     if (low !== undefined && projection.credits && projection.credits.remaining > 0 && projection.credits.remaining < low) await notify(ctx, account, "low_balance", `Fewer than ${low.toLocaleString("en-US")} credits are left. AI work pauses at zero; buy a top-up or wait for the monthly reset.`);
-    if (projection.subscription.pastDue) await notify(ctx, account, "past_due", "The last payment for this plan did not go through. Update the payment method in Plan & Usage to keep the plan.");
+    if (projection.subscription.pastDue) await notify(ctx, account, "past_due", "The last payment for this plan did not go through. Update the payment method in Plan & usage to keep the plan.");
     await usageAlerts(ctx, account);
     await closePaidIntents(ctx, args.companyId, args.env, projection, rawInvoices, now);
     // The early-user offer: a place is claimed only here, once Autumn shows the $199 plan paid and active.
@@ -684,7 +684,7 @@ export const setSpendingControls = ownerMutation({
   handler: async (ctx, args) => {
     const state = connectedOrRefuse();
     const account = await accountFor(ctx, ctx.companyId, state.env);
-    if (!account) throw userError("Open Plan & Usage once so the billing account can be set up, then try again.");
+    if (!account) throw userError("Open Plan & usage once so the billing account can be set up, then try again.");
     const whole = (value: number | null, label: string) => {
       if (value === null) return undefined;
       if (!Number.isInteger(value) || value < 1 || value > 10_000_000) throw userError(`${label} must be a whole number of credits.`);

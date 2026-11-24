@@ -56,7 +56,7 @@ function Setup() {
         <ArrowLeft className="size-4" aria-hidden />
         Finance
       </Link>
-      <PageHeader title="Payments setup" lead="Where your customers' payments go, and how your invoices are made. Selestial's own plan is separate, under Settings › Plan & Usage." />
+      <PageHeader title="Payments setup" lead="Where your customers' payments go, and how your invoices are made. Selestial's own plan is separate, under Settings › Plan & usage." />
       {!data ? (
         <div className="grid gap-5 lg:grid-cols-2">
           <Skeleton className="h-72 rounded-2xl" />

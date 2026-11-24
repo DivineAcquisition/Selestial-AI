@@ -94,6 +94,7 @@ export function PreferencesView({ data: mine, timezone, busy, error, onToggle, o
       ) : null}
 
       <Panel flush title="Email me about">
+        <p className="border-b border-border px-4 py-2.5 text-xs text-muted-foreground sm:px-5">Each switch saves as soon as you change it. There is nothing else to save.</p>
         <ul className="divide-y divide-border">
           {mine.categories.map((row) => (
             <Row key={row.category} label={row.label} about={row.about} on={row.on} locked={row.locked} busy={busy} onChange={(on) => onToggle(row.category, on)} />
@@ -102,7 +103,7 @@ export function PreferencesView({ data: mine, timezone, busy, error, onToggle, o
       </Panel>
       {error ? (
         <p role="alert" className="text-sm text-red-700">
-          {error}
+          {error} That change was not saved.
         </p>
       ) : null}
 
