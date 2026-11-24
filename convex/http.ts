@@ -36,7 +36,7 @@ import { exchange as googleExchange, googleApp as googleConnectApp, identityFrom
 import { endpoints as googleEndpoints } from "./lib/google/platform";
 import { googleKeys, pushData, tokenKid, verifyOidc } from "./lib/google/pubsub";
 import { receivedEmailId, verifyWebhook, webhookOutcome } from "./lib/messaging/resend";
-import { clerkEvent } from "./lib/platform/clerk";
+import { clerkEvent, isClerkCode } from "./lib/platform/clerk";
 import { countSegments } from "./lib/messagingBilling/segments";
 import { sendPlatformText } from "./platformSms";
 import { parseEvent, signingProvider, verifyBody } from "./lib/agreements/signing";
@@ -100,6 +100,12 @@ http.route({
     handler: async (ctx, body, request) => {
       const event = clerkEvent(body);
       if (event.kind !== "sms" || event.deliveredByClerk) return;
+      // Clerk's security notices (password changed, passkey added or removed) carry no code: they go from the
+      // notice sender, kept as Selestial's own security notice. Only codes go from the code sender.
+      if (!isClerkCode(event.slug, event.message)) {
+        await ctx.runMutation(internal.platformSms.queueNotice, { kind: "security_notice", reason: event.slug, dedupeKey: `clerk:${request.headers.get("svix-id")!}`, to: event.to, body: event.message, ...(event.userId ? { userId: event.userId } : {}) });
+        return;
+      }
       const decision = await ctx.runMutation(internal.platformSms.codeRequested, { deliveryId: request.headers.get("svix-id")!, to: event.to, ...(event.userId ? { userId: event.userId } : {}), reason: event.slug, segments: countSegments(event.message).segments });
       if (decision.decision === "send") await sendPlatformText(ctx, { id: decision.id, to: event.to, body: event.message, sender: decision.sender });
     },

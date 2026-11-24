@@ -70,11 +70,15 @@ export const codeRequested = internalMutation({
 
 /** A notice or alert to one person's verified number, from the notice sender. One per key. */
 export const queueNotice = internalMutation({
-  args: { kind: platformKindValidator, reason: v.string(), dedupeKey: v.string(), to: v.string(), body: v.string(), userId: v.optional(v.string()), staffId: v.optional(v.id("staff")) },
+  args: { kind: platformKindValidator, reason: v.string(), dedupeKey: v.string(), to: v.string(), body: v.string(), userId: v.optional(v.string()), staffId: v.optional(v.id("staff")), transient: v.optional(v.boolean()) },
   handler: async (ctx, args) => queueNoticeIn(ctx, args),
 });
 
-export async function queueNoticeIn(ctx: MutationCtx, args: { kind: Doc<"platformMessages">["kind"]; reason: string; dedupeKey: string; to: string; body: string; userId?: string; staffId?: Id<"staff"> }): Promise<Id<"platformMessages">> {
+/**
+ * `transient`: the words carry a code. They are not stored on the record; they travel only in the scheduled
+ * call that sends them, and a send that fails is not tried again (the person asks for a new code).
+ */
+export async function queueNoticeIn(ctx: MutationCtx, args: { kind: Doc<"platformMessages">["kind"]; reason: string; dedupeKey: string; to: string; body: string; userId?: string; staffId?: Id<"staff">; transient?: boolean }): Promise<Id<"platformMessages">> {
   if (args.kind === "auth_code") throw new Error("Sign-in codes come only from Clerk (codeRequested).");
   const existing = await ctx.db
     .query("platformMessages")
@@ -92,36 +96,37 @@ export async function queueNoticeIn(ctx: MutationCtx, args: { kind: Doc<"platfor
     toKey: await phoneKey(args.to),
     toLast4: last4(args.to),
     to: args.to,
-    body: args.body.slice(0, 1600),
+    ...(args.transient ? {} : { body: args.body.slice(0, 1600) }),
     segments: countSegments(args.body).segments,
     status: sender ? "queued" : "not_sent",
     ...(sender ? {} : { refusal: "sender_not_ready", problem: "Selestial's notice sender isn't set up (PLATFORM_SMS_NOTICES_FROM / _PROFILE_ID)." }),
     attempts: 0,
     queuedAt: Date.now(),
   });
-  if (sender) await ctx.scheduler.runAfter(0, internal.platformSms.deliverNotice, { id });
+  if (sender) await ctx.scheduler.runAfter(0, internal.platformSms.deliverNotice, { id, ...(args.transient ? { body: args.body.slice(0, 1600) } : {}) });
   return id;
 }
 
 export const claimNotice = internalMutation({
-  args: { id: v.id("platformMessages") },
+  args: { id: v.id("platformMessages"), body: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const row = await ctx.db.get(args.id);
-    if (!row || row.status !== "queued" || !row.to || !row.body) return null;
+    const body = row?.body ?? args.body;
+    if (!row || row.status !== "queued" || !row.to || !body) return null;
     const sender = platformSender(row.sender as PlatformSender);
     if (!sender) {
       await ctx.db.patch(row._id, { status: "not_sent", refusal: "sender_not_ready", problem: "Selestial's notice sender isn't set up.", to: undefined });
       return null;
     }
     await ctx.db.patch(row._id, { status: "sending", attempts: row.attempts + 1 });
-    return { to: row.to, body: row.body, sender, attempt: row.attempts + 1 };
+    return { to: row.to, body, sender, attempt: row.attempts + 1 };
   },
 });
 
 export const deliverNotice = internalAction({
-  args: { id: v.id("platformMessages") },
+  args: { id: v.id("platformMessages"), body: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const claimed = await ctx.runMutation(internal.platformSms.claimNotice, { id: args.id });
+    const claimed = await ctx.runMutation(internal.platformSms.claimNotice, { id: args.id, ...(args.body ? { body: args.body } : {}) });
     if (!claimed) return null;
     await sendPlatformText(ctx, { id: args.id, to: claimed.to, body: claimed.body, sender: claimed.sender, attempt: claimed.attempt });
     return null;
@@ -163,7 +168,7 @@ export const settle = internalMutation({
       return null;
     }
     // A notice may be tried again for Telnyx's own trouble; a sign-in code never is (the person asks for a new one).
-    if (result.retryable && row.kind !== "auth_code" && row.attempts < NOTICE_ATTEMPTS) {
+    if (result.retryable && row.kind !== "auth_code" && row.body !== undefined && row.attempts < NOTICE_ATTEMPTS) {
       await ctx.db.patch(row._id, { status: "queued", problem: result.problem });
       await ctx.scheduler.runAfter(row.attempts * 30_000, internal.platformSms.deliverNotice, { id: row._id });
       return null;

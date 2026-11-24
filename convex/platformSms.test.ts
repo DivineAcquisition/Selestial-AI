@@ -24,8 +24,8 @@ async function sign(id: string, timestamp: number, body: string) {
 }
 
 type S = Awaited<ReturnType<typeof setup>>;
-const smsCreated = (to: string, opts: { clerkDelivers?: boolean; message?: string } = {}) =>
-  JSON.stringify({ type: "sms.created", object: "event", data: { object: "sms_message", id: "sms_1", to_phone_number: to, message: opts.message ?? "123456 is your Selestial verification code.", delivered_by_clerk: opts.clerkDelivers ?? false, user_id: "user_abc", slug: "verification_code", status: "queued" } });
+const smsCreated = (to: string, opts: { clerkDelivers?: boolean; message?: string; userId?: string } = {}) =>
+  JSON.stringify({ type: "sms.created", object: "event", data: { object: "sms_message", id: "sms_1", to_phone_number: to, message: opts.message ?? "123456 is your Selestial verification code.", delivered_by_clerk: opts.clerkDelivers ?? false, user_id: opts.userId ?? "user_abc", slug: "verification_code", status: "queued" } });
 async function clerk(s: S, body: string, id: string, signed = true) {
   const timestamp = Math.floor(Date.now() / 1000);
   return s.t.fetch("/webhooks/clerk", { method: "POST", headers: { "content-type": "application/json", "svix-id": id, "svix-timestamp": String(timestamp), "svix-signature": signed ? await sign(id, timestamp, body) : "v1,forged" }, body });
@@ -65,6 +65,16 @@ describe("Platform SMS: sign-in codes from Clerk", () => {
     expect(JSON.stringify(rows[0])).not.toContain(PERSON);
   });
 
+  it("sends Clerk's security notices from the notice sender, never the code sender", async () => {
+    const s = await setup(["Lena"]);
+    const notice = JSON.stringify({ type: "sms.created", data: { to_phone_number: PERSON, message: "Your Selestial password was changed. If this wasn't you, reset it now.", delivered_by_clerk: false, user_id: "user_abc", slug: "password_changed" } });
+    await clerk(s, notice, "msg_notice");
+    await flush(s.t);
+    expect(toCodes()).toHaveLength(0);
+    expect(mockOutbox.filter((row) => row.from === NOTICES_FROM)).toEqual([expect.objectContaining({ to: PERSON, body: expect.stringContaining("password was changed") })]);
+    expect((await platformRows(s))[0]).toMatchObject({ kind: "security_notice", sender: "notices", reason: "password_changed" });
+  });
+
   it("does nothing when Clerk delivers the text itself", async () => {
     const s = await setup(["Lena"]);
     await clerk(s, smsCreated(PERSON, { clerkDelivers: true }), "msg_2");
@@ -101,6 +111,17 @@ describe("Platform SMS: sign-in codes from Clerk", () => {
     process.env.PLATFORM_SMS_CODES_PER_HOUR = "1";
     await clerk(s, smsCreated("+15125550199"), "breaker_1");
     expect((await platformRows(s)).find((row) => row.toLast4 === "0199")).toMatchObject({ status: "not_sent", refusal: "platform_limit" });
+  });
+
+  it("opens an incident when code requests look like SMS pumping", async () => {
+    const s = await setup(["Lena"]);
+    // Many different numbers in one exchange block: each passes its own limit, the block limit stops the rest.
+    for (let i = 0; i < 45; i += 1) await clerk(s, smsCreated(`+1512555${String(1000 + i)}`, { userId: `user_pump_${i}` }), `pump_${i}`);
+    expect(toCodes()).toHaveLength(20);
+    await s.t.mutation(internal.operations.runCheck, { check: "platform_sms" });
+    const incidents = await s.t.run(async (ctx) => (await ctx.db.query("incidents").collect()).filter((row) => row.check === "platform_sms" && !row.resolvedAt));
+    expect(incidents.map((row) => [row.kind, row.severity])).toEqual([["verification_abuse", "high"]]);
+    expect(JSON.stringify(incidents)).not.toContain("+1512555");
   });
 
   it("records a code it can't send when Selestial's code sender isn't set up, so Clerk stays the deliverer", async () => {
@@ -146,5 +167,52 @@ describe("Platform SMS: replies to Selestial's numbers", () => {
     expect(await text("STOP")).toEqual({ kind: "platform_number", replied: false });
     // Nothing reached any company's inbox.
     expect(await s.t.run(async (ctx) => (await ctx.db.query("smsInbound").collect()).length)).toBe(0);
+  });
+});
+
+describe("Platform SMS: urgent alerts to staff", () => {
+  const STAFF = { subject: "user_staff_ops", email: "ops@selestial.example", emailVerified: true, name: "Ops" };
+  let undo = () => {};
+  beforeEach(() => {
+    undo = dispatchTestEnv();
+    process.env.STAFF_BOOTSTRAP_EMAIL = STAFF.email;
+    process.env.PLATFORM_SMS_NOTICES_FROM = NOTICES_FROM;
+    process.env.PLATFORM_SMS_NOTICES_PROFILE_ID = "profile-notices";
+  });
+  afterEach(() => {
+    undo();
+    delete process.env.STAFF_BOOTSTRAP_EMAIL;
+    delete process.env.PLATFORM_SMS_NOTICES_FROM;
+    delete process.env.PLATFORM_SMS_NOTICES_PROFILE_ID;
+  });
+
+  it("confirms a staff phone with a code it never stores, then texts it critical incidents only", async () => {
+    const s = await setup(["Lena"]);
+    const staff = s.t.withIdentity(STAFF);
+    await staff.mutation(api.staffAlerts.startPhone, { phone: "(512) 555-0188" });
+    await flush(s.t);
+    const sent = mockOutbox.filter((row) => row.from === NOTICES_FROM && row.to === "+15125550188");
+    expect(sent).toHaveLength(1);
+    const code = /(\d{6})/.exec(sent[0].body)![1];
+    // The code is in the text, never on any record.
+    expect(JSON.stringify(await platformRows(s))).not.toContain(code);
+    await expect(staff.mutation(api.staffAlerts.confirmPhone, { code: code === "000000" ? "111111" : "000000" })).rejects.toThrow(/isn't right/);
+    expect(await staff.mutation(api.staffAlerts.confirmPhone, { code })).toEqual({ last4: "0188" });
+    expect(await staff.query(api.staffAlerts.mine, {})).toMatchObject({ phoneLast4: "0188", pending: null, senderReady: true });
+    // A critical batch is texted once per batch, naming the incident and its reference only.
+    await s.t.mutation(internal.staffAlerts.textCritical, { key: "batch-1", lines: [{ title: "Telnyx refuses Selestial's API key", reference: "INC-1A2B" }] });
+    await s.t.mutation(internal.staffAlerts.textCritical, { key: "batch-1", lines: [{ title: "Telnyx refuses Selestial's API key", reference: "INC-1A2B" }] });
+    await flush(s.t);
+    const alerts = mockOutbox.filter((row) => row.to === "+15125550188" && row.body.startsWith("Selestial critical"));
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].body).toContain("INC-1A2B");
+    // Removing the phone stops alert texts.
+    await staff.mutation(api.staffAlerts.removePhone, {});
+    expect(await s.t.mutation(internal.staffAlerts.textCritical, { key: "batch-2", lines: [{ title: "x", reference: "INC-2" }] })).toEqual({ queued: 0 });
+  });
+
+  it("is staff-only", async () => {
+    const s = await setup(["Lena"]);
+    await expect(s.as.mutation(api.staffAlerts.startPhone, { phone: "+15125550188" })).rejects.toThrow(/Not found/);
   });
 });

@@ -897,6 +897,62 @@ const providerHealth: Detector = {
   },
 };
 
+/**
+ * Selestial's own texts in the last hour (convex/platformSms.ts): sign-in codes refused by the limits in
+ * bulk (likely SMS pumping or a script), the platform circuit breaker tripping, or Selestial's codes and
+ * notices failing to send. Read from records only; never a phone number or a code.
+ */
+const platformSms: Detector = {
+  check: "platform_sms",
+  everyMinutes: 10,
+  scan: async (ctx, now) => {
+    const recent = await ctx.db
+      .query("platformMessages")
+      .withIndex("by_kind_queued", (q) => q.eq("kind", "auth_code").gt("queuedAt", now - HOUR))
+      .first();
+    return recent ? [ref("platformMessages", "codes"), ref("platformMessages", "delivery")] : [];
+  },
+  evaluate: async (ctx, source, now) => {
+    if (source.table !== "platformMessages") return null;
+    const codes = await ctx.db
+      .query("platformMessages")
+      .withIndex("by_kind_queued", (q) => q.eq("kind", "auth_code").gt("queuedAt", now - HOUR))
+      .take(2000);
+    if (codes.length === 0) return null;
+    const base = { area: "platform" as const, provider: "telnyx", source, since: codes[0].queuedAt, attempts: codes.length };
+    if (source.id === "codes") {
+      const limited = codes.filter((row) => row.refusal === "destination_limit" || row.refusal === "person_limit" || row.refusal === "number_block_limit" || row.refusal === "unsupported_route");
+      const breaker = codes.some((row) => row.refusal === "platform_limit");
+      if (!breaker && limited.length < 20) return null;
+      return {
+        ...base,
+        key: "platform:verification_abuse",
+        kind: "verification_abuse",
+        severity: breaker ? "critical" : "high",
+        state: "needs_staff",
+        title: breaker ? "Sign-in code texts hit the platform's hourly limit" : `${limited.length} sign-in code texts refused by limits in the last hour`,
+        impact: breaker ? "New sign-in codes aren't texted until the hour passes; people can still use their other sign-in methods." : "Someone may be requesting codes in bulk (SMS pumping). Refused codes cost nothing.",
+        nextAction: "Look at the refusals by reason in Operations. If it's abuse, tighten Clerk's SMS country list or bot protection; if it's real demand, raise PLATFORM_SMS_CODES_PER_HOUR.",
+        diagnostics: `${codes.length} code requests, ${limited.length} refused by limits${breaker ? ", circuit breaker tripped" : ""}`,
+      };
+    }
+    const tried = codes.filter((row) => row.status !== "not_sent" && row.status !== "queued");
+    const bad = tried.filter((row) => row.status === "failed" || row.status === "unconfirmed");
+    if (bad.length < 5 || bad.length * 2 < tried.length) return null;
+    return {
+      ...base,
+      key: "platform:sms_failing",
+      kind: "platform_sms_failing",
+      severity: "critical",
+      state: "needs_staff",
+      title: `${bad.length} of ${tried.length} sign-in code texts failed in the last hour`,
+      impact: "People asking for a code by text may not get one.",
+      nextAction: "Check the code sender in Telnyx (toll-free verification, messaging profile). If it can't be fixed quickly, turn \"Delivered by Clerk\" back on for Clerk's SMS templates so Clerk sends codes itself.",
+      diagnostics: `${tried.length} sent, ${bad.length} failed or unconfirmed`,
+    };
+  },
+};
+
 export const DETECTORS: readonly Detector[] = [
   agentWork,
   chatRuns,
@@ -913,6 +969,7 @@ export const DETECTORS: readonly Detector[] = [
   messagingAttention,
   companyDeletions,
   providerHealth,
+  platformSms,
 ];
 
 export function detectorFor(check: Check): Detector {

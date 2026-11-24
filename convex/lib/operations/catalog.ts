@@ -53,6 +53,7 @@ export const CHECKS = [
   "messaging_attention",
   "company_deletion",
   "provider_health",
+  "platform_sms",
 ] as const;
 export type Check = (typeof CHECKS)[number];
 export const checkValidator = literals(CHECKS);
@@ -99,6 +100,9 @@ export const KINDS = [
   "telnyx_key_refused",
   "telnyx_unreachable",
   "telnyx_balance_low",
+  // Selestial's own texts (convex/platformSms.ts).
+  "verification_abuse",
+  "platform_sms_failing",
   // Grouped: one provider failing for several companies at once.
   "provider_outage",
 ] as const;
@@ -141,6 +145,8 @@ export const KIND_LABELS: Record<Kind, string> = {
   telnyx_key_refused: "Telnyx refuses Selestial's API key",
   telnyx_unreachable: "Telnyx not answering",
   telnyx_balance_low: "Telnyx account balance low",
+  verification_abuse: "Unusual sign-in code traffic",
+  platform_sms_failing: "Selestial's own texts failing",
   provider_outage: "Provider failing for several companies",
 };
 

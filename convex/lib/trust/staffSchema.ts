@@ -33,6 +33,14 @@ export const staffTables = {
     addedAt: v.number(),
     /** Who added them: a staff id, or "bootstrap" for the first admin named by STAFF_BOOTSTRAP_EMAIL. */
     addedBy: v.string(),
+    /**
+     * The phone this person confirmed for urgent alerts (convex/staffAlerts.ts): texted only for critical
+     * incidents, from Selestial's notice sender. Set only after they entered the code texted to it.
+     */
+    alertPhone: v.optional(v.string()),
+    alertPhoneVerifiedAt: v.optional(v.number()),
+    /** A confirmation in progress: the number, a keyed hash of the code (never the code), expiry and attempts. */
+    alertPhoneCheck: v.optional(v.object({ phone: v.string(), codeHash: v.string(), expiresAt: v.number(), attempts: v.number() })),
   })
     .index("by_email", ["email"])
     .index("by_user", ["userId"]),

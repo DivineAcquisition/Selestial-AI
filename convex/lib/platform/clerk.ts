@@ -8,6 +8,15 @@
  * code included) exactly as written, to `to_phone_number`. With it on, Clerk sends it and Selestial does
  * nothing. The payload is never logged or stored.
  */
+/**
+ * Whether Clerk's SMS carries a one-time code: its template says so (verification_code, reset_password_code and
+ * their variants), or its words hold a 4–8 digit number. When in doubt it is treated as a code, so its words are
+ * never stored and it goes from the code sender.
+ */
+export function isClerkCode(slug: string, message = ""): boolean {
+  return /(^|_)code(_|$)/.test(slug) || /\b\d{4,8}\b/.test(message);
+}
+
 export type ClerkEvent =
   | { kind: "sms"; to: string; message: string; deliveredByClerk: boolean; userId: string | null; slug: string }
   | { kind: "ignored"; type: string };
