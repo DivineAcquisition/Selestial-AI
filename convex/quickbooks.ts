@@ -45,6 +45,14 @@ export function setQuickBooksFetchForTests(next: Fetcher | null, wait: Wait | nu
 const go: Fetcher = (url, init) => (fetcher ?? fetch)(url, init);
 const wait: Wait = (ms) => (waiter ?? realWait)(ms);
 
+/**
+ * Writes one QuickBooks error to the deployment's logs as a single JSON line (Convex dashboard › Logs),
+ * with Intuit's request id, so it can be found and shared with Intuit support. Never includes a token.
+ */
+export function logQuickBooksError(context: { companyId?: string; connectionId?: string; step: string }, error: QuickBooksError) {
+  console.error(JSON.stringify({ event: "quickbooks_error", ...context, kind: error.kind, status: error.status ?? null, intuitTid: error.intuitTid ?? null, message: error.message, at: new Date().toISOString() }));
+}
+
 /** Where the Owner lands after Intuit, with what happened. */
 export function afterQuickBooks(outcome: string, origin?: string | null): string {
   return `${returnOrigin(origin) ?? appOrigin() ?? ""}/app/settings/integrations/quickbooks?result=${encodeURIComponent(outcome)}`;
@@ -76,7 +84,17 @@ export const status = companyQuery({
       canManage: ctx.role === "owner",
       connection:
         row && row.status !== "disconnected"
-          ? { status: row.status, companyName: row.companyName ?? null, environment: row.environment, problem: row.problem ?? null, connectedAt: row.connectedAt, lastCheckedAt: row.lastCheckedAt ?? null }
+          ? {
+              status: row.status,
+              companyName: row.companyName ?? null,
+              environment: row.environment,
+              realmId: ctx.role === "owner" ? row.realmId : null,
+              problem: row.problem ?? null,
+              connectedAt: row.connectedAt,
+              lastCheckedAt: row.lastCheckedAt ?? null,
+              // The last error, until a later check succeeds (markChecked clears it).
+              lastError: row.lastError ?? null,
+            }
           : null,
     };
   },
@@ -235,7 +253,8 @@ export async function quickbooksCallback(ctx: ActionCtx, params: URLSearchParams
   let tokens: Tokens;
   try {
     tokens = await withRetry(() => exchange(app, code, redirect, go), wait);
-  } catch {
+  } catch (error) {
+    if (error instanceof QuickBooksError) logQuickBooksError({ companyId: taken.companyId, step: "exchange" }, error);
     return afterQuickBooks("failed", taken.returnOrigin);
   }
   const saved = await ctx.runMutation(internal.quickbooks.saveConnection, { companyId: taken.companyId, memberId: taken.memberId, realmId, environment: app.environment, ...tokens });
@@ -290,7 +309,19 @@ export const markChecked = internalMutation({
   handler: async (ctx, args) => {
     const connection = await ctx.db.get(args.connectionId);
     if (!connection || connection.status !== "connected") return null;
-    await ctx.db.patch(connection._id, { lastCheckedAt: Date.now(), problem: undefined, ...(args.companyName ? { companyName: args.companyName } : {}) });
+    // A successful check clears the last error from the Owner's screen; the logs keep it.
+    await ctx.db.patch(connection._id, { lastCheckedAt: Date.now(), problem: undefined, lastError: undefined, ...(args.companyName ? { companyName: args.companyName } : {}) });
+    return null;
+  },
+});
+
+/** Keeps the last QuickBooks error on the connection, for the Owner's screen and for support. */
+export const recordError = internalMutation({
+  args: { connectionId: v.id("quickbooksConnections"), kind: v.string(), status: v.optional(v.number()), intuitTid: v.optional(v.string()), message: v.string() },
+  handler: async (ctx, args) => {
+    const connection = await ctx.db.get(args.connectionId);
+    if (!connection) return null;
+    await ctx.db.patch(connection._id, { lastError: { at: Date.now(), kind: args.kind, status: args.status, intuitTid: args.intuitTid, message: args.message.slice(0, 500) } });
     return null;
   },
 });
@@ -332,6 +363,8 @@ export async function withAccess<T>(ctx: ActionCtx, connectionId: Id<"quickbooks
     }
   } catch (error) {
     if (error instanceof QuickBooksError) {
+      logQuickBooksError({ companyId: connection.companyId, connectionId, step: "api" }, error);
+      await ctx.runMutation(internal.quickbooks.recordError, { connectionId, kind: error.kind, status: error.status, intuitTid: error.intuitTid, message: error.message });
       if (error.kind === "grant_ended" || error.kind === "access_expired") {
         await ctx.runMutation(internal.quickbooks.markNeedsReconnect, { connectionId, problem: error.kind === "grant_ended" ? error.message : "QuickBooks keeps refusing Selestial's access. Reconnect QuickBooks." });
         return { ok: false, kind: "needs_reconnect", message: "QuickBooks needs reconnecting." };

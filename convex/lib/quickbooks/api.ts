@@ -22,8 +22,23 @@ export async function qboGet<T>(input: { environment: QuickBooksEnvironment; rea
   const tid = response.headers.get("intuit_tid") ?? undefined;
   if (response.status === 401) throw new QuickBooksError("access_expired", "QuickBooks refused the access token.", 401, tid);
   if (response.status === 429 || response.status >= 500) throw new QuickBooksError("transient", "QuickBooks is busy. Try again shortly.", response.status, tid, retryAfter(response));
-  if (!response.ok) throw new QuickBooksError("rejected", "QuickBooks refused the request.", response.status, tid);
+  if (!response.ok) throw new QuickBooksError("rejected", `QuickBooks refused the request: ${await faultWords(response)}`, response.status, tid);
   return (await response.json()) as T;
+}
+
+/**
+ * Intuit's own words for a refused request (a syntax or validation error, for example), from its Fault
+ * body: each error's code, message and detail. Never includes tokens; capped in length.
+ */
+export async function faultWords(response: Response): Promise<string> {
+  const body = (await response.json().catch(() => null)) as { Fault?: { type?: unknown; Error?: { code?: unknown; Message?: unknown; Detail?: unknown; element?: unknown }[] } } | null;
+  const errors = Array.isArray(body?.Fault?.Error) ? body!.Fault!.Error! : [];
+  const words = errors
+    .map((error) => [typeof error.code === "string" ? `[${error.code}]` : null, typeof error.Message === "string" ? error.Message : null, typeof error.Detail === "string" ? error.Detail : null, typeof error.element === "string" && error.element ? `(field: ${error.element})` : null].filter(Boolean).join(" "))
+    .filter(Boolean)
+    .join("; ");
+  const type = typeof body?.Fault?.type === "string" ? body.Fault.type : null;
+  return (words || type || `HTTP ${response.status}`).slice(0, 500);
 }
 
 export type Wait = (ms: number) => Promise<void>;

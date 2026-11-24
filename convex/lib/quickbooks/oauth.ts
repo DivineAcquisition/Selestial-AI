@@ -160,7 +160,8 @@ async function tokenCall(app: QuickBooksApp, found: Endpoints, form: Record<stri
     if (response.status === 429 || response.status >= 500) throw new QuickBooksError("transient", "QuickBooks is busy. Try again shortly.", response.status, tid, retryAfter(response));
     // invalid_grant: the code or refresh token is expired, already used or revoked. Only signing in again helps.
     if (json.error === "invalid_grant") throw new QuickBooksError("grant_ended", "QuickBooks ended this authorization. Reconnect QuickBooks to continue.", response.status, tid);
-    throw new QuickBooksError("rejected", "QuickBooks refused the request.", response.status, tid);
+    const detail = [typeof json.error === "string" ? json.error : null, typeof json.error_description === "string" ? json.error_description : null].filter(Boolean).join(": ");
+    throw new QuickBooksError("rejected", `QuickBooks refused the request${detail ? `: ${detail.slice(0, 300)}` : "."}`, response.status, tid);
   }
   if (typeof json.access_token !== "string" || typeof json.refresh_token !== "string") throw new QuickBooksError("rejected", "QuickBooks answered without the expected tokens.", response.status, tid);
   const seconds = (value: unknown, fallback: number) => (typeof value === "number" && value > 0 ? value : fallback);

@@ -11,6 +11,7 @@ import { PageHeader, Panel } from "@/components/app/shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { FACTS } from "@/lib/trust/documents/types";
 
 import { api } from "../../../../convex/_generated/api";
 
@@ -19,8 +20,21 @@ export const RESULT_WORDS: Record<string, { tone: "ok" | "bad"; words: string }>
   connected: { tone: "ok", words: "QuickBooks is connected." },
   declined: { tone: "bad", words: "QuickBooks wasn't connected because access wasn't allowed. Connect again when you're ready." },
   expired: { tone: "bad", words: "That sign-in took too long or was already used. Start again." },
-  failed: { tone: "bad", words: "QuickBooks couldn't be connected. Nothing was changed. Try again, and contact support if it keeps happening." },
+  failed: { tone: "bad", words: `QuickBooks couldn't be connected. Nothing was changed. Try again, and email ${FACTS.supportEmail} if it keeps happening.` },
 };
+
+/** An email to Selestial support about QuickBooks, with what support needs to trace it with Intuit. Never a token. */
+export function supportMail(input: { companyName: string | null; realmId: string | null; error: { at: number; kind: string; status?: number; intuitTid?: string; message: string } | null }): string {
+  const lines = [
+    "What happened:",
+    "",
+    "",
+    "---",
+    `QuickBooks company: ${input.companyName ?? "unknown"}${input.realmId ? ` (realm ${input.realmId})` : ""}`,
+    ...(input.error ? [`Last error: ${input.error.message}`, `When: ${new Date(input.error.at).toISOString()}`, `Kind: ${input.error.kind}${input.error.status ? `, HTTP ${input.error.status}` : ""}`, `QuickBooks request id (intuit_tid): ${input.error.intuitTid ?? "none"}`] : []),
+  ];
+  return `mailto:${FACTS.supportEmail}?subject=${encodeURIComponent("QuickBooks connection help")}&body=${encodeURIComponent(lines.join("\n"))}`;
+}
 
 const when = (at: number) => new Date(at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
@@ -91,6 +105,12 @@ export function QuickBooksSetupScreen() {
               Connected {when(view.connection.connectedAt)}
               {view.connection.lastCheckedAt ? ` · last checked ${when(view.connection.lastCheckedAt)}` : ""}
             </p>
+            {view.connection.lastError ? (
+              <div role="status" className="rounded-lg border border-border bg-muted/40 px-3 py-2">
+                <p className="text-strong">Last problem ({when(view.connection.lastError.at)}): {view.connection.lastError.message}</p>
+                {view.connection.lastError.intuitTid ? <p className="mt-0.5 text-xs text-muted-foreground">QuickBooks request id: {view.connection.lastError.intuitTid}</p> : null}
+              </div>
+            ) : null}
             {view.connection.status === "needs_reconnect" ? (
               <p role="alert" className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-strong">
                 {view.connection.problem ?? "QuickBooks ended Selestial's access."} Reconnect to continue. Nothing in QuickBooks was changed.
@@ -139,6 +159,13 @@ export function QuickBooksSetupScreen() {
             ) : (
               <p className="text-xs text-muted-foreground">Only the Owner can reconnect or disconnect QuickBooks.</p>
             )}
+            <p className="text-xs text-muted-foreground">
+              Something not right?{" "}
+              <a href={supportMail({ companyName: view.connection.companyName, realmId: view.connection.realmId, error: view.connection.lastError })} className="font-medium text-brand-600 underline-offset-2 hover:underline">
+                Contact Selestial support
+              </a>
+              {view.connection.lastError?.intuitTid ? " (the QuickBooks request id is included)" : ""}.
+            </p>
             {confirming ? <p className="text-xs text-muted-foreground">Disconnecting ends Selestial&apos;s access at Intuit too. You can connect again any time.</p> : null}
             <FormError message={error} />
           </div>

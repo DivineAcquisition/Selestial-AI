@@ -24,6 +24,17 @@ export const quickbooksTables = {
     /** When the refresh token stops working unless it is used before then. */
     refreshExpiresAt: v.optional(v.number()),
     disconnectedAt: v.optional(v.number()),
+    /** The last error from QuickBooks, kept so it can be shown to the Owner and shared with Intuit support. */
+    lastError: v.optional(
+      v.object({
+        at: v.number(),
+        kind: v.string(),
+        status: v.optional(v.number()),
+        /** Intuit's request id (the intuit_tid response header). */
+        intuitTid: v.optional(v.string()),
+        message: v.string(),
+      }),
+    ),
   })
     .index("by_company", ["companyId"])
     .index("by_realm", ["realmId"])

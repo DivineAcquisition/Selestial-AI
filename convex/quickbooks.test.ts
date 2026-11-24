@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { addMember, company, refusal, start, type T } from "../tests/harness";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { faultWords } from "./lib/quickbooks/api";
 import { forgetDiscoveryForTests } from "./lib/quickbooks/oauth";
 import { setQuickBooksFetchForTests } from "./quickbooks";
 
@@ -23,7 +24,9 @@ type Script = {
   /** What the token endpoint answers to a refresh, in order; the last one repeats. */
   refresh?: ("ok" | "invalid_grant" | "busy")[];
   /** What the API answers to CompanyInfo, in order; the last one repeats. */
-  api?: ("ok" | "unauthorized" | "busy")[];
+  api?: ("ok" | "unauthorized" | "busy" | "invalid")[];
+  /** What the token endpoint answers to the code exchange. */
+  exchange?: "ok" | "invalid_client";
 };
 
 function fakeIntuit(script: Script = {}) {
@@ -40,6 +43,7 @@ function fakeIntuit(script: Script = {}) {
       if (url.includes("/.well-known/openid")) return json({ issuer: "https://oauth.platform.intuit.com/op/v1", authorization_endpoint: "https://appcenter.intuit.com/connect/oauth2", token_endpoint: "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer", revocation_endpoint: "https://developer.api.intuit.com/v2/oauth2/tokens/revoke" });
       if (url.endsWith("/oauth2/v1/tokens/bearer")) {
         const form = new URLSearchParams(body);
+        if (form.get("grant_type") === "authorization_code" && script.exchange === "invalid_client") return json({ error: "invalid_client", error_description: "Client authentication failed" }, 401);
         if (form.get("grant_type") === "refresh_token") {
           const outcome = next(refreshes);
           if (outcome === "invalid_grant") return json({ error: "invalid_grant" }, 400);
@@ -52,6 +56,7 @@ function fakeIntuit(script: Script = {}) {
         const outcome = next(answers);
         if (outcome === "unauthorized") return json({ fault: "AuthenticationFailed" }, 401);
         if (outcome === "busy") return json({ fault: "busy" }, 503);
+        if (outcome === "invalid") return json({ Fault: { type: "ValidationFault", Error: [{ code: "2020", Message: "Required param missing, need to supply the required value for the API", Detail: "Required parameter Line is missing in the request", element: "Line" }] } }, 400);
         return json({ CompanyInfo: { CompanyName: "Sandbox Cleaning Co" } });
       }
       if (url.endsWith("/v2/oauth2/tokens/revoke")) return json({});
@@ -188,6 +193,52 @@ describe("QuickBooks Online", () => {
     expect(failed).toMatchObject({ ok: false, kind: "transient" });
     expect(failed.ok ? "" : failed.message).toMatch(/QuickBooks request tid-/);
     expect((await connections(t))[0].status).toBe("connected");
+  });
+
+  it("handles syntax and validation errors: keeps Intuit's words and request id, logs them, shows them, and stays connected", async () => {
+    fakeIntuit({ api: ["ok", "invalid"] });
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { as, companyId } = await company(t, "owner-v", "Victor Cleaning");
+    await connect(t, as, companyId);
+    const [row] = await connections(t);
+    const failed = await t.action(internal.quickbooks.check, { connectionId: row._id });
+    expect(failed).toMatchObject({ ok: false, kind: "rejected" });
+    expect(failed.ok ? "" : failed.message).toContain("[2020] Required param missing");
+    expect(failed.ok ? "" : failed.message).toContain("(field: Line)");
+    expect(failed.ok ? "" : failed.message).toMatch(/QuickBooks request tid-\d+/);
+    // Not retried: a validation error would fail the same way again.
+    const [after] = await connections(t);
+    expect(after.status).toBe("connected");
+    expect(after.lastError).toMatchObject({ kind: "rejected", status: 400, intuitTid: expect.stringMatching(/^tid-/) });
+    expect((await as.query(api.quickbooks.status, { companyId })).connection?.lastError).toMatchObject({ status: 400 });
+    // One JSON line in the deployment's logs, with the request id and no token.
+    const line = logged.mock.calls.map((call) => String(call[0])).find((text) => text.includes("quickbooks_error"))!;
+    expect(JSON.parse(line)).toMatchObject({ event: "quickbooks_error", step: "api", kind: "rejected", status: 400, intuitTid: expect.stringMatching(/^tid-/) });
+    expect(line).not.toMatch(/access-\d|refresh-\d/);
+    // A later successful check clears it from the screen.
+    fakeIntuit();
+    await t.action(internal.quickbooks.check, { connectionId: row._id });
+    expect((await as.query(api.quickbooks.status, { companyId })).connection?.lastError).toBeNull();
+    logged.mockRestore();
+  });
+
+  it("reports a refused code exchange (for example bad app credentials) as failed, and logs it", async () => {
+    fakeIntuit({ exchange: "invalid_client" });
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { as, companyId } = await company(t, "owner-w", "Whiskey Cleaning");
+    expect((await connect(t, as, companyId)).result).toBe("failed");
+    expect(await connections(t)).toEqual([]);
+    const line = logged.mock.calls.map((call) => String(call[0])).find((text) => text.includes("quickbooks_error"))!;
+    expect(JSON.parse(line)).toMatchObject({ step: "exchange", kind: "rejected", status: 401 });
+    expect(line).toContain("invalid_client");
+    logged.mockRestore();
+  });
+
+  it("puts Intuit's fault into words, or says what little is known", async () => {
+    const fault = (body: unknown, status = 400) => faultWords(new Response(JSON.stringify(body), { status }));
+    expect(await fault({ Fault: { type: "ValidationFault", Error: [{ code: "6000", Message: "A business validation error has occurred", Detail: "Duplicate Document Number Error" }] } })).toBe("[6000] A business validation error has occurred Duplicate Document Number Error");
+    expect(await fault({ Fault: { type: "SystemFault" } })).toBe("SystemFault");
+    expect(await faultWords(new Response("not json", { status: 400 }))).toBe("HTTP 400");
   });
 
   it("asks the Owner to reconnect when Intuit ends the authorization (invalid_grant), and reconnecting restores it", async () => {

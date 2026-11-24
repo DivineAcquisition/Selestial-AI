@@ -19,6 +19,9 @@ calls), `convex/lib/quickbooks/api.ts` (accounting API calls and retries), `conv
 | Refreshing | The access token (about an hour) is reused until five minutes before it expires, then refreshed. Intuit's newest refresh token is stored before anything else, every time. |
 | Expired access token | A 401 from the API: refresh once and try the call again. |
 | Expired or revoked refresh token | `invalid_grant`: the connection becomes `needs_reconnect`, the tokens are deleted, and the Owner gets a "Reconnect QuickBooks" card on Home and Connected apps (operations check `quickbooks`). |
+| Syntax and validation errors | A 400 from the API is not retried. Intuit's Fault details (code, message, detail, field) are kept in the error, e.g. `[2020] Required param missing … (field: Line)`. |
+| Error log | Every QuickBooks error is written to the deployment's logs as one JSON line (`"event":"quickbooks_error"`, with `step`, `kind`, `status`, `intuitTid`, `companyId`, `connectionId`; never a token), and the last one is kept on the connection (`lastError`) and shown to the Owner until a later check succeeds. |
+| Support | The QuickBooks screen has a "Contact Selestial support" link that pre-fills the company, realm, last error and its `intuit_tid`. Reconnect cards also offer "Contact support". |
 | Transient failures | Network errors, 429 and 5xx are retried up to three times (0.5s, 1s, 2s, or longer when Intuit sends `Retry-After`). Errors carry Intuit's `intuit_tid` for support. |
 | Reconnecting | The same sign-in. The same QuickBooks company brings the same connection back; a different one replaces it and the old authorization is revoked. |
 | Disconnecting | Owner only. The tokens are deleted and the authorization is revoked at Intuit's revocation endpoint. Company deletion does the same. |
