@@ -16,6 +16,7 @@ import { covers } from "../texting/plan";
 import type { Agent } from "../statuses";
 import { clock } from "../time";
 import { conversationAt, ownerBlocks, quoGaps, smsRouteFor } from "../quo/route";
+import { recipientTimezone, SENDING_FLOOR } from "./recipientTime";
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -127,6 +128,8 @@ export function quietUntil(now: number, timezone: string, window: { start: strin
  */
 /** A paused company's messages are looked at again this often; resuming sends them at once (companies.resumeMessaging). */
 const PAUSE_RECHECK_MS = 6 * 60 * 60 * 1000;
+/** A text to someone who texted the company within this time answers them, and isn't held by the sending-hours floor. */
+const ANSWERING_WINDOW_MS = 2 * 60 * 60 * 1000;
 
 export async function checkSend(ctx: Ctx, input: PolicyInput): Promise<PolicyAnswer> {
   const company = await ctx.db.get(input.companyId);
@@ -186,11 +189,32 @@ export async function checkSend(ctx: Ctx, input: PolicyInput): Promise<PolicyAns
     if (permission) return permission;
   }
 
-  const quiet = profile.messaging.quietHours;
-  if (!input.reply && !input.requestedCode && quiet && (input.category !== "operational" || quiet.appliesToOperational)) {
-    // The recipient's own time zone is not known, so quiet hours are kept on the company's clock.
-    const until = quietUntil(input.now, company.timezone, quiet);
-    if (until !== null) return no("quiet_hours", `It is within quiet hours (${quiet.start} to ${quiet.end} company time). It can go at ${clock(until, company.timezone)}.`, until);
+  // Sending hours, on the recipient's own clock (lib/messaging/recipientTime.ts). Selestial's floor: no texts to
+  // people outside the company from 9 PM to 8 AM their time. The company's own quiet hours can narrow that further,
+  // never widen it. A reply to STOP/HELP/START and something the person asked for themselves go at once. Texts to
+  // the company's own cleaners about their work follow only the company's quiet hours, when it applies them to work texts.
+  if (!input.reply && !input.requestedCode) {
+    const quiet = profile.messaging.quietHours;
+    const people: Recipient[] = input.recipient ? [input.recipient] : (await recipientsAt(ctx, input.companyId, input.channel, address)).map((row) => ({ kind: row.kind, id: row.id }));
+    const teamWork = input.category === "operational" && people.length > 0 && people.every((row) => row.kind === "cleaner");
+    // Answering someone who wrote in the last two hours isn't an unprompted text: the floor doesn't hold it.
+    const conversation = input.channel === "sms" ? await conversationAt(ctx, input.companyId, address) : null;
+    const answering = conversation?.lastInboundAt !== undefined && input.now - conversation.lastInboundAt < ANSWERING_WINDOW_MS;
+    const zone = (await recipientTimezone(ctx, input.companyId, people)) ?? company.timezone;
+    const waits: number[] = [];
+    if (input.channel === "sms" && !teamWork && !answering) {
+      const until = quietUntil(input.now, zone, SENDING_FLOOR);
+      if (until !== null) waits.push(until);
+    }
+    if (quiet && (input.category !== "operational" || quiet.appliesToOperational)) {
+      const until = quietUntil(input.now, zone, quiet);
+      if (until !== null) waits.push(until);
+    }
+    if (waits.length) {
+      const until = Math.max(...waits);
+      const theirs = zone === company.timezone ? "" : " their time";
+      return no("quiet_hours", `It is within quiet hours for this person (no texts 9 PM to 8 AM their time). It can go at ${clock(until, zone)}${theirs}.`, until);
+    }
   }
 
   if (input.category === "marketing" || input.category === "recruiting") {

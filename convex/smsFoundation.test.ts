@@ -228,3 +228,37 @@ describe("Message lifecycle words", () => {
     expect(refusalClassOf("no_such_code")).toBeNull();
   });
 });
+
+describe("SMS foundation: sending hours on the recipient's clock", () => {
+  let undo = () => {};
+  beforeEach(() => {
+    undo = dispatchTestEnv();
+  });
+  afterEach(() => undo());
+
+  it("holds a customer text until 8 AM the customer's time, sends work texts to the company's cleaners, and answers someone who just wrote", async () => {
+    const s = await setup(["Lena"]);
+    const customer = "+15125550171";
+    await s.t.run(async (ctx) => {
+      await ctx.db.patch(s.place.customerId, { phone: customer });
+      // The customer's home is in California: two hours behind the company's Chicago clock.
+      const property = (await ctx.db.get(s.place.propertyId))!;
+      await ctx.db.patch(s.place.propertyId, { address: { ...property.address, region: "CA" } });
+    });
+    await s.as.mutation(api.consent.record, { companyId: s.companyId, recipient: { kind: "customer", id: s.place.customerId }, channel: "sms", category: "operational", status: "granted", source: "web_form", evidence: "Booking form." });
+    // 9 AM in Chicago is 7 AM in California.
+    vi.setSystemTime(Date.UTC(2027, 2, 1, 15, 0));
+    const check = (to: string, recipient: { kind: "customer" | "cleaner"; id: string }) => s.as.query(api.consent.check, { companyId: s.companyId, channel: "sms", to, recipient: recipient as never, category: "operational", origin: "manual" });
+    const held = await check(customer, { kind: "customer", id: s.place.customerId });
+    expect(held).toMatchObject({ ok: false, code: "quiet_hours" });
+    expect((held as { words: string }).words).toMatch(/It can go at 8:00 AM their time/);
+    // A work text to the company's own cleaner isn't held by the floor.
+    expect(await check(s.phone.Lena, { kind: "cleaner", id: s.cleaners.Lena })).toMatchObject({ ok: true });
+    // Once the customer texts in, answering them isn't held.
+    await s.t.mutation(internal.inbound.sms, { to: s.smsNumber, from: customer, body: "Can you come earlier?", receivedAt: Date.now() });
+    expect(await check(customer, { kind: "customer", id: s.place.customerId })).toMatchObject({ ok: true });
+    // Two hours after the customer's 8 AM, everything goes.
+    vi.setSystemTime(Date.UTC(2027, 2, 1, 18, 0));
+    expect(await check(customer, { kind: "customer", id: s.place.customerId })).toMatchObject({ ok: true });
+  });
+});

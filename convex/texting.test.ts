@@ -473,6 +473,8 @@ describe("Set up business texting", () => {
   });
 
   it("keeps a STOP in force across agents and after the texting number changes", async () => {
+    // Customer texts go only inside sending hours, 8 AM to 9 PM the customer's time: this runs at 10 AM in Chicago.
+    vi.setSystemTime(Date.UTC(2026, 10, 19, 16));
     vi.stubGlobal("fetch", fakeTelnyx().fetcher);
     const t = start();
     const { as, companyId } = await company(t, "owner-a", "Alpha Cleaning");
@@ -670,6 +672,8 @@ describe("Texting launch fixes", () => {
   });
 
   it("treats REVOKE, OPTOUT and a plain 'please stop' as opt-outs, and lets START undo a stop said in the person's own words", async () => {
+    // Customer texts go only inside sending hours, 8 AM to 9 PM the customer's time: this runs at 10 AM in Chicago.
+    vi.setSystemTime(Date.UTC(2026, 10, 19, 16));
     for (const word of ["REVOKE", "revoke.", "OPTOUT", "Opt out", "opt-out", "STOP", " end "]) expect(classify(word)).toBe("stop");
     for (const words of ["please stop", "Please stop.", "Stop texting me", "stop texting me please!", "Stop these texts", "stop sending me messages", "pls stop", "Stop it", "please unsubscribe"]) expect(classify(words)).toBe("plain_stop");
     for (const words of ["Can you stop by at 3?", "Don't stop the weekly cleaning", "I can't stop thinking about how clean it is", "The bus stop is on Main", "Yes please"]) expect(classify(words)).not.toBe("plain_stop");
