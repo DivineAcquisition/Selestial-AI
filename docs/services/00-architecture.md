@@ -150,6 +150,37 @@ to Chat.
 - **Describe it** (`/app/services/new?mode=selestial`) creates the draft, sends the description to
   Selestial beside it, and opens the service with the panel showing.
 
+### Finishing a draft (`finish.tsx`)
+
+`gapsOf(spec)` lists what a draft still needs, by who can do it:
+
+- **Selestial**: a customer description, what's included, what's not included, and the questions a
+  price needs. Selestial writes these from what is already on the service.
+- **Price**: the price itself, set by the person.
+- **Confirm**: that example prices fit the company's market, and each requirement.
+- **Fix**: any other blocker, with the section where it is fixed.
+
+The **Finish draft** pop-up shows them together:
+
+- Selestial's items are ticked by default. "Ask Selestial to draft N" saves what is on screen, then sends
+  one request built only from the ticked items (`finishRequest`). The request forbids changing any amount
+  and forbids submitting or publishing. It carries the draft revision, so the stale guard and Undo apply.
+- The price is set right inside the pop-up with the same Pricing editor. The Owner, when their costs are
+  known, also sees "Work it out from your costs": `suggestPricing`, the arithmetic onboarding uses, with
+  every assumption listed. "Use these prices" is the Owner's own choice.
+- Confirmations are the same switches as in Review. Done items are ticked off while the pop-up stays open.
+
+Where the pop-up opens from:
+
+- the header's Finish draft button, which shows a count;
+- "Finish with Selestial" in Review;
+- a small prompt that pops up when a draft is opened with things left. It isn't modal, and Not now hides
+  it for the browser session;
+- `?finish=1`, which cards with blockers on the main page and "Needs something first" in Review services
+  link to.
+
+A draft with no price shows "No price yet" in the customer preview, never "Firm".
+
 ### Review & publish in the workspace
 
 `services.reviewPreview` reads everything from the saved draft on the server:
