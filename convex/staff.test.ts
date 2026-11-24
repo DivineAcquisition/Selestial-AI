@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import { api, internal } from "./_generated/api";
 import { refusal, start } from "../tests/harness";
+import { FOUNDING_ADMIN_EMAILS } from "./lib/builders";
 
 const admin = { subject: "user_admin", email: "boss@selestial.example", emailVerified: true, name: "Boss" };
 const other = { subject: "user_other", email: "someone@example.com", emailVerified: true, name: "Someone" };
@@ -24,6 +25,25 @@ describe("Selestial staff", () => {
     // Once an admin is saved, the setting no longer makes anyone else an admin.
     process.env.STAFF_BOOTSTRAP_EMAIL = other.email;
     expect(await t.withIdentity(other).query(api.staff.me, {})).toBeNull();
+  });
+
+  test("the founder can claim the first admin by signing in, and only while there is none", async () => {
+    delete process.env.STAFF_BOOTSTRAP_EMAIL;
+    const t = start();
+    const founder = { subject: "user_founder", email: FOUNDING_ADMIN_EMAILS[0], emailVerified: true, name: "Founder" };
+    expect(await t.withIdentity({ ...founder, emailVerified: false }).query(api.staff.me, {})).toBeNull();
+    expect(await t.withIdentity(founder).query(api.staff.me, {})).toMatchObject({ role: "admin" });
+    // Their first change saves them as the admin.
+    await t.withIdentity(founder).mutation(api.staff.add, { email: "helper@selestial.example", name: "Helper", role: "reviewer" });
+    expect((await t.withIdentity(founder).query(api.staff.list, {})).find((row) => row.email === founder.email)).toMatchObject({ role: "admin" });
+    expect(await t.withIdentity(other).query(api.staff.me, {})).toBeNull();
+  });
+
+  test("the founding email gives nothing once another admin exists", async () => {
+    const t = start();
+    await t.withIdentity(admin).mutation(api.staff.add, { email: "helper@selestial.example", name: "Helper", role: "reviewer" });
+    const founder = { subject: "user_founder", email: FOUNDING_ADMIN_EMAILS[0], emailVerified: true, name: "Founder" };
+    expect(await t.withIdentity(founder).query(api.staff.me, {})).toBeNull();
   });
 
   test("everyone else is refused as if the functions did not exist", async () => {
