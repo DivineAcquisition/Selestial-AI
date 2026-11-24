@@ -510,6 +510,18 @@ export const view = ownerQuery({
  * the exact words shown. A correction after the carriers asked for changes becomes a new submission
  * version on the same request; everything already filled in is kept.
  */
+/** Whether these business details are Selestial's own (its name or its website), which this builder never files. */
+export function describesSelestial(business: { displayName?: string; legalName?: string; website?: string }): boolean {
+  const name = `${business.displayName ?? ""} ${business.legalName ?? ""}`.toLowerCase();
+  let host = "";
+  try {
+    host = business.website ? new URL(/^https?:\/\//i.test(business.website) ? business.website : `https://${business.website}`).hostname.toLowerCase() : "";
+  } catch {
+    host = "";
+  }
+  return /\bselestial\b/.test(name) || host === "selestial.io" || host.endsWith(".selestial.io");
+}
+
 export const submit = ownerMutation({
   args: { revision: v.number(), authorization: v.string() },
   handler: async (ctx, args) => {
@@ -549,6 +561,9 @@ export const submit = ownerMutation({
     if ((setup.numberRoute ?? "new_local") !== "new_local") problems.unshift("This registration is for a new local number. Bringing a number or a toll-free number is a separate request, handled on Your number.");
     const { version: configVersion, config } = await activeConfig(ctx, now);
     problems.push(...(await caseConfigProblems(ctx, setup, config)).map((row) => row.words));
+    // This builder registers a cleaning company's own texts, under its own brand. It never registers Selestial
+    // itself: Selestial's own texts go through toll-free verification (docs/sms/00-architecture.md §4.5).
+    if (describesSelestial(setup.business)) problems.unshift("This setup registers your cleaning company's own texts. Selestial's own texts are registered separately by Selestial.");
     const plan = planFor(setup.activities, entityType);
     if (problems.length || !plan || !links || !setup.number) throw userError(problems[0] ?? "Something is still missing.");
 

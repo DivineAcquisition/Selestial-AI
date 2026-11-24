@@ -31,6 +31,7 @@ import type * as bookingOps from "../bookingOps.js";
 import type * as bookingPublic from "../bookingPublic.js";
 import type * as bookingSessions from "../bookingSessions.js";
 import type * as bookings from "../bookings.js";
+import type * as businessTexting from "../businessTexting.js";
 import type * as calendar from "../calendar.js";
 import type * as calendarEvents from "../calendarEvents.js";
 import type * as calendarMoves from "../calendarMoves.js";
@@ -685,6 +686,7 @@ declare const fullApi: ApiFromModules<{
   bookingPublic: typeof bookingPublic;
   bookingSessions: typeof bookingSessions;
   bookings: typeof bookings;
+  businessTexting: typeof businessTexting;
   calendar: typeof calendar;
   calendarEvents: typeof calendarEvents;
   calendarMoves: typeof calendarMoves;

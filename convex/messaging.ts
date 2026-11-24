@@ -96,7 +96,7 @@ export const claim = internalMutation({
     // after the message was planned stops it here. A refusal is final; only "not yet" holds it again.
     // Messages to applicants are asked this too, and then also pass the Recruiter's own gate below.
     // A verification code is only ever queued from the person's own link, at their request (lib/cleaners/outbox.ts).
-    const answer = await checkSend(ctx, { companyId: message.companyId, channel: message.channel ?? "sms", to: message.to, now: Date.now(), messageId: message._id, ...(await intentOf(ctx, message)), requestedCode: message.purpose === "verification_code" && message.cleanerId !== undefined });
+    const answer = await checkSend(ctx, { companyId: message.companyId, channel: message.channel ?? "sms", to: message.to, now: Date.now(), messageId: message._id, ...(await intentOf(ctx, message)), requestedCode: (message.purpose === "verification_code" && message.cleanerId !== undefined) || message.purpose === "texting_test" });
     if (!answer.ok) {
       // A sign-in code is only useful now, and its code travels only in this call: it is never held for later.
       // A check with the provider is never held for later (the replay window would pass): a person decides again.

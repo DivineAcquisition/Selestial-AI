@@ -67,6 +67,8 @@ type Plan = {
   /** A problem found before the policy is asked: no number, no link. */
   problem: string | null;
   intent: SendIntent;
+  /** The person it goes to asked for it themselves (their own test text): no contact permission is needed. */
+  requestedByRecipient?: boolean;
 };
 
 /**
@@ -81,7 +83,7 @@ async function plan(ctx: MutationCtx, input: Plan): Promise<Doc<"messages">> {
   let code: PolicyCode | null = null;
   let retryAt: number | undefined;
   if (!problem && input.to) {
-    const answer = await checkSend(ctx, { companyId: input.companyId, channel: "sms", to: input.to, now, ...input.intent });
+    const answer = await checkSend(ctx, { companyId: input.companyId, channel: "sms", to: input.to, now, ...input.intent, ...(input.requestedByRecipient ? { requestedCode: true } : {}) });
     if (!answer.ok) {
       problem = answer.words;
       code = answer.code;
@@ -179,6 +181,25 @@ export async function queueReply(ctx: MutationCtx, input: { companyId: Id<"compa
     actor: { kind: "system" },
     problem: to ? null : "The number is not valid.",
     intent: { category: "operational", origin: "integration", reply: input.reply },
+  });
+}
+
+/**
+ * The Owner's own test text from Business texting (convex/businessTexting.ts), to their own confirmed phone.
+ * It takes the same path as every business text: the company's number and profile, the policy, the provider.
+ */
+export async function queueOwnerTest(ctx: MutationCtx, input: { companyId: Id<"companies">; to: string; memberId: Id<"members">; body: string; dedupeKey: string }): Promise<Doc<"messages">> {
+  const to = sendablePhone(input.to);
+  return plan(ctx, {
+    companyId: input.companyId,
+    purpose: "texting_test",
+    to,
+    body: input.body,
+    dedupeKey: input.dedupeKey,
+    actor: { kind: "member", memberId: input.memberId },
+    problem: to ? null : "The number is not valid.",
+    intent: { category: "operational", origin: "manual" },
+    requestedByRecipient: true,
   });
 }
 
