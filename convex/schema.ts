@@ -36,6 +36,7 @@ import { activationTables } from "./lib/activation/schema";
 import { operationsTables } from "./lib/operations/schema";
 import { supportTables } from "./lib/support/schema";
 import { connectorTables } from "./lib/connectors/schema";
+import { quickbooksTables } from "./lib/quickbooks/schema";
 import { migrationMarkValidator, migrationTables } from "./lib/migration/schema";
 import { retentionSettingsValidator, retentionTables } from "./lib/retention/schema";
 import { qualitySettingsValidator, qualityTables } from "./lib/quality/schema";
@@ -1074,6 +1075,7 @@ export default defineSchema({
   ...agreementTables,
   ...googleTables,
   ...connectorTables,
+  ...quickbooksTables,
   ...quoTables,
   ...migrationTables,
   // ── Cleaners: subcontractors, requirements, crews, portal, follow-ups, coaching, personnel ──────

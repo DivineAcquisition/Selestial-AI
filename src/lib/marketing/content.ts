@@ -450,7 +450,7 @@ export const INTEGRATIONS = {
       title: "Money",
       items: [
         { name: "Stripe", catalogId: "stripe", mark: "stripe", live: true, body: "Card payments, deposits and invoices your customers pay online." },
-        { name: "QuickBooks", catalogId: "quickbooks-online", mark: "quickbooks-online", live: false, body: "Charges and payouts sent to your books." },
+        { name: "QuickBooks", catalogId: "quickbooks-online", mark: "quickbooks-online", live: true, body: "Connect your QuickBooks Online company. Syncing to your books is next." },
       ],
     },
   ],

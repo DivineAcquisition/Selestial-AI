@@ -143,6 +143,7 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   // Google (convex/lib/google/schema.ts). What was connected, chosen, received and sent; never a credential.
   { table: "googleConnections", index: "by_company" },
   { table: "connectorConnections", index: "by_company_system" },
+  { table: "quickbooksConnections", index: "by_company" },
   { table: "setupWork", index: "by_company_agent" },
   { table: "googleResources", index: "by_company_kind" },
   { table: "googleJobs", index: "by_company_status", omit: ["payload"], why: "Internal work instructions; what each job did is in its result and in the event log." },
@@ -296,6 +297,8 @@ export const NOT_EXPORTED: Readonly<Record<string, string>> = {
   qualityCredentials: "A sealed key to the company's phone platform; it opens that account, so a copy must never leave. The connection itself is exported.",
   quoSecrets: "The company's sealed Quo API key and webhook secret; they open the Quo account, so a copy must never leave. The connection itself is exported.",
   connectorStates: "Ten-minute, single-use records of a Jobber sign-in in progress; nothing in them is about the business.",
+  quickbooksCredentials: "Sealed tokens for the company's QuickBooks Online company; they open its books, so a copy must never leave. The connection itself is exported.",
+  quickbooksStates: "Ten-minute, single-use records of a QuickBooks sign-in in progress; nothing in them is about the business.",
   connectorReads: "A copy of another system's client list kept for a day while the owner checks it; what was imported is exported as clients and properties.",
   googleTravel: "Cached drive times between rounded map points, recomputed as needed.",
   portalCodes: "Hashes of one-time codes that unlock a portal for ten minutes; nothing in them is about the business.",

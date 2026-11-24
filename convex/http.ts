@@ -30,6 +30,7 @@ import { hashToken, randomToken, seal, unseal } from "./lib/recruiter/secrets";
 import { afterConnect, googleRedirectUri, pendingBinding } from "./recruiterMailbox";
 import { afterGoogle, pendingBinding as googlePendingBinding } from "./google";
 import { jobberCallback } from "./connectors";
+import { quickbooksCallback } from "./quickbooks";
 import { highLevelCallback } from "./qualityHighLevel";
 import { verifyHighLevel } from "./lib/quality/comms/highlevel";
 import { exchange as googleExchange, googleApp as googleConnectApp, identityFrom, redirectUri as googleConnectRedirect } from "./lib/google/oauth";
@@ -310,6 +311,16 @@ http.route({
       await ctx.runMutation(internal.qualityHighLevel.webhook, { body });
     },
   }),
+});
+
+/**
+ * GET /oauth/quickbooks/callback  where Intuit sends the Owner back after they allowed Selestial to use their
+ * QuickBooks Online company (convex/quickbooks.ts). The one-time state is checked before anything else.
+ */
+http.route({
+  path: "/oauth/quickbooks/callback",
+  method: "GET",
+  handler: oauthCallback({ handler: (ctx, params) => quickbooksCallback(ctx, params) }),
 });
 
 http.route({

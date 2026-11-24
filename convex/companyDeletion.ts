@@ -26,6 +26,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { internalAction, internalMutation, type MutationCtx, type QueryCtx } from "./_generated/server";
 import type { PaginationOptions, PaginationResult } from "convex/server";
 import { disconnectConnectorsForDeletion } from "./connectors";
+import { disconnectQuickBooksForDeletion } from "./quickbooks";
 import { disconnectGoogleForDeletion } from "./google";
 import { disconnectInboxesForDeletion } from "./inboxes";
 import schema from "./schema";
@@ -172,8 +173,9 @@ export async function preconditions(ctx: QueryCtx | MutationCtx, company: Doc<"c
   const google = (await ctx.db.query("googleConnections").withIndex("by_company", (q) => q.eq("companyId", companyId)).take(50)).filter((row) => row.status !== "disconnected").length;
   const inboxes = (await ctx.db.query("mailboxConnections").withIndex("by_company", (q) => q.eq("companyId", companyId)).take(50)).filter((row) => row.status !== "disconnected").length;
   const connectors = (await ctx.db.query("connectorConnections").withIndex("by_company_system", (q) => q.eq("companyId", companyId)).take(20)).filter((row) => row.status !== "disconnected").length;
-  const live = google + inboxes + connectors;
-  out.push({ key: "connections", label: "Google, inboxes and Jobber disconnected", state: live ? "by_run" : "ok", detail: live ? `${plural(live, "connection is", "connections are")} live. The run disconnects them and revokes the grants as its first step.` : "Nothing connected.", waivable: false, waiver: null });
+  const quickbooks = (await ctx.db.query("quickbooksConnections").withIndex("by_company", (q) => q.eq("companyId", companyId)).take(20)).filter((row) => row.status !== "disconnected").length;
+  const live = google + inboxes + connectors + quickbooks;
+  out.push({ key: "connections", label: "Google, inboxes, Jobber and QuickBooks disconnected", state: live ? "by_run" : "ok", detail: live ? `${plural(live, "connection is", "connections are")} live. The run disconnects them and revokes the grants as its first step.` : "Nothing connected.", waivable: false, waiver: null });
 
   // 6. The export: offered, not required.
   const exports = await ctx.db.query("dataExports").withIndex("by_company_created", (q) => q.eq("companyId", companyId)).order("desc").take(50);
@@ -410,7 +412,8 @@ export const batch = internalMutation({
       // First: nothing may reach Google, an inbox or Jobber for this company again.
       const google = await disconnectGoogleForDeletion(ctx, company._id);
       const inboxes = await disconnectInboxesForDeletion(ctx, company._id);
-      const connectors = await disconnectConnectorsForDeletion(ctx, company._id);
+      // Jobber, Housecall Pro and QuickBooks are counted together as connected systems.
+      const connectors = (await disconnectConnectorsForDeletion(ctx, company._id)) + (await disconnectQuickBooksForDeletion(ctx, company._id));
       await ctx.db.patch(row._id, { ...progress, phase: "tables", tableIndex: 0, cursor: null, disconnected: { google, inboxes, connectors } });
       return "more";
     }

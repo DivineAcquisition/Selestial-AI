@@ -19,6 +19,7 @@ import { activeConnections } from "./lib/google/connection";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { jobberApp, jobberRedirect } from "./lib/connectors/jobber";
+import { quickbooksApp, quickbooksRedirect } from "./lib/quickbooks/oauth";
 import { secretsConfigured } from "./lib/recruiter/secrets";
 import { stripeState } from "./lib/finance/stripeState";
 
@@ -85,6 +86,16 @@ export const overview = companyQuery({
     const stripeCard: { state: LiveState; detail: string | null } =
       stripe.state === "active" ? { state: "connected", detail: stripe.businessName } : stripe.state === "onboarding" || stripe.state === "restricted" ? { state: "in_progress", detail: null } : stripe.state === "not_available" ? { state: "not_set_up", detail: null } : { state: "ready", detail: null };
 
+    // QuickBooks Online: connected (with the company's name once checked), needing reconnection, or ready.
+    const qbo = await ctx.db
+      .query("quickbooksConnections")
+      .withIndex("by_company", (q) => q.eq("companyId", ctx.companyId))
+      .order("desc")
+      .first();
+    const qboAvailable = quickbooksApp() !== null && quickbooksRedirect() !== null && (await secretsConfigured());
+    const quickbooksCard: { state: LiveState; detail: string | null } =
+      qbo?.status === "connected" ? { state: "connected", detail: qbo.companyName ?? null } : qbo?.status === "needs_reconnect" ? { state: "in_progress", detail: "Reconnect needed" } : { state: qboAvailable ? "ready" : "not_set_up", detail: null };
+
     const requests = await ctx.db
       .query("integrationRequests")
       .withIndex("by_company_integration", (q) => q.eq("companyId", ctx.companyId))
@@ -104,6 +115,7 @@ export const overview = companyQuery({
         "housecall-pro": await connectorCard(ctx, "housecall_pro", await secretsConfigured()),
         "texting-number": { state: textingState, detail: texting?.status === "active" ? (texting.phoneNumber ?? null) : null },
         quo: quoCard,
+        "quickbooks-online": quickbooksCard,
       },
       requested: requests.map((row) => ({ integrationId: row.integrationId, requestedAt: row.requestedAt })),
     };
