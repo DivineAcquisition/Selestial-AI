@@ -50,20 +50,19 @@ if (command === "plan") {
   await page.getByLabel("Name customers will see").fill("Standard home cleaning");
   await page.getByText("Residential", { exact: true }).first().click();
   await page.getByRole("button", { name: "Start building" }).click();
-  await page.getByText("Step 1 of 6").waitFor({ timeout: 30000 });
-  await page.getByRole("button", { name: "Next: Scope" }).click();
-  await page.getByRole("button", { name: "Next: Pricing" }).click();
+  await page.waitForURL(/services\/[a-z0-9]{20,}/, { timeout: 30000 });
   await page.getByText("Bedrooms and bathrooms", { exact: true }).first().click();
   for (const [field, value] of [["Base price", "120"], ["Each extra bedroom", "20"], ["Each extra bathroom", "15"]]) {
     await page.getByLabel(field).fill(value);
     await page.getByLabel(field).blur();
   }
-  for (const next of ["Next: Time & Team", "Next: Extras", "Next: Review"]) await page.getByRole("button", { name: next }).click();
-  await page.getByLabel("Why this change").fill("Our standard home clean, priced by bedrooms and bathrooms.");
-  await page.getByRole("button", { name: "Submit for review" }).click();
-  await page.getByText("In review").first().waitFor({ timeout: 30000 });
-  await page.getByRole("button", { name: "Approve and publish" }).click();
-  await page.getByText("Published").first().waitFor({ timeout: 30000 });
+  await page.waitForTimeout(1500);
+  await page.getByRole("button", { name: "Review & publish" }).click();
+  await page.getByLabel("Why this change").pressSequentially("Our standard home clean, priced by bedrooms and bathrooms.", { delay: 5 });
+  await page.waitForTimeout(800);
+  await page.locator('button:text-is("Publish"):not([disabled]):visible').first().click();
+  await page.getByRole("alertdialog").or(page.getByRole("dialog")).getByRole("button", { name: "Publish", exact: true }).click();
+  await page.getByText(/not live yet/).waitFor({ state: "detached", timeout: 30000 });
   await browser.close();
   console.log("service: Standard home cleaning, published");
 } else throw new Error(`Unknown command ${command}.`);

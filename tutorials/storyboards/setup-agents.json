@@ -1,6 +1,6 @@
 {
   "tutorial": "setup-agents",
-  "version": 1,
+  "version": 2,
   "title": "Put your agents to work",
   "voice": "default",
   "mark": false,
@@ -21,7 +21,7 @@
     },
     {
       "id": "controls",
-      "narration": "In Settings, Agent controls, you decide how much each agent may do on its own. For every action: ask me first, act and notify me, or act automatically. Actions that need something first, like a texting number, say exactly what.",
+      "narration": "In Settings, Agent permissions, you decide how much each agent may do on its own. For every action: ask me first, act and notify me, or act automatically. Actions that need something first, like a texting number, say exactly what.",
       "capture": {
         "kind": "playwright",
         "start": "/app/settings/agents",

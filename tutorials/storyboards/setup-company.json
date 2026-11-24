@@ -1,6 +1,6 @@
 {
   "tutorial": "setup-company",
-  "version": 1,
+  "version": 2,
   "title": "Set up your company",
   "voice": "default",
   "mark": false,
@@ -265,7 +265,7 @@
     },
     {
       "id": "business",
-      "narration": "Two settings change real bookings, so they live in Settings, under Business details. Add the ZIP codes you serve, and new bookings are only accepted inside them. Then set your booking hours. Each cleaner's own availability still applies.",
+      "narration": "Two settings change real bookings, so they live in Settings, under Company profile. Add the ZIP codes you serve, and new bookings are only accepted inside them. Then set your booking hours. Each cleaner's own availability still applies.",
       "capture": {
         "kind": "playwright",
         "start": "/app/settings/business",

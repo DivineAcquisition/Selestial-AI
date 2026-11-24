@@ -1,10 +1,10 @@
 {
   "tutorial": "setup-services",
-  "version": 1,
+  "version": 2,
   "title": "Build your services and pricing",
   "voice": "default",
   "mark": false,
-  "sampleData": "Juniper Cleaning Co. after tutorial 1 (node tutorials/demo/seed.mjs company <label>). One fictional service, example prices.",
+  "sampleData": "Juniper Cleaning Co. after tutorial 1 (seed.mjs company). Set up with Selestial drafts its services from the setup answers; amounts are examples until replaced.",
   "scenes": [
     {
       "id": "title",
@@ -21,113 +21,94 @@
     },
     {
       "id": "start",
-      "narration": "In Services and Pricing, you can start from a template, bring in a price list you already have, or add a service by hand. We'll add one by hand.",
+      "narration": "In Services and Pricing, choose Set up with Selestial. It drafts your services from what you told it during setup. Nothing goes live until you publish it.",
       "capture": {
         "kind": "playwright",
         "start": "/app/services",
         "actions": [
           {
-            "do": "hover",
-            "target": "text=Start with a template",
-            "ms": 800
-          },
-          {
-            "do": "hover",
-            "target": "text=Bring my existing pricing",
-            "ms": 800
-          },
-          {
-            "do": "click",
-            "target": "text=add a service by hand"
-          },
-          {
-            "do": "waitFor",
-            "target": {
-              "role": "textbox",
-              "name": "Name customers will see"
-            },
-            "cut": true
-          }
-        ]
-      },
-      "minSeconds": 8
-    },
-    {
-      "id": "name",
-      "narration": "Give it the name customers will see, choose the kind of cleaning, and start building. It stays a draft until you publish it.",
-      "capture": {
-        "kind": "playwright",
-        "start": "/app/services/new?mode=blank",
-        "actions": [
-          {
-            "do": "type",
-            "target": {
-              "role": "textbox",
-              "name": "Name customers will see"
-            },
-            "text": "Standard home cleaning"
-          },
-          {
-            "do": "click",
-            "target": "text=Residential >> nth=0"
+            "do": "highlight",
+            "target": "text=Set up what you sell >> xpath=..",
+            "note": "Drafted from your setup answers",
+            "ms": 2000
           },
           {
             "do": "click",
             "target": {
               "role": "button",
-              "name": "Start building"
+              "name": "Set up with Selestial"
             }
           },
           {
             "do": "waitFor",
-            "target": "text=Step 1 of 6",
+            "target": "text=/drafts prepared from your setup/",
+            "cut": true,
+            "timeout": 60000
+          },
+          {
+            "do": "pause",
+            "ms": 1200
+          }
+        ]
+      },
+      "minSeconds": 9
+    },
+    {
+      "id": "drafts",
+      "narration": "Each draft starts on example prices, marked clearly. Open one to make it yours.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/services",
+        "actions": [
+          {
+            "do": "highlight",
+            "target": "text=/still on example prices/ >> xpath=..",
+            "note": "Example prices, not yours yet",
+            "ms": 2200
+          },
+          {
+            "do": "highlight",
+            "target": "text=Standard clean >> nth=0 >> xpath=../..",
+            "ms": 1400
+          },
+          {
+            "do": "click",
+            "target": "text=Standard clean >> nth=0"
+          },
+          {
+            "do": "waitFor",
+            "target": {
+              "role": "button",
+              "name": "Review & publish"
+            },
             "cut": true
           },
           {
             "do": "pause",
-            "ms": 800
+            "ms": 600
           }
         ]
       },
-      "minSeconds": 7
+      "minSeconds": 6
     },
     {
       "id": "pricing",
-      "narration": "In Pricing, choose how you charge. Bedrooms and bathrooms works well for homes. Enter a base price, then what each extra bedroom and bathroom adds. The same answers estimate how long the clean takes.",
+      "narration": "This one is priced by bedrooms and bathrooms. Replace the example amounts with your own, and the usual job updates as you type.",
       "capture": {
         "kind": "playwright",
         "start": "/app/services",
         "actions": [
           {
             "do": "click",
-            "target": "text=Standard home cleaning >> nth=0"
+            "target": "text=Standard clean >> nth=0"
           },
           {
             "do": "waitFor",
-            "target": "text=Step 1 of 6",
+            "target": {
+              "role": "button",
+              "name": "Review & publish"
+            },
             "cut": true
-          },
-          {
-            "do": "click",
-            "target": {
-              "role": "button",
-              "name": "Next: Scope"
-            }
-          },
-          {
-            "do": "click",
-            "target": {
-              "role": "button",
-              "name": "Next: Pricing"
-            }
-          },
-          {
-            "do": "scroll",
-            "y": 230
-          },
-          {
-            "do": "click",
-            "target": "text=Bedrooms and bathrooms >> nth=0"
           },
           {
             "do": "scroll",
@@ -135,6 +116,10 @@
               "role": "textbox",
               "name": "Base price"
             }
+          },
+          {
+            "do": "scroll",
+            "y": 120
           },
           {
             "do": "type",
@@ -142,7 +127,7 @@
               "role": "textbox",
               "name": "Base price"
             },
-            "text": "120",
+            "text": "130",
             "clear": true
           },
           {
@@ -151,7 +136,7 @@
               "role": "textbox",
               "name": "Each extra bedroom"
             },
-            "text": "20",
+            "text": "22",
             "clear": true
           },
           {
@@ -160,21 +145,22 @@
               "role": "textbox",
               "name": "Each extra bathroom"
             },
-            "text": "15",
+            "text": "18",
             "clear": true
           },
           {
+            "do": "click",
+            "target": "text=A usual job"
+          },
+          {
             "do": "highlight",
-            "target": {
-              "role": "spinbutton",
-              "name": "Base cleaner-time"
-            },
-            "note": "Time estimates come from the same answers",
+            "target": "text=A usual job >> xpath=..",
+            "note": "Updates as you type",
             "ms": 2200
           }
         ]
       },
-      "minSeconds": 14
+      "minSeconds": 10
     },
     {
       "id": "team",
@@ -185,20 +171,23 @@
         "actions": [
           {
             "do": "click",
-            "target": "text=Standard home cleaning >> nth=0"
+            "target": "text=Standard clean >> nth=0"
           },
           {
             "do": "waitFor",
-            "target": "text=of 6",
+            "target": {
+              "role": "button",
+              "name": "Review & publish"
+            },
             "cut": true
           },
           {
-            "do": "click",
-            "target": "button:has-text('Time & Team') >> nth=0"
+            "do": "scroll",
+            "target": "text=Usual crew"
           },
           {
             "do": "scroll",
-            "y": 260
+            "y": -80
           },
           {
             "do": "highlight",
@@ -216,34 +205,97 @@
     },
     {
       "id": "review",
-      "narration": "On Review, check what the change adds, say why you're making it, and submit it for review. Nothing goes live yet.",
+      "narration": "Review and publish shows prices for example homes, and what publishing does. Booked visits keep their price, and a service isn't added to a booking form by publishing it.",
       "capture": {
         "kind": "playwright",
         "start": "/app/services",
         "actions": [
           {
             "do": "click",
-            "target": "text=Standard home cleaning >> nth=0"
+            "target": "text=Standard clean >> nth=0"
           },
           {
             "do": "waitFor",
-            "target": "text=of 6",
+            "target": {
+              "role": "button",
+              "name": "Review & publish"
+            },
             "cut": true
-          },
-          {
-            "do": "click",
-            "target": "button:has-text('Extras') >> nth=0"
           },
           {
             "do": "click",
             "target": {
               "role": "button",
-              "name": "Next: Review"
+              "name": "Review & publish"
             }
           },
           {
+            "do": "pause",
+            "ms": 900
+          },
+          {
+            "do": "highlight",
+            "target": "text=Example prices >> visible=true >> xpath=..",
+            "note": "Worked out from your prices",
+            "ms": 2400
+          },
+          {
             "do": "scroll",
-            "y": 260
+            "target": "text=What publishing does >> visible=true"
+          },
+          {
+            "do": "highlight",
+            "target": "text=What publishing does >> visible=true >> xpath=..",
+            "ms": 2600
+          }
+        ]
+      },
+      "minSeconds": 11
+    },
+    {
+      "id": "publish",
+      "narration": "Confirm the prices are right for your market, say why you're making the change, then publish.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/services",
+        "actions": [
+          {
+            "do": "click",
+            "target": "text=Standard clean >> nth=0"
+          },
+          {
+            "do": "waitFor",
+            "target": {
+              "role": "button",
+              "name": "Review & publish"
+            },
+            "cut": true
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "Review & publish"
+            }
+          },
+          {
+            "do": "pause",
+            "ms": 700
+          },
+          {
+            "do": "scroll",
+            "target": "text=These prices are right for my market"
+          },
+          {
+            "do": "click",
+            "target": "text=These prices are right for my market"
+          },
+          {
+            "do": "scroll",
+            "target": {
+              "role": "textbox",
+              "name": "Why this change"
+            }
           },
           {
             "do": "type",
@@ -251,92 +303,36 @@
               "role": "textbox",
               "name": "Why this change"
             },
-            "text": "Our standard home clean, priced by bedrooms and bathrooms.",
-            "delay": 30
+            "text": "Our standard home clean, with our own prices.",
+            "delay": 25
           },
           {
-            "do": "scroll",
-            "target": {
-              "role": "button",
-              "name": "Submit for review"
-            }
+            "do": "pause",
+            "ms": 600
           },
           {
             "do": "click",
-            "target": {
-              "role": "button",
-              "name": "Submit for review"
-            }
+            "target": "button:text-is('Publish'):not([disabled]):visible"
           },
           {
             "do": "waitFor",
-            "target": "text=In review",
-            "cut": true
+            "target": "text=It becomes the live version now"
           },
           {
             "do": "pause",
             "ms": 900
+          },
+          {
+            "do": "click",
+            "target": ":is([role=dialog],[role=alertdialog]) button:text-is('Publish')"
+          },
+          {
+            "do": "wait",
+            "ms": 2500
           }
         ]
       },
       "minSeconds": 8
-    },
-    {
-      "id": "approve",
-      "narration": "The change shows the prices it produces for example homes, and what it affects. As the Owner, choose Approve and publish.",
-      "capture": {
-        "kind": "playwright",
-        "start": "/app/services/changes",
-        "actions": [
-          {
-            "do": "click",
-            "target": "text=Add Standard home cleaning >> nth=0"
-          },
-          {
-            "do": "waitFor",
-            "target": "text=Prices before and after",
-            "cut": true
-          },
-          {
-            "do": "scroll",
-            "target": "text=Prices before and after"
-          },
-          {
-            "do": "highlight",
-            "target": "text=Prices before and after >> xpath=..",
-            "note": "Worked out from your prices",
-            "ms": 2400
-          },
-          {
-            "do": "scroll",
-            "target": "text=What it affects"
-          },
-          {
-            "do": "pause",
-            "ms": 1600
-          },
-          {
-            "do": "scroll",
-            "target": {
-              "role": "button",
-              "name": "Approve and publish"
-            }
-          },
-          {
-            "do": "click",
-            "target": {
-              "role": "button",
-              "name": "Approve and publish"
-            }
-          },
-          {
-            "do": "waitFor",
-            "target": "text=Published",
-            "ms": 900
-          }
-        ]
-      },
-      "minSeconds": 12
     },
     {
       "id": "live",
@@ -346,19 +342,25 @@
         "start": "/app/services",
         "actions": [
           {
-            "do": "highlight",
-            "target": "text=Live · v1",
-            "note": "Published as version 1",
-            "ms": 2200
-          },
-          {
-            "do": "highlight",
-            "target": "text=From $120.00 per visit, by bedrooms and bathrooms",
-            "ms": 1800
+            "do": "click",
+            "target": {
+              "role": "tab",
+              "name": "/^Live/"
+            }
           },
           {
             "do": "pause",
-            "ms": 1200
+            "ms": 700
+          },
+          {
+            "do": "highlight",
+            "target": "text=Standard clean >> visible=true >> nth=0 >> xpath=../..",
+            "note": "Live, version 1",
+            "ms": 2600
+          },
+          {
+            "do": "pause",
+            "ms": 1000
           }
         ]
       },

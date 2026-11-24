@@ -83,6 +83,7 @@ export const PLACEMENTS = [
   "migration.start",
   "cleaners.directory",
   "integrations.apps",
+  "settings.messaging",
   "texting.setup",
   "agents.controls",
   "home.getting_started",

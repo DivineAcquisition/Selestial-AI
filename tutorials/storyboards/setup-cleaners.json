@@ -1,6 +1,6 @@
 {
   "tutorial": "setup-cleaners",
-  "version": 1,
+  "version": 2,
   "title": "Get your cleaners ready",
   "voice": "default",
   "mark": false,
@@ -390,7 +390,7 @@
         "eyebrow": "Up next",
         "title": "Connect your email and phone",
         "whereLabel": "In Settings:",
-        "where": "Connected apps",
+        "where": "Email & texting",
         "left": "Setup guide · 4 of 6",
         "seconds": 6
       },

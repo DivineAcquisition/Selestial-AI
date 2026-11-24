@@ -1,6 +1,6 @@
 {
   "tutorial": "setup-communication",
-  "version": 1,
+  "version": 2,
   "title": "Connect your email and phone",
   "voice": "default",
   "mark": false,
@@ -20,29 +20,30 @@
       "minSeconds": 5
     },
     {
-      "id": "email",
-      "narration": "Connected apps shows each connection and what it's waiting on. Email works from day one: until you connect an inbox, it goes from Selestial's address, with your company's name on it.",
+      "id": "readiness",
+      "narration": "In Settings, Email and texting shows whether your company can send messages right now. Each item says exactly what's missing, and Fix takes you to it.",
       "capture": {
         "kind": "playwright",
-        "start": "/app/settings/integrations",
+        "start": "/app/settings/messaging",
         "actions": [
           {
             "do": "scroll",
-            "target": "text=Microsoft Outlook and 365"
+            "target": "text=Can your company send messages?"
           },
           {
             "do": "scroll",
-            "y": -120
+            "y": -60
           },
           {
             "do": "highlight",
-            "target": "text=email goes from Selestial's address with your company's name",
-            "note": "Works before you connect anything",
-            "ms": 3000
+            "target": "text=Texting needs carrier registration approval >> visible=true >> nth=0 >> xpath=../..",
+            "note": "What's missing, and how to fix it",
+            "ms": 2600
           },
           {
-            "do": "pause",
-            "ms": 600
+            "do": "highlight",
+            "target": "text=Email is not set up >> visible=true >> xpath=../..",
+            "ms": 2200
           }
         ]
       },
@@ -422,7 +423,7 @@
         "eyebrow": "Up next",
         "title": "Put your agents to work",
         "whereLabel": "In Settings:",
-        "where": "Agent controls",
+        "where": "Agent permissions",
         "left": "Setup guide · 5 of 6",
         "seconds": 5
       },

@@ -1,6 +1,6 @@
 {
   "tutorial": "setup-clients",
-  "version": 1,
+  "version": 2,
   "title": "Bring in your clients and upcoming work",
   "voice": "default",
   "mark": false,
@@ -198,7 +198,9 @@
           }
         ]
       },
-      "minSeconds": 12
+      "minSeconds": 12,
+      "speed": 1.3,
+      "tag": "Sped up 1.3×"
     },
     {
       "id": "services",

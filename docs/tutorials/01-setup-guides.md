@@ -22,7 +22,7 @@ The setup guides reuse all of it. There is no second registry, player or storage
 | Part | Where |
 |---|---|
 | Six guides in the catalog (platform `selestial`, tasks `setup_*`, order, short name, placements, next action, written steps, transcript) | `convex/lib/tutorials/setup.ts`, joined into `TUTORIALS` in `catalog.ts` |
-| Placements beside each task | setup's first step, Settings › Business details, Services & Pricing, Clients & Properties, Bring your business to Selestial, Cleaners, Connected apps, Set up business texting, Agent controls |
+| Placements beside each task | setup's first step, Settings › Company profile, Services & Pricing, Clients & Properties, Bring your business to Selestial, Cleaners, Settings › Email & texting, Connected apps, Set up business texting, Settings › Agent permissions |
 | "Need a hand? Watch how to … · 1 min 18 sec" card (real length from the media; nothing when not published; "Read how to …" when published without video) | `src/components/app/tutorials/setup-help.tsx` (`SetupHelpCard`) |
 | Getting started: the six in order, each with its real length and "Done"/"To do" read from records (`tutorials.setupStatus`). On Home for Owners and Managers (closable, gone once every published guide's task is done) and at the top of Help & tutorials | `GettingStarted`, `screens/overview.tsx`, `/app/help` |
 | Help & tutorials in the account menu (the help page had no link) | `src/components/auth/user-menu.tsx` |
@@ -38,12 +38,12 @@ connected inboxes or an active texting number, and whether agents were started.
 
 | # | Guide | Owner's goal | Offered at | Shows (real screens) | Next action |
 |---|---|---|---|---|---|
-| 1 | Set up your company | Name, clock, service area, booking hours, how the team works, first priority | Setup's first step ("Continue setup"), Settings › Business details | Create company; setup: start, basics, team, priority, Save and exit; Business details: ZIP codes, booking hours | Open Business details |
-| 2 | Build your services and pricing | One service priced, reviewed and live | Services & Pricing | Add a service by hand; builder: Pricing (bedrooms and bathrooms), Time & Team, Review; the change: prices for example homes, what it affects, Approve and publish; Live · v1 | Set up services |
+| 1 | Set up your company | Name, clock, service area, booking hours, how the team works, first priority | Setup's first step ("Continue setup"), Settings › Company profile | Create company; setup: start, basics, team, priority, Save and exit; Company profile: ZIP codes, booking hours | Open Company profile |
+| 2 | Build your services and pricing | One service priced, reviewed and live | Services & Pricing | Set up with Selestial (drafts from setup answers, on example prices); Standard clean: replace the prices, "A usual job"; Booking & team; Review & publish (example homes, what publishing does); "These prices are right for my market", why, Publish and confirm; Live | Set up services |
 | 3 | Bring in your clients and upcoming work | Import and review, or add by hand | Clients & Properties, Bring your business to Selestial | Migration: source, files, organize (columns, dates, time zone, service matching), review & fix, import, verify & activate. Manual: Add client, Book a visit (price answers, day, time, cleaners), the booked visit | Review your import |
 | 4 | Get your cleaners ready | Add a cleaner, see what's missing, set hours and pay | Cleaners | Add cleaner; readiness; Onboarding & Documents; Availability; Finance › Team pay; Make active ("active, but … no work can be offered") | Add your cleaners |
-| 5 | Connect your email and phone | Know where email comes from; request a texting number | Connected apps, Set up business texting | Connected apps (email from Selestial's address with your name; Gmail's real status); texting: business, what you'll send, permission wording, number, review & costs | Connect your email |
-| 6 | Put your agents to work | Set autonomy, start real work, find results and decisions | Agent controls | Agent controls (levels, what an action is blocked on); Home: Review and start, focus "Hire cleaners", Start my agents; tasks moving to Ready for review / Waiting for connection; the draft role it made; Approvals; notifications | Open agent activity |
+| 5 | Connect your email and phone | See whether the company can send messages; request a texting number | Email & texting, Connected apps, Set up business texting | Email & texting: "Can your company send messages?" (what's missing, with Fix); Connected apps: Gmail's real status; texting: business, what you'll send, permission wording, number, review & costs | Open Email & texting |
+| 6 | Put your agents to work | Set autonomy, start real work, find results and decisions | Agent permissions | Agent permissions (levels, what an action is blocked on); Home: Review and start, focus "Hire cleaners", Start my agents; tasks moving to Ready for review / Waiting for connection; the draft role it made; Approvals; notifications | Open agent activity |
 
 ## Scripts and storyboards
 
@@ -71,9 +71,12 @@ from the cache.
 ## Blockers and limits found (not demonstrated, or demonstrated with care)
 
 - **Gmail connection**: built, but Selestial must switch it on per account ("Setup needed") and no real Google
-  sign-in has been verified (`docs/email/05-verification.md`). Guide 5 shows the card and its real status and
-  says email already goes out from Selestial's address under the company's name. It never shows a connection.
-  Outlook and Microsoft 365 are "Coming soon".
+  sign-in has been verified (`docs/email/05-verification.md`). Guide 5 shows the card and its real status, and
+  never shows a connection. Outlook and Microsoft 365 are "Coming soon".
+- **Email readiness**: Email & texting reports "Email is not set up" until "Emails are sent from" is filled in,
+  but that address is only checked for readiness; nothing sends from it (`convex/lib/messaging/policy.ts`).
+  Elsewhere the app says email goes from Selestial's address under the company's name until an inbox is
+  connected. Guide 5 shows the readiness view and makes no promise about where email comes from.
 - **Texting number search** fails in the demo environment ("The search didn't work right now"), so guide 5
   shows the number step without searching. Nothing is submitted in the video; submitting sends the request to
   Selestial's review, and carriers and purchase follow only after it, as the screen says.
@@ -92,7 +95,9 @@ from the cache.
    The screen says a shared email isn't enough to merge; worth confirming that within-file repeats are intended
    to pass silently.
 3. Booking outside the service area says "Add it under Business & hours first", but the page is
-   **Business details**.
+   **Company profile** (it was Business details before the Settings reorganization).
+6. "Emails are sent from" (Email & texting) gates email readiness but isn't used as the sender anywhere, and the
+   Connected apps copy says email already goes from Selestial's address: the two disagree.
 4. `setup.save` accepts fact values that aren't choices (`"homes"`, `"6_15"`) without complaint.
 5. The visit form shows "No price is in your file… priced when you release your schedule" for imported visits;
    fine, but owners may expect a price column to be read.
