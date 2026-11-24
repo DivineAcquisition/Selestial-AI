@@ -132,8 +132,12 @@ export function stripRow(row, columns = []) {
   return out;
 }
 
+/**
+ * A legacy service-role JWT goes in both headers; a new secret key (sb_secret_...) or a key injected by the
+ * proxy goes only in `apikey`, which the gateway accepts on its own.
+ */
 function headers(key, extra = {}) {
-  return { apikey: key, Authorization: `Bearer ${key}`, Accept: "application/json", ...extra };
+  return { apikey: key, ...(key.startsWith("eyJ") ? { Authorization: `Bearer ${key}` } : {}), Accept: "application/json", ...extra };
 }
 
 async function count(base, key, table) {
