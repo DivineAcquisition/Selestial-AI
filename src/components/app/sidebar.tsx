@@ -5,6 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useContext, useEffect, useId, useRef, useState } from "react";
 
+import { useNavOwner } from "@/components/app/nav-owner";
+
 import { agentPortrait } from "@/components/app/agent";
 import { LogoMark } from "@/components/brand/logo";
 import {
@@ -517,7 +519,9 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   const { state, update } = useSidebarStore();
-  const active = activeFor(pathname);
+  // A page whose address serves two tabs (the Sales workspace) says which one it is.
+  const owner = useNavOwner();
+  const active = activeFor(pathname, owner);
   const ids = useId();
   const panelId = `${ids}-agents`;
   const tabId = (department: DepartmentId) => `${ids}-tab-${department}`;

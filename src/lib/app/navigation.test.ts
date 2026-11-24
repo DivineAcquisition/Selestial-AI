@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { AGENT_PROFILES, DEPARTMENTS as BACKEND_DEPARTMENTS } from "../../../convex/lib/departments";
 import { AGENTS as BACKEND_AGENTS } from "../../../convex/lib/statuses";
-import { AGENT_IDS, AGREEMENT_PAGES, BOOKING_PAGES, AGENTS, CLEANER_PAGES, CLIENT_PAGES, SALES_PAGES, SETUP_PAGES, APP_ROOT, BADGE_KINDS, CHAT_PAGES, SERVICES_PAGES, FINANCE_PAGES, DEFAULT_DEPARTMENT, DEPARTMENT_IDS, DEPARTMENTS, EXISTING_ROUTES, FOOTER_ITEMS, LANDING_PATH, NAV_ITEMS, PERSISTENT_ITEMS, SETTINGS_PAGES, INTEGRATION_PAGES, SHARED_ITEMS, SIDEBAR_SECTIONS, type Badge } from "./navigation";
+import { AGENT_IDS, AGREEMENT_PAGES, BOOKING_PAGES, AGENTS, CLEANER_PAGES, CLIENT_PAGES, SALES_PAGES, SALES_WORKSPACE_TAB, SETUP_PAGES, APP_ROOT, BADGE_KINDS, CHAT_PAGES, SERVICES_PAGES, FINANCE_PAGES, DEFAULT_DEPARTMENT, DEPARTMENT_IDS, DEPARTMENTS, EXISTING_ROUTES, FOOTER_ITEMS, LANDING_PATH, NAV_ITEMS, PERSISTENT_ITEMS, SETTINGS_PAGES, INTEGRATION_PAGES, SHARED_ITEMS, SIDEBAR_SECTIONS, type Badge } from "./navigation";
 import {
   activeFor,
   agentsIn,
@@ -54,7 +54,8 @@ const hasPage = (concrete: string) => PAGES.some((pattern) => served(concrete, p
 const SPEC: Record<string, Record<string, string[]>> = {
   Growth: {
     Marketing: ["Campaigns", "Content & Creative", "Promotions", "Lead Sources", "Performance", "Playbook"],
-    Sales: ["Pipeline", "Quotes & Proposals", "Follow-ups", "Conversations", "Booking Forms", "Playbook"],
+    // Internal Booking got its own tab on November 24, 2026, between Pipeline and Quotes & Proposals.
+    Sales: ["Pipeline", "Internal Booking", "Quotes & Proposals", "Follow-ups", "Conversations", "Booking Forms", "Playbook"],
     Retention: ["Needs Attention", "Recovery", "Continuity & Renewals", "Re-engagement", "Playbook"],
   },
   Operations: {
@@ -367,6 +368,30 @@ describe("navigation behavior", () => {
     expect(linkTo("quality.cases")).toBe("/app/agents/quality/cases");
     expect(linkTo("quality.playbook")).toBe("/app/agents/quality/playbook");
     expect(linkTo("nothing")).toBeNull();
+  });
+
+  it("places the shared Sales workspace under the tab its draft belongs to, never by its address alone", () => {
+    expect(linkTo("sales.internal-booking")).toBe("/app/agents/sales/internal-booking");
+    expect(activeFor("/app/agents/sales/internal-booking")).toEqual({ item: null, agent: "sales", tab: "internal-booking", department: "growth" });
+    expect(breadcrumbsFor("/app/agents/sales/internal-booking")).toEqual([
+      { label: "Growth", href: null },
+      { label: "Sales", href: "/app/agents/sales" },
+      { label: "Internal Booking", href: "/app/agents/sales/internal-booking" },
+    ]);
+    // The workspace address alone is just Sales: "book" in the address does not make it Internal Booking.
+    const workspace = "/app/agents/sales/book/k57abc123";
+    expect(activeFor(workspace)).toMatchObject({ agent: "sales", tab: null });
+    // The draft's mode says which tab, and switching the mode moves the highlight with it.
+    expect(activeFor(workspace, { agent: "sales", tab: SALES_WORKSPACE_TAB.booking })).toMatchObject({ agent: "sales", tab: "internal-booking" });
+    expect(activeFor(workspace, { agent: "sales", tab: SALES_WORKSPACE_TAB.proposal })).toMatchObject({ agent: "sales", tab: "quotes-proposals" });
+    expect(breadcrumbsFor(`${workspace}?from=quotes`, { agent: "sales", tab: "quotes-proposals" }).map((crumb) => crumb.label)).toEqual(["Growth", "Sales", "Quotes & Proposals"]);
+    expect(activeFor("/app/agents/sales/new?mode=booking", { agent: "sales", tab: "internal-booking" })).toMatchObject({ tab: "internal-booking" });
+    // A hint never overrides a page's own place, another agent's page, or names a tab that does not exist.
+    expect(activeFor("/app/agents/sales/pipeline", { agent: "sales", tab: "internal-booking" })).toMatchObject({ tab: "pipeline" });
+    expect(activeFor("/app/agents/dispatch", { agent: "sales", tab: "internal-booking" })).toMatchObject({ agent: "dispatch", tab: null });
+    expect(activeFor("/app/clients", { agent: "sales", tab: "internal-booking" })).toMatchObject({ item: "customers", agent: null });
+    expect(activeFor(workspace, { agent: "sales", tab: "no-such-tab" })).toMatchObject({ agent: "sales", tab: null });
+    expect(activeFor(workspace, null)).toMatchObject({ agent: "sales", tab: null });
   });
 
   it("puts what needs a person ahead of a general working indicator", () => {

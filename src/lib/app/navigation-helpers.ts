@@ -138,9 +138,23 @@ export function resolvePath(pathname: string): Resolved | null {
   return serving.length === 1 ? serving[0].resolved : null;
 }
 
+/**
+ * What a page says it belongs to when its address cannot: the Sales workspace serves both Internal Booking
+ * and Quotes & Proposals from one route, and only the draft knows which. It is a hint, never an override: it
+ * counts only on a page that already resolves to that agent with no tab of its own, and only for a tab the
+ * agent has. Anywhere else it is ignored, so a stale hint can never highlight the wrong place.
+ */
+export type NavOwner = { agent: AgentId; tab: string };
+
+function withOwner(resolved: Resolved | null, owner: NavOwner | null | undefined): Resolved | null {
+  if (!resolved || !owner || resolved.kind !== "agent" || resolved.tab !== null || resolved.agent.id !== owner.agent) return resolved;
+  const tab = resolved.agent.tabs.find((row) => row.id === owner.tab);
+  return tab ? { kind: "agent", agent: resolved.agent, tab } : resolved;
+}
+
 /** The exact thing to highlight for a path: one company-wide item, or one agent and at most one of its tabs. */
-export function activeFor(pathname: string): { item: NavItem["id"] | null; agent: AgentId | null; tab: string | null; department: DepartmentId | null } {
-  const resolved = resolvePath(pathname);
+export function activeFor(pathname: string, owner?: NavOwner | null): { item: NavItem["id"] | null; agent: AgentId | null; tab: string | null; department: DepartmentId | null } {
+  const resolved = withOwner(resolvePath(pathname), owner);
   if (!resolved) return { item: null, agent: null, tab: null, department: null };
   if (resolved.kind === "item") return { item: resolved.item.id, agent: null, tab: null, department: null };
   return { item: null, agent: resolved.agent.id, tab: resolved.tab?.id ?? null, department: resolved.agent.department };
@@ -152,8 +166,8 @@ export type Crumb = { label: string; href: string | null };
  * The trail for a path: "Operations › Dispatch › Schedule", or just "Approvals". A department has no
  * page of its own, so its crumb is never a link.
  */
-export function breadcrumbsFor(pathname: string): Crumb[] {
-  const resolved = resolvePath(pathname);
+export function breadcrumbsFor(pathname: string, owner?: NavOwner | null): Crumb[] {
+  const resolved = withOwner(resolvePath(pathname), owner);
   if (!resolved) return [];
   if (resolved.kind === "item") return [{ label: resolved.item.label, href: hrefFor(resolved.item) }];
   const trail: Crumb[] = [
