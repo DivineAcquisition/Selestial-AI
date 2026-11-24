@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { ActivityLog } from "@/components/app/settings/activity";
 import { SectionPage } from "@/components/app/settings/section-page";
 
-export const metadata: Metadata = { title: "Activity" };
+export const metadata: Metadata = { title: "Activity history" };
 
 export default function Page() {
   return (

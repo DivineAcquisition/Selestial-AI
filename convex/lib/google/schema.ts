@@ -126,7 +126,7 @@ export const googleTables = {
   googleCalendarLinks: defineTable({
     companyId: v.id("companies"),
     calendarId: v.string(),
-    subject: v.union(v.object({ table: v.literal("jobs"), id: v.id("jobs") }), v.object({ table: v.literal("interviews"), id: v.id("interviews") })),
+    subject: v.union(v.object({ table: v.literal("jobs"), id: v.id("jobs") }), v.object({ table: v.literal("interviews"), id: v.id("interviews") }), v.object({ table: v.literal("calendarEvents"), id: v.id("calendarEvents") })),
     subjectId: v.string(),
     eventId: v.string(),
     /** A hash of what Selestial last wrote, so only a real change is sent. */

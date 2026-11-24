@@ -136,7 +136,9 @@ export function rangeFor(view: View, date: string | null, now: number, timezone:
     const days = span(from, 7);
     const last = days[6];
     const sameMonth = localDate(from, timezone).slice(0, 7) === localDate(last, timezone).slice(0, 7);
-    return { from, to: addLocalDays(from, 7, timezone), days, month: null, label: sameMonth ? `${short(from, timezone)} – ${new Intl.DateTimeFormat("en-US", { timeZone: timezone, day: "numeric", year: "numeric" }).format(new Date(last))}` : `${short(from, timezone)} – ${short(last, timezone)}, ${localDate(last, timezone).slice(0, 4)}` };
+    // "Mar 7 – 13, 2027" is built from parts: a day and a year without a month have no pattern of their
+    // own, and browsers print "2027 (day: 13)" for them.
+    return { from, to: addLocalDays(from, 7, timezone), days, month: null, label: sameMonth ? `${short(from, timezone)} – ${Number(localDate(last, timezone).slice(8, 10))}, ${localDate(last, timezone).slice(0, 4)}` : `${short(from, timezone)} – ${short(last, timezone)}, ${localDate(last, timezone).slice(0, 4)}` };
   }
   if (view === "agenda") {
     const days = span(anchor, AGENDA_DAYS);

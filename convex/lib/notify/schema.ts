@@ -17,6 +17,13 @@ export const notifyTables = {
     companyId: v.id("companies"),
     memberId: v.id("members"),
     email: v.array(v.object({ category: noticeCategoryValidator, on: v.boolean(), at: v.number(), via: v.union(v.literal("settings"), v.literal("unsubscribe_link"), v.literal("one_click")) })),
+    /**
+     * Texts to the person's own confirmed phone (convex/myPhone.ts), per category: off unless they turn one
+     * on. Selestial's own texts, never charged to the company.
+     */
+    sms: v.optional(v.array(v.object({ category: noticeCategoryValidator, on: v.boolean(), at: v.number() }))),
+    /** When texts wait until morning for this person (company clock). Absent: 9 PM to 7 AM. Critical ones go anyway. */
+    smsQuiet: v.optional(v.object({ start: v.string(), end: v.string() })),
     updatedAt: v.number(),
   }).index("by_company_member", ["companyId", "memberId"]),
 

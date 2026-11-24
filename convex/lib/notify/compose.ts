@@ -396,6 +396,27 @@ async function workerReady(ctx: MutationCtx, company: Doc<"companies">, ref: str
   });
 }
 
+/** A Calendar event someone else put you on, moved or cancelled. Read from the event as it is when the email goes. */
+async function calendarEventNotice(ctx: MutationCtx, company: Doc<"companies">, ref: string | undefined, facts: NoticeFacts | undefined, c: Context): Promise<Built> {
+  const id = ref ? ctx.db.normalizeId("calendarEvents", ref) : null;
+  const event = id ? await ctx.db.get(id) : null;
+  if (!event || event.companyId !== company._id) return { problem: "The event is no longer in the record." };
+  const change = str(facts, "change") ?? "added";
+  const when = `${new Intl.DateTimeFormat("en-US", { timeZone: c.timezone, weekday: "long", month: "long", day: "numeric" }).format(new Date(event.startsAt))} at ${new Intl.DateTimeFormat("en-US", { timeZone: c.timezone, hour: "numeric", minute: "2-digit" }).format(new Date(event.startsAt))}`;
+  if (change !== "cancelled" && event.status === "cancelled") return { problem: "The event was cancelled before this went." };
+  const heading = change === "cancelled" ? `Cancelled: ${event.title}` : change === "moved" ? `Moved: ${event.title}` : `You're on: ${event.title}`;
+  return alertEmail({
+    ...c,
+    eyebrow: "Calendar",
+    subject: heading,
+    heading,
+    body: change === "cancelled" ? `${event.title}, on ${when}, was cancelled${event.cancelled?.reason ? `: ${event.cancelled.reason}` : "."}` : change === "moved" ? `${event.title} is now on ${when}.` : `${event.title} is on ${when}${event.location ? `, at ${event.location}` : ""}.`,
+    tone: change === "cancelled" ? "warning" : "info",
+    button: { label: "Open the Calendar", path: `/app/calendar?view=day&date=${encodeURIComponent(new Intl.DateTimeFormat("en-CA", { timeZone: c.timezone }).format(new Date(event.startsAt)))}&item=${encodeURIComponent(`calendarEvents:${event._id}`)}` },
+    because: "notices about what your agents and team did are on",
+  });
+}
+
 async function customerPaymentFailed(ctx: MutationCtx, ref: string | undefined, c: Context): Promise<Built> {
   const id = ref ? ctx.db.normalizeId("payments", ref) : null;
   const payment = id ? await ctx.db.get(id) : null;
@@ -574,6 +595,8 @@ async function build(ctx: MutationCtx, message: Doc<"messages">, company: Doc<"c
     case "recruiter_attention":
     case "recruiter_activity":
       return recruiterNotice(ctx, company, notice.event, notice.ref, facts, c);
+    case "calendar_event":
+      return calendarEventNotice(ctx, company, notice.ref, facts, c);
     case "migration_complete": {
       const id = notice.ref ? ctx.db.normalizeId("migrations", notice.ref) : null;
       const migration = id ? await ctx.db.get(id) : null;
@@ -781,7 +804,7 @@ async function planPriceChange(ctx: MutationCtx, company: Doc<"companies">, ref:
     subject: `Your Selestial price changes to ${full} a month on ${date}`,
     heading: `Your early-user price ends on ${date}`,
     body: `Your first 12 months of Operate at ${money(EARLY_OFFER_CENTS)} a month end on ${date}. From that date Operate is ${full} a month, charged on your usual billing day. Nothing else changes: the same agents, features and monthly credits.`,
-    note: "You don't need to do anything. If you'd rather not continue, you can cancel in Plan & Usage before that date and the plan stays active until it.",
+    note: "You don't need to do anything. If you'd rather not continue, you can cancel in Plan & usage before that date and the plan stays active until it.",
     facts: [
       { label: "Changes on", value: date },
       { label: "Price until then", value: `${money(EARLY_OFFER_CENTS)} a month` },

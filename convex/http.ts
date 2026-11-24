@@ -11,6 +11,9 @@
  * GET  /oauth/highlevel/callback  where HighLevel sends an Owner back after installing Selestial's app (Quality reads it).
  * POST /webhooks/highlevel      the Selestial HighLevel app's signed events.
  * GET  /oauth/jobber/callback   where Jobber sends an Owner back after they allowed Selestial to read their clients.
+ * GET  /oauth/square/callback   where Square sends an Owner back after they authorized their Square account (Finance).
+ * POST /webhooks/square         payment, refund and authorization events from connected Square accounts, signed
+ *                               with SQUARE_WEBHOOK_SIGNATURE_KEY over the exact notification URL and body.
  * POST /webhooks/google/calendar  Calendar push notifications, checked against each channel's own secret token.
  * POST /webhooks/google/pubsub    Gmail and Business Profile notifications through Pub/Sub, with Google's signed OIDC token.
  * POST /webhooks/google/leads     Google Ads lead form leads, with the company's lead key.
@@ -26,16 +29,22 @@ import { oauthCallback, oneClickUnsubscribe, providerWebhook, selfCheckRoute, si
 import { evidenceRequestValid } from "./lib/texting/evidence";
 import { siteOrigin } from "./lib/dispatch/links";
 import { exchangeCode, googleApp } from "./lib/recruiter/gmail";
+import { parseSquareEvent, squareConfig, verifySquareSignature } from "./lib/finance/square";
+import { squareCallback } from "./financeSquare";
 import { hashToken, randomToken, seal, unseal } from "./lib/recruiter/secrets";
 import { afterConnect, googleRedirectUri, pendingBinding } from "./recruiterMailbox";
 import { afterGoogle, pendingBinding as googlePendingBinding } from "./google";
 import { jobberCallback } from "./connectors";
+import { quickbooksCallback } from "./quickbooks";
 import { highLevelCallback } from "./qualityHighLevel";
 import { verifyHighLevel } from "./lib/quality/comms/highlevel";
 import { exchange as googleExchange, googleApp as googleConnectApp, identityFrom, redirectUri as googleConnectRedirect } from "./lib/google/oauth";
 import { endpoints as googleEndpoints } from "./lib/google/platform";
 import { googleKeys, pushData, tokenKid, verifyOidc } from "./lib/google/pubsub";
 import { receivedEmailId, verifyWebhook, webhookOutcome } from "./lib/messaging/resend";
+import { clerkEvent, isClerkCode } from "./lib/platform/clerk";
+import { countSegments } from "./lib/messagingBilling/segments";
+import { sendPlatformText } from "./platformSms";
 import { parseEvent, signingProvider, verifyBody } from "./lib/agreements/signing";
 import { photoRequestValid } from "./lib/dispatch/photoLinks";
 import { telnyxEvent, verifyTelnyx } from "./lib/messaging/telnyx";
@@ -77,6 +86,37 @@ const unsubscribeRoute = oneClickUnsubscribe({
 });
 http.route({ path: "/notify/unsubscribe", method: "POST", handler: unsubscribeRoute });
 http.route({ path: "/notify/unsubscribe", method: "GET", handler: unsubscribeRoute });
+
+/**
+ * Clerk, Selestial's sign-in service (docs/sms/00-architecture.md §4.6). Needs CLERK_WEBHOOK_SECRET (Svix,
+ * "whsec_…"). `sms.created` with "Delivered by Clerk" turned off for its template: Selestial texts Clerk's own
+ * words (the code included) from its code sender, after its limits. The words go straight to Telnyx from
+ * here and are never stored or logged. Clerk keeps the code, checks it, and makes the session: a text
+ * Selestial delivers grants nothing by itself.
+ */
+http.route({
+  path: "/webhooks/clerk",
+  method: "POST",
+  handler: providerWebhook({
+    verify: async (request, body) => {
+      const secret = process.env.CLERK_WEBHOOK_SECRET?.trim();
+      if (!secret) return false;
+      return verifyWebhook({ secret, id: request.headers.get("svix-id"), timestamp: request.headers.get("svix-timestamp"), signature: request.headers.get("svix-signature"), body, now: Date.now() });
+    },
+    handler: async (ctx, body, request) => {
+      const event = clerkEvent(body);
+      if (event.kind !== "sms" || event.deliveredByClerk) return;
+      // Clerk's security notices (password changed, passkey added or removed) carry no code: they go from the
+      // notice sender, kept as Selestial's own security notice. Only codes go from the code sender.
+      if (!isClerkCode(event.slug, event.message)) {
+        await ctx.runMutation(internal.platformSms.queueNotice, { kind: "security_notice", reason: event.slug, dedupeKey: `clerk:${request.headers.get("svix-id")!}`, to: event.to, body: event.message, ...(event.userId ? { userId: event.userId } : {}) });
+        return;
+      }
+      const decision = await ctx.runMutation(internal.platformSms.codeRequested, { deliveryId: request.headers.get("svix-id")!, to: event.to, ...(event.userId ? { userId: event.userId } : {}), reason: event.slug, segments: countSegments(event.message).segments });
+      if (decision.decision === "send") await sendPlatformText(ctx, { id: decision.id, to: event.to, body: event.message, sender: decision.sender });
+    },
+  }),
+});
 
 /**
  * Autumn tells Selestial something changed for a customer. The body only says who; the record itself is
@@ -173,6 +213,39 @@ http.route({
   }),
 });
 
+/**
+ * Square: the Owner's browser back from Square's authorization page. Nothing is connected here; the
+ * signed-in Owner confirms the business in Finance (convex/financeSquare.ts).
+ */
+http.route({
+  path: "/oauth/square/callback",
+  method: "GET",
+  handler: oauthCallback({ handler: (ctx, params) => squareCallback(ctx, params) }),
+});
+
+/**
+ * Square: events from every connected Square account, for one application. The signature covers the exact
+ * notification URL registered with Square and the raw body. The event only names an object; it is read back
+ * from Square with the company's own token. An event for a Square account no company has connected is noted
+ * for Selestial's team (operations checks), never matched by guessing.
+ */
+http.route({
+  path: "/webhooks/square",
+  method: "POST",
+  handler: providerWebhook({
+    verify: async (request, body) => {
+      const config = squareConfig();
+      return verifySquareSignature({ key: config?.webhookKey ?? null, notificationUrl: config?.webhookUrl ?? null, body, header: request.headers.get("x-square-hmacsha256-signature") });
+    },
+    handler: async (ctx, body) => {
+      const event = parseSquareEvent(body);
+      if (!event) return;
+      const result = await ctx.runMutation(internal.financeSquarePay.webhookReceived, { event });
+      if (result.unmatched) await ctx.runMutation(internal.operations.webhookFailed, { source: "/webhooks/square", detail: `An event (${event.type}) arrived for a Square account no company has connected.` });
+    },
+  }),
+});
+
 http.route({
   path: "/webhooks/telnyx",
   method: "POST",
@@ -185,11 +258,11 @@ http.route({
     handler: async (ctx, body) => {
       const event = telnyxEvent(body);
       if (event.kind === "receipt") {
-        await ctx.runMutation(internal.messaging.receipt, { provider: "telnyx", eventId: event.eventId, providerMessageId: event.providerMessageId, outcome: event.outcome, problem: event.problem ?? undefined, ...(event.costUnits !== null ? { providerCost: event.costUnits } : {}), ...(event.errorCode ? { errorCode: event.errorCode } : {}) });
+        await ctx.runMutation(internal.messaging.receipt, { provider: "telnyx", eventId: event.eventId, providerMessageId: event.providerMessageId, outcome: event.outcome, problem: event.problem ?? undefined, ...(event.costUnits !== null ? { providerCost: event.costUnits } : {}), ...(event.errorCode ? { errorCode: event.errorCode } : {}), ...(event.beforeCarrier ? { beforeCarrier: true } : {}) });
       } else if (event.kind === "registration") {
         await ctx.runMutation(internal.texting.registrationEvent, { eventId: event.eventId, type: event.type, ...(event.brandId ? { brandId: event.brandId } : {}), ...(event.campaignId ? { campaignId: event.campaignId } : {}), ...(event.phoneNumber ? { phoneNumber: event.phoneNumber } : {}) });
       } else if (event.kind === "inbound") {
-        await ctx.runMutation(internal.inbound.telnyx, { eventId: event.eventId, to: event.to, from: event.from, body: event.text, receivedAt: event.receivedAt, ...(event.providerMessageId ? { providerMessageId: event.providerMessageId } : {}), ...(event.parts ? { parts: event.parts } : {}), media: event.media });
+        await ctx.runMutation(internal.inbound.telnyx, { eventId: event.eventId, to: event.to, from: event.from, body: event.text, receivedAt: event.receivedAt, ...(event.providerMessageId ? { providerMessageId: event.providerMessageId } : {}), ...(event.parts ? { parts: event.parts } : {}), media: event.media, ...(event.autoresponseType ? { autoresponseType: event.autoresponseType } : {}) });
       }
     },
   }),
@@ -310,6 +383,16 @@ http.route({
       await ctx.runMutation(internal.qualityHighLevel.webhook, { body });
     },
   }),
+});
+
+/**
+ * GET /oauth/quickbooks/callback  where Intuit sends the Owner back after they allowed Selestial to use their
+ * QuickBooks Online company (convex/quickbooks.ts). The one-time state is checked before anything else.
+ */
+http.route({
+  path: "/oauth/quickbooks/callback",
+  method: "GET",
+  handler: oauthCallback({ handler: (ctx, params) => quickbooksCallback(ctx, params) }),
 });
 
 http.route({

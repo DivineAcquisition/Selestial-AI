@@ -24,21 +24,27 @@ export const LAYER_LOOK: Record<LayerId, { swatch: string; block: string; edge: 
   sales: { swatch: "bg-teal-500", block: "bg-teal-500/12 text-strong hover:bg-teal-500/18", edge: "border-l-teal-500" },
   quality: { swatch: "bg-amber-500", block: "bg-amber-500/12 text-strong hover:bg-amber-500/18", edge: "border-l-amber-500" },
   business: { swatch: "bg-pink-500", block: "bg-pink-500/12 text-strong hover:bg-pink-500/18", edge: "border-l-pink-500" },
-  availability: { swatch: "bg-muted-foreground/50", block: "text-muted-foreground hover:text-strong", edge: "border-l-muted-foreground/40" },
+  availability: { swatch: "bg-muted-foreground/50", block: "text-strong/70 hover:text-strong", edge: "border-l-muted-foreground/40" },
   deadlines: { swatch: "bg-foreground/60", block: "bg-card text-strong hover:bg-muted", edge: "border-l-foreground/40" },
-  external: { swatch: "bg-muted-foreground/40", block: "text-muted-foreground", edge: "border-l-muted-foreground/30" },
+  external: { swatch: "bg-muted-foreground/40", block: "text-strong/70", edge: "border-l-muted-foreground/30" },
 };
 
 /** Hatching for time that is not working time: someone's time off, a busy block. */
 export const HATCH = "bg-[repeating-linear-gradient(135deg,transparent_0_6px,color-mix(in_oklab,var(--color-muted-foreground)_16%,transparent)_6px_7px)]";
 
-/** The block's outline by the kind of time it is. */
+/**
+ * Secondary words inside a block or on a muted ground. The plain muted color falls under 4.5:1 on the
+ * layers' tints (WCAG 1.4.3), so these read as the strong color, softened.
+ */
+export const QUIET = "text-strong/70";
+
+/** The block's outline by the kind of time it is. Never faded with opacity: that takes the words under 4.5:1 too. */
 export function timingClass(item: Pick<Item, "timing" | "status">): string {
-  if (item.timing === "projected") return "border border-dashed border-l-2 opacity-75";
+  if (item.timing === "projected") return "border border-dashed border-current/25 border-l-2 bg-transparent";
   if (item.timing === "proposed") return "border border-dashed border-l-2";
   if (item.timing === "availability") return cn("border border-border/70 border-l-2", HATCH);
   if (item.timing === "due") return "border border-border border-l-2";
-  return item.status === "cancelled" ? "border border-transparent border-l-2 line-through opacity-60" : "border border-transparent border-l-2";
+  return item.status === "cancelled" ? "border border-border border-l-2 bg-transparent text-strong/70 line-through" : "border border-transparent border-l-2";
 }
 
 export function blockClass(item: Item): string {
@@ -50,7 +56,7 @@ export function blockClass(item: Item): string {
 export function TimingMark({ item, className }: { item: Pick<Item, "timing" | "problems">; className?: string }) {
   const Icon = item.problems.length > 0 ? TriangleAlert : item.timing === "due" ? Flag : item.timing === "projected" ? CircleDashed : item.timing === "proposed" ? Hourglass : item.timing === "availability" ? Clock : null;
   if (!Icon) return null;
-  return <Icon className={cn("size-3 shrink-0", item.problems.length > 0 ? "text-destructive-foreground" : "text-muted-foreground", className)} aria-hidden />;
+  return <Icon className={cn("size-3 shrink-0", item.problems.length > 0 ? "text-destructive-foreground" : QUIET, className)} aria-hidden />;
 }
 
 export const TIMING_WORDS: Record<Item["timing"], string> = {

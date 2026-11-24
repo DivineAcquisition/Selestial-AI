@@ -26,6 +26,40 @@ import { openTask, setTaskState } from "./lib/taskState";
 const DAY = 86_400_000;
 const HORIZON = 60 * DAY;
 
+/** What a calendar event in Google can stand for: a visit, an interview, or one of Calendar's own events. */
+const subjectValidator = v.union(v.object({ table: v.literal("jobs"), id: v.id("jobs") }), v.object({ table: v.literal("interviews"), id: v.id("interviews") }), v.object({ table: v.literal("calendarEvents"), id: v.id("calendarEvents") }));
+type Subject = typeof subjectValidator.type;
+const WHAT = { jobs: "visit", interviews: "interview", calendarEvents: "event" } as const;
+const EVENT_WORDS: Record<Doc<"calendarEvents">["kind"], string> = { meeting: "A meeting", appointment: "An appointment", unavailable: "Time away", training: "A training session", inspection: "An inspection" };
+
+type Loaded = { table: "jobs"; doc: Doc<"jobs"> } | { table: "interviews"; doc: Doc<"interviews"> } | { table: "calendarEvents"; doc: Doc<"calendarEvents"> };
+
+async function subjectOf(ctx: { db: MutationCtx["db"] | import("./_generated/server").QueryCtx["db"] }, subject: Subject): Promise<Loaded | null> {
+  if (subject.table === "jobs") {
+    const doc = await ctx.db.get(subject.id);
+    return doc ? { table: "jobs", doc } : null;
+  }
+  if (subject.table === "interviews") {
+    const doc = await ctx.db.get(subject.id);
+    return doc ? { table: "interviews", doc } : null;
+  }
+  const doc = await ctx.db.get(subject.id);
+  return doc ? { table: "calendarEvents", doc } : null;
+}
+
+/** Whether Google's copy should be removed. A record that is past keeps its event, as history. */
+export function isStale(subject: Subject, loaded: Loaded | null, now: number): boolean {
+  if (!loaded) return true;
+  if (loaded.table === "jobs") return loaded.doc.status === "cancelled" || loaded.doc.startsAt >= now + HORIZON;
+  if (loaded.table === "interviews") return loaded.doc.status !== "confirmed" && loaded.doc.status !== "completed" && loaded.doc.status !== "no_show";
+  return loaded.doc.status === "cancelled" || loaded.doc.startsAt >= now + HORIZON;
+}
+
+/** The event-log subject for a change to a mapped record. */
+function eventSubject(link: Doc<"googleCalendarLinks">) {
+  return link.subject.table === "jobs" ? { table: "jobs" as const, id: link.subject.id } : link.subject.table === "calendarEvents" ? { table: "calendarEvents" as const, id: link.subject.id } : { table: "interviews" as const, id: link.subject.id };
+}
+
 export const syncNow = managerMutation({
   args: {},
   handler: async (ctx) => {
@@ -52,7 +86,7 @@ export const plan = internalQuery({
     const target = (await ctx.db.query("googleResources").withIndex("by_company_kind", (q) => q.eq("companyId", args.companyId).eq("kind", "calendar_sync")).take(5)).find((r) => r.access !== "lost");
     if (!company || !target) return null;
     const now = Date.now();
-    const desired: (EventDraft & { subject: { table: "jobs"; id: Id<"jobs"> } | { table: "interviews"; id: Id<"interviews"> } })[] = [];
+    const desired: (EventDraft & { subject: Subject })[] = [];
     const jobs = await ctx.db.query("jobs").withIndex("by_company_start", (q) => q.eq("companyId", args.companyId).gte("startsAt", now - DAY).lt("startsAt", now + HORIZON)).take(1000);
     for (const job of jobs) {
       if (job.status === "cancelled") continue;
@@ -66,21 +100,34 @@ export const plan = internalQuery({
       if (interview.status !== "confirmed" || !interview.startsAt || !interview.endsAt || interview.endsAt < now - DAY) continue;
       desired.push({ id: eventIdFor(args.companyId, target.externalId, interview._id), summary: "Interview (Selestial)", description: `Interview scheduled in Selestial${interview.how ? `: ${interview.how}` : ""}. Change it in Selestial.`, startsAt: interview.startsAt, endsAt: interview.endsAt, timeZone: company.timezone, subjectId: interview._id, subject: { table: "interviews", id: interview._id } });
     }
-    const links = (await ctx.db.query("googleCalendarLinks").withIndex("by_company_subject", (q) => q.eq("companyId", args.companyId)).take(2000)).filter((l) => l.calendarId === target.externalId);
-    // An event whose visit was cancelled, or whose interview was cancelled, is removed from the calendar.
-    const stale: string[] = [];
-    for (const link of links) {
-      const subject = link.subject.table === "jobs" ? await ctx.db.get(link.subject.id) : await ctx.db.get(link.subject.id);
-      if (!subject) stale.push(link.eventId);
-      else if (link.subject.table === "jobs" && (subject as Doc<"jobs">).status === "cancelled") stale.push(link.eventId);
-      else if (link.subject.table === "interviews" && (subject as Doc<"interviews">).status === "cancelled") stale.push(link.eventId);
+    // Calendar's own events. A private one is written as "Busy" with nothing else: its title, notes and place
+    // are for the people on it, not for whoever can see the company's calendar.
+    const events = await ctx.db.query("calendarEvents").withIndex("by_company_start", (q) => q.eq("companyId", args.companyId).gte("startsAt", now - 32 * DAY).lt("startsAt", now + HORIZON)).take(1000);
+    for (const event of events) {
+      if (event.status === "cancelled" || event.endsAt < now - DAY) continue;
+      desired.push({
+        id: eventIdFor(args.companyId, target.externalId, event._id),
+        summary: event.private ? "Busy" : event.title,
+        description: event.private ? "A private event in Selestial." : `${EVENT_WORDS[event.kind]} in Selestial. Change it in Selestial, not here: changes made here are flagged for review and not applied.${event.notes ? `\n\n${event.notes.slice(0, 1500)}` : ""}`,
+        location: event.private ? undefined : event.location,
+        startsAt: event.startsAt,
+        endsAt: event.endsAt,
+        timeZone: event.timezone,
+        subjectId: event._id,
+        subject: { table: "calendarEvents", id: event._id },
+      });
     }
+    const links = (await ctx.db.query("googleCalendarLinks").withIndex("by_company_subject", (q) => q.eq("companyId", args.companyId)).take(2000)).filter((l) => l.calendarId === target.externalId);
+    // Removed from the calendar: a record that is gone or cancelled, an interview whose time was cancelled
+    // (it goes back to waiting for a time), and a visit or event moved past the horizon. Past ones stay.
+    const stale: string[] = [];
+    for (const link of links) if (isStale(link.subject, await subjectOf(ctx, link.subject), now)) stale.push(link.eventId);
     return { calendarId: target.externalId, desired, stale, links: links.map((l) => ({ subjectId: l.subjectId, eventId: l.eventId, writtenHash: l.writtenHash, externalChange: l.externalChange ?? null })) };
   },
 });
 
 export const saveLink = internalMutation({
-  args: { companyId: v.id("companies"), calendarId: v.string(), subject: v.union(v.object({ table: v.literal("jobs"), id: v.id("jobs") }), v.object({ table: v.literal("interviews"), id: v.id("interviews") })), eventId: v.string(), writtenHash: v.string() },
+  args: { companyId: v.id("companies"), calendarId: v.string(), subject: subjectValidator, eventId: v.string(), writtenHash: v.string() },
   handler: async (ctx, args) => {
     const existing = (await ctx.db.query("googleCalendarLinks").withIndex("by_company_subject", (q) => q.eq("companyId", args.companyId).eq("subjectId", args.subject.id)).take(5)).find((l) => l.calendarId === args.calendarId);
     // Writing Selestial's version again settles a change someone made in Google: it was changed in Selestial since.
@@ -103,7 +150,7 @@ export const dropLink = internalMutation({
 async function settleChange(ctx: MutationCtx, link: Doc<"googleCalendarLinks">, outcome: string, actor: Actor) {
   const task = link.externalTaskId ? await ctx.db.get(link.externalTaskId) : null;
   if (task && task.status !== "done" && task.status !== "cancelled") await setTaskState(ctx, task, "done", { outcome, closedAt: Date.now(), withPersonSince: null }, actor);
-  await recordEvent(ctx, { companyId: link.companyId, type: "google.calendar_change_settled", actor, subject: link.subject.table === "jobs" ? { table: "jobs", id: link.subject.id } : { table: "companies", id: link.companyId }, data: { change: link.externalChange ?? "none" } });
+  await recordEvent(ctx, { companyId: link.companyId, type: "google.calendar_change_settled", actor, subject: eventSubject(link), data: { change: link.externalChange ?? "none" } });
 }
 
 /**
@@ -122,10 +169,12 @@ export const externalChange = internalMutation({
       if (times && (link.externalTimes?.startsAt !== times.startsAt || link.externalTimes?.endsAt !== times.endsAt)) await ctx.db.patch(link._id, { externalTimes: times, updatedAt: Date.now() });
       return null;
     }
-    const what = link.subject.table === "jobs" ? "visit" : "interview";
+    const what = WHAT[link.subject.table];
+    const own = link.subject.table === "calendarEvents" ? await ctx.db.get(link.subject.id) : null;
     const taskId = await openTask(ctx, {
       companyId: args.companyId,
-      agent: link.subject.table === "jobs" ? "dispatch" : "recruiter",
+      // Whose queue: visits are Dispatch's, interviews and training Recruiter's, inspections Quality's.
+      agent: link.subject.table === "interviews" || own?.kind === "training" ? "recruiter" : own?.kind === "inspection" ? "quality" : "dispatch",
       title: `A ${what}'s Google Calendar event was ${args.change} outside Selestial`,
       nextAction: `Check the ${what} in Selestial. Selestial did not change it. If the new time is right, change the ${what} in Selestial; the calendar then follows. If not, choose "Put Selestial's time back" under Integrations › Google Calendar.`,
       dueAt: Date.now() + 2 * 3600_000,
@@ -135,7 +184,7 @@ export const externalChange = internalMutation({
       actor: { kind: "system" },
     });
     await ctx.db.patch(link._id, { externalChange: args.change, externalTimes: times, externalTaskId: taskId, updatedAt: Date.now() });
-    await recordEvent(ctx, { companyId: args.companyId, type: "google.calendar_external_change", actor: { kind: "system" }, subject: link.subject.table === "jobs" ? { table: "jobs", id: link.subject.id } : { table: "companies", id: args.companyId }, data: { change: args.change } });
+    await recordEvent(ctx, { companyId: args.companyId, type: "google.calendar_external_change", actor: { kind: "system" }, subject: eventSubject(link), data: { change: args.change } });
     return null;
   },
 });
@@ -171,9 +220,11 @@ export const changed = companyQuery({
     const out = [];
     for (const link of links) {
       if (!link.externalChange) continue;
-      const subject = link.subject.table === "jobs" ? await ctx.db.get(link.subject.id) : await ctx.db.get(link.subject.id);
+      const subject = await subjectOf(ctx, link.subject);
       if (!subject) continue;
-      out.push({ linkId: link._id, what: link.subject.table === "jobs" ? ("visit" as const) : ("interview" as const), subjectId: link.subjectId, change: link.externalChange, google: link.externalTimes ?? null, selestial: { startsAt: subject.startsAt ?? null, endsAt: subject.endsAt ?? null }, since: link.updatedAt });
+      // Office does not see Calendar's own events or interviews, here as on the Calendar.
+      if (ctx.role === "office" && link.subject.table !== "jobs") continue;
+      out.push({ linkId: link._id, what: WHAT[link.subject.table], subjectId: link.subjectId, change: link.externalChange, google: link.externalTimes ?? null, selestial: { startsAt: subject.doc.startsAt ?? null, endsAt: subject.doc.endsAt ?? null }, since: link.updatedAt });
       if (out.length >= 50) break;
     }
     return out;

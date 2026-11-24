@@ -18,12 +18,13 @@ import { cn } from "@/lib/utils";
 import { api } from "../../../../convex/_generated/api";
 import type { FunctionReturnType } from "convex/server";
 import { Notice, Section } from "./kit";
+import { ProviderChoice, SquareCard } from "./square-setup";
 import { Checkbox, Select } from "@/components/ui/selection";
 import { EmailInput, PercentField } from "@/components/ui/fields";
 
 type Settings = FunctionReturnType<typeof api.finance.settings>;
 
-/** Finance › Payments setup: the company's own Stripe account, and how its invoices are made. */
+/** Finance › Payments setup: the company's own Stripe or Square account, which one takes new payments, and how its invoices are made. */
 /** A starting point the Owner can rename, re-rate, add to or remove before saving. */
 const SUGGESTED_TIERS = [
   { name: "New", percent: "35" },
@@ -56,7 +57,7 @@ function Setup() {
         <ArrowLeft className="size-4" aria-hidden />
         Finance
       </Link>
-      <PageHeader title="Payments setup" lead="Where your customers' payments go, and how your invoices are made. Selestial's own plan is separate, under Settings › Plan & Usage." />
+      <PageHeader title="Payments setup" lead="Where your customers' payments go, and how your invoices are made. Selestial's own plan is separate, under Settings › Plan & usage." />
       {!data ? (
         <div className="grid gap-5 lg:grid-cols-2">
           <Skeleton className="h-72 rounded-2xl" />
@@ -64,8 +65,12 @@ function Setup() {
         </div>
       ) : (
         <div className="grid items-start gap-5 @3xl/main:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <div className="@3xl/main:col-span-2">
+            <ProviderChoice data={data} />
+          </div>
           <div className="grid gap-5">
             <StripeCard data={data} />
+            <SquareCard data={data} />
             <Reminders data={data} />
           </div>
           <InvoiceSettings data={data} />

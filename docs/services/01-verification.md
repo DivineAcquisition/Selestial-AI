@@ -120,6 +120,47 @@ Before the first commit, screenshots found and fixed three problems:
 - Property prices: proposing (workspace and Chat), the Owner's approval, visits and Chat quotes using
   them, keeping them through catalog changes, ending them, and the review and end reminders.
 
+## The workspace redesign (November 24, 2026)
+
+**Automated:**
+
+- `convex/servicesWorkspace.test.ts` (11 tests):
+  - Selestial's conversation beside a service is found again only by the person who started it.
+  - An answer for a draft that moved after the person asked changes nothing, and the model is told why.
+  - An answer's own earlier edits don't count as moved.
+  - Each edit is recorded part by part.
+  - Undo puts back only parts that still hold Selestial's value, and names what it kept. A second Undo
+    changes nothing, and Office can read edits but not undo them.
+  - `reviewPreview` says what publishing does without promising blanket grandfathering.
+  - `publishDraft`:
+    - publishes exactly the revision reviewed;
+    - refuses a stale screen and a Manager;
+    - finds nothing to do on a retry;
+    - won't publish example prices.
+  - Tenant isolation holds for both. `startingPoint` and catalog card fields are covered too.
+- `src/components/app/services/services.test.tsx`:
+  - the main page's actions;
+  - tool pages with a way back;
+  - the first visit with Set up with Selestial, the two pricing paths and provenance with a conflict;
+  - honest background preparation;
+  - cards with "No price yet", the first blocker and booking words;
+  - the prepared-drafts lead;
+  - the one-page editor's sections, rail and More options;
+  - Review & publish for the Owner, Submit for review for a Manager, and a review that is behind the
+    screen.
+
+**In a browser:** this was a temporary page with a fake Convex client, not committed.
+
+- The main page, the first visit, the editor with the Selestial panel, Review & publish and Review services
+  were captured at 1400px and 390px, with no horizontal scroll and no console errors.
+- The phone sheet for Review & publish was opened and captured.
+- axe (WCAG 2.2 AA) was run in light and dark. Contrast in the new screens was fixed. Two findings remain
+  in shared selection components used across the app: a 12px method-card description at 4.46:1 on its
+  selected tint, and an accent text link at 3.19:1 in dark mode.
+
+**Not verified:** a live Convex run of the Selestial panel against a real model, and Set up with Selestial
+against a real onboarding. Both reuse paths that are already tested.
+
 ## What is not verified or not built
 
 - **The live web search call.** No Anthropic key was available. The request follows the installed SDK's

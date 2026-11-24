@@ -47,11 +47,14 @@ export const CHECKS = [
   "mailboxes",
   "google",
   "connectors",
+  "quickbooks",
   "texting",
   "ai_billing",
   "messaging_billing",
   "messaging_attention",
   "company_deletion",
+  "provider_health",
+  "platform_sms",
 ] as const;
 export type Check = (typeof CHECKS)[number];
 export const checkValidator = literals(CHECKS);
@@ -80,6 +83,7 @@ export const KINDS = [
   "google_job_failed",
   "google_job_uncertain",
   "connector_reconnect",
+  "quickbooks_reconnect",
   // Billing
   "ai_settlement_unverified",
   "ai_settlement_overdue",
@@ -94,6 +98,13 @@ export const KINDS = [
   // Company deletion (convex/companyDeletion.ts)
   "company_deletion_due",
   "company_deletion_failed",
+  // Selestial's own provider accounts (convex/providerHealth.ts).
+  "telnyx_key_refused",
+  "telnyx_unreachable",
+  "telnyx_balance_low",
+  // Selestial's own texts (convex/platformSms.ts).
+  "verification_abuse",
+  "platform_sms_failing",
   // Grouped: one provider failing for several companies at once.
   "provider_outage",
 ] as const;
@@ -121,6 +132,7 @@ export const KIND_LABELS: Record<Kind, string> = {
   google_job_failed: "Google work failed",
   google_job_uncertain: "Google write outcome unknown",
   connector_reconnect: "Connected system needs reconnecting",
+  quickbooks_reconnect: "QuickBooks needs reconnecting",
   ai_settlement_unverified: "AI credit charge unsettled",
   ai_settlement_overdue: "AI credit settlement overdue",
   ai_work_unbilled: "Finished AI work not charged",
@@ -133,6 +145,11 @@ export const KIND_LABELS: Record<Kind, string> = {
   company_deletion_due: "Company deletion due soon",
   company_deletion_failed: "Company deletion run failed",
   early_offer_switch: "Early-user price not moved to $299",
+  telnyx_key_refused: "Telnyx refuses Selestial's API key",
+  telnyx_unreachable: "Telnyx not answering",
+  telnyx_balance_low: "Telnyx account balance low",
+  verification_abuse: "Unusual sign-in code traffic",
+  platform_sms_failing: "Selestial's own texts failing",
   provider_outage: "Provider failing for several companies",
 };
 

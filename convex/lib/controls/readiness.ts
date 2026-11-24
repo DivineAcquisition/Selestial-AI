@@ -95,7 +95,7 @@ export function checkNeed(need: Need, facts: Facts): Check {
     case "sms":
       return { need, ok: facts.sms.ok, words: facts.sms.ok ? "business texting" : facts.sms.words, ...(facts.sms.ok ? {} : { next: { label: "Set up business texting", href: "/app/texting" } }) };
     case "email":
-      return { need, ok: facts.email.ok, words: facts.email.ok ? "email" : facts.email.words, ...(facts.email.ok ? {} : { next: { label: "Open Privacy & messaging", href: "/app/settings/compliance" } }) };
+      return { need, ok: facts.email.ok, words: facts.email.ok ? "email" : facts.email.words, ...(facts.email.ok ? {} : { next: { label: "Open Email & texting", href: "/app/settings/messaging" } }) };
     case "outreach": {
       const ok = facts.sms.ok || facts.email.ok;
       return { need, ok, words: ok ? (facts.sms.ok && facts.email.ok ? "texting and email" : facts.sms.ok ? "business texting" : "email") : `Neither texting nor email can reach customers yet. ${facts.sms.words}`, ...(ok ? {} : { next: { label: "Set up business texting", href: "/app/texting" } }) };

@@ -166,7 +166,7 @@ export const SHARED_ITEMS: readonly NavItem[] = [
     path: `${APP_ROOT}/services`,
     availability: LIVE,
     minimumRole: "office",
-    accessNote: "Everyone reads the catalog. Owners and Managers draft and submit changes. Only the Owner approves and publishes, and only the Owner sees costs and profitability. Not Selestial's own plans or credits, which are under Settings › Plan & Usage.",
+    accessNote: "Everyone reads the catalog. Owners and Managers draft and submit changes. Only the Owner approves and publishes, and only the Owner sees costs and profitability. Not Selestial's own plans or credits, which are under Settings › Plan & usage.",
   },
   {
     id: "customers",
@@ -197,7 +197,7 @@ export const SHARED_ITEMS: readonly NavItem[] = [
     path: `${APP_ROOT}/agreements`,
     availability: LIVE,
     minimumRole: "office",
-    accessNote: "Customer documents are open to everyone who works customers. Workforce documents are the Owner's and Managers', and pay or classification documents are the Owner's alone. Selestial's own terms are under Settings › Selestial Terms & Agreements.",
+    accessNote: "Customer documents are open to everyone who works customers. Workforce documents are the Owner's and Managers', and pay or classification documents are the Owner's alone. Selestial's own terms are under Settings › My account & security › Selestial terms.",
   },
   {
     id: "finance",
@@ -226,7 +226,7 @@ export const FOOTER_ITEMS: readonly NavItem[] = [
     id: "settings",
     label: "Settings",
     section: "footer",
-    purpose: "Business hours and services, people, agent permissions and rules, connections, security, compliance and Selestial's own plans.",
+    purpose: "Company profile, office team, agent permissions, email and texting, connected apps, Selestial's own plan, and each person's account and notifications.",
     path: `${APP_ROOT}/settings`,
     availability: LIVE,
     minimumRole: "office",
@@ -241,6 +241,7 @@ export const SETTINGS_PAGES: readonly { path: string; label: string; purpose: st
 
 /** Pages inside Settings › Integrations, reached from their card there. They have no navigation entry of their own. */
 export const INTEGRATION_PAGES: readonly { path: string; label: string; purpose: string }[] = [
+  { path: `${APP_ROOT}/settings/integrations/quickbooks`, label: "QuickBooks Online", purpose: "Connect the company's QuickBooks Online company, check the connection, reconnect or disconnect it." },
   { path: `${APP_ROOT}/settings/integrations/quo`, label: "Quo", purpose: "Connect the company's own Quo (formerly OpenPhone) account: numbers, agents, the test text and recovery." },
 ];
 
@@ -260,6 +261,7 @@ export const AGREEMENT_PAGES: readonly { path: string; label: string; purpose: s
 /** Company setup: a full-screen guided start for the Owner, outside the sidebar. Reached at company creation and from Home. */
 export const SETUP_PAGES: readonly { path: string; label: string; purpose: string }[] = [
   { path: `${APP_ROOT}/setup`, label: "Set up your company", purpose: "The Owner confirms the company's details, chooses what Selestial helps with first, and opens the workspace." },
+  { path: `${APP_ROOT}/setup/business`, label: "Your business setup", purpose: "What Selestial prepared from the Owner's answers: service drafts with suggested prices, booking forms, agreements and job standards, each with its status, what is missing and the next step. The answers it used can be changed here." },
   { path: `${APP_ROOT}/first-work`, label: "Your first work", purpose: "Where setup lands: what is prepared, what waits for a decision, what agents sent, and one next step." },
   { path: `${APP_ROOT}/migration`, label: "Bring your business to Selestial", purpose: "Owners and Managers move customers, properties and upcoming work in from another system or a spreadsheet, review every record, and release the schedule when ready. Opened from setup, Settings, Clients and Home." },
   { path: `${APP_ROOT}/texting`, label: "Set up business texting", purpose: "The Owner gets the company its own number and texting registration, step by step, and follows it to ready. Opened from settings, agent pages and setup." },
@@ -275,15 +277,16 @@ export const SALES_PAGES: readonly { path: string; label: string; purpose: strin
 ];
 
 export const SERVICES_PAGES: readonly { path: string; label: string; purpose: string }[] = [
-  { path: `${APP_ROOT}/services/studio`, label: "Pricing Studio", purpose: "Test example jobs against live or draft services: price, time, crew, costs and what remains." },
-  { path: `${APP_ROOT}/services/research`, label: "Research & Insights", purpose: "Research briefs: what was found, what is comparable, what is uncertain, with every source." },
+  { path: `${APP_ROOT}/services/studio`, label: "Compare example jobs", purpose: "Test example jobs against live or draft services: price, time, crew, costs and what remains." },
+  { path: `${APP_ROOT}/services/research`, label: "Market research", purpose: "Research briefs: what was found, what is comparable, what is uncertain, with every source." },
   { path: `${APP_ROOT}/services/research/[id]`, label: "Research brief", purpose: "One brief, its findings labeled by kind, and its sources." },
-  { path: `${APP_ROOT}/services/changes`, label: "Changes", purpose: "Every change waiting for review, scheduled or published, and the history of each service." },
+  { path: `${APP_ROOT}/services/changes`, label: "Review history", purpose: "Every change waiting for review, scheduled or published, and the history of each service." },
   { path: `${APP_ROOT}/services/changes/[id]`, label: "Change", purpose: "One change: what it changes, prices before and after, evidence, specialists' checks, approval." },
-  { path: `${APP_ROOT}/services/new`, label: "New service", purpose: "Build with Selestial, use a template, import existing pricing, or add a service." },
+  { path: `${APP_ROOT}/services/new`, label: "New service", purpose: "Describe a service to Selestial, use a template, import prices, or create one manually." },
+  { path: `${APP_ROOT}/services/review`, label: "Review services", purpose: "Several drafts reviewed together, each published or submitted on its own for the version shown." },
   { path: `${APP_ROOT}/services/setup`, label: "Pricing setup", purpose: "What the company told setup: areas, team, costs, margin and strategy." },
   { path: `${APP_ROOT}/services/imports/[id]`, label: "Import review", purpose: "Rows read from a spreadsheet or pasted text, each reviewed before it becomes a draft." },
-  { path: `${APP_ROOT}/services/[id]`, label: "Service", purpose: "One service: the guided builder for its draft, its live version and its history." },
+  { path: `${APP_ROOT}/services/[id]`, label: "Service", purpose: "One service: its workspace (editor, customer preview, Selestial, Review & publish), its live version and its history." },
 ];
 
 /** Pages inside Finance, reached from it. They have no sidebar entry of their own. */
@@ -514,6 +517,8 @@ export const EXISTING_ROUTES: readonly { pattern: string; today: string; becomes
   { pattern: `${APP_ROOT}/agents/recruiter/screening`, today: "Redirects to Recruiter › Applicants, the decisions view (November 23, 2026).", becomes: "Removed once old links have had time to move." },
   { pattern: `${APP_ROOT}/agents/recruiter/offers-agreements`, today: "Redirects to Recruiter › Applicants, the offers view (November 23, 2026).", becomes: "Removed once old links have had time to move." },
   { pattern: `${APP_ROOT}/agents/recruiter/onboarding-readiness`, today: "Redirects to Recruiter › Applicants, the onboarding view (November 23, 2026).", becomes: "Removed once old links have had time to move." },
+  { pattern: `${APP_ROOT}/settings/dispatch`, today: "Redirects to Dispatch › Playbook, the one editor of Dispatch's rules (Settings reorganized November 24, 2026).", becomes: "Removed once old links have had time to move." },
+  { pattern: `${APP_ROOT}/settings/recruiting`, today: "Redirects to Recruiter › Hiring setup, keeping its query so a Gmail connection begun before the move finishes (Settings reorganized November 24, 2026).", becomes: "Removed once old links have had time to move." },
   { pattern: `${APP_ROOT}/settings/connections`, today: "Redirects to Settings › Integrations (Connections was folded in on November 16, 2026).", becomes: "Removed once old links have had time to move." },
   { pattern: `${APP_ROOT}/insights`, today: "The week's measures.", becomes: "Reports, at /app/reports, with a redirect from here." },
   {

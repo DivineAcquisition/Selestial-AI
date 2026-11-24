@@ -46,6 +46,7 @@ export const FACTS = {
   "company.location": { label: "Where you are based", many: false },
   "company.areas": { label: "Areas you serve", many: false },
   "services.categories": { label: "Who you clean for", many: true },
+  "services.offered": { label: "Services you offer", many: true },
   "workforce.arrangement": { label: "How your cleaners work with you", many: true },
   "scale.cleaners": { label: "People who clean", many: false },
   "tools.current": { label: "What you use today", many: true },

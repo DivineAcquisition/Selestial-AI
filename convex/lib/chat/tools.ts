@@ -38,6 +38,7 @@ import { AGREEMENT_TOOLS } from "./agreementTools";
 import { BOOKING_TOOLS } from "./bookingTools";
 import { CLEANER_TOOLS } from "./cleanerTools";
 import { SERVICE_TOOLS } from "./serviceTools";
+import { CALENDAR_TOOLS } from "./calendarTools";
 import { GOOGLE_TOOLS } from "./googleTools";
 import { SALES_TOOLS } from "./salesTools";
 import { describeOpportunity, opportunityLink, PIPELINE_TOOLS } from "./pipelineTools";
@@ -1054,7 +1055,7 @@ export const ASK_FOLLOWUP = {
   input: { type: "object" as const, properties: { question: { type: "string" as const, max: 300 }, options: { type: "array" as const, items: { type: "string" as const, max: 80 }, maxItems: 5, minItems: 2 } } },
 };
 
-const ALL: ChatTool[] = [...TOOLS, ...AGREEMENT_TOOLS, ...SERVICE_TOOLS, ...GOOGLE_TOOLS, ...FINANCE_TOOLS, ...CLEANER_TOOLS, ...BOOKING_TOOLS, ...CLIENT_TOOLS, ...SALES_TOOLS, ...PIPELINE_TOOLS, ...RETENTION_TOOLS, ...QUALITY_TOOLS];
+const ALL: ChatTool[] = [...TOOLS, ...AGREEMENT_TOOLS, ...SERVICE_TOOLS, ...GOOGLE_TOOLS, ...CALENDAR_TOOLS, ...FINANCE_TOOLS, ...CLEANER_TOOLS, ...BOOKING_TOOLS, ...CLIENT_TOOLS, ...SALES_TOOLS, ...PIPELINE_TOOLS, ...RETENTION_TOOLS, ...QUALITY_TOOLS];
 export const TOOL_BY_NAME = new Map(ALL.map((tool) => [tool.name, tool]));
 export const ALL_TOOLS: readonly ChatTool[] = ALL;
 

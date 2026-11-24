@@ -390,7 +390,7 @@ export const openReading = internalMutation({
     const connection = await ctx.db.get(args.connectionId);
     const company = connection ? await ctx.db.get(connection.companyId) : null;
     if (!connection || !company) return null;
-    const opened = await openExecution(ctx, { company, key: `hiring-read:${connection._id}:${args.messageId.slice(0, 200)}`, agent: "recruiter", task: "hiring_message_reading", units: 1, autonomous: true, origin: "automatic", source: { table: "mailboxConnections", id: connection._id }, link: { label: "Hiring inbox", path: "/app/settings/recruiting" } });
+    const opened = await openExecution(ctx, { company, key: `hiring-read:${connection._id}:${args.messageId.slice(0, 200)}`, agent: "recruiter", task: "hiring_message_reading", units: 1, autonomous: true, origin: "automatic", source: { table: "mailboxConnections", id: connection._id }, link: { label: "Hiring inbox", path: "/app/agents/recruiter/hiring-setup" } });
     return opened.ok && !opened.repeated ? opened.executionId : null;
   },
 });

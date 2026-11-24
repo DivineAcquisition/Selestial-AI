@@ -49,14 +49,14 @@ const TABS = [
 ] as const;
 
 function Tabs() {
-  return <SegmentedTabs label="Plan & Usage sections" tabs={TABS} active={useTab()} />;
+  return <SegmentedTabs label="Plan & usage sections" tabs={TABS} active={useTab()} />;
 }
 
 function PlanUsageInner() {
   const { companyId, role } = useCompany();
   const params = useSearchParams();
   const data = useQuery(api.billing.planAndUsage, role === "owner" ? { companyId } : "skip");
-  if (role !== "owner") return <OwnerOnly what="Plan & Usage" />;
+  if (role !== "owner") return <OwnerOnly what="Plan & usage" />;
   if (!data) return <Skeleton className="h-96 rounded-2xl" />;
   return (
     <Motion>

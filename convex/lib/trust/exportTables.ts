@@ -115,6 +115,8 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   { table: "activations", index: "by_company_started" },
   { table: "activationTasks", index: "by_company_state" },
   { table: "memberNotices", index: "by_company_dedupe" },
+  // Business configuration: what was prepared from the owner's answers (convex/lib/configure/schema.ts).
+  { table: "configOutputs", index: "by_company_kind" },
   // Company Chat (convex/lib/chat/schema.ts). The conversations themselves are not here: see NOT_EXPORTED.
   // Admin Support Sessions: when Selestial was in the workspace, why, and what it changed.
   { table: "supportSessions", index: "by_company_started" },
@@ -143,6 +145,7 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   // Google (convex/lib/google/schema.ts). What was connected, chosen, received and sent; never a credential.
   { table: "googleConnections", index: "by_company" },
   { table: "connectorConnections", index: "by_company_system" },
+  { table: "quickbooksConnections", index: "by_company" },
   { table: "setupWork", index: "by_company_agent" },
   { table: "googleResources", index: "by_company_kind" },
   { table: "googleJobs", index: "by_company_status", omit: ["payload"], why: "Internal work instructions; what each job did is in its result and in the event log." },
@@ -158,6 +161,7 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   { table: "services", index: "by_company_status" },
   { table: "serviceVersions", index: "by_company_service_version" },
   { table: "serviceDrafts", index: "by_company_service" },
+  { table: "serviceDraftEdits", index: "by_company_service" },
   { table: "serviceChanges", index: "by_company_updated", omit: ["scheduledFunctionId"], why: "An internal reference to the scheduler." },
   { table: "propertyPrices", index: "by_company_state" },
   // Clients & Properties (convex/lib/clients/schema.ts): contacts, plans, internal notes and texts clients sent.
@@ -202,6 +206,7 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   // Finance: the company's own money (convex/lib/finance/schema.ts).
   { table: "financeSettings", index: "by_company" },
   { table: "stripeAccounts", index: "by_company", omit: ["onboarding"], why: "A single-use Stripe onboarding link." },
+  { table: "squareConnections", index: "by_company", omit: ["sealedAccessToken", "sealedRefreshToken", "refreshingUntil"], why: "Sealed Square authorizations: credentials, never exported." },
   { table: "agreementSigningLinks", index: "by_company_request", omit: ["publicId"], why: "Half of a signing link." },
   // Sales (convex/lib/sales/schema.ts).
   { table: "salesOpportunities", index: "by_company_updated" },
@@ -287,6 +292,7 @@ export const NOT_EXPORTED: Readonly<Record<string, string>> = {
   chatUploads: "Internal file references for chat attachments; the files themselves are private to the member who uploaded them.",
   chatMessages: "The words of private chats, for the same reason as conversations.",
   googleCredentials: "A sealed authorization to the company's Google account; it opens the account, so a copy must never leave. The connection itself is exported.",
+  squareOAuthStates: "Short-lived, single-use records of a Square authorization in progress; while one waits to be confirmed it holds sealed tokens (discarded within fifteen minutes), so a copy must never leave.",
   googleOAuthStates: "Short-lived, single-use records of a Google sign-in in progress; while one waits to be confirmed it holds a sealed authorization (deleted within fifteen minutes), so a copy must never leave.",
   googleLeadKeys: "The hash of the lead-form key; it proves Google's deliveries and is useless outside Selestial.",
   googleWatches: "Notification channels with Google, renewed automatically; their secrets must not leave.",
@@ -296,6 +302,8 @@ export const NOT_EXPORTED: Readonly<Record<string, string>> = {
   qualityCredentials: "A sealed key to the company's phone platform; it opens that account, so a copy must never leave. The connection itself is exported.",
   quoSecrets: "The company's sealed Quo API key and webhook secret; they open the Quo account, so a copy must never leave. The connection itself is exported.",
   connectorStates: "Ten-minute, single-use records of a Jobber sign-in in progress; nothing in them is about the business.",
+  quickbooksCredentials: "Sealed tokens for the company's QuickBooks Online company; they open its books, so a copy must never leave. The connection itself is exported.",
+  quickbooksStates: "Ten-minute, single-use records of a QuickBooks sign-in in progress; nothing in them is about the business.",
   connectorReads: "A copy of another system's client list kept for a day while the owner checks it; what was imported is exported as clients and properties.",
   googleTravel: "Cached drive times between rounded map points, recomputed as needed.",
   portalCodes: "Hashes of one-time codes that unlock a portal for ten minutes; nothing in them is about the business.",

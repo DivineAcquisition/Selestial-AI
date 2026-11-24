@@ -19,6 +19,7 @@ import { messageByKey, type SendIntent } from "../messaging/outbox";
 import { checkSend, type PolicyAnswer, type PolicyCode } from "../messaging/policy";
 import { amountRequested } from "./invoiceState";
 import { payToken, payUrl } from "./payLinks";
+import { startingState } from "../messaging/planning";
 
 type Ctx = QueryCtx | MutationCtx;
 export type Channel = "email" | "sms";
@@ -88,7 +89,8 @@ export async function queueCustomerMessage(ctx: MutationCtx, planned: PlannedCus
       retryAt = answer.retryAt;
     }
   }
-  const status = !problem ? "queued" : retryAt !== undefined ? "held" : "not_sent";
+  const start = startingState({ problem, code: code, retryAt, now });
+  const status = start.status;
   const messageId = await ctx.db.insert("messages", {
     companyId: company._id,
     purpose: planned.purpose,
@@ -104,7 +106,7 @@ export async function queueCustomerMessage(ctx: MutationCtx, planned: PlannedCus
     attempts: 0,
     provider: provider?.name,
     problem: problem ?? undefined,
-    refusal: status === "not_sent" && code ? code : undefined,
+    ...start.fields,
     queuedAt: now,
   });
   if (status !== "not_sent" && to) await ctx.db.insert("sendIntents", { companyId: company._id, messageId, channel, address: to, at: now, ...intent });

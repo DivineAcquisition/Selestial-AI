@@ -19,13 +19,16 @@ type Call = { method: string; path: string; body: Record<string, unknown> | null
  * exist once created, can be listed by their references, and answer "pending" until checked again. Every
  * call is recorded, so a test can see that nothing paid for happened twice.
  */
-export function fakeTelnyx(options: { brand?: (checks: number) => Record<string, unknown>; campaign?: (checks: number) => string; assignment?: (checks: number) => string; available?: () => boolean; loseFirstOrderAnswer?: boolean; /** The number has left the account (a completed port-out). */ portedOut?: () => boolean; /** A write Telnyx refuses, by "METHOD /path". */ refuse?: (call: string) => boolean } = {}) {
+export function fakeTelnyx(options: { brand?: (checks: number) => Record<string, unknown>; campaign?: (checks: number) => string; assignment?: (checks: number) => string; available?: () => boolean; loseFirstOrderAnswer?: boolean; /** The answer to the first messaging profile creation is lost after Telnyx made it. */ loseFirstProfileAnswer?: boolean; /** The number has left the account (a completed port-out). */ portedOut?: () => boolean; /** A write Telnyx refuses, by "METHOD /path". */ refuse?: (call: string) => boolean } = {}) {
   const calls: Call[] = [];
   const counts: Record<string, number> = {};
   const orders: { id: string; reference: string; checks: number }[] = [];
   const campaigns: { campaignId: string; referenceId: string }[] = [];
   let brandMade = false;
   let lostOne = false;
+  let lostProfile = false;
+  const profiles: { id: string; name: string; webhook: string }[] = [];
+  const autoReplies: { profileId: string; op: string; text: string }[] = [];
   const released = new Set<string>();
   const unassigned = new Set<string>();
   const deletedCampaigns = new Set<string>();
@@ -71,6 +74,24 @@ export function fakeTelnyx(options: { brand?: (checks: number) => Record<string,
       ];
       if (endsWith) return json({ data: all.filter((row) => row.phone_number.endsWith(endsWith) && (options.available?.() ?? true)) });
       return json({ data: all });
+    }
+    // A company's own messaging profile and its keyword answers.
+    if (method === "POST" && path === "/messaging_profiles") {
+      const profile = { id: `profile-${profiles.length + 1}`, name: String(body?.name), webhook: String(body?.webhook_url) };
+      profiles.push(profile);
+      if (options.loseFirstProfileAnswer && !lostProfile) {
+        lostProfile = true;
+        throw new TypeError("network connection lost");
+      }
+      return json({ data: { id: profile.id, name: profile.name, webhook_url: profile.webhook, enabled: true } });
+    }
+    if (method === "GET" && path === "/messaging_profiles") {
+      const name = url.searchParams.get("filter[name]");
+      return json({ data: profiles.filter((row) => !name || row.name === name).map((row) => ({ id: row.id, name: row.name, webhook_url: row.webhook })) });
+    }
+    if (method === "POST" && /^\/messaging_profiles\/[^/]+\/autoresp_configs$/.test(path)) {
+      autoReplies.push({ profileId: path.split("/")[2], op: String(body?.op), text: String(body?.resp_text) });
+      return json({ data: { id: `ar-${autoReplies.length}`, op: body?.op } });
     }
     if (method === "POST" && path === "/number_orders") {
       const order = { id: `order-${orders.length + 1}`, reference: String(body?.customer_reference), checks: 0 };
@@ -126,7 +147,7 @@ export function fakeTelnyx(options: { brand?: (checks: number) => Record<string,
     return json({ errors: [{ code: "10005", title: "Resource not found" }] }, 404);
   };
   const posts = () => calls.filter((call) => call.method !== "GET").map((call) => `${call.method} ${call.path}`);
-  return { fetcher, calls, posts, counts };
+  return { fetcher, calls, posts, counts, profiles, autoReplies };
 }
 
 export async function settle(t: T) {

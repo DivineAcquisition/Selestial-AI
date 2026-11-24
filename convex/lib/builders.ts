@@ -243,6 +243,19 @@ export type StaffAccess = SignedIn & { staff: Doc<"staff"> };
  * matches an active staff row. The very first admin can be named by STAFF_BOOTSTRAP_EMAIL on the
  * deployment; that setting matters only while the staff table has no active admin.
  */
+/**
+ * The founder of Selestial, who may claim the first staff admin by signing in with this confirmed
+ * email. It applies only while no active staff admin exists, exactly like STAFF_BOOTSTRAP_EMAIL, and
+ * exists so the first admin can be set up from the sign-in page rather than the backend's console.
+ */
+export const FOUNDING_ADMIN_EMAILS: readonly string[] = ["malik@divineacquisition.io"];
+
+/** Who may claim the first staff admin: the founder, and anyone the deployment's setting names. */
+export function bootstrapEmails(): string[] {
+  const configured = process.env.STAFF_BOOTSTRAP_EMAIL?.trim().toLowerCase();
+  return [...FOUNDING_ADMIN_EMAILS, ...(configured ? [configured] : [])];
+}
+
 export async function staffFor(ctx: QueryCtx, who: SignedIn): Promise<Doc<"staff"> | "bootstrap" | null> {
   if (!who.emailVerified || !who.email) return null;
   const rows = await ctx.db
@@ -255,8 +268,7 @@ export async function staffFor(ctx: QueryCtx, who: SignedIn): Promise<Doc<"staff
     // Bound to another sign-in: the same person only when the sign-in service itself changed.
     return who.emailVerified && row.userIssuer !== who.issuer ? row : null;
   }
-  const bootstrap = process.env.STAFF_BOOTSTRAP_EMAIL?.trim().toLowerCase();
-  if (!bootstrap || bootstrap !== who.email) return null;
+  if (!bootstrapEmails().includes(who.email)) return null;
   const anyAdmin = await ctx.db.query("staff").take(50);
   return anyAdmin.some((item) => item.status === "active" && item.role === "admin") ? null : "bootstrap";
 }
@@ -432,12 +444,21 @@ export function linkMutation<V extends AnyValidators, R>(def: {
   action: LinkAction;
   args: V;
   handler: (ctx: MutationCtx & LinkAccess, args: ObjectType<V>) => R;
+  /**
+   * Read only: what to answer when the link is already closed because this same action already happened (a
+   * second tap on Accept). Null means the usual refusal. It never acts and is never recorded as an action.
+   */
+  whenClosed?: (ctx: QueryCtx & LinkAccess) => Promise<Awaited<R> | null>;
 }): RegisteredMutation<"public", ObjectType<V> & { token: string }, R> {
   return mutation({
     args: { token: v.string(), ...def.args },
     handler: async (ctx: MutationCtx, args: { token: string }) => {
       const { token, ...rest } = args;
       const access = await linkAccess(ctx, token);
+      if (access.linkState !== "active" && def.whenClosed && access.link.allowed.includes(def.action)) {
+        const already = await def.whenClosed({ ...ctx, ...access });
+        if (already !== null) return already;
+      }
       if (access.linkState !== "active") throw userError(CLOSED_WORDS[access.linkState], "not_allowed");
       if (!access.link.allowed.includes(def.action)) notAllowed();
       const result = await def.handler({ ...ctx, ...access }, rest as ObjectType<V>);

@@ -331,7 +331,7 @@ function ProposeForm({ serviceId, spec, start, today, onCancel }: { serviceId: I
           ) : null}
         </div>
       ) : null}
-      <p className="text-xs text-muted-foreground">Goes to the Owner in Changes. Visits use it only once it is approved{minutes ? `, planned at ${minutesWords(minutes)} of cleaner time` : ""}.</p>
+      <p className="text-xs text-muted-foreground">Goes to the Owner for review. Visits use it only once it is approved{minutes ? `, planned at ${minutesWords(minutes)} of cleaner time` : ""}.</p>
       <FormError message={error} />
       <div className="flex flex-wrap gap-2">
         <Button type="submit" variant="primary" size="sm" loading={busy}>

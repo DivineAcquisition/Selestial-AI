@@ -63,6 +63,9 @@ import {
   verifyBrandCode,
   type Answer,
   type BrandInput,
+  createMessagingProfile,
+  findMessagingProfiles,
+  setAutoResponse,
 } from "./lib/messaging/telnyxAccount";
 import { meteringOn, postAdjustment } from "./lib/messagingBilling/ledger";
 import { rateCardAt } from "./lib/messagingBilling/rates";
@@ -83,6 +86,11 @@ const DAY = 24 * HOUR;
 const GIVE_UP_AFTER = 45 * DAY;
 /** How long a create call's answer is waited for before looking for what it may have made. */
 const SETTLE = 3 * MINUTE;
+
+/** The company's messaging profile name at Telnyx: who it is for, and the request that made it (unique, so a lost answer is found again). */
+export function profileName(displayName: string, requestId: string): string {
+  return `Selestial · ${displayName.replace(/\s+/g, " ").trim().slice(0, 80)} · ${requestId}`;
+}
 const LEASE = 2 * MINUTE;
 const WORKING: Doc<"textingRequests">["status"][] = ["approved", "provisioning", "waiting_on_carriers"];
 const OPEN: Doc<"textingRequests">["status"][] = ["requested", ...WORKING, "needs_you"];
@@ -574,6 +582,9 @@ const progressFields = v.object({
   step: v.optional(v.string()),
   problem: v.optional(v.string()),
   numberOrderId: v.optional(v.string()),
+  messagingProfileId: v.optional(v.string()),
+  profileAttemptAt: v.optional(v.number()),
+  profileRepliesAt: v.optional(v.number()),
   orderReference: v.optional(v.string()),
   orderAttemptAt: v.optional(v.number()),
   numberOrderedAt: v.optional(v.number()),
@@ -591,7 +602,7 @@ const progressFields = v.object({
   filedVersion: v.optional(v.number()),
   otp: v.optional(otpValidator),
   needs: v.optional(needsValidator),
-  diagnostics: v.optional(v.object({ brand: v.optional(v.string()), campaign: v.optional(v.string()), assignment: v.optional(v.string()), order: v.optional(v.string()) })),
+  diagnostics: v.optional(v.object({ brand: v.optional(v.string()), campaign: v.optional(v.string()), assignment: v.optional(v.string()), order: v.optional(v.string()), profileReplies: v.optional(v.string()) })),
   /** Fields to remove, for example a number order that failed. */
   clear: v.optional(v.array(v.string())),
   /** A registration fee this step makes due. */
@@ -670,6 +681,7 @@ export const activate = internalMutation({
       messaging: {
         ...current,
         smsNumber: row.phoneNumber,
+        ...(row.messagingProfileId ? { messagingProfileId: row.messagingProfileId } : {}),
         senderName: row.brand.displayName,
         registration: {
           status: "approved",
@@ -902,6 +914,45 @@ export const provision = internalAction({
           return void (await later(30 * MINUTE, { status: "waiting_on_carriers", diagnostics: diag, step: "The carriers are reviewing how you'll text." }));
         }
 
+        // D0. The company's own messaging profile, so its number never shares opt-outs with another company's
+        // (Telnyx keeps STOP blocks per profile). Made once: a creation whose answer was lost is found by name.
+        if (r.messagingProfileId === undefined) {
+          const hooks = telnyxWebhookUrl();
+          if (!hooks) return void (await fail({ ok: false, problem: "This backend has no public address for Telnyx's webhooks (CONVEX_SITE_URL or TELNYX_WEBHOOK_URL).", retryable: false }, "Setting up the texting profile"));
+          const name = profileName(r.brand.displayName, r._id);
+          if (r.profileAttemptAt !== undefined) {
+            const found = await findMessagingProfiles(fetch, name);
+            if (!found.ok) return void (await fail(found, "Looking for the texting profile"));
+            if (found.value[0]) {
+              await save({ messagingProfileId: found.value[0].id });
+              continue;
+            }
+            if (Date.now() - r.profileAttemptAt < SETTLE) return void (await later(SETTLE, { status: "provisioning" }));
+          }
+          await save({ profileAttemptAt: Date.now(), status: "provisioning", step: "Setting up your texting profile." });
+          const made = await createMessagingProfile(fetch, { name, webhookUrl: hooks });
+          if (!made.ok) return void (await fail(made, "Setting up the texting profile"));
+          await save({ messagingProfileId: made.value.id });
+          continue;
+        }
+        // D0'. Its answers to STOP, START and HELP, in the company's registered words. Not fatal: without them
+        // Telnyx still answers with its default words, and Selestial records every opt-out either way.
+        if (r.profileRepliesAt === undefined) {
+          const sender = r.brand.displayName;
+          const replies = [
+            { op: "stop" as const, keywords: ["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"], text: r.drafts?.stop_reply ?? `You will no longer receive texts from ${sender}. Reply START to resubscribe.` },
+            { op: "start" as const, keywords: ["START", "UNSTOP"], text: r.drafts?.start_reply ?? `You will receive texts from ${sender} again. Reply STOP to stop.` },
+            { op: "info" as const, keywords: ["HELP", "INFO"], text: r.drafts?.help_reply ?? `${sender}: for help, contact the business directly. Reply STOP to stop texts.` },
+          ];
+          const problems: string[] = [];
+          for (const reply of replies) {
+            const set = await setAutoResponse(fetch, r.messagingProfileId, reply);
+            if (!set.ok) problems.push(`${reply.op}: ${set.problem}`);
+          }
+          await save({ profileRepliesAt: Date.now(), ...(problems.length ? { diagnostics: { profileReplies: problems.join("; ").slice(0, 500) } } : {}) });
+          continue;
+        }
+
         // D. The number: checked again, then bought, only now that the carriers approved.
         if (r.numberOrderedAt === undefined) {
           if (!r.numberOrderId) {
@@ -922,7 +973,8 @@ export const provision = internalAction({
               return void (await save({ status: "needs_you", needs: { kind: "number", words: `The number you chose, ${r.phoneNumber}, was taken while the carriers reviewed your registration. Choose another number; nothing was bought or charged for it.`, fields: [], at: Date.now() }, clear: ["orderReference", "orderAttemptAt"], step: "Choose another number." }));
             }
             await save({ orderReference: reference, orderAttemptAt: Date.now(), status: "provisioning", step: "Buying your number." });
-            const ordered = await orderNumber(fetch, { phoneNumber: r.phoneNumber, messagingProfileId: process.env.TELNYX_MESSAGING_PROFILE_ID?.trim() || null, reference });
+            // Onto the company's own profile (D0), never a profile shared with other companies.
+            const ordered = await orderNumber(fetch, { phoneNumber: r.phoneNumber, messagingProfileId: r.messagingProfileId, reference });
             if (!ordered.ok) return void (await fail(ordered, "Buying the number"));
             await save({ numberOrderId: ordered.value.orderId, diagnostics: { order: ordered.value.status } });
             continue;

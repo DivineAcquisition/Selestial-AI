@@ -21,7 +21,9 @@ import { emailProvider } from "../email/provider";
 import { quietUntil } from "../messaging/policy";
 import { roleOf } from "../roles";
 import { CATEGORY_INFO, EVENT_INFO, NIGHT, rolesFor, type NoticeEvent, type NoticeFacts } from "./catalog";
-import { emailOn, noticeSuppression, preferencesOf, SUPPRESSION_WORDS } from "./preferences";
+import { DEFAULT_SMS_QUIET, emailOn, noticeSuppression, preferencesOf, smsOn, SUPPRESSION_WORDS } from "./preferences";
+import { queueNoticeIn } from "../../platformSms";
+import { SMS_WORDS } from "./smsWords";
 
 export type NoticeInput = {
   companyId: Id<"companies">;
@@ -71,7 +73,11 @@ export async function notifyMembers(ctx: MutationCtx, input: NoticeInput): Promi
 
   for (const member of await recipientsFor(ctx, input)) {
     const role = roleOf(member.role);
-    if (!emailOn(await preferencesOf(ctx, input.companyId, member._id), info.category, role)) {
+    const prefs = await preferencesOf(ctx, input.companyId, member._id);
+    // A text too, to the person's own confirmed phone, when they turned it on for this category. Selestial's own
+    // text (never charged to the company), naming the company and what happened, never a customer.
+    await planText(ctx, { input, member, company, prefs, now });
+    if (!emailOn(prefs, info.category, role)) {
       skipped.push({ memberId: member._id, why: "settings" });
       continue;
     }
@@ -119,6 +125,20 @@ export async function notifyMembers(ctx: MutationCtx, input: NoticeInput): Promi
     planned.push({ memberId: member._id, messageId, status });
   }
   return { planned, skipped };
+}
+
+async function planText(ctx: MutationCtx, args: { input: NoticeInput; member: Doc<"members">; company: Doc<"companies">; prefs: Doc<"notificationPreferences"> | null; now: number }) {
+  const { input, member, company, prefs, now } = args;
+  const info = EVENT_INFO[input.event];
+  const words = SMS_WORDS[input.event];
+  if (!words || !member.userId || !smsOn(prefs, info.category)) return;
+  const phone = await ctx.db
+    .query("userPhones")
+    .withIndex("by_user", (q) => q.eq("userId", member.userId!))
+    .first();
+  if (!phone?.phone || !phone.verifiedAt) return;
+  const waitUntil = info.priority === "critical" ? null : quietUntil(now, company.timezone, prefs?.smsQuiet ?? DEFAULT_SMS_QUIET);
+  await queueNoticeIn(ctx, { kind: "account_notice", reason: input.event, dedupeKey: `text:${noticeKey(input, member._id)}`, to: phone.phone, userId: member.userId, body: `Selestial · ${company.name.slice(0, 40)}: ${words} Open Selestial to see it.`, ...(waitUntil !== null ? { notBefore: waitUntil } : {}) });
 }
 
 /** Whether a notice in this category may carry an unsubscribe link for this person. */

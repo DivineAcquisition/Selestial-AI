@@ -12,6 +12,7 @@ import { afterOfferTextRefused } from "./lib/dispatch/delivery";
 import { assignmentLinks, issueLink, linkPath, linkState, liveLink, revokeLink, siteOrigin, tokenFor } from "./lib/dispatch/links";
 import { cannotAttend, declareNoShow, jobChecklist, noCheckInKey, noShowConditions, watchJob } from "./lib/dispatch/live";
 import { checkedPolicy, dispatchPolicy, POLICY_LIMITS } from "./lib/dispatch/policy";
+import { checkedSettings } from "./lib/dispatch/settings";
 import { beforePhotosSms, checkInNudgeSms, confirmedSms, endedSms, offerSms, reminderSms, withdrawnSms } from "./lib/dispatch/sms";
 import { serviceKey } from "./lib/dispatch/templates";
 import { notFound, userError } from "./lib/errors";
@@ -83,6 +84,28 @@ export const setPolicy = ownerMutation({
     const next = checkedPolicy(ctx.company.dispatchPolicy, args.policy);
     await ctx.db.patch(ctx.companyId, { dispatchPolicy: next });
     await recordEvent(ctx, { companyId: ctx.companyId, type: "company.dispatch_policy_changed", actor: byMember(ctx), subject: { table: "companies", id: ctx.companyId }, data: { changed: Object.keys(args.policy).join(",") } });
+    return null;
+  },
+});
+
+/**
+ * Dispatch's timing (dispatch.settings) and its policy together, checked in full before either is
+ * written, then written in one patch. A form that changes both saves all of it or none of it, so a
+ * refusal of one part never leaves the other part saved. Either part may be left out.
+ */
+export const setRules = ownerMutation({
+  args: {
+    settings: v.optional(v.object({ offerWindowMinutes: v.number(), travelBufferMinutes: v.number(), lookAheadDays: v.number() })),
+    policy: v.optional(dispatchPolicyValidator),
+  },
+  handler: async (ctx, args) => {
+    const settings = args.settings ? checkedSettings(args.settings) : undefined;
+    const policy = args.policy ? checkedPolicy(ctx.company.dispatchPolicy, args.policy) : undefined;
+    if (!settings && !policy) return null;
+    await ctx.db.patch(ctx.companyId, { ...(settings ? { dispatch: settings } : {}), ...(policy ? { dispatchPolicy: policy } : {}) });
+    const subject = { table: "companies" as const, id: ctx.companyId };
+    if (settings) await recordEvent(ctx, { companyId: ctx.companyId, type: "company.dispatch_settings_changed", actor: byMember(ctx), subject, data: settings });
+    if (policy && args.policy) await recordEvent(ctx, { companyId: ctx.companyId, type: "company.dispatch_policy_changed", actor: byMember(ctx), subject, data: { changed: Object.keys(args.policy).join(",") } });
     return null;
   },
 });

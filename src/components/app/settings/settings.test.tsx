@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CompanyProvider, type Role } from "@/components/app/company";
-import { menuSections, SETTINGS_SECTIONS, sectionsFor } from "@/lib/app/settings";
+import { menuSections, SETTINGS_SECTIONS, SETTINGS_SHORTCUTS, sectionsFor } from "@/lib/app/settings";
 
 import type { Id } from "../../../../convex/_generated/dataModel";
 
@@ -33,8 +33,9 @@ vi.mock("next/navigation", () => ({ usePathname: () => "/app/settings/business",
 const { BusinessDraftProvider } = await import("@/components/app/settings/business-draft");
 const { BusinessSection } = await import("@/components/app/settings/business-sections");
 const { PlanBilling } = await import("@/components/app/settings/billing");
-const { OverviewGrid, commonTasksFor } = await import("@/components/app/settings/overview");
-const { SettingsNavList } = await import("@/components/app/settings/nav");
+const { commonTasksFor, setupStatus, SetupStatusList } = await import("@/components/app/settings/overview");
+const { navResults, SettingsNavList } = await import("@/components/app/settings/nav");
+const { ChildLinksList, childLinksFor } = await import("@/components/app/settings/section-links");
 
 const companyId = "company1" as Id<"companies">;
 const business = (over: Record<string, unknown> = {}) => ({
@@ -371,24 +372,29 @@ function pagePatterns(dir: string, segments: string[] = []): string[] {
 
 describe("the overview and navigation", () => {
   const pages = pagePatterns(path.join(process.cwd(), "src/app"));
+  const listed = SETTINGS_SECTIONS.filter((row) => !row.oldAddress);
 
-  it("links every section the Owner may open, and each one is a real page", () => {
-    const html = renderToStaticMarkup(<OverviewGrid sections={sectionsFor("owner")} />);
-    expect(SETTINGS_SECTIONS).toHaveLength(14); // Services & pricing moved to Company → Services & Pricing; Notifications and Support access added.
-    for (const section of SETTINGS_SECTIONS) {
+  it("reaches every page the Owner may open, from the menu or from the page above it, and each one is a real page", () => {
+    expect(listed).toHaveLength(13);
+    const menu = renderToStaticMarkup(<SettingsNavList sections={menuSections(sectionsFor("owner"))} activeId={undefined} />);
+    for (const section of listed) {
+      const html = section.parent ? renderToStaticMarkup(<ChildLinksList rows={childLinksFor(section.parent, "owner")} />) : menu;
       expect(html, section.id).toContain(`href="${section.path}"`);
       expect(html, section.id).toContain(section.label.replace("&", "&amp;"));
       expect(pages, section.path).toContain(section.path);
     }
+    for (const shortcut of SETTINGS_SHORTCUTS) expect(pages, shortcut.href).toContain(shortcut.href);
   });
 
-  it("leaves the Owner-only sections out for everyone else", () => {
+  it("leaves the Owner-only pages out for everyone else", () => {
     for (const role of ["manager", "office"] as const) {
-      const html = renderToStaticMarkup(<OverviewGrid sections={sectionsFor(role)} />);
+      const html = renderToStaticMarkup(<SettingsNavList sections={navResults("", role).sections} activeId={undefined} />);
       expect(html).not.toContain("/app/settings/billing");
-      expect(html).not.toContain("/app/settings/activity");
       expect(html).toContain("/app/settings/business");
+      expect(childLinksFor("security", role).map((row) => row.id)).toEqual(["agreements"]);
+      expect(navResults("audit", role).sections).toEqual([]);
     }
+    expect(childLinksFor("security", "owner").map((row) => row.id)).toEqual(["support-access", "activity", "agreements"]);
   });
 
   it("marks the current page and says when a search finds nothing", () => {
@@ -397,21 +403,78 @@ describe("the overview and navigation", () => {
     expect(renderToStaticMarkup(<SettingsNavList sections={[]} activeId={undefined} />)).toContain("No settings match that");
   });
 
-  it("groups the menu the way owners think about it", () => {
-    const html = renderToStaticMarkup(<SettingsNavList sections={menuSections(SETTINGS_SECTIONS)} activeId={undefined} />);
-    for (const group of ["Company", "Your agents", "Apps &amp; billing", "Account &amp; privacy"]) expect(html).toContain(group);
-    for (const label of ["Business details", "Agent controls", "Connected apps", "Privacy &amp; messaging", "Selestial terms", "Activity"]) expect(html).toContain(label);
-    // Google and AI features are reached from their parent pages, not listed twice.
-    expect(html).not.toContain('href="/app/settings/google"');
-    expect(html).not.toContain('href="/app/settings/ai"');
+  it("groups the menu around owners' tasks, with each agent's own rules in its workspace", () => {
+    const html = renderToStaticMarkup(<SettingsNavList sections={navResults("", "owner").sections} activeId={undefined} />);
+    for (const group of ["Business", "Automation &amp; communication", "Subscription", "Account &amp; security"]) expect(html).toContain(group);
+    for (const label of ["Company profile", "Office team &amp; access", "Agent permissions", "Email &amp; texting", "Connected apps", "Plan &amp; usage", "My account &amp; security", "My notifications", "Privacy &amp; data"]) expect(html).toContain(label);
+    // Reached from the page above them, not listed in the menu.
+    for (const id of ["support-access", "activity", "agreements", "company-messages", "ai", "dispatch", "recruiting"]) expect(html).not.toContain(`href="/app/settings/${id}"`);
+  });
+
+  it("finds pages beneath others, and settings kept in other workspaces, by what people call them", () => {
+    expect(navResults("audit log", "owner").sections.map((row) => row.id)).toEqual(["activity"]);
+    expect(navResults("quiet hours", "owner").sections.map((row) => row.id)).toEqual(["messaging"]);
+    expect(navResults("ein", "owner").sections.map((row) => row.id)).toContain("business");
+    expect(navResults("no-show", "office").shortcuts.map((row) => row.href)).toEqual(["/app/agents/dispatch/playbook"]);
+    expect(navResults("hiring inbox", "owner").shortcuts.map((row) => row.href)).toContain("/app/agents/recruiter/hiring-setup");
+    // Customer invoicing is the Owner's; Selestial's own invoices are Plan & usage.
+    expect(navResults("invoices", "office").shortcuts).toEqual([]);
+    expect(navResults("invoices", "owner").sections.map((row) => row.id)).toContain("billing");
+    expect(navResults("", "owner").shortcuts).toEqual([]);
+    const html = renderToStaticMarkup(<SettingsNavList sections={[]} shortcuts={navResults("no-show", "owner").shortcuts} activeId={undefined} />);
+    expect(html).toContain("Elsewhere in Selestial");
+    expect(html).not.toContain("No settings match that");
   });
 
   it("offers owners the common tasks first, and only tasks a role can do", () => {
-    expect(commonTasksFor("owner").map((row) => row.section)).toEqual(["business", "services", "people", "agents", "integrations", "billing"]);
-    // Services left Settings: its task opens Company → Services & Pricing, and it is not a Settings page.
+    expect(commonTasksFor("owner").map((row) => row.section)).toEqual(["business", "services", "people", "agents", "messaging", "billing"]);
     expect(commonTasksFor("owner").find((row) => row.section === "services")?.href).toBe("/app/services");
     expect(SETTINGS_SECTIONS.some((row) => row.id === "services")).toBe(false);
     expect(commonTasksFor("office")).toEqual([]);
+  });
+});
+
+describe("the setup status", () => {
+  const ready = (key: string) => ({ key, state: "ready" as const, label: key, blockers: [] });
+
+  it("says it is checking instead of guessing while facts load", () => {
+    const rows = setupStatus({ role: "owner", configured: undefined, operations: undefined, appIssues: undefined });
+    expect(rows.map((row) => row.state)).toEqual(["checking", "checking", "checking", "checking"]);
+  });
+
+  it("names the first missing piece, and points legal gaps at Company profile", () => {
+    const rows = setupStatus({
+      role: "owner",
+      configured: true,
+      operations: [
+        { key: "sms", state: "blocked", label: "Texting is not set up", blockers: [{ words: "The company's legal name is missing.", href: "/app/settings/business#identity" }] },
+        ready("email"),
+        { key: "agents", state: "attention", label: "Agents need attention", blockers: [{ words: "Dispatch is paused and sends nothing.", href: "/app/settings/agents" }] },
+        { key: "agreements", state: "attention", label: "Terms need acceptance", blockers: [{ words: "The Owner has not accepted the terms." }] },
+      ],
+      appIssues: 2,
+    });
+    expect(rows).toEqual([
+      { section: "business", state: "attention", words: "The company's legal name is missing." },
+      { section: "messaging", state: "incomplete", words: "The company's legal name is missing." },
+      { section: "agents", state: "attention", words: "Dispatch is paused and sends nothing." },
+      { section: "integrations", state: "attention", words: "2 connections need attention." },
+      { section: "agreements", state: "attention", words: "The Owner has not accepted the terms." },
+    ]);
+    const html = renderToStaticMarkup(<SetupStatusList rows={rows} />);
+    expect(html).toContain("Setup incomplete");
+    expect(html).toContain('href="/app/settings/messaging"');
+  });
+
+  it("says ready plainly, and shows office staff no connection status they cannot see", () => {
+    const rows = setupStatus({ role: "office", configured: true, operations: [ready("sms"), ready("email"), ready("agents"), { key: "agreements", state: "attention", label: "Terms", blockers: [] }], appIssues: null });
+    expect(rows.map((row) => [row.section, row.state])).toEqual([
+      ["business", "ready"],
+      ["messaging", "ready"],
+      ["agents", "ready"],
+      ["integrations", "none"],
+    ]);
+    expect(setupStatus({ role: "owner", configured: false, operations: [], appIssues: 0 })[0].state).toBe("incomplete");
   });
 });
 

@@ -10,7 +10,9 @@ export const TAGLINE = "The AI operating platform for cleaning companies.";
 export const SITE_DESCRIPTION =
   "Selestial is the AI operating platform for cleaning companies. Four coordinated agents for sales, recruiting, dispatch and retention move the daily work forward within the standards you set.";
 
-/** Where the operations assessment lives. Every "Get early access" button goes here. */
+/** Where "Book a call" lives. Every "Get early access" button goes here. */
+export const BOOK_CALL_PATH = "/book-a-call";
+/** The operations assessment's old address. It redirects to the booking page, keeping its query. */
 export const ASSESSMENT_PATH = "/assessment";
 /** Where "Sign up" goes: the account page on the app host (the public host redirects it there, src/lib/hosts.ts). */
 export const SIGNUP_PATH = "/signup";
@@ -257,17 +259,23 @@ export const FINAL_CTA = {
   paragraphs: [
     "Tell us how your company operates. We’ll assess where Selestial could support sales, recruiting, dispatch, and retention—and what setup or migration would involve.",
   ],
-  cta: "Start the assessment",
-  note: "Seven short questions and your contact details.",
+  cta: "Book a call",
+  note: "A short call. Pick a time that suits you.",
 } as const;
 
-export const ASSESSMENT_PAGE = {
-  title: "Operations assessment",
-  eyebrow: "Operations assessment",
-  headline: FINAL_CTA.headline,
-  lead: FINAL_CTA.paragraphs[0],
+export const BOOK_CALL_PAGE = {
+  title: "Book a call",
+  eyebrow: "Book a call",
+  headline: "Talk with us about what your cleaning business can delegate.",
+  lead: "Pick a time for a short call. We’ll walk through how your company operates, where Selestial could support sales, recruiting, dispatch and retention, and what setup or migration would involve.",
+  loading: "Loading available times…",
+  fallback: "The calendar didn’t load.",
+  fallbackLink: "Open the booking page instead",
   back: "Back to Selestial",
 } as const;
+
+/** The booking calendar on the Book a call page (Cal.com). */
+export const BOOK_CALL_CAL = { namespace: "30min", calLink: "malik-sannie-sfhzzi/30min", origin: "https://app.cal.com", brand: "#744eff" } as const;
 
 /**
  * The operations assessment. Each option is [stored answer, the words shown]; the stored answers are the
@@ -442,7 +450,7 @@ export const INTEGRATIONS = {
       title: "Money",
       items: [
         { name: "Stripe", catalogId: "stripe", mark: "stripe", live: true, body: "Card payments, deposits and invoices your customers pay online." },
-        { name: "QuickBooks", catalogId: "quickbooks-online", mark: "quickbooks-online", live: false, body: "Charges and payouts sent to your books." },
+        { name: "QuickBooks", catalogId: "quickbooks-online", mark: "quickbooks-online", live: true, body: "Connect your QuickBooks Online company. Syncing to your books is next." },
       ],
     },
   ],

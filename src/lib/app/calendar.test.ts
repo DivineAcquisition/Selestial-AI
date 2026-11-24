@@ -13,6 +13,8 @@ describe("Calendar ranges", () => {
     expect(week.days).toHaveLength(7);
     expect(week.from).toBe(Date.UTC(2027, 1, 28, 6, 0));
     expect(week.label).toBe("Feb 28 – Mar 6, 2027");
+    // Within one month the year follows the last day, as a person writes it.
+    expect(rangeFor("week", "2027-03-10", NOW, TZ).label).toBe("Mar 7 – 13, 2027");
     expect(rangeFor("day", "2027-03-02", NOW, TZ)).toMatchObject({ from: Date.UTC(2027, 2, 2, 6, 0), to: Date.UTC(2027, 2, 3, 6, 0) });
     expect(rangeFor("agenda", null, NOW, TZ).days).toHaveLength(14);
     const month = rangeFor("month", "2027-03-15", NOW, TZ);

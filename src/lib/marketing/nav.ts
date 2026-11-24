@@ -4,7 +4,7 @@
  * header scrolls to them and marks the one being read.
  */
 import { AGENT_PAGE_IDS, AGENT_PAGES, agentPagePath } from "./agent-pages";
-import { ASSESSMENT_PATH } from "./content";
+import { BOOK_CALL_PATH } from "./content";
 
 export type NavIcon = "play" | "team" | "platform" | "control" | "plug" | "pricing" | "philosophy" | "security" | "messaging" | "contact";
 
@@ -54,7 +54,7 @@ export const SITE_NAV: { menus: NavMenu[]; pricing: { href: string; label: strin
           ],
         },
       ],
-      footer: { href: ASSESSMENT_PATH, label: "Take the operations assessment" },
+      footer: { href: BOOK_CALL_PATH, label: "Book a call with us" },
     },
     {
       id: "company",
@@ -74,5 +74,5 @@ export const SITE_NAV: { menus: NavMenu[]; pricing: { href: string; label: strin
   ],
   pricing: { href: "/#pricing", label: "Pricing", section: "pricing" },
   signIn: { href: "/sign-in", label: "Sign in" },
-  cta: { href: ASSESSMENT_PATH, label: "Get early access" },
+  cta: { href: BOOK_CALL_PATH, label: "Get early access" },
 };

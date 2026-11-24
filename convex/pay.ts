@@ -1,10 +1,11 @@
 /**
  * The pay page: a customer opens their invoice from a link, sees exactly what they owe and why, and pays
- * by card or bank through the company's own Stripe account. No sign-in; the link is the authorization
+ * through the company's chosen provider: by card or bank on its own Stripe account, or through Square's
+ * hosted checkout on its own Square account (docs/finance/square.md). No sign-in; the link is the authorization
  * (convex/lib/finance/payLinks.ts). Nothing here shows another invoice, another customer or anything
  * about the company beyond its name.
  *
- * A payment is recorded as received only when Stripe says so. Until then the page says "processing".
+ * A payment is recorded as received only when the provider says so. Until then the page says "processing".
  */
 import { v } from "convex/values";
 
@@ -18,9 +19,13 @@ import { amountRequested, depositOutstanding, inDepositStage, invoiceState, STAT
 import { invoiceRows } from "./lib/finance/ledger";
 import { settingsOf, settingsRow, localDateKey } from "./lib/finance/settings";
 import { stripeConfig } from "./lib/finance/stripe";
-import { currentStripeAccount, stripeState } from "./lib/finance/stripeState";
+import { currentStripeAccount } from "./lib/finance/stripeState";
 import { allow } from "./lib/rateLimit";
 import { cancelStartedPayments } from "./finance";
+import { SQUARE_MIN_CENTS, startSquareAttempt } from "./financeSquarePay";
+import { payToken, payUrl } from "./lib/finance/payLinks";
+import { onlinePaymentState } from "./lib/finance/provider";
+import { readySquareConnection } from "./lib/finance/squareState";
 
 /** The smallest card payment Stripe accepts in US dollars. */
 const MIN_CARD_CENTS = 50;
@@ -35,7 +40,7 @@ export const view = payQuery({
     const customer = await ctx.db.get(invoice.customerId);
     const property = invoice.propertyId ? await ctx.db.get(invoice.propertyId) : null;
     const settings = settingsOf(await settingsRow(ctx, company._id));
-    const stripe = await stripeState(ctx, company._id);
+    const online = await onlinePaymentState(ctx, company._id);
     const rows = await invoiceRows(ctx, invoice);
     const state = invoiceState(invoice, now);
     const requested = amountRequested(invoice);
@@ -59,16 +64,17 @@ export const view = payQuery({
       payments: rows.payments
         .filter((p) => p.status === "succeeded" || p.status === "processing")
         .sort((a, b) => a.createdAt - b.createdAt)
-        .map((p) => ({ id: p._id, amountCents: p.amountCents, status: p.status, method: p.stripe?.methodLabel ?? (p.source === "manual" ? "Recorded by the company" : "Card"), on: localDateKey(p.succeededAt ?? p.createdAt, tz) })),
+        .map((p) => ({ id: p._id, amountCents: p.amountCents, status: p.status, method: p.stripe?.methodLabel ?? p.square?.methodLabel ?? (p.source === "manual" ? "Recorded by the company" : "Card"), on: localDateKey(p.succeededAt ?? p.createdAt, tz) })),
       credits: rows.credits.filter((c) => !c.reversed).map((c) => ({ amountCents: c.amountCents, reason: c.reason })),
       refundedCents: invoice.totals.refundedCents,
       voided: invoice.status === "void",
-      canPayByCard: stripe.canPayByCard && invoice.status === "open" && requested >= MIN_CARD_CENTS,
-      cardUnavailableReason: invoice.status !== "open" ? null : !stripe.canPayByCard ? `${company.name} doesn't take online payments yet. Please pay them directly.` : requested < MIN_CARD_CENTS && requested > 0 ? "The amount left is too small to pay by card. Please pay the company directly." : null,
+      provider: online.provider,
+      canPayByCard: online.ready && invoice.status === "open" && requested >= online.minCents,
+      cardUnavailableReason: invoice.status !== "open" ? null : !online.ready ? `${company.name} doesn't take online payments yet. Please pay them directly.` : requested < online.minCents && requested > 0 ? "The amount left is too small to pay by card. Please pay the company directly." : null,
       allowPartial: settings.allowPartialPayments && !inDepositStage(invoice),
       tips: await tipOffer(ctx, invoice, settings.tipsOn),
-      testMode: stripe.testMode,
-      minCents: MIN_CARD_CENTS,
+      testMode: online.testMode,
+      minCents: online.minCents,
     };
   },
 });
@@ -111,13 +117,22 @@ export const start = payMutation({
     const requested = amountRequested(invoice);
     const settings = settingsOf(await settingsRow(ctx, company._id));
     const partial = settings.allowPartialPayments && !inDepositStage(invoice);
-    if (!Number.isInteger(args.amountCents) || args.amountCents < MIN_CARD_CENTS) throw userError("Enter at least $0.50.");
+    const minCents = settings.paymentProvider === "square" ? SQUARE_MIN_CENTS : MIN_CARD_CENTS;
+    if (!Number.isInteger(args.amountCents) || args.amountCents < minCents) throw userError(`Enter at least $${(minCents / 100).toFixed(2)}.`);
     if (args.amountCents > requested) throw userError("That's more than what's due right now.");
     if (!partial && args.amountCents !== requested) throw userError("Please pay the full amount due.");
     const tipCents = args.tipCents ?? 0;
     if (tipCents) {
       if (!Number.isSafeInteger(tipCents) || tipCents < 0 || tipCents > MAX_TIP_CENTS) throw userError("Enter a tip up to $500.");
       if (!(await tipOffer(ctx, invoice, settings.tipsOn))) throw userError("Tips can't be added to this payment.");
+    }
+    if (settings.paymentProvider === "square") {
+      const connection = await readySquareConnection(ctx, company._id);
+      const token = await payToken(invoice);
+      if (!connection || !token) throw userError(`${company.name} doesn't take online payments right now. Please pay them directly.`);
+      const paymentId = await startSquareAttempt(ctx, { invoice, connection, amountCents: args.amountCents, tipCents, clientKey: args.clientKey, returnTo: payUrl(token) });
+      await cancelStartedPayments(ctx, invoice._id, paymentId);
+      return { paymentId };
     }
     const config = stripeConfig();
     const account = await currentStripeAccount(ctx, company._id);
@@ -162,10 +177,30 @@ export const attempt = payQuery({
   handler: async (ctx, args) => {
     if (!ctx.pay) return null;
     const payment = await ctx.db.get(args.paymentId);
-    if (!payment || payment.invoiceId !== ctx.pay.invoice._id || !payment.stripe) return null;
+    if (!payment || payment.invoiceId !== ctx.pay.invoice._id) return null;
+    if (payment.square) {
+      return {
+        provider: "square" as const,
+        status: payment.status,
+        words: ATTEMPT_WORDS[payment.status],
+        preparing: (payment.status === "awaiting_customer" || payment.status === "checking") && !payment.square.checkoutUrl,
+        amountCents: payment.amountCents,
+        tipCents: payment.tipCents ?? 0,
+        problem: payment.problem ?? null,
+        // Square's hosted checkout, only while this attempt can still be paid.
+        checkoutUrl: payment.status === "awaiting_customer" && payment.square.checkoutUrl ? payment.square.checkoutUrl : null,
+        receiptUrl: payment.status === "succeeded" ? (payment.square.receiptUrl ?? null) : null,
+        clientSecret: null,
+        publishableKey: null,
+        accountId: null,
+        methodLabel: payment.square.methodLabel ?? null,
+      };
+    }
+    if (!payment.stripe) return null;
     const config = stripeConfig();
     const ready = payment.status === "awaiting_customer" && Boolean(payment.stripe.paymentIntentId && payment.stripe.clientSecret);
     return {
+      provider: "stripe" as const,
       status: payment.status,
       words: ATTEMPT_WORDS[payment.status],
       preparing: payment.status === "awaiting_customer" && !payment.stripe.paymentIntentId,
@@ -176,18 +211,23 @@ export const attempt = payQuery({
       publishableKey: ready ? (config?.publishableKey ?? null) : null,
       accountId: ready ? payment.stripe.accountId : null,
       methodLabel: payment.stripe.methodLabel ?? null,
+      checkoutUrl: null,
+      receiptUrl: null,
     };
   },
 });
 
-/** Back from the payment form: ask Stripe now rather than waiting for its notification. */
+/**
+ * Back from the payment form or Square's checkout: ask the provider now rather than waiting for its
+ * notification. Being sent back proves nothing; only the provider's own record of the payment does.
+ */
 export const returned = payMutation({
   args: { paymentId: v.id("payments") },
   handler: async (ctx, args) => {
     const payment = await ctx.db.get(args.paymentId);
-    if (!payment || payment.invoiceId !== ctx.invoice._id || payment.source !== "stripe") return { ok: false };
+    if (!payment || payment.invoiceId !== ctx.invoice._id || payment.source === "manual") return { ok: false };
     if (!(await allow(ctx, `pay-return:${payment._id}`, 10, 10 * 60_000))) return { ok: false };
-    await ctx.scheduler.runAfter(0, internal.financeStripe.syncPayment, { paymentId: payment._id });
+    await ctx.scheduler.runAfter(0, payment.source === "square" ? internal.financeSquarePay.syncPayment : internal.financeStripe.syncPayment, { paymentId: payment._id });
     return { ok: true };
   },
 });

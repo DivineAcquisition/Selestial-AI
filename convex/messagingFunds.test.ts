@@ -264,6 +264,26 @@ describe("Messaging funds", () => {
     expect(left(s)).toBe(250_000);
   });
 
+  it("charges a text the carriers took even if undelivered, and refunds one that never reached them", async () => {
+    const s = await billed(250_000);
+    const queue = (key: string) => s.t.run(async (ctx) => queueMessage(ctx, { companyId: s.companyId, purpose: "reminder", cleaner: (await ctx.db.get(s.cleaners.Lena))!, body: `Reminder ${key}.`, dedupeKey: key, actor: DISPATCH }));
+    const reached = await queue("carrier-failed");
+    const never = await queue("never-left");
+    await flush(s.t);
+    for (const id of [reached._id, never._id]) await s.t.run(async (ctx) => ctx.db.patch(id, { status: "sent", deliveredAt: undefined }));
+    const providerId = async (id: typeof reached._id) => (await s.t.run(async (ctx) => ctx.db.get(id)))!.providerMessageId!;
+    // The carrier took it and couldn't deliver it: still charged (Selestial's retail rule, docs/sms/00-architecture.md §1).
+    await s.t.mutation(internal.messaging.receipt, { provider: "mock", eventId: "cf-1", providerMessageId: await providerId(reached._id), outcome: "failed", problem: "Carrier rejected", errorCode: "40002" });
+    // It never left the provider for the carrier network: refunded.
+    await s.t.mutation(internal.messaging.receipt, { provider: "mock", eventId: "nl-1", providerMessageId: await providerId(never._id), outcome: "failed", problem: "Sending failed", beforeCarrier: true });
+    await settle(s.t);
+    const rows = await charges(s);
+    expect(rows.find((c) => c.messageId === reached._id && c.kind === "sms_out")).toMatchObject({ state: "captured" });
+    expect(rows.find((c) => c.messageId === never._id && c.kind === "sms_out")).toMatchObject({ state: "refunded" });
+    expect(rows.find((c) => c.kind === "refund")).toMatchObject({ amount: -250, reason: expect.stringMatching(/never reached the carrier network/) });
+    expect(left(s)).toBe(250_000 - 250);
+  });
+
   it("lets staff credit a balance once per key, with a reason, and refund a charge once", async () => {
     const s = await billed(0);
     process.env.STAFF_BOOTSTRAP_EMAIL = STAFF.email;

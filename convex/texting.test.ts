@@ -177,8 +177,14 @@ describe("Set up business texting", () => {
     const done = (await as.query(api.textingSetup.view, { companyId }))!.request!;
     expect(done.status).toBe("active");
     expect(done.milestones.every((row) => row.state === "done")).toBe(true);
-    // In order: the business, then the campaign, then (only after approval) the number, then the connection.
-    expect(telnyx.posts()).toEqual(["POST /10dlc/brand", "POST /10dlc/campaignBuilder", "POST /number_orders", "POST /10dlc/phone_number_campaigns"]);
+    // In order: the business, then the campaign, then (only after approval) the company's own messaging profile and its
+    // keyword answers, then the number onto that profile, then the connection.
+    expect(telnyx.posts()).toEqual(["POST /10dlc/brand", "POST /10dlc/campaignBuilder", "POST /messaging_profiles", "POST /messaging_profiles/profile-1/autoresp_configs", "POST /messaging_profiles/profile-1/autoresp_configs", "POST /messaging_profiles/profile-1/autoresp_configs", "POST /number_orders", "POST /10dlc/phone_number_campaigns"]);
+    // The profile is this company's alone, sends incoming texts to this backend, and the number is bought onto it.
+    expect(telnyx.profiles).toEqual([{ id: "profile-1", name: `Selestial · Alpha Cleaning · ${requestId}`, webhook: "https://deployment.convex.site.test/webhooks/telnyx" }]);
+    expect(telnyx.autoReplies.map((row) => row.op).sort()).toEqual(["info", "start", "stop"]);
+    expect(telnyx.autoReplies.find((row) => row.op === "stop")!.text).toContain("Alpha Cleaning");
+    expect(telnyx.calls.find((call) => call.path === "/number_orders" && call.method === "POST")!.body).toMatchObject({ messaging_profile_id: "profile-1" });
     const brand = telnyx.calls.find((call) => call.path === "/10dlc/brand" && call.method === "POST")!.body!;
     expect(brand).toMatchObject({ entityType: "PRIVATE_PROFIT", displayName: "Alpha Cleaning", companyName: "Alpha Cleaning LLC", ein: "12-3456789", state: "TX", website: "https://alpha.example", email: "help@alpha.example", webhookURL: "https://deployment.convex.site.test/webhooks/telnyx" });
     const campaign = telnyx.calls.find((call) => call.path === "/10dlc/campaignBuilder")!.body!;
@@ -194,7 +200,7 @@ describe("Set up business texting", () => {
 
     // Texting is ready, and covers exactly what was registered.
     const profile = await as.query(api.compliance.profile, { companyId });
-    expect(profile.messaging).toMatchObject({ smsNumber: NUMBER, senderName: "Alpha Cleaning", registration: { status: "approved", reference: "campaign-1" } });
+    expect(profile.messaging).toMatchObject({ smsNumber: NUMBER, senderName: "Alpha Cleaning", messagingProfileId: "profile-1", registration: { status: "approved", reference: "campaign-1" } });
     expect(profile.messaging.registration.coverage).toEqual(expect.arrayContaining([{ audience: "customer", category: "operational" }, { audience: "cleaner", category: "operational" }, { audience: "customer", category: "marketing" }]));
     expect(profile.messaging.registration.coverage).not.toContainEqual({ audience: "applicant", category: "recruiting" });
   });
@@ -239,6 +245,21 @@ describe("Set up business texting", () => {
     expect((await t.run(async (ctx) => ctx.db.get(requestId)))?.status).toBe("active");
     expect(telnyx.posts().filter((post) => post === "POST /number_orders")).toHaveLength(1);
     expect(telnyx.calls.some((call) => call.method === "GET" && call.path.startsWith("/number_orders?filter[customer_reference]="))).toBe(true);
+  });
+
+  it("finds a messaging profile whose creation answer was lost instead of making a second one", async () => {
+    const telnyx = fakeTelnyx({ loseFirstProfileAnswer: true });
+    vi.stubGlobal("fetch", telnyx.fetcher);
+    const t = start();
+    const { as, companyId } = await company(t, "owner-a", "Alpha Cleaning");
+    await prepare(t, as, companyId);
+    const { requestId } = await submit(as, companyId);
+    await t.withIdentity(ADMIN).mutation(api.texting.approve, { requestId });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect((await t.run(async (ctx) => ctx.db.get(requestId)))?.status).toBe("active");
+    expect(telnyx.profiles).toHaveLength(1);
+    expect(telnyx.calls.some((call) => call.method === "GET" && call.path.startsWith("/messaging_profiles?filter[name]="))).toBe(true);
+    expect(telnyx.calls.find((call) => call.path === "/number_orders" && call.method === "POST")!.body).toMatchObject({ messaging_profile_id: "profile-1" });
   });
 
   it("runs one provisioning pass at a time", async () => {
@@ -325,7 +346,7 @@ describe("Set up business texting", () => {
     await admin.mutation(api.texting.approve, { requestId });
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     expect((await t.run(async (ctx) => ctx.db.get(requestId)))?.status).toBe("active");
-    expect(telnyx.posts()).toEqual(["POST /10dlc/brand", "PUT /10dlc/brand/brand-1", "PUT /10dlc/brand/brand-1/revet", "POST /10dlc/campaignBuilder", "POST /number_orders", "POST /10dlc/phone_number_campaigns"]);
+    expect(telnyx.posts()).toEqual(["POST /10dlc/brand", "PUT /10dlc/brand/brand-1", "PUT /10dlc/brand/brand-1/revet", "POST /10dlc/campaignBuilder", "POST /messaging_profiles", "POST /messaging_profiles/profile-1/autoresp_configs", "POST /messaging_profiles/profile-1/autoresp_configs", "POST /messaging_profiles/profile-1/autoresp_configs", "POST /number_orders", "POST /10dlc/phone_number_campaigns"]);
     const submissions = await t.run(async (ctx) => ctx.db.query("textingSubmissions").collect());
     expect(submissions.map((row) => [row.version, row.business.legalName])).toEqual([
       [1, "Alpha Cleaning LLC"],
@@ -452,6 +473,8 @@ describe("Set up business texting", () => {
   });
 
   it("keeps a STOP in force across agents and after the texting number changes", async () => {
+    // Customer texts go only inside sending hours, 8 AM to 9 PM the customer's time: this runs at 10 AM in Chicago.
+    vi.setSystemTime(Date.UTC(2026, 10, 19, 16));
     vi.stubGlobal("fetch", fakeTelnyx().fetcher);
     const t = start();
     const { as, companyId } = await company(t, "owner-a", "Alpha Cleaning");
@@ -649,6 +672,8 @@ describe("Texting launch fixes", () => {
   });
 
   it("treats REVOKE, OPTOUT and a plain 'please stop' as opt-outs, and lets START undo a stop said in the person's own words", async () => {
+    // Customer texts go only inside sending hours, 8 AM to 9 PM the customer's time: this runs at 10 AM in Chicago.
+    vi.setSystemTime(Date.UTC(2026, 10, 19, 16));
     for (const word of ["REVOKE", "revoke.", "OPTOUT", "Opt out", "opt-out", "STOP", " end "]) expect(classify(word)).toBe("stop");
     for (const words of ["please stop", "Please stop.", "Stop texting me", "stop texting me please!", "Stop these texts", "stop sending me messages", "pls stop", "Stop it", "please unsubscribe"]) expect(classify(words)).toBe("plain_stop");
     for (const words of ["Can you stop by at 3?", "Don't stop the weekly cleaning", "I can't stop thinking about how clean it is", "The bus stop is on Main", "Yes please"]) expect(classify(words)).not.toBe("plain_stop");

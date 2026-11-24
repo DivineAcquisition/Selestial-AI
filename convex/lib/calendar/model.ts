@@ -141,6 +141,8 @@ export type Item = {
   problems: string[];
   /** Where to open the record itself. */
   href: string | null;
+  /** The connected calendar shows this record changed outside Selestial, waiting for a person. */
+  googleChange?: { linkId: string; change: "moved" | "deleted" | "edited"; startsAt: number | null; endsAt: number | null } | null;
   /** The record's own version, so a change prepared against an older read is recognised as stale. */
   version: number;
 };

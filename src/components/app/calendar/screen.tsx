@@ -1,17 +1,19 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 
+import { useChat, useDescribeChatPage } from "@/components/app/chat/chat-context";
 import { useCompany } from "@/components/app/company";
 import { useDetail } from "@/components/app/detail-panel";
+import { useRun } from "@/components/app/form";
 import { Modal } from "@/components/app/modal";
 import { NewVisitForm } from "@/components/app/screens/forms";
 import { Incomplete } from "@/components/app/screens/dispatch/shared";
-import { ChevronDown, ChevronLeft, ChevronRight, FunnelIcon, PanelLeftIcon, Plus, TriangleAlert, X } from "@/components/icons";
+import { ChevronDown, ChevronLeft, ChevronRight, FunnelIcon, PanelLeftIcon, Plus, Sparkles, TriangleAlert, X } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/selection";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -120,9 +122,22 @@ const MENU_GROUP = "px-3 pt-2 pb-1 text-[11px] font-semibold tracking-wide text-
  * through Dispatch, an interview through Recruiter, a walkthrough from a Sales proposal, and Calendar's
  * own events. Office creates visits, bookings and Dispatch's dated tasks.
  */
-function CreateMenu({ manager, onCreate }: { manager: boolean; onCreate: (what: Creating) => void }) {
+function CreateMenu({ manager, onCreate, button }: { manager: boolean; onCreate: (what: Creating) => void; button: React.RefObject<HTMLButtonElement | null> }) {
   const [open, setOpen] = useState(false);
   const shell = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  // The menu pattern: opening puts the keyboard on the first entry, the arrows move, Escape comes back.
+  useEffect(() => {
+    if (open) list.current?.querySelector<HTMLElement>("[role=menuitem]")?.focus();
+  }, [open]);
+  const step = (event: React.KeyboardEvent) => {
+    const entries = [...(list.current?.querySelectorAll<HTMLElement>("[role=menuitem]") ?? [])];
+    const at = entries.indexOf(document.activeElement as HTMLElement);
+    const to = event.key === "ArrowDown" ? (at + 1) % entries.length : event.key === "ArrowUp" ? (at - 1 + entries.length) % entries.length : event.key === "Home" ? 0 : event.key === "End" ? entries.length - 1 : null;
+    if (to === null || entries.length === 0) return;
+    event.preventDefault();
+    entries[to].focus();
+  };
   const menu = useId();
   const item = "flex w-full flex-col items-start gap-0.5 rounded-lg px-3 py-1.5 text-left hover:bg-muted focus-visible:outline-2 focus-visible:outline-brand-500";
   const choose = (what: Creating) => {
@@ -140,19 +155,36 @@ function CreateMenu({ manager, onCreate }: { manager: boolean; onCreate: (what: 
       ref={shell}
       className="relative"
       onKeyDown={(event) => {
-        if (event.key === "Escape") setOpen(false);
+        if (event.key === "Escape" && open) {
+          setOpen(false);
+          button.current?.focus();
+        }
       }}
       onBlur={(event) => {
         if (!shell.current?.contains(event.relatedTarget as Node | null)) setOpen(false);
       }}
     >
-      <Button variant="primary" size="sm" onClick={() => setOpen((before) => !before)} aria-haspopup="menu" aria-expanded={open} aria-controls={menu}>
+      <Button
+        ref={button}
+        variant="primary"
+        size="sm"
+        onClick={() => setOpen((before) => !before)}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown" && !open) {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={menu}
+      >
         <Plus aria-hidden />
         Create
         <ChevronDown className="size-3.5" aria-hidden />
       </Button>
       {open ? (
-        <div id={menu} role="menu" aria-label="Create" className="absolute right-0 z-popover mt-1 grid max-h-[min(36rem,80dvh)] w-80 gap-0.5 overflow-y-auto rounded-xl border border-border bg-card p-1 shadow-lg">
+        <div ref={list} id={menu} role="menu" aria-label="Create" onKeyDown={step} className="absolute right-0 z-popover mt-1 grid max-h-[min(36rem,80dvh)] w-80 gap-0.5 overflow-y-auto rounded-xl border border-border bg-card p-1 shadow-lg">
           <p className={MENU_GROUP} role="presentation">Cleaning</p>
           <Link role="menuitem" href="/app/agents/sales/new?mode=booking&from=calendar" className={item} onClick={() => setOpen(false)}>
             <span className="text-sm font-medium text-strong">Cleaning booking</span>
@@ -185,14 +217,49 @@ function CreateMenu({ manager, onCreate }: { manager: boolean; onCreate: (what: 
 
 // ── Needs attention ─────────────────────────────────────────────────────────────────────────────────
 
-function Attention({ items, timezone, now, onOpen, onClose }: { items: Item[]; timezone: string; now: number; onOpen: (item: Item) => void; onClose?: () => void }) {
+type Waiting = CalendarData["waiting"];
+
+/** What the item's problem lets a person do about it, from here. Each goes through the record's own workflow. */
+function AttentionActions({ item, manager, onOpen, onMove }: { item: Item; manager: boolean; onOpen: (item: Item) => void; onMove: (item: Item, to: { startsAt: number; endsAt: number }) => void }) {
+  const { companyId } = useCompany();
+  const keep = useMutation(api.googleCalendar.keepSelestial);
+  const { busy, error, run } = useRun();
+  const change = item.googleChange ?? null;
+  const open = item.source.table === "jobs" && ["booked", "offer_sent", "partly_staffed"].includes(item.status) ? "Find a cleaner" : item.source.table === "calendarEvents" && item.problems.some((words) => words.startsWith("No result") || words.startsWith("Attendance")) ? "Record it" : "Open";
+  return (
+    <div className="grid gap-1">
+      <div className="flex flex-wrap gap-1.5">
+        <Button size="xs" variant="outline" onClick={() => onOpen(item)}>
+          {open}
+        </Button>
+        {change && manager ? (
+          <>
+            <Button size="xs" variant="ghost" disabled={busy} onClick={() => void run(() => keep({ companyId, linkId: change.linkId as Id<"googleCalendarLinks"> }))}>
+              Put Selestial&apos;s time back
+            </Button>
+            {change.change === "moved" && change.startsAt !== null && change.endsAt !== null && (item.source.table === "jobs" || item.source.table === "calendarEvents") ? (
+              <Button size="xs" variant="ghost" onClick={() => onMove(item, { startsAt: change.startsAt!, endsAt: change.endsAt! })}>
+                Use Google&apos;s time
+              </Button>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+      {error ? <p className="text-xs text-destructive-foreground">{error}</p> : null}
+    </div>
+  );
+}
+
+function Attention({ items, waiting, manager, timezone, now, onOpen, onMove, onBookInterview, onClose }: { items: Item[]; waiting: Waiting | null; manager: boolean; timezone: string; now: number; onOpen: (item: Item) => void; onMove: (item: Item, to: { startsAt: number; endsAt: number }) => void; onBookInterview: () => void; onClose?: () => void }) {
+  const outside = (waiting?.googleChanges ?? []).filter((row) => !items.some((item) => item.key === row.key));
+  const count = items.length + (waiting?.interviews.length ? 1 : 0) + (waiting?.corrections.length ? 1 : 0) + (outside.length ? 1 : 0);
   return (
     <section aria-labelledby="calendar-attention" className="rounded-2xl border border-border bg-card">
       <header className="flex items-center justify-between gap-2 border-b border-border px-4 py-2.5">
         <h2 id="calendar-attention" className="flex items-center gap-1.5 text-sm font-semibold text-strong">
-          <TriangleAlert className={cn("size-4", items.length ? "text-destructive-foreground" : "text-muted-foreground")} aria-hidden />
+          <TriangleAlert className={cn("size-4", count ? "text-destructive-foreground" : "text-muted-foreground")} aria-hidden />
           Needs attention
-          <span className="text-muted-foreground tabular-nums">{items.length}</span>
+          <span className="text-muted-foreground tabular-nums">{count}</span>
         </h2>
         {onClose ? (
           <Button variant="ghost" size="icon-sm" aria-label="Hide Needs attention" onClick={onClose}>
@@ -200,13 +267,13 @@ function Attention({ items, timezone, now, onOpen, onClose }: { items: Item[]; t
           </Button>
         ) : null}
       </header>
-      {items.length === 0 ? (
+      {count === 0 ? (
         <p className="px-4 py-5 text-sm text-muted-foreground">Nothing in this range needs you. Problems appear here as soon as the record shows them.</p>
       ) : (
-        <ul className="max-h-[32rem] divide-y divide-border overflow-y-auto">
+        <ul className="max-h-[36rem] divide-y divide-border overflow-y-auto">
           {items.map((item) => (
-            <li key={item.key}>
-              <button type="button" onClick={() => onOpen(item)} aria-label={itemLabel(item, timezone)} className="grid w-full gap-0.5 px-4 py-2.5 text-left hover:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500">
+            <li key={item.key} className="grid gap-1.5 px-4 py-2.5">
+              <button type="button" onClick={() => onOpen(item)} aria-label={itemLabel(item, timezone)} className="grid gap-0.5 text-left focus-visible:outline-2 focus-visible:outline-brand-500">
                 <span className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-strong">
                   <span className={cn("size-2 shrink-0 rounded-full", LAYER_LOOK[item.layer].swatch)} aria-hidden />
                   <span className="truncate">{item.title}</span>
@@ -219,9 +286,49 @@ function Attention({ items, timezone, now, onOpen, onClose }: { items: Item[]; t
                     {words}
                   </span>
                 ))}
+                {item.googleChange?.startsAt ? <span className="text-xs text-muted-foreground">Google shows {whenLabel(item.googleChange.startsAt, now, timezone)}</span> : null}
               </button>
+              <AttentionActions item={item} manager={manager} onOpen={onOpen} onMove={onMove} />
             </li>
           ))}
+          {waiting?.interviews.length ? (
+            <li className="grid gap-1.5 px-4 py-2.5">
+              <p className="text-sm font-medium text-strong">
+                {waiting.interviews.length} {waiting.interviews.length === 1 ? "applicant is" : "applicants are"} waiting for an interview time
+              </p>
+              <p className="text-xs text-muted-foreground">{waiting.interviews.slice(0, 4).map((row) => row.applicant).join(", ")}</p>
+              <div>
+                <Button size="xs" variant="outline" onClick={onBookInterview}>
+                  Book an interview
+                </Button>
+              </div>
+            </li>
+          ) : null}
+          {waiting?.corrections.length ? (
+            <li className="grid gap-1.5 px-4 py-2.5">
+              <p className="text-sm font-medium text-strong">
+                {waiting.corrections.length} approved {waiting.corrections.length === 1 ? "correction needs" : "corrections need"} a visit
+              </p>
+              <p className="text-xs text-muted-foreground">{waiting.corrections.slice(0, 3).map((row) => row.title).join(" · ")}</p>
+              <div>
+                <Button size="xs" variant="outline" asChild>
+                  <Link href="/app/agents/quality/corrections">Open Corrections</Link>
+                </Button>
+              </div>
+            </li>
+          ) : null}
+          {outside.length ? (
+            <li className="grid gap-1.5 px-4 py-2.5">
+              <p className="text-sm font-medium text-strong">
+                {outside.length} {outside.length === 1 ? "event was" : "events were"} changed in Google Calendar outside these dates
+              </p>
+              <div>
+                <Button size="xs" variant="outline" asChild>
+                  <Link href="/app/settings/integrations">Review in Google Calendar settings</Link>
+                </Button>
+              </div>
+            </li>
+          ) : null}
         </ul>
       )}
     </section>
@@ -246,14 +353,18 @@ export function CalendarScreen() {
   const [railOpen, setRailOpen] = useState(true);
   const [creating, setCreating] = useState<Creating | null>(null);
   const [moving, setMoving] = useState<{ item: Item; to: { startsAt: number; endsAt: number } } | null>(null);
+  // Where the keyboard goes back to: the Create button after a form it opened, the view after a day is chosen.
+  const createButton = useRef<HTMLButtonElement>(null);
+  const viewRegion = useRef<HTMLElement>(null);
+  const tabsId = useId();
   /**
    * What can be dragged: a visit that has not started, and Calendar's own events that are still on, for
    * Owners and Managers. Projected visits, other records and anything private to someone else cannot.
    */
   const canMove = (item: Item) =>
-    manager &&
-    ((item.source.table === "jobs" && item.timing === "appointment" && ["booked", "offer_sent", "partly_staffed", "fully_staffed"].includes(item.status)) ||
-      (item.source.table === "calendarEvents" && item.title !== "Busy" && !["completed", "cancelled"].includes(item.status)));
+    // Every role moves visits, as in Dispatch (the owner's decision); Calendar's own events are Owners' and Managers'.
+    (item.source.table === "jobs" && item.timing === "appointment" && ["booked", "offer_sent", "partly_staffed", "fully_staffed"].includes(item.status)) ||
+    (manager && item.source.table === "calendarEvents" && item.title !== "Busy" && !["completed", "cancelled"].includes(item.status));
 
   // New things start on the day being looked at, or today.
   const createDay = state.date ?? (now ? localDate(now, timezone) : null);
@@ -268,6 +379,11 @@ export function CalendarScreen() {
 
   const visible = useMemo(() => (data ? applyFilters(data.items, state, data) : []), [data, state]);
   const attention = visible.filter((item) => item.problems.length > 0 && item.timing !== "projected");
+  const waiting = data?.waiting;
+  const attentionCount = attention.length + (waiting?.interviews.length ? 1 : 0) + (waiting?.corrections.length ? 1 : 0) + ((waiting?.googleChanges ?? []).some((row) => !attention.some((item) => item.key === row.key)) ? 1 : 0);
+  // Company Chat is told what this page shows: the view, the dates and the time zone. Never a record's contents.
+  const chat = useChat();
+  useDescribeChatPage(range ? { path: `/app/calendar?view=${state.view}&from=${localDate(range.from, timezone)}&to=${localDate(range.to - 1, timezone)}`, label: `Calendar › ${VIEW_LABEL[state.view]}, ${range.label} (${timezone})` } : null);
   const selectedKey = params.get(ITEM_PARAM);
   const selected = selectedKey && data ? (data.items.find((item) => item.key === selectedKey) ?? null) : null;
 
@@ -328,15 +444,31 @@ export function CalendarScreen() {
           {zone ? `Times in ${timezone.replace(/_/g, " ")} (${zone})` : null}
         </span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <div role="tablist" aria-label="View" className="inline-flex rounded-lg border border-border bg-muted p-0.5">
+          <div
+            role="tablist"
+            aria-label="View"
+            className="inline-flex rounded-lg border border-border bg-muted p-0.5"
+            onKeyDown={(event) => {
+              // The tabs pattern: one stop in the Tab order, the arrows choose between views.
+              const at = VIEWS.indexOf(state.view);
+              const to = event.key === "ArrowRight" ? (at + 1) % VIEWS.length : event.key === "ArrowLeft" ? (at - 1 + VIEWS.length) % VIEWS.length : event.key === "Home" ? 0 : event.key === "End" ? VIEWS.length - 1 : null;
+              if (to === null) return;
+              event.preventDefault();
+              update({ view: VIEWS[to] });
+              document.getElementById(`${tabsId}-${VIEWS[to]}`)?.focus();
+            }}
+          >
             {VIEWS.map((view) => (
               <button
                 key={view}
+                id={`${tabsId}-${view}`}
                 type="button"
                 role="tab"
                 aria-selected={state.view === view}
+                aria-controls={`${tabsId}-panel`}
+                tabIndex={state.view === view ? 0 : -1}
                 onClick={() => update({ view })}
-                className={cn("rounded-md px-2.5 py-1 text-xs font-medium focus-visible:outline-2 focus-visible:outline-brand-500", state.view === view ? "bg-card text-strong shadow-sm" : "text-muted-foreground hover:text-strong")}
+                className={cn("rounded-md px-2.5 py-1 text-xs font-medium focus-visible:outline-2 focus-visible:outline-brand-500", state.view === view ? "bg-card text-strong shadow-sm" : "text-strong/70 hover:text-strong")}
               >
                 {VIEW_LABEL[view as View]}
               </button>
@@ -350,7 +482,11 @@ export function CalendarScreen() {
           <Button variant="ghost" size="icon-sm" className="hidden xl:inline-flex" aria-label={railOpen ? "Hide Needs attention" : "Show Needs attention"} aria-pressed={railOpen} onClick={() => setRailOpen((before) => !before)}>
             <PanelLeftIcon className="rotate-180" aria-hidden />
           </Button>
-          <CreateMenu manager={manager} onCreate={setCreating} />
+          <Button variant="outline" size="sm" onClick={() => chat.openPanel()} title="Opens Company Chat, told which dates you are looking at. It answers from the Calendar with your permissions.">
+            <Sparkles aria-hidden />
+            Ask Selestial
+          </Button>
+          <CreateMenu manager={manager} onCreate={setCreating} button={createButton} />
         </div>
       </header>
 
@@ -408,27 +544,32 @@ export function CalendarScreen() {
       ) : null}
 
       {/* On a narrow screen Needs attention is a line that opens; on a wide one, a rail beside the calendar. */}
-      {attention.length > 0 ? (
+      {attentionCount > 0 ? (
         <details className="rounded-xl border border-destructive/30 bg-destructive/5 xl:hidden">
           <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm font-medium text-destructive-foreground">
             <TriangleAlert className="size-4" aria-hidden />
-            {attention.length} {attention.length === 1 ? "thing needs" : "things need"} attention
+            {attentionCount} {attentionCount === 1 ? "thing needs" : "things need"} attention
           </summary>
           <div className="p-2">
-            <Attention items={attention} timezone={timezone} now={now} onOpen={onOpen} />
+            <Attention items={attention} waiting={data?.waiting ?? null} manager={manager} timezone={timezone} now={now} onOpen={onOpen} onMove={(item, to) => setMoving({ item, to })} onBookInterview={() => setCreating("interview")} />
           </div>
         </details>
       ) : null}
 
       <div className={cn("grid items-start gap-3", railOpen && "xl:grid-cols-[minmax(0,1fr)_18rem]")}>
-        <section aria-label={`${VIEW_LABEL[state.view]} view, ${range?.label ?? ""}`} className="min-w-0 overflow-hidden rounded-2xl border border-border bg-card">
+        <section ref={viewRegion} id={`${tabsId}-panel`} role="tabpanel" tabIndex={-1} aria-label={`${VIEW_LABEL[state.view]} view, ${range?.label ?? ""}`} className="min-w-0 overflow-hidden rounded-2xl border border-border bg-card focus-visible:outline-2 focus-visible:outline-brand-500">
           {data === undefined || !range ? (
             <div className="grid gap-2 p-5" aria-busy="true">
               <Skeleton className="h-8" />
               <Skeleton className="h-64" />
             </div>
           ) : state.view === "month" ? (
-            <MonthGrid range={range} items={visible} timezone={timezone} now={now} onOpen={onOpen} onDay={(date) => update({ view: "day", date })} />
+            <MonthGrid range={range} items={visible} timezone={timezone} now={now} onOpen={onOpen} onDay={(date) => {
+                update({ view: "day", date });
+                // The day's button is gone with the month: the keyboard lands on the day it opened.
+                viewRegion.current?.focus();
+              }}
+            />
           ) : state.view === "agenda" ? (
             <Agenda range={range} items={visible} timezone={timezone} now={now} onOpen={onOpen} />
           ) : state.view === "team" ? (
@@ -442,7 +583,7 @@ export function CalendarScreen() {
         </section>
         {railOpen ? (
           <aside className="hidden xl:block" aria-label="Needs attention">
-            <Attention items={attention} timezone={timezone} now={now} onOpen={onOpen} onClose={() => setRailOpen(false)} />
+            <Attention items={attention} waiting={data?.waiting ?? null} manager={manager} timezone={timezone} now={now} onOpen={onOpen} onMove={(item, to) => setMoving({ item, to })} onBookInterview={() => setCreating("interview")} onClose={() => setRailOpen(false)} />
           </aside>
         ) : null}
       </div>
@@ -480,20 +621,20 @@ export function CalendarScreen() {
           <MoveEventDialog eventId={moving.item.source.id as Id<"calendarEvents">} proposed={moving.to} onDone={() => setMoving(null)} />
         ) : null}
       </Modal>
-      <Modal open={creating === "visit"} onClose={() => setCreating(null)} title="Add a visit" description="A visit is a promise to the customer. It is staffed only when every cleaner it needs has accepted.">
+      <Modal open={creating === "visit"} onClose={() => setCreating(null)} returnFocus={createButton} title="Add a visit" description="A visit is a promise to the customer. It is staffed only when every cleaner it needs has accepted.">
         <NewVisitForm onDone={() => setCreating(null)} />
       </Modal>
-      <Modal open={creating === "interview"} onClose={() => setCreating(null)} title="Book an interview">
+      <Modal open={creating === "interview"} onClose={() => setCreating(null)} returnFocus={createButton} title="Book an interview">
         <InterviewForm day={createDay} onDone={() => setCreating(null)} />
       </Modal>
-      <Modal open={creating === "task"} onClose={() => setCreating(null)} title="Add a dated task">
+      <Modal open={creating === "task"} onClose={() => setCreating(null)} returnFocus={createButton} title="Add a dated task">
         <TaskForm day={createDay} onDone={() => setCreating(null)} />
       </Modal>
-      <Modal open={creating === "hours"} onClose={() => setCreating(null)} title="Working hours">
+      <Modal open={creating === "hours"} onClose={() => setCreating(null)} returnFocus={createButton} title="Working hours">
         <MemberHoursForm onDone={() => setCreating(null)} />
       </Modal>
       {(["meeting", "appointment", "unavailable", "training", "inspection"] as const).map((kind) => (
-        <Modal key={kind} open={creating === kind} onClose={() => setCreating(null)} title={EVENT_KIND_LABEL[kind].title}>
+        <Modal key={kind} open={creating === kind} onClose={() => setCreating(null)} returnFocus={createButton} title={EVENT_KIND_LABEL[kind].title}>
           <EventForm kind={kind} day={createDay} onDone={() => setCreating(null)} />
         </Modal>
       ))}

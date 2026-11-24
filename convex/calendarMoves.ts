@@ -4,7 +4,9 @@
  * the company's area and hours, the customer's commitments, the recurring plan the visit belongs to,
  * and who will be told, each of which the person may turn off before saving where that is safe.
  *
- * Owners and Managers move visits here, by the owner's decision of November 23, 2026. The preview names
+ * Every role moves visits here, as in Dispatch (the owner's decision of November 23, 2026: Office can
+ * reschedule). A recurring series is changed only by Owners and Managers, through the plan's own steps.
+ * The preview names
  * the state it was made from; the move is refused if the visit changed in between.
  */
 import { v } from "convex/values";
@@ -12,12 +14,13 @@ import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { owned } from "./lib/access";
-import { managerMutation, managerQuery, type MemberAccess } from "./lib/builders";
+import { companyMutation, companyQuery, type MemberAccess } from "./lib/builders";
 import { noticeBody, noticePlan, queueMoveNotice } from "./lib/calendar/customerNotice";
 import { commitMove, planMove } from "./lib/dispatch/reschedule";
 import { dispatchSettings } from "./lib/dispatch/settings";
 import { userError } from "./lib/errors";
 import { byMember, recordEvent } from "./lib/events";
+import { syncCalendarSoon } from "./lib/google/syncSoon";
 import { localParts } from "./lib/availability";
 import { businessSettingsOf, checkArea, checkHours } from "./lib/settings/business";
 import { instant, optionalText } from "./lib/text";
@@ -86,7 +89,7 @@ async function seriesOf(ctx: Ctx, job: Doc<"jobs">, newStart: number) {
  * why, the company's rules, the customer's commitments, the plan the visit belongs to, and the notices
  * that would go. Changes nothing.
  */
-export const previewVisit = managerQuery({
+export const previewVisit = companyQuery({
   args: { jobId: v.id("jobs"), startsAt: v.number(), endsAt: v.number() },
   handler: async (ctx, args) => {
     const job = await owned(ctx, args.jobId);
@@ -125,7 +128,7 @@ export const previewVisit = managerQuery({
  * person chooses the client notice and which crew notices to skip. The move is saved first; the notice
  * that follows can fail without undoing it, and its result is returned separately.
  */
-export const moveVisit = managerMutation({
+export const moveVisit = companyMutation({
   args: { jobId: v.id("jobs"), startsAt: v.number(), endsAt: v.number(), version: v.string(), notifyCustomer: v.boolean(), quiet: v.array(v.id("assignments")), reason: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const job = await owned(ctx, args.jobId);
@@ -146,6 +149,8 @@ export const moveVisit = managerMutation({
       subject: { table: "jobs", id: job._id },
       data: { from: job.startsAt, to: move.startsAt, customerNotice: notice ? notice.status : "not_chosen", crewNoticesSkipped: quiet.size, reason: reason ?? null },
     });
+    // The connected calendar follows now rather than at the next sweep. The move does not wait on it.
+    await syncCalendarSoon(ctx, ctx.companyId, ctx.member._id);
     return {
       askedAgain: plan.crew.filter((row) => row.outcome === "asked_again").length,
       placesReopened: plan.crew.filter((row) => row.outcome === "place_reopens").length,

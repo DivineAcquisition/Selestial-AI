@@ -57,7 +57,7 @@ export function afterConnect(outcome: "confirm" | "failed" | "expired", origin?:
   const base = returnOrigin(origin) ?? appOrigin() ?? "";
   // "confirm" carries the one-time value the app page needs to show the address and finish.
   const pending = outcome === "confirm" && confirm ? `&pending=${encodeURIComponent(confirm)}` : "";
-  return shared ? `${base}/app/settings/integrations?tool=gmail&result=${outcome}${pending}` : `${base}/app/settings/recruiting?mailbox=${outcome}${pending}`;
+  return shared ? `${base}/app/settings/integrations?tool=gmail&result=${outcome}${pending}` : `${base}/app/agents/recruiter/hiring-setup?mailbox=${outcome}${pending}`;
 }
 
 /** Starts connecting a Gmail mailbox. Answers with the Google address to send the Owner to. */

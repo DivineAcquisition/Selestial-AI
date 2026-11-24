@@ -22,6 +22,7 @@ import { messageByKey, type SendIntent } from "../messaging/outbox";
 import { isEmail } from "../text";
 import { AWAITING_FORM, USABLE_CONTACT } from "./schema";
 import { recruiterSettings, type RecruiterSettings } from "./settings";
+import { startingState } from "../messaging/planning";
 
 export type ApplicantPurpose = Extract<
   Doc<"messages">["purpose"],
@@ -138,7 +139,8 @@ export async function queueApplicantMessage(ctx: MutationCtx, planned: PlannedAp
       retryAt = answer.retryAt;
     }
   }
-  const status = !problem ? "queued" : retryAt !== undefined ? "held" : "not_sent";
+  const start = startingState({ problem, code: code, retryAt, now });
+  const status = start.status;
   const messageId: Id<"messages"> = await ctx.db.insert("messages", {
     companyId: company._id,
     purpose: planned.purpose,
@@ -157,6 +159,7 @@ export async function queueApplicantMessage(ctx: MutationCtx, planned: PlannedAp
     attempts: 0,
     provider: provider?.name,
     problem: problem ?? undefined,
+    ...start.fields,
     queuedAt: now,
   });
   // What the message is for, so the policy is asked the same question at sending time and the weekly limit is counted.

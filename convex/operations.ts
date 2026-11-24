@@ -447,6 +447,10 @@ export const sendStaffAlerts = internalAction({
     if (!pending) return { sent: 0 };
     const outcomes = [];
     for (const channel of ALERT_CHANNELS) outcomes.push(await channel.send(pending.batch, pending.recipients));
+    // Critical incidents also go by text to staff who confirmed a phone for alerts (convex/staffAlerts.ts). Email
+    // stays the record of whether alerts were delivered; the text is a nudge to open Operations.
+    const critical = pending.batch.lines.filter((line) => line.reason === "critical");
+    if (critical.length) await ctx.runMutation(internal.staffAlerts.textCritical, { key: pending.batch.key, lines: critical.map((line) => ({ title: line.title, reference: line.reference })) });
     const outcome = combineOutcomes(outcomes);
     // A backend that is not production sends only to its test addresses; with none, its alerts are dropped
     // (said so in the record) rather than left to grow. Production never takes this path.

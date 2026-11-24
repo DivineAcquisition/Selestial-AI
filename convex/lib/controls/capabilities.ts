@@ -107,7 +107,7 @@ export function capabilityOf(action: string): Capability {
 export const AGENT_PLAYBOOK: Record<Agent, string> = {
   dispatch: "/app/agents/dispatch/playbook",
   sales: "/app/agents/sales/playbook",
-  recruiter: "/app/agents/recruiter/playbook",
+  recruiter: "/app/agents/recruiter/hiring-setup",
   retention: "/app/agents/retention/playbook",
   quality: "/app/agents/quality/playbook",
 };

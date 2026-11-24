@@ -81,7 +81,7 @@ export function Select<V extends string>({ value, onValueChange, options, placeh
               // A saved value that is no longer offered stays chosen and says so, rather than vanishing.
               <span className="truncate text-muted-foreground">No longer available ({current})</span>
             ) : (
-              <span className="truncate text-muted-foreground/80">{placeholder}</span>
+              <span className="truncate text-muted-foreground">{placeholder}</span>
             )
           }
         </SelectPrimitive.Value>

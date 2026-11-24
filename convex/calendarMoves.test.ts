@@ -4,7 +4,7 @@
  * Moving a visit from Calendar (convex/calendarMoves.ts): Dispatch's own move, with Calendar's preview of
  * everything it touches, the person's choice of notices, and a client notice that never undoes a move.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { accepted, dispatchTestEnv, flush, setup } from "../tests/dispatchHarness";
 import { addMember, HOUR, JOB_START, refusal } from "../tests/harness";
@@ -17,12 +17,13 @@ describe("Calendar: moving a visit", () => {
   });
   afterEach(() => undo());
 
-  it("shows who is asked again and what goes, refuses Office and a stale preview, and moves the visit", async () => {
+  it("shows who is asked again and what goes, refuses a stale preview, and moves the visit, for Office too", async () => {
     const s = await setup();
     const a = await accepted(s);
     const office = await addMember(s.t, s.as, s.companyId, "office-a", "office");
     const to = { startsAt: JOB_START + 3 * HOUR, endsAt: JOB_START + 5 * HOUR };
-    expect(await refusal(office.query(api.calendarMoves.previewVisit, { companyId: s.companyId, jobId: a.jobId, ...to }))).toBe("Not allowed.");
+    // Office reschedules, as in Dispatch.
+    expect((await office.query(api.calendarMoves.previewVisit, { companyId: s.companyId, jobId: a.jobId, ...to })).blocking).toEqual([]);
 
     const preview = await s.as.query(api.calendarMoves.previewVisit, { companyId: s.companyId, jobId: a.jobId, ...to });
     expect(preview.blocking).toEqual([]);
@@ -33,9 +34,7 @@ describe("Calendar: moving a visit", () => {
 
     // Someone else changes the visit in between: the move that was previewed is refused, nothing happens.
     expect(await refusal(s.as.mutation(api.calendarMoves.moveVisit, { companyId: s.companyId, jobId: a.jobId, ...to, version: "stale", notifyCustomer: false, quiet: [] }))).toBe("This visit changed since you looked at the move. Review what the move does again, then confirm it.");
-    expect(await refusal(office.mutation(api.calendarMoves.moveVisit, { companyId: s.companyId, jobId: a.jobId, ...to, version: preview.plan.version, notifyCustomer: false, quiet: [] }))).toBe("Not allowed.");
-
-    const result = await s.as.mutation(api.calendarMoves.moveVisit, { companyId: s.companyId, jobId: a.jobId, ...to, version: preview.plan.version, notifyCustomer: false, quiet: [], reason: "Client asked for the afternoon." });
+    const result = await office.mutation(api.calendarMoves.moveVisit, { companyId: s.companyId, jobId: a.jobId, ...to, version: preview.plan.version, notifyCustomer: false, quiet: [], reason: "Client asked for the afternoon." });
     expect(result).toMatchObject({ askedAgain: 1, placesReopened: 0, customerNotice: { status: "not_chosen" } });
     expect((await s.job(a.jobId)).job.startsAt).toBe(to.startsAt);
     // The same visit shows the new time in Calendar and in Dispatch: one record.
@@ -89,6 +88,9 @@ describe("Calendar: moving a visit", () => {
     expect((await s.job(a.jobId)).job.startsAt).toBe(JOB_START);
   });
   it("queues one text to the client when they can be texted, and sending twice queues it once", async () => {
+    // Customer texts go only inside sending hours, 8 AM to 9 PM the customer's time. The harness clock is 6 AM in
+    // Chicago, so this runs at 8 AM.
+    vi.setSystemTime(Date.now() + 2 * 60 * 60 * 1000);
     const s = await setup();
     const a = await accepted(s);
     await s.t.run(async (ctx) => {

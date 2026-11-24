@@ -33,6 +33,7 @@ describe("the settings catalog", () => {
 
   it("finds a section by what people call it", () => {
     expect(searchSections("zip").map((s) => s.id)).toContain("business");
+    expect(searchSections("legal name").map((s) => s.id)).toEqual(["business"]);
     expect(searchSections("2fa").map((s) => s.id)).toEqual(["security"]);
     expect(searchSections("audit log").map((s) => s.id)).toEqual(["activity"]);
     expect(searchSections("")).toHaveLength(SETTINGS_SECTIONS.length);
@@ -40,7 +41,10 @@ describe("the settings catalog", () => {
   });
 
   it("maps a path, and an old hash link, to the page that holds it now", () => {
-    expect(sectionForPath("/app/settings/dispatch?x=1")?.id).toBe("dispatch");
+    expect(sectionForPath("/app/settings/messaging?x=1")?.id).toBe("messaging");
+    // Dispatch and Recruiting rules have one editor each, in their agent's workspace.
+    expect(sectionForPath("/app/settings/dispatch")).toBeUndefined();
+    expect(legacyTarget("#dispatch")).toBe("/app/agents/dispatch/playbook");
     // Services moved to Company › Services & Pricing; old links land there.
     expect(sectionForPath("/app/settings/services")).toBeUndefined();
     expect(legacyTarget("#services")).toBe("/app/services");

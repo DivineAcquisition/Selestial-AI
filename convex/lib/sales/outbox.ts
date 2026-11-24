@@ -27,6 +27,7 @@ import { checkSend, type PolicyAnswer, type PolicyCode } from "../messaging/poli
 import { agentStage, type Opp } from "./agentOpportunity";
 import { linkToken, linkUrl } from "./links";
 import { replyAddressFor } from "./replyAddress";
+import { startingState } from "../messaging/planning";
 
 export type SalesPurpose = "booking_request" | "booking_confirmed" | "proposal_sent" | "signature_request" | "assessment_link" | "sales_reply" | "sales_quote" | "sales_follow_up" | "sales_booking";
 export type SalesLink = { placeholder: string; kind: "pay" | "proposal" | "sign" | "assess" | "quote"; id: string };
@@ -90,7 +91,8 @@ export async function queueSalesMessage(ctx: MutationCtx, planned: PlannedSalesM
       retryAt = answer.retryAt;
     }
   }
-  const status = !problem ? "queued" : retryAt !== undefined ? "held" : "not_sent";
+  const start = startingState({ problem, code: code, retryAt, now });
+  const status = start.status;
   const messageId = await ctx.db.insert("messages", {
     companyId: company._id,
     purpose: planned.purpose,
@@ -110,7 +112,7 @@ export async function queueSalesMessage(ctx: MutationCtx, planned: PlannedSalesM
     attempts: 0,
     provider: provider?.name,
     problem: problem ?? undefined,
-    refusal: status === "not_sent" && code ? code : undefined,
+    ...start.fields,
     queuedAt: now,
   });
   if (status !== "not_sent" && to) await ctx.db.insert("sendIntents", { companyId: company._id, messageId, channel, address: to, at: now, ...intent });

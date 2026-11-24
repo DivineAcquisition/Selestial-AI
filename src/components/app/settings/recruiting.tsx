@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
@@ -333,7 +334,11 @@ function RecruitingFormView({ saved, timezone, canEdit, companyId }: { saved: Re
 
       <Panel title="Communication preferences">
         <p className="mb-3 text-sm text-muted-foreground">
-          When Recruiter may message applicants, on your company&apos;s clock ({timeZoneLabel(timezone)}). Quiet hours and consent rules in Privacy &amp; messaging still apply.
+          When Recruiter may message applicants, on your company&apos;s clock ({timeZoneLabel(timezone)}). Recruiter&apos;s sending hours are also limited by your company&apos;s quiet hours and consent rules in{" "}
+          <Link href="/app/settings/messaging#messaging" className="font-medium text-brand-600 underline-offset-2 hover:underline">
+            Email &amp; texting
+          </Link>
+          : a text goes out only when both allow it.
         </p>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Send messages from">
@@ -371,7 +376,7 @@ function RecruitingFormView({ saved, timezone, canEdit, companyId }: { saved: Re
             {text("decideWithinHours", "Time you have to approve a step (hours)", "After this, the step closes without being done.")}
             {text("retentionDays", "Keep applicant records (days)", "Counted after an application closes. From 30 to 2,555 days (7 years).")}
           </div>
-          <p className="text-sm text-muted-foreground">Your own words. Recruiter reads these for tone and when to hand things to you. They never give it more permission than Agent controls allows.</p>
+          <p className="text-sm text-muted-foreground">Your own words. Recruiter reads these for tone and when to hand things to you. They never give it more permission than Agent permissions allows.</p>
           <Field label="Recruiting guidelines">
             <TextArea value={form.recruitingRules} disabled={!canEdit} onChange={(event) => set("recruitingRules", event.target.value)} />
           </Field>

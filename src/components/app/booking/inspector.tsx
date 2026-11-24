@@ -434,7 +434,7 @@ function SimpleTextPanel({ def, change, which }: Props & { which: "promo" | "out
   if (which === "outOfArea") {
     return (
       <Panel title="Outside the service area" description="What a visitor sees when their ZIP code isn't one you serve.">
-        <Inherited title="Service ZIP codes come from Business details" href="/app/settings/business" label="Open Business details">
+        <Inherited title="Service ZIP codes come from Company profile" href="/app/settings/business" label="Open Company profile">
           Not changed here.
         </Inherited>
         <Text label="Title" value={def.content.outOfAreaTitle} max={LIMITS.title} onChange={(v) => change((d) => void (d.content.outOfAreaTitle = v))} />
@@ -602,7 +602,7 @@ function BehaviorPanel({ def, change, data }: Props) {
         <Select value={b.promotionId ?? ""} onValueChange={(next) => change((d) => void (d.behavior.promotionId = (next ?? "") || null))} options={promotions.map((p) => ({ value: p.id, label: `${p.label} (${p.service})${p.approved ? "" : " — not approved"}`, disabled: !p.approved }))} emptyLabel="None" placeholder="None" searchable="auto" />
       </Field>
       <Inherited title="Hours, notice, horizon and holds" href={RULES} label="Open booking rules">
-        {data.inherited.hours.length ? `${data.inherited.hours.length} booking windows set in Business details.` : "No booking hours set: Monday to Saturday, 8 AM to 6 PM."} Notice {data.settings.scheduling.noticeHours}h · up to {data.settings.scheduling.horizonDays} days ahead · held {data.settings.scheduling.holdMinutes} min.
+        {data.inherited.hours.length ? `${data.inherited.hours.length} booking windows set in Company profile.` : "No booking hours set: Monday to Saturday, 8 AM to 6 PM."} Notice {data.settings.scheduling.noticeHours}h · up to {data.settings.scheduling.horizonDays} days ahead · held {data.settings.scheduling.holdMinutes} min.
       </Inherited>
       <Toggle label="Tell the office about each request" checked={b.notifyOfficeOnRequest} onChange={(v) => change((d) => void (d.behavior.notifyOfficeOnRequest = v))} />
       <Toggle label="Allow recovery reminders" description="A person can send a customer who stopped part-way a link to finish. Nothing is sent automatically." checked={b.offerRecovery} onChange={(v) => change((d) => void (d.behavior.offerRecovery = v))} />

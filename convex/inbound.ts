@@ -28,6 +28,8 @@ import { allow } from "./lib/rateLimit";
 import type { Agent } from "./lib/statuses";
 import { liveTaskByKey, openTask, setTaskState } from "./lib/taskState";
 import { ensureConversation } from "./lib/quo/route";
+import { platformNumbers } from "./lib/platform/senders";
+import { answerNoReply } from "./platformSms";
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -37,7 +39,8 @@ const REPLIES_PER_HOUR = 5;
 
 const STOP_WORDS = new Set(["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT", "REVOKE", "OPTOUT", "OPT OUT", "OPT-OUT"]);
 const HELP_WORDS = new Set(["HELP", "INFO"]);
-const START_WORDS = new Set(["START", "UNSTOP", "YES"]);
+// "YES" is not a START word: Telnyx doesn't lift its own block on it, and a "yes" to an offer must never undo a STOP.
+const START_WORDS = new Set(["START", "UNSTOP"]);
 const PLAIN_STOP = /\b(stop (texting|messaging|contacting|sending)|(don'?t|do not) (text|message|contact)|remove me|unsubscribe me|no more (texts|messages))\b/i;
 /**
  * A message that is nothing but a request to stop, said politely or at a little more length ("please stop",
@@ -72,12 +75,15 @@ function asRecipient(row: RecipientRecord): Recipient {
   return { kind: row.kind, id: row.id };
 }
 
-async function reply(ctx: MutationCtx, companyId: Id<"companies">, to: string, body: string, kind: "stop" | "help" | "start", dedupeKey: string): Promise<Doc<"messages"> | null> {
+async function reply(ctx: MutationCtx, companyId: Id<"companies">, to: string, body: string, kind: "stop" | "help" | "start", dedupeKey: string, answeredBy?: "stop" | "help" | "start"): Promise<Doc<"messages"> | null> {
+  // The messaging profile already answered this keyword itself (Telnyx's auto-response, in the company's words):
+  // a second confirmation would be a duplicate, and after a STOP Telnyx would refuse it anyway (40300).
+  if (answeredBy === kind) return null;
   if (!(await allow(ctx, `inbound-reply:${companyId}:${to}`, REPLIES_PER_HOUR, HOUR))) return null;
   return queueReply(ctx, { companyId, to, body, reply: kind, dedupeKey });
 }
 
-type InboundResult = { kind: InboundKind | "unknown_number" | "bad_number" | "duplicate"; replied: boolean };
+type InboundResult = { kind: InboundKind | "unknown_number" | "bad_number" | "duplicate" | "platform_number"; replied: boolean };
 
 export const sms = internalMutation({
   args: { to: v.string(), from: v.string(), body: v.string(), receivedAt: v.number() },
@@ -89,7 +95,7 @@ export const sms = internalMutation({
  * so a STOP is not confirmed twice and a reply does not open two tasks.
  */
 export const telnyx = internalMutation({
-  args: { eventId: v.string(), to: v.string(), from: v.string(), body: v.string(), receivedAt: v.number(), providerMessageId: v.optional(v.string()), parts: v.optional(v.number()), media: v.optional(v.number()) },
+  args: { eventId: v.string(), to: v.string(), from: v.string(), body: v.string(), receivedAt: v.number(), providerMessageId: v.optional(v.string()), parts: v.optional(v.number()), media: v.optional(v.number()), autoresponseType: v.optional(v.union(v.literal("stop"), v.literal("start"), v.literal("help"))) },
   handler: async (ctx, args): Promise<InboundResult> => {
     const seen = await ctx.db
       .query("providerReceipts")
@@ -97,7 +103,7 @@ export const telnyx = internalMutation({
       .first();
     if (seen) return { kind: "duplicate", replied: false };
     await ctx.db.insert("providerReceipts", { provider: "telnyx", eventId: args.eventId, receivedAt: Date.now() });
-    return handleSms(ctx, { to: args.to, from: args.from, body: args.body, receivedAt: args.receivedAt, providerId: `telnyx:${args.eventId}`, billing: { providerMessageId: args.providerMessageId ?? args.eventId, parts: args.parts, mms: (args.media ?? 0) > 0 } });
+    return handleSms(ctx, { to: args.to, from: args.from, body: args.body, receivedAt: args.receivedAt, providerId: `telnyx:${args.eventId}`, billing: { providerMessageId: args.providerMessageId ?? args.eventId, parts: args.parts, mms: (args.media ?? 0) > 0 }, ...(args.autoresponseType ? { answeredBy: args.autoresponseType } : {}) });
   },
 });
 
@@ -112,6 +118,8 @@ export type ReceiveSms = {
   companyId?: Id<"companies">;
   provider?: "telnyx" | "quo";
   quo?: { connectionId: Id<"quoConnections">; senderId: string; providerConversationId?: string; providerMessageId?: string };
+  /** The provider already answered this STOP, START or HELP itself (Telnyx `autoresponse_type`). Its state is still recorded here. */
+  answeredBy?: "stop" | "help" | "start";
 };
 
 /** A text to the company, from either provider. The same handling, whichever carried it. */
@@ -122,6 +130,13 @@ export async function receiveSms(ctx: MutationCtx, args: ReceiveSms): Promise<In
 async function handleSms(ctx: MutationCtx, args: ReceiveSms): Promise<InboundResult> {
   {
     const to = normalAddress("sms", args.to);
+    // A text to one of Selestial's own numbers is Selestial's, never a company's: they take no replies.
+    if (to && !args.companyId && platformNumbers().includes(to)) {
+      const from = normalAddress("sms", args.from);
+      if (!from) return { kind: "bad_number", replied: false };
+      const answered = await answerNoReply(ctx, { from, keyword: classify(args.body), at: args.receivedAt });
+      return { kind: "platform_number", replied: answered.answered };
+    }
     const companyId = args.companyId ?? (to ? await companyForNumber(ctx, to) : null);
     if (!companyId || !to) return { kind: "unknown_number", replied: false };
     // An incoming text costs money whether or not the balance covers it, and is always received and handled:
@@ -191,8 +206,8 @@ async function handleSms(ctx: MutationCtx, args: ReceiveSms): Promise<InboundRes
       // One confirmation per STOP that started a suppression. A second STOP while it stands gets no new answer.
       let replied = false;
       if (created) {
-        const message = await reply(ctx, companyId, from, registered?.stop_reply ?? `You will no longer receive texts from ${sender}. Reply START to resubscribe.`, "stop", `reply:stop:${suppression._id}`);
-        replied = message !== null && message.status !== "not_sent";
+        const message = await reply(ctx, companyId, from, registered?.stop_reply ?? `You will no longer receive texts from ${sender}. Reply START to resubscribe.`, "stop", `reply:stop:${suppression._id}`, args.answeredBy);
+        replied = args.answeredBy === "stop" || (message !== null && message.status !== "not_sent");
       }
       return { kind, replied };
     }
@@ -201,14 +216,14 @@ async function handleSms(ctx: MutationCtx, args: ReceiveSms): Promise<InboundRes
       const reach = [profile.identity.supportPhone ? `call ${profile.identity.supportPhone}` : null, profile.identity.supportEmail ? `email ${profile.identity.supportEmail}` : null].filter(Boolean).join(" or ");
       const body = registered?.help_reply ?? `${sender}: ${reach ? `for help, ${reach}.` : "for help, contact the business directly."} Reply STOP to stop texts.`;
       await file("help");
-      const message = await reply(ctx, companyId, from, body, "help", `reply:help:${from}:${at}`);
-      return { kind, replied: message !== null && message.status !== "not_sent" };
+      const message = await reply(ctx, companyId, from, body, "help", `reply:help:${from}:${at}`, args.answeredBy);
+      return { kind, replied: args.answeredBy === "help" || (message !== null && message.status !== "not_sent") };
     }
 
     if (kind === "start") {
       // A stop asked for in the person's own words is theirs to undo with START, exactly like a keyword STOP.
-      const stops = (await activeSuppressions(ctx, companyId, "sms", from)).filter((row) => row.reason === "stop_keyword" || row.reason === "natural_language");
-      // START means something only after a STOP. Otherwise it is an ordinary reply, such as "Yes" to an offer.
+      const stops = (await activeSuppressions(ctx, companyId, "sms", from)).filter((row) => row.reason === "stop_keyword" || row.reason === "natural_language" || row.reason === "provider_block");
+      // START means something only after a STOP. Otherwise it is an ordinary reply.
       if (stops.length === 0) return ordinary();
       for (const row of stops) await liftSuppression(ctx, row, { liftedBy: byRecipient, note: "Replied START.", actor: SYSTEM });
       for (const person of people) {
@@ -220,8 +235,8 @@ async function handleSms(ctx: MutationCtx, args: ReceiveSms): Promise<InboundRes
         }
       }
       await file("opt_in");
-      const message = await reply(ctx, companyId, from, registered?.start_reply ?? `You will receive texts from ${sender} again. Reply STOP to stop.`, "start", `reply:start:${stops[0]._id}`);
-      return { kind, replied: message !== null && message.status !== "not_sent" };
+      const message = await reply(ctx, companyId, from, registered?.start_reply ?? `You will receive texts from ${sender} again. Reply STOP to stop.`, "start", `reply:start:${stops[0]._id}`, args.answeredBy);
+      return { kind, replied: args.answeredBy === "start" || (message !== null && message.status !== "not_sent") };
     }
 
     // A plain-words request to stop. Texts stop now; a person reads it and confirms what the person wants.

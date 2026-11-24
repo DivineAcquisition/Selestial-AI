@@ -233,7 +233,7 @@ function PayLink({ detail }: { detail: Detail }) {
           <p className="text-sm font-medium text-strong">Pay link</p>
           <p className="text-xs text-muted-foreground">
             {detail.shared ? (detail.shared.how === "marked_sent" ? `You sent it ${moment(detail.shared.at, timezone)}` : `Copied ${moment(detail.shared.at, timezone)}, not marked sent`) : "Not shared yet. Send it below, or copy the link."}
-            {detail.cardPayments ? " · Card and bank payments on" : " · Card payments off until Stripe is set up"}
+            {detail.cardPayments ? (detail.online.provider === "square" ? ` · Paid through Square${detail.online.where ? ` at ${detail.online.where}` : ""}` : " · Card and bank payments on") : ` · Online payments off until ${detail.online.name} is ready`}
           </p>
         </div>
         <a href={link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-info-foreground underline-offset-4 hover:underline">
@@ -344,12 +344,30 @@ function Payments({ detail, onRefund, onVoid }: { detail: Detail; onRefund: (id:
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {p.receivedOn ? `Received ${calendarDate(p.receivedOn)}` : `Started ${moment(p.createdAt, timezone, true)}`}
                 {p.reference ? ` · ${p.reference}` : ""}
-                {p.feeCents !== null ? ` · Stripe fee ${usd(p.feeCents)}` : p.source === "stripe" && p.status === "succeeded" ? " · Stripe fee not reported yet" : ""}
+                {p.source !== "manual" ? ` · through ${p.source === "square" ? "Square" : "Stripe"}` : ""}
+                {p.feeCents !== null ? ` · ${p.source === "square" ? "Square" : "Stripe"} fee ${usd(p.feeCents)}` : p.source !== "manual" && p.status === "succeeded" ? ` · ${p.source === "square" ? "Square" : "Stripe"} fee unknown until reported` : ""}
                 {p.refundedCents ? ` · ${usd(p.refundedCents)} refunded` : ""}
                 {p.livemode === false ? " · test mode" : ""}
               </p>
               {p.problem ? <p className="mt-1 text-xs text-destructive-foreground">{p.problem}</p> : null}
               {p.voided ? <p className="mt-1 text-xs text-muted-foreground">Voided: {p.voided.reason}</p> : null}
+              {p.receiptUrl ? (
+                <a href={p.receiptUrl} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-info-foreground underline-offset-4 hover:underline">
+                  Square receipt <ExternalLink className="size-3" aria-hidden />
+                </a>
+              ) : null}
+              {p.references ? (
+                <details className="mt-1 text-xs text-muted-foreground">
+                  <summary className="cursor-pointer select-none">Support details</summary>
+                  <ul className="mt-1 grid gap-0.5 break-all">
+                    {p.references.ids.map((id) => (
+                      <li key={id}>
+                        {p.references!.provider} {id}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
             </div>
             <div className="flex gap-1.5">
               {p.refundableCents > 0 && !p.dispute ? (
@@ -374,6 +392,7 @@ function Payments({ detail, onRefund, onVoid }: { detail: Detail; onRefund: (id:
             </p>
             <p className="mt-0.5 text-xs text-muted-foreground">
               {r.reason} · {moment(r.createdAt, timezone, true)}
+              {r.madeInSquare ? " · made in your Square Dashboard" : r.madeInStripe ? " · made in your Stripe Dashboard" : ""}
             </p>
             {r.problem ? <p className="mt-1 text-xs text-destructive-foreground">{r.problem}</p> : null}
           </li>
