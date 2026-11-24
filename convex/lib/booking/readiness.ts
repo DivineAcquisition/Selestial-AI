@@ -7,7 +7,7 @@
 import type { Doc } from "../../_generated/dataModel";
 import type { QueryCtx } from "../../_generated/server";
 import { verifiedPlan } from "../billing/access";
-import { stripeState } from "../finance/stripeState";
+import { onlinePaymentState } from "../finance/provider";
 import { businessSettingsOf } from "../settings/business";
 import { publishedCatalog } from "../services/store";
 import type { Spec } from "../services/spec";
@@ -85,8 +85,8 @@ export async function readiness(ctx: QueryCtx, company: Doc<"companies">, def: D
     const policy = settings.paymentPolicies.find((p) => p.id === def.behavior.paymentPolicyId);
     if (!policy) block("The chosen payment policy no longer exists in the booking rules.", "booking_rules", "behavior.paymentPolicyId");
     else if (policy.kind !== "none") {
-      const stripe = await stripeState(ctx, company._id);
-      if (!stripe.canPayByCard) block(`"${policy.label}" takes a card payment, but card payments aren't set up in Finance.`, "finance", "behavior.paymentPolicyId");
+      const online = await onlinePaymentState(ctx, company._id);
+      if (!online.ready) block(`"${policy.label}" takes a card payment, but online payments through ${online.provider === "square" ? "Square" : "Stripe"} aren't ready in Finance.`, "finance", "behavior.paymentPolicyId");
     }
   } else if (def.behavior.mode === "instant") {
     warn("No payment is taken when booking. The visit is invoiced through Finance as usual.", "booking_rules", "behavior.paymentPolicyId");

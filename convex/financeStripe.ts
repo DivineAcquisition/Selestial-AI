@@ -385,6 +385,15 @@ async function applyPayment(ctx: MutationCtx, paymentId: Id<"payments">, facts: 
   if (status !== payment.status && EVENT_FOR[status]) {
     await recordEvent(ctx, { companyId: payment.companyId, type: EVENT_FOR[status]!, actor: SYSTEM, subject: { table: "payments", id: payment._id }, data: { amountCents: payment.amountCents } });
   }
+  await paymentSettled(ctx, payment, status);
+}
+
+/**
+ * What follows a card payment's new state, whichever provider reported it: the crew's tip, the invoice's
+ * totals, the online booking it pays for, and closing every other unfinished payment once it is paid.
+ * Recompute is from the rows, so a webhook and a reconciliation reporting the same payment count it once.
+ */
+export async function paymentSettled(ctx: MutationCtx, payment: Doc<"payments">, status: Doc<"payments">["status"]) {
   if (status === "succeeded" && payment.status !== "succeeded" && (payment.tipCents ?? 0) > 0) await tipReceived(ctx, payment);
   const before = (await ctx.db.get(payment.invoiceId))!;
   const after = await recompute(ctx, payment.invoiceId);
@@ -725,7 +734,9 @@ export const reconcile = internalMutation({
       ctx.db
         .query("payments")
         .withIndex("by_status_updated", (q) => q.eq("status", status).lt("updatedAt", now - olderThan))
-        .take(limit);
+        .take(limit)
+        // Square's attempts are read back by financeSquarePay.reconcile.
+        .then((rows) => rows.filter((p) => p.source === "stripe"));
     for (const payment of await due("processing", 20 * MINUTE)) {
       if (!payment.checkedAt || now - payment.checkedAt > 20 * MINUTE) await ctx.scheduler.runAfter(0, internal.financeStripe.syncPayment, { paymentId: payment._id });
     }
@@ -736,7 +747,10 @@ export const reconcile = internalMutation({
         .query("refunds")
         .withIndex("by_status_updated", (q) => q.eq("status", status).lt("updatedAt", now - 15 * MINUTE))
         .take(50);
-      for (const refund of rows) await ctx.scheduler.runAfter(0, internal.financeStripe.syncRefund, { refundId: refund._id });
+      for (const refund of rows) {
+        const payment = await ctx.db.get(refund.paymentId);
+        if (payment?.source === "stripe") await ctx.scheduler.runAfter(0, internal.financeStripe.syncRefund, { refundId: refund._id });
+      }
     }
   },
 });

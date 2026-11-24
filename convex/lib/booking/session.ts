@@ -11,7 +11,7 @@ import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import { verifiedPlan } from "../billing/access";
 import { settingsOf as financeSettingsOf, settingsRow as financeRow } from "../finance/settings";
-import { stripeState } from "../finance/stripeState";
+import { onlinePaymentState } from "../finance/provider";
 import { businessSettingsOf, normalizePostalCode, type BusinessSettings } from "../settings/business";
 import { ENGINE_VERSION } from "../services/engine";
 import { dayFullness } from "../services/operations";
@@ -79,7 +79,7 @@ export async function load(ctx: Ctx, session: Doc<"bookingSessions">, company: D
   const fin = financeSettingsOf(await financeRow(ctx, company._id));
   const policy = def.behavior.paymentPolicyId ? (settings.paymentPolicies.find((p) => p.id === def.behavior.paymentPolicyId) ?? null) : null;
   const agreementRule = def.behavior.agreementId ? (settings.agreements.find((a) => a.id === def.behavior.agreementId) ?? null) : null;
-  const stripe = await stripeState(ctx, company._id);
+  const online = await onlinePaymentState(ctx, company._id);
   let eligible: Loaded["eligible"] = { ok: true };
   if (company.suspendedAt) eligible = { ok: false, why: "This company isn't taking online bookings right now." };
   else if (!session.test && !verifiedPlan(company)) eligible = { ok: false, why: "This company isn't taking online bookings right now." };
@@ -101,8 +101,8 @@ export async function load(ctx: Ctx, session: Doc<"bookingSessions">, company: D
     policy,
     agreementRule,
     eligible,
-    canPayByCard: stripe.canPayByCard,
-    stripeTestMode: stripe.testMode,
+    canPayByCard: online.ready,
+    stripeTestMode: online.testMode,
   };
 }
 

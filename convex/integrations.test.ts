@@ -28,12 +28,12 @@ describe("Integrations", () => {
     const { as, companyId } = await company(t, "owner-a", "Alpha Cleaning");
     const office = await addMember(t, as, companyId, "office-a", "office");
 
-    const first = await as.mutation(api.integrations.request, { companyId, integrationId: "square" });
+    const first = await as.mutation(api.integrations.request, { companyId, integrationId: "paypal" });
     expect(first.repeated).toBe(false);
-    expect(await as.mutation(api.integrations.request, { companyId, integrationId: "square" })).toMatchObject({ repeated: true, requestedAt: first.requestedAt });
-    expect((await office.query(api.integrations.overview, { companyId })).requested).toEqual([{ integrationId: "square", requestedAt: first.requestedAt }]);
+    expect(await as.mutation(api.integrations.request, { companyId, integrationId: "paypal" })).toMatchObject({ repeated: true, requestedAt: first.requestedAt });
+    expect((await office.query(api.integrations.overview, { companyId })).requested).toEqual([{ integrationId: "paypal", requestedAt: first.requestedAt }]);
 
-    expect(await refusal(office.mutation(api.integrations.request, { companyId, integrationId: "square" }))).toBe(NOT_ALLOWED);
+    expect(await refusal(office.mutation(api.integrations.request, { companyId, integrationId: "paypal" }))).toBe(NOT_ALLOWED);
     expect(await refusal(as.mutation(api.integrations.request, { companyId, integrationId: "not-a-real-one" }))).toBe(NOT_FOUND);
     expect(await refusal(as.mutation(api.integrations.request, { companyId, integrationId: "gmail" }))).toMatch(/already built/);
 

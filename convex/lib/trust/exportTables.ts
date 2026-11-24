@@ -203,6 +203,7 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   // Finance: the company's own money (convex/lib/finance/schema.ts).
   { table: "financeSettings", index: "by_company" },
   { table: "stripeAccounts", index: "by_company", omit: ["onboarding"], why: "A single-use Stripe onboarding link." },
+  { table: "squareConnections", index: "by_company", omit: ["sealedAccessToken", "sealedRefreshToken", "refreshingUntil"], why: "Sealed Square authorizations: credentials, never exported." },
   { table: "agreementSigningLinks", index: "by_company_request", omit: ["publicId"], why: "Half of a signing link." },
   // Sales (convex/lib/sales/schema.ts).
   { table: "salesOpportunities", index: "by_company_updated" },
@@ -288,6 +289,7 @@ export const NOT_EXPORTED: Readonly<Record<string, string>> = {
   chatUploads: "Internal file references for chat attachments; the files themselves are private to the member who uploaded them.",
   chatMessages: "The words of private chats, for the same reason as conversations.",
   googleCredentials: "A sealed authorization to the company's Google account; it opens the account, so a copy must never leave. The connection itself is exported.",
+  squareOAuthStates: "Short-lived, single-use records of a Square authorization in progress; while one waits to be confirmed it holds sealed tokens (discarded within fifteen minutes), so a copy must never leave.",
   googleOAuthStates: "Short-lived, single-use records of a Google sign-in in progress; while one waits to be confirmed it holds a sealed authorization (deleted within fifteen minutes), so a copy must never leave.",
   googleLeadKeys: "The hash of the lead-form key; it proves Google's deliveries and is useless outside Selestial.",
   googleWatches: "Notification channels with Google, renewed automatically; their secrets must not leave.",
