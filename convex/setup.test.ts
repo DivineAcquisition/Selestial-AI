@@ -140,7 +140,7 @@ describe("Company setup", () => {
     expect(both.filter((id) => id === "pricing.state")).toHaveLength(1);
     // A secondary priority adds its required questions only, never its optional ones.
     expect(questionsFor("pricing", ["recruiter"]).map((question) => question.id)).toEqual(["pricing.state", "hiring.now"]);
-    expect(stepsFor(undefined, []).map((step) => step.id)).toEqual(["start", "basics", "team", "priority", "records", "prepare", "review"]);
+    expect(stepsFor(undefined, []).map((step) => step.id)).toEqual(["start", "basics", "team", "priority", "offer", "records", "prepare", "review"]);
   });
 });
 

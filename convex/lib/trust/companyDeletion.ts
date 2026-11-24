@@ -354,6 +354,7 @@ export const DELETION_PLAN: readonly TablePlan[] = [
   del("companyFacts", "Facts about the company."),
   del("activations", "First agent work."),
   del("activationTasks", "First agent work steps."),
+  del("configOutputs", "What business setup prepared."),
   del("retentionSignals", "Retention signals."),
   del("retentionCases", "Retention cases."),
   del("retentionEntries", "Retention case history."),

@@ -111,6 +111,7 @@ crons.interval("retention reads customer replies in care inboxes", { minutes: 10
 // Activation: steps whose worker never reported back are retried or failed, running batches get their next
 // tick, and blocked first work is checked again. Each step is re-checked before it runs; nothing runs twice.
 crons.interval("activation recovers and resumes first work", { minutes: 5 }, internal.activation.sweep, {});
+crons.interval("business setup recovers interrupted preparation", { minutes: 5 }, internal.configure.sweep, {});
 
 // Operations: each monitoring check runs on its own schedule (convex/lib/operations/detectors.ts). Checks read
 // records through indexes only and never call a provider or a model; what they find becomes an incident.
