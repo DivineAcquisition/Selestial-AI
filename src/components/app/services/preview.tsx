@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import { CALCULATION_ORDER, priceSummary, quote as runQuote, scheduleDates, visitsByMonth, type Quote, type QuoteInput } from "../../../../convex/lib/services/engine";
 import { DEFINITIONS, profitability, type Costs, type Profitability } from "../../../../convex/lib/services/profit";
 import { CATEGORY_LABELS, SCHEDULES, type Spec } from "../../../../convex/lib/services/spec";
-import { sampleInputs } from "../../../../convex/lib/services/store";
+import { hasPrice, sampleInputs } from "../../../../convex/lib/services/store";
 import { addOnWord, areaWord, minutesWords, scheduleLabel } from "../../../../convex/lib/services/words";
 import { formatCents, InfoTip, NumberInput, Segmented, Stepper } from "./shared";
 import { AnimatedMoney, MarginMeter, PriceChange, SPLIT_COLORS, SplitBar, type SplitPart } from "./visuals";
@@ -391,7 +391,7 @@ export function CustomerView({ spec, result }: { spec: Spec; result: Quote }) {
         <p className="mt-1 text-sm text-muted-foreground">{spec.summary || "No description yet."}</p>
         <p className="mt-2 text-sm font-medium text-strong">{priceSummary(spec)}</p>
       </div>
-      <OutcomeLine result={result} />
+      <OutcomeLine result={result} priced={hasPrice(spec)} />
       <QuoteLines result={result} />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
@@ -450,7 +450,17 @@ export function CustomerView({ spec, result }: { spec: Spec; result: Quote }) {
 }
 
 /** Whether this job gets a firm price, an estimate, or a walkthrough first, as booking would decide it. */
-function OutcomeLine({ result }: { result: Quote }) {
+function OutcomeLine({ result, priced }: { result: Quote; priced: boolean }) {
+  if (!priced) {
+    return (
+      <p className="flex items-center gap-2 text-sm">
+        <Badge variant="warning" size="sm">
+          No price yet
+        </Badge>
+        <span className="text-strong">Customers can&apos;t book it until a price is set.</span>
+      </p>
+    );
+  }
   const words =
     result.outcome === "firm"
       ? { tone: "success" as const, text: "Firm price: the customer can book this online." }

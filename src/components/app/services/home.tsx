@@ -107,9 +107,10 @@ function statusOf(row: Row): { label: string; tone: "success" | "info" | "warnin
 function ServiceCard({ row, canDraft }: { row: Row; canDraft: boolean }) {
   const status = statusOf(row);
   const price = row.live && !row.draft?.changed ? row.live.summary : row.draft ? (row.draft.priced ? row.draft.summary : null) : (row.live?.summary ?? null);
-  const action = !canDraft ? "Open" : reviewable(row) ? "Review" : row.draft ? "Edit" : "Open";
+  const unfinished = canDraft && row.status !== "archived" && row.draft !== null && row.draft.blockers > 0;
+  const action = !canDraft ? "Open" : reviewable(row) ? "Review" : unfinished ? "Finish" : row.draft ? "Edit" : "Open";
   return (
-    <Link href={servicePath(row.id)} className="group flex h-full flex-col gap-3 rounded-2xl border border-border bg-card p-4 transition-[border-color,box-shadow] hover:border-brand-500/40 hover:shadow-[0_10px_30px_-18px_rgba(104,56,239,0.45)] focus-visible:outline-2 focus-visible:outline-brand-500/50 sm:p-5">
+    <Link href={unfinished ? `${servicePath(row.id)}?finish=1` : servicePath(row.id)} className="group flex h-full flex-col gap-3 rounded-2xl border border-border bg-card p-4 transition-[border-color,box-shadow] hover:border-brand-500/40 hover:shadow-[0_10px_30px_-18px_rgba(104,56,239,0.45)] focus-visible:outline-2 focus-visible:outline-brand-500/50 sm:p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs text-muted-foreground">{CATEGORY_LABELS[row.category]}</p>

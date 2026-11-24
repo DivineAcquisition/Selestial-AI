@@ -124,7 +124,7 @@ export function ReviewAll() {
           <ul className="grid gap-2">
             {work.map((row) => (
               <li key={row.id}>
-                <Link href={servicePath(row.id)} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-card px-4 py-3 hover:border-brand-500/40 focus-visible:outline-2 focus-visible:outline-brand-500/50">
+                <Link href={`${servicePath(row.id)}?finish=1`} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-card px-4 py-3 hover:border-brand-500/40 focus-visible:outline-2 focus-visible:outline-brand-500/50">
                   <span className="min-w-0">
                     <span className="block font-medium text-strong">{row.draft?.name || row.name}</span>
                     <span className="flex items-start gap-1.5 text-sm text-muted-foreground">
@@ -133,7 +133,7 @@ export function ReviewAll() {
                       {row.draft && row.draft.blockers > 1 ? ` · ${row.draft.blockers - 1} more` : ""}
                     </span>
                   </span>
-                  <span className="text-sm font-medium text-brand-300">Fix</span>
+                  <span className="text-sm font-medium text-brand-300">Finish</span>
                 </Link>
               </li>
             ))}
