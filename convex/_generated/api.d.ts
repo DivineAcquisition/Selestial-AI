@@ -581,6 +581,7 @@ import type * as pay from "../pay.js";
 import type * as permissions from "../permissions.js";
 import type * as personnel from "../personnel.js";
 import type * as pipeline from "../pipeline.js";
+import type * as platformSms from "../platformSms.js";
 import type * as plans from "../plans.js";
 import type * as portal from "../portal.js";
 import type * as portalAccess from "../portalAccess.js";
@@ -1232,6 +1233,7 @@ declare const fullApi: ApiFromModules<{
   permissions: typeof permissions;
   personnel: typeof personnel;
   pipeline: typeof pipeline;
+  platformSms: typeof platformSms;
   plans: typeof plans;
   portal: typeof portal;
   portalAccess: typeof portalAccess;

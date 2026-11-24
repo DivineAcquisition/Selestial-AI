@@ -45,6 +45,7 @@ import { captureCharge, heldNotice, markPending, planOutbound, refundCharge, rel
 import { addSuppression } from "./lib/compliance/permissions";
 import { normalAddress } from "./lib/compliance/recipients";
 import { fingerprint } from "./lib/messaging/fingerprint";
+import { applyPlatformReceipt } from "./platformSms";
 import { laneOf, throughputWait } from "./lib/messaging/throughput";
 import { reserveCharge } from "./messagingBilling";
 
@@ -642,6 +643,8 @@ export async function applyReceipt(ctx: MutationCtx, args: { provider: string; e
     .query("messages")
     .withIndex("by_provider_message", (q) => q.eq("provider", args.provider).eq("providerMessageId", args.providerMessageId))
     .first();
+  // One of Selestial's own texts (a sign-in code, a notice): it has its own record and never touches a company's.
+  if (!message && (await applyPlatformReceipt(ctx, { provider: args.provider, providerMessageId: args.providerMessageId, outcome: args.outcome, providerCost: args.providerCost }))) return "platform" as const;
   if (!message) {
     // Out of order: the report beat the send's own answer, which is what records the provider's id. Kept, and
     // applied when that send settles (a later retry of this report would be a duplicate and dropped).

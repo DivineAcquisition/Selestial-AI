@@ -28,6 +28,8 @@ import { allow } from "./lib/rateLimit";
 import type { Agent } from "./lib/statuses";
 import { liveTaskByKey, openTask, setTaskState } from "./lib/taskState";
 import { ensureConversation } from "./lib/quo/route";
+import { platformNumbers } from "./lib/platform/senders";
+import { answerNoReply } from "./platformSms";
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -81,7 +83,7 @@ async function reply(ctx: MutationCtx, companyId: Id<"companies">, to: string, b
   return queueReply(ctx, { companyId, to, body, reply: kind, dedupeKey });
 }
 
-type InboundResult = { kind: InboundKind | "unknown_number" | "bad_number" | "duplicate"; replied: boolean };
+type InboundResult = { kind: InboundKind | "unknown_number" | "bad_number" | "duplicate" | "platform_number"; replied: boolean };
 
 export const sms = internalMutation({
   args: { to: v.string(), from: v.string(), body: v.string(), receivedAt: v.number() },
@@ -128,6 +130,13 @@ export async function receiveSms(ctx: MutationCtx, args: ReceiveSms): Promise<In
 async function handleSms(ctx: MutationCtx, args: ReceiveSms): Promise<InboundResult> {
   {
     const to = normalAddress("sms", args.to);
+    // A text to one of Selestial's own numbers is Selestial's, never a company's: they take no replies.
+    if (to && !args.companyId && platformNumbers().includes(to)) {
+      const from = normalAddress("sms", args.from);
+      if (!from) return { kind: "bad_number", replied: false };
+      const answered = await answerNoReply(ctx, { from, keyword: classify(args.body), at: args.receivedAt });
+      return { kind: "platform_number", replied: answered.answered };
+    }
     const companyId = args.companyId ?? (to ? await companyForNumber(ctx, to) : null);
     if (!companyId || !to) return { kind: "unknown_number", replied: false };
     // An incoming text costs money whether or not the balance covers it, and is always received and handled:

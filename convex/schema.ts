@@ -34,6 +34,7 @@ import { salesTables } from "./lib/sales/schema";
 import { setupTables } from "./lib/setup/schema";
 import { activationTables } from "./lib/activation/schema";
 import { operationsTables } from "./lib/operations/schema";
+import { platformTables } from "./lib/platform/schema";
 import { supportTables } from "./lib/support/schema";
 import { connectorTables } from "./lib/connectors/schema";
 import { migrationMarkValidator, migrationTables } from "./lib/migration/schema";
@@ -230,6 +231,7 @@ export default defineSchema({
   ...textingTables,
   ...caseTables,
   ...trustTables,
+  ...platformTables,
 
   // ── Public site ────────────────────────────────────────────────────────────────────────────────
   earlyAccessRequests: defineTable({
