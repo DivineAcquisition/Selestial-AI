@@ -815,6 +815,88 @@ const companyDeletions: Detector = {
   },
 };
 
+/** Below this, the Telnyx account warns (TELNYX_BALANCE_ALERT_DOLLARS, default $50). Telnyx refuses campaign filings under $30. */
+export function telnyxBalanceFloor(): number {
+  const dollars = Number(process.env.TELNYX_BALANCE_ALERT_DOLLARS);
+  return Math.round((Number.isFinite(dollars) && dollars > 0 ? dollars : 50) * 10_000);
+}
+
+/**
+ * Selestial's own provider accounts, from the hourly read-only probe (convex/providerHealth.ts). The source
+ * is the provider, not one probe, so the incident always reads the latest answer and clears once Telnyx
+ * answers well again.
+ */
+const providerHealth: Detector = {
+  check: "provider_health",
+  everyMinutes: 15,
+  scan: async (ctx) => {
+    const latest = await ctx.db
+      .query("opsSignals")
+      .withIndex("by_kind_at", (q) => q.eq("kind", "provider_probe"))
+      .order("desc")
+      .first();
+    return latest ? [ref("opsSignals", "telnyx")] : [];
+  },
+  evaluate: async (ctx, source, now) => {
+    if (source.table !== "opsSignals" || source.id !== "telnyx") return null;
+    const recent = (
+      await ctx.db
+        .query("opsSignals")
+        .withIndex("by_kind_at", (q) => q.eq("kind", "provider_probe").gt("at", now - 6 * HOUR))
+        .order("desc")
+        .take(10)
+    ).filter((row) => row.source === "telnyx");
+    const latest = recent[0];
+    if (!latest) return null;
+    const base = { area: "platform" as const, provider: "telnyx", source, since: latest.at, attempts: recent.length };
+    if (latest.outcome === "refused") {
+      const firstRefused = recent.find((row, i) => row.outcome === "refused" && recent[i + 1]?.outcome !== "refused") ?? latest;
+      return {
+        ...base,
+        key: "provider:telnyx:key",
+        kind: "telnyx_key_refused",
+        severity: "critical",
+        state: "needs_staff",
+        title: "Telnyx refuses Selestial's API key",
+        impact: "No company can text, buy a number or register: every Telnyx call is refused. Incoming texts still arrive.",
+        nextAction: "In Telnyx, create a new API v2 key (it starts with KEY), then set TELNYX_API_KEY on this backend. The next hourly check clears this.",
+        diagnostics: latest.detail.slice(0, 200),
+        since: firstRefused.at,
+      };
+    }
+    if (latest.outcome === "unreachable" && recent[1]?.outcome === "unreachable") {
+      return {
+        ...base,
+        key: "provider:telnyx:reach",
+        kind: "telnyx_unreachable",
+        severity: "high",
+        state: "waiting_provider",
+        title: "Telnyx hasn't answered two checks in a row",
+        impact: "Texts may be waiting or unconfirmed until Telnyx answers again; they are not sent twice.",
+        nextAction: "Check status.telnyx.com. Nothing to change in Selestial unless Telnyx reports a problem with the account.",
+        diagnostics: latest.detail.slice(0, 200),
+        since: recent[1].at,
+      };
+    }
+    const floor = telnyxBalanceFloor();
+    if (latest.outcome === "ok" && latest.balanceUnits !== undefined && latest.balanceUnits < floor) {
+      const dollars = (latest.balanceUnits / 10_000).toFixed(2);
+      return {
+        ...base,
+        key: "provider:telnyx:balance",
+        kind: "telnyx_balance_low",
+        severity: latest.balanceUnits < 100_000 ? "critical" : "high",
+        state: "needs_staff",
+        title: `Telnyx account has $${dollars} left`,
+        impact: "When it runs out, every company's texts stop. Telnyx also refuses new campaign filings below $30.",
+        nextAction: "Add funds in Telnyx (Billing). The next hourly check clears this.",
+        diagnostics: `available $${dollars}, warning below $${(floor / 10_000).toFixed(2)}`,
+      };
+    }
+    return null;
+  },
+};
+
 export const DETECTORS: readonly Detector[] = [
   agentWork,
   chatRuns,
@@ -830,6 +912,7 @@ export const DETECTORS: readonly Detector[] = [
   messagingBilling,
   messagingAttention,
   companyDeletions,
+  providerHealth,
 ];
 
 export function detectorFor(check: Check): Detector {

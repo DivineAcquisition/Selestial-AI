@@ -13,6 +13,7 @@ import { recordEvent, type Actor } from "../events";
 import type { Agent } from "../statuses";
 import { checkSend, type PolicyCode } from "./policy";
 import { sendablePhone } from "./provider";
+import { startingState } from "./planning";
 
 export type MessagePurpose = Doc<"messages">["purpose"];
 
@@ -87,7 +88,8 @@ async function plan(ctx: MutationCtx, input: Plan): Promise<Doc<"messages">> {
       retryAt = answer.retryAt;
     }
   }
-  const status = !problem ? "queued" : retryAt !== undefined ? "held" : "not_sent";
+  const start = startingState({ problem, code: code, retryAt, now });
+  const status = start.status;
   const messageId = await ctx.db.insert("messages", {
     companyId: input.companyId,
     purpose: input.purpose,
@@ -103,7 +105,7 @@ async function plan(ctx: MutationCtx, input: Plan): Promise<Doc<"messages">> {
     attempts: 0,
     provider: provider?.name,
     problem: problem ?? undefined,
-    refusal: status === "not_sent" && code ? code : undefined,
+    ...start.fields,
     queuedAt: now,
   });
   // What the message is for, kept so the policy can be asked again at sending time and the weekly limit counted.

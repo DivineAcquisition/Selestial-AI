@@ -45,6 +45,7 @@ import { captureCharge, heldNotice, markPending, planOutbound, refundCharge, rel
 import { addSuppression } from "./lib/compliance/permissions";
 import { normalAddress } from "./lib/compliance/recipients";
 import { fingerprint } from "./lib/messaging/fingerprint";
+import { laneOf, throughputWait } from "./lib/messaging/throughput";
 import { reserveCharge } from "./messagingBilling";
 
 const MAX_ATTEMPTS = 3;
@@ -100,7 +101,8 @@ export const claim = internalMutation({
       // A check with the provider is never held for later (the replay window would pass): a person decides again.
       if (message.reconcile) return backToUnconfirmed(ctx, message, `Not checked with the provider: ${answer.words}`);
       if (answer.retryAt !== undefined && message.purpose !== "verification_code") {
-        await ctx.db.patch(message._id, { status: "held", problem: answer.words });
+        // An owner's pause is a hold of its own: resuming sends exactly these (companies.resumeMessaging).
+        await ctx.db.patch(message._id, { status: "held", problem: answer.words, refusal: answer.code, ...(answer.code === "messaging_paused" ? { holdReason: "messaging_paused" as const, heldAt: message.heldAt ?? Date.now() } : {}) });
         await ctx.scheduler.runAt(answer.retryAt, internal.messaging.deliver, { messageId: message._id });
         await logStep(ctx, message, { type: "message.held", data: { purpose: message.purpose, policy: answer.code, retryAt: answer.retryAt } });
         return null;
@@ -116,6 +118,18 @@ export const claim = internalMutation({
       if (message.retentionActionId) await afterCareMessage(ctx, { ...message, status: "not_sent", problem: answer.words });
       if (message.qualityRequestId) await afterQualityMessage(ctx, { ...message, status: "not_sent", problem: answer.words });
       return null;
+    }
+    // Lanes and throughput (lib/messaging/throughput.ts): over the company's or the number's share, the text stays
+    // queued and is tried again shortly, before anything is rendered, reserved or charged. A check with the
+    // provider is never delayed: its replay window is running.
+    if ((message.channel ?? "sms") === "sms" && !message.reconcile) {
+      const lane = laneOf(message, await intentOf(ctx, message));
+      const number = (await readProfile(ctx, message.companyId)).messaging.smsNumber ?? null;
+      const wait = await throughputWait(ctx, { companyId: message.companyId, messageId: message._id, number, lane });
+      if (wait !== null) {
+        await ctx.scheduler.runAfter(wait, internal.messaging.deliver, { messageId: message._id, ...(args.code ? { code: args.code } : {}) });
+        return null;
+      }
     }
     let body = message.body;
     if (message.linkId) {
@@ -337,7 +351,7 @@ export const claim = internalMutation({
     // The provider is the one this send really uses, so its delivery reports find the message.
     const provider = channel === "email" ? (via ? "gmail" : (emailProvider()?.name ?? message.provider)) : quo ? "quo" : (messagingProvider()?.name ?? message.provider);
     const attemptedAt = Date.now();
-    await ctx.db.patch(message._id, { status: "sending", attempts: attempt, attemptedAt, ...(message.firstAttemptedAt === undefined ? { firstAttemptedAt: message.attemptedAt ?? attemptedAt } : {}), ...(message.sentFingerprint === undefined ? { sentFingerprint: sentAs } : {}), provider, sentVia: provider, holdReason: undefined });
+    await ctx.db.patch(message._id, { status: "sending", attempts: attempt, attemptedAt, ...(message.firstAttemptedAt === undefined ? { firstAttemptedAt: message.attemptedAt ?? attemptedAt } : {}), ...(message.sentFingerprint === undefined ? { sentFingerprint: sentAs } : {}), provider, sentVia: provider, holdReason: undefined, refusal: undefined });
     // A text goes from the conversation's number, on the company's own messaging profile. The send policy has already checked the route is ready.
     const messagingSetup = channel === "sms" && !quo ? (await readProfile(ctx, message.companyId)).messaging : null;
     const from = channel === "sms" ? (quo ? quo.sender : (messagingSetup?.smsNumber ?? "")) : "";

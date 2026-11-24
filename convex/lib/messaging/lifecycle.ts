@@ -57,6 +57,7 @@ const REFUSAL_CLASS: Record<string, RefusalClass> = {
   // Waiting, retried by itself.
   quiet_hours: "hold",
   inbox_disconnected: "hold",
+  messaging_paused: "hold",
 };
 
 const HOLD_WORDS: Record<NonNullable<Doc<"messages">["holdReason"]>, string> = {
@@ -64,6 +65,7 @@ const HOLD_WORDS: Record<NonNullable<Doc<"messages">["holdReason"]>, string> = {
   messaging_balance: "Add funds to continue",
   messaging_limit: "Spending limit reached",
   billing_unavailable: "Waiting for billing to answer",
+  messaging_paused: "Paused by the owner",
 };
 
 export function refusalClassOf(code: string | undefined | null): RefusalClass | null {

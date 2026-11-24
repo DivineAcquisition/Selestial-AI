@@ -364,6 +364,19 @@ export function setAutoResponse(fetcher: Fetcher, profileId: string, input: { op
   return call(fetcher, "POST", `/messaging_profiles/${encodeURIComponent(profileId)}/autoresp_configs`, { op: input.op, keywords: input.keywords, country_code: "US", resp_text: input.text.slice(0, 320) }, () => true);
 }
 
+/**
+ * What the Telnyx account can still spend (GET /v2/balance): `available_credit` (balance plus credit limit)
+ * when Telnyx gives it, otherwise the balance. In units of $0.0001; null when not in USD. Read only.
+ */
+export function getBalance(fetcher: Fetcher): Promise<Answer<{ units: number | null }>> {
+  return call(fetcher, "GET", "/balance", null, (json) => {
+    const row = (json as { data?: Record<string, unknown> } | null)?.data;
+    if (!row || typeof row !== "object") return null;
+    const amount = Number(typeof row.available_credit === "string" || typeof row.available_credit === "number" ? row.available_credit : row.balance);
+    return { units: row.currency === "USD" && Number.isFinite(amount) ? Math.round(amount * 10_000) : null };
+  });
+}
+
 /** Removes a mock filing made by the staff Telnyx check. */
 export function deleteCampaign(fetcher: Fetcher, campaignId: string): Promise<Answer<true>> {
   return call(fetcher, "DELETE", `/10dlc/campaign/${encodeURIComponent(campaignId)}`, null, () => true);

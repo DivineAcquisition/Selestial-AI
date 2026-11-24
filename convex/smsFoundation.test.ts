@@ -144,6 +144,61 @@ describe("SMS foundation", () => {
   });
 });
 
+describe("SMS foundation: pause and throughput", () => {
+  let undo = () => {};
+  beforeEach(() => {
+    undo = dispatchTestEnv();
+  });
+  afterEach(() => {
+    undo();
+    delete process.env.SMS_COMPANY_PER_MINUTE;
+    delete process.env.SMS_NUMBER_PER_MINUTE;
+  });
+
+  it("holds every message while the owner pauses texting, still answers STOP, and sends what waited on resume", async () => {
+    const s = await setup(["Lena", "Rosa"]);
+    await s.as.mutation(api.companies.pauseMessaging, { companyId: s.companyId, reason: "Checking our reminders" });
+    const waiting = await remind(s, "paused-1");
+    await flush(s.t);
+    const held = await message(s, waiting._id);
+    expect(held).toMatchObject({ status: "held", holdReason: "messaging_paused" });
+    expect(messageState(held)).toMatchObject({ label: "Paused by the owner", refusalClass: "hold" });
+    // A person's own STOP is still answered while paused.
+    await s.t.mutation(internal.inbound.sms, { to: s.smsNumber, from: s.phone.Rosa, body: "STOP", receivedAt: Date.now() });
+    await flush(s.t);
+    expect((await replies(s)).map((row) => row.status)).toEqual(["delivered"]);
+    // Resuming sends exactly what waited, through the whole policy again.
+    expect(await s.as.mutation(api.companies.resumeMessaging, { companyId: s.companyId })).toEqual({ changed: true, released: 1 });
+    await flush(s.t);
+    expect((await message(s, waiting._id)).status).toBe("delivered");
+  });
+
+  it("keeps one company within its share per minute, without refusing or charging anything twice", async () => {
+    process.env.SMS_COMPANY_PER_MINUTE = "2";
+    const s = await setup(["Lena"]);
+    const ids: Id<"messages">[] = [];
+    for (const key of ["rate-1", "rate-2", "rate-3"]) ids.push((await remind(s, key))._id);
+    await flush(s.t);
+    const statuses = async () => Promise.all(ids.map(async (id) => (await message(s, id)).status));
+    expect((await statuses()).sort()).toEqual(["delivered", "delivered", "queued"]);
+    vi.advanceTimersByTime(90_000);
+    await flush(s.t);
+    expect(await statuses()).toEqual(["delivered", "delivered", "delivered"]);
+    // Each was sent once.
+    expect(await s.t.run(async (ctx) => (await ctx.db.query("messages").collect()).filter((row) => ids.includes(row._id)).map((row) => row.attempts))).toEqual([1, 1, 1]);
+  });
+
+  it("never makes an answer to STOP wait behind the company's other texts", async () => {
+    process.env.SMS_COMPANY_PER_MINUTE = "1";
+    const s = await setup(["Lena", "Rosa"]);
+    await remind(s, "fill-1");
+    await remind(s, "fill-2");
+    await s.t.mutation(internal.inbound.sms, { to: s.smsNumber, from: s.phone.Rosa, body: "STOP", receivedAt: Date.now() });
+    await flush(s.t);
+    expect((await replies(s)).map((row) => row.status)).toEqual(["delivered"]);
+  });
+});
+
 describe("Message lifecycle words", () => {
   const row = (fields: Partial<Doc<"messages">> & { status: Doc<"messages">["status"] }) => fields as Pick<Doc<"messages">, "status" | "refusal" | "holdReason" | "scheduledFor"> & { deliveryUnconfirmedAt?: number };
   const now = 1_000_000;

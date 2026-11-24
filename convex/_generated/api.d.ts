@@ -587,6 +587,7 @@ import type * as portalAccess from "../portalAccess.js";
 import type * as properties from "../properties.js";
 import type * as propertyPrices from "../propertyPrices.js";
 import type * as proposals from "../proposals.js";
+import type * as providerHealth from "../providerHealth.js";
 import type * as quality from "../quality.js";
 import type * as qualityComms from "../qualityComms.js";
 import type * as qualityHighLevel from "../qualityHighLevel.js";
@@ -1237,6 +1238,7 @@ declare const fullApi: ApiFromModules<{
   properties: typeof properties;
   propertyPrices: typeof propertyPrices;
   proposals: typeof proposals;
+  providerHealth: typeof providerHealth;
   quality: typeof quality;
   qualityComms: typeof qualityComms;
   qualityHighLevel: typeof qualityHighLevel;

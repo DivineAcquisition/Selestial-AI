@@ -294,6 +294,11 @@ export default defineSchema({
     /** Set only by Selestial staff. While set, nothing is sent for this company. */
     suspendedAt: v.optional(v.number()),
     /**
+     * The Owner paused all of the company's outgoing texts and emails to its contacts (companies.pauseMessaging).
+     * Messages wait, held, and go when the Owner resumes. Answers to STOP/HELP/START and sign-in codes still go.
+     */
+    messagingPause: v.optional(v.object({ at: v.number(), by: v.id("members"), reason: v.optional(v.string()) })),
+    /**
      * Set when Selestial staff start deleting the company (convex/companyDeletion.ts). From then on no
      * member, support session, agent or link page can act for it; the deletion run is the only writer.
      */
@@ -825,7 +830,7 @@ export default defineSchema({
     /** The route that actually carried it, written when it is handed over (the planned `provider` can change). */
     sentVia: v.optional(v.string()),
     /** Why a held message is waiting: quiet hours, or messaging funds and limits. Held for funds, it is checked again before it goes. */
-    holdReason: v.optional(v.union(v.literal("quiet_hours"), v.literal("messaging_balance"), v.literal("messaging_limit"), v.literal("billing_unavailable"))),
+    holdReason: v.optional(v.union(v.literal("quiet_hours"), v.literal("messaging_balance"), v.literal("messaging_limit"), v.literal("billing_unavailable"), v.literal("messaging_paused"))),
     heldAt: v.optional(v.number()),
     /** A delivery report that arrived before the send was settled; applied when it is. */
     earlyReceipt: v.optional(v.object({ outcome: v.union(v.literal("delivered"), v.literal("failed"), v.literal("bounced"), v.literal("unconfirmed")), problem: v.optional(v.string()), at: v.number(), beforeCarrier: v.optional(v.boolean()), errorCode: v.optional(v.string()) })),

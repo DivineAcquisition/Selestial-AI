@@ -1,5 +1,7 @@
 import { v } from "convex/values";
 
+import { internal } from "./_generated/api";
+
 import { companyQuery, ownerMutation, signedInMutation, signedInQuery } from "./lib/builders";
 import { AGENTS } from "./lib/statuses";
 import { isTimezone } from "./lib/availability";
@@ -166,6 +168,46 @@ export const resumeAgent = ownerMutation({
     if (!ctx.company.pausedAgents.includes(args.agent)) return { changed: false };
     await applyPolicy(ctx, ctx.company, { kind: "resume", summary: `Resumed ${args.agent}`, paused: ctx.company.pausedAgents.filter((agent) => agent !== args.agent), by: ctx.member._id, actor: byMember(ctx) });
     return { changed: true };
+  },
+});
+
+/**
+ * Pauses every outgoing text and email to the company's contacts, whoever prepared it: people, agents,
+ * reminders. Nothing is refused or lost: each message waits, held with its words kept, and goes when the
+ * Owner resumes. A person's own STOP, HELP or START is still answered, and incoming texts keep arriving.
+ */
+export const pauseMessaging = ownerMutation({
+  args: { reason: v.optional(v.string()) },
+  support: { capability: "agents.recover", summary: "paused the company's texting" },
+  handler: async (ctx, args) => {
+    if (ctx.company.messagingPause) return { changed: false };
+    const reason = args.reason?.trim().slice(0, 300) || undefined;
+    await ctx.db.patch(ctx.companyId, { messagingPause: { at: Date.now(), by: ctx.member._id, ...(reason ? { reason } : {}) } });
+    await recordEvent(ctx, { companyId: ctx.companyId, type: "messaging.paused", actor: byMember(ctx), subject: { table: "companies", id: ctx.companyId }, data: reason ? { reason } : {} });
+    return { changed: true };
+  },
+});
+
+/** Resumes texting. What waited for the pause is checked again and sent now, a few at a time. */
+export const resumeMessaging = ownerMutation({
+  args: {},
+  handler: async (ctx) => {
+    if (!ctx.company.messagingPause) return { changed: false, released: 0 };
+    await ctx.db.patch(ctx.companyId, { messagingPause: undefined });
+    const held = await ctx.db
+      .query("messages")
+      .withIndex("by_company_hold", (q) => q.eq("companyId", ctx.companyId).eq("holdReason", "messaging_paused"))
+      .take(1000);
+    let released = 0;
+    for (const message of held) {
+      if (message.status !== "held") continue;
+      await ctx.db.patch(message._id, { status: "queued", holdReason: undefined });
+      // Every message passes the whole sending policy again as it goes (quiet hours, STOP, funds).
+      await ctx.scheduler.runAfter(released * 200, internal.messaging.deliver, { messageId: message._id });
+      released += 1;
+    }
+    await recordEvent(ctx, { companyId: ctx.companyId, type: "messaging.resumed", actor: byMember(ctx), subject: { table: "companies", id: ctx.companyId }, data: { released } });
+    return { changed: true, released };
   },
 });
 
