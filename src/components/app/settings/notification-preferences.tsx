@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 import { api } from "../../../../convex/_generated/api";
+import { TextPreferences } from "./text-preferences";
 
 const STATUS_WORDS: Record<string, { label: string; tone: "ok" | "wait" | "bad" | "muted" }> = {
   queued: { label: "Sending", tone: "wait" },
@@ -69,7 +70,12 @@ export function NotificationPreferences() {
       </div>
     );
   }
-  return <PreferencesView data={mine} timezone={timezone} busy={busy} error={error} onToggle={(category, on) => void run(() => setEmail({ companyId, category, on }))} onClearBlock={() => void run(() => clearBlock({ companyId }))} />;
+  return (
+    <div className="grid gap-4">
+      <PreferencesView data={mine} timezone={timezone} busy={busy} error={error} onToggle={(category, on) => void run(() => setEmail({ companyId, category, on }))} onClearBlock={() => void run(() => clearBlock({ companyId }))} />
+      <TextPreferences categories={mine.categories} quiet={mine.textQuiet} />
+    </div>
+  );
 }
 
 export function PreferencesView({ data: mine, timezone, busy, error, onToggle, onClearBlock }: { data: PreferencesData; timezone: string; busy: boolean; error: string | null; onToggle: (category: PreferencesData["categories"][number]["category"], on: boolean) => void; onClearBlock: () => void }) {

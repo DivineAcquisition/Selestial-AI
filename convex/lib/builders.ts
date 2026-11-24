@@ -444,12 +444,21 @@ export function linkMutation<V extends AnyValidators, R>(def: {
   action: LinkAction;
   args: V;
   handler: (ctx: MutationCtx & LinkAccess, args: ObjectType<V>) => R;
+  /**
+   * Read only: what to answer when the link is already closed because this same action already happened (a
+   * second tap on Accept). Null means the usual refusal. It never acts and is never recorded as an action.
+   */
+  whenClosed?: (ctx: QueryCtx & LinkAccess) => Promise<Awaited<R> | null>;
 }): RegisteredMutation<"public", ObjectType<V> & { token: string }, R> {
   return mutation({
     args: { token: v.string(), ...def.args },
     handler: async (ctx: MutationCtx, args: { token: string }) => {
       const { token, ...rest } = args;
       const access = await linkAccess(ctx, token);
+      if (access.linkState !== "active" && def.whenClosed && access.link.allowed.includes(def.action)) {
+        const already = await def.whenClosed({ ...ctx, ...access });
+        if (already !== null) return already;
+      }
       if (access.linkState !== "active") throw userError(CLOSED_WORDS[access.linkState], "not_allowed");
       if (!access.link.allowed.includes(def.action)) notAllowed();
       const result = await def.handler({ ...ctx, ...access }, rest as ObjectType<V>);

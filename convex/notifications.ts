@@ -22,7 +22,7 @@ import { companyMutation, companyQuery, publicQuery, serverMutation } from "./li
 import { notFound, userError } from "./lib/errors";
 import { recordEvent } from "./lib/events";
 import { CATEGORY_INFO, EVENT_INFO, noticeCategoryValidator, noticeEventValidator, noticeFactsValidator } from "./lib/notify/catalog";
-import { noticeSuppression, preferenceView, preferencesOf, setEmail as storeEmail, SUPPRESSION_WORDS, type Via } from "./lib/notify/preferences";
+import { DEFAULT_SMS_QUIET, noticeSuppression, preferenceView, preferencesOf, setEmail as storeEmail, setSms as storeSms, SMS_CATEGORIES, smsOn, SUPPRESSION_WORDS, type Via } from "./lib/notify/preferences";
 import { notifyMembers } from "./lib/notify/route";
 import { lastWeekStart } from "./lib/notify/digest";
 import { localParts } from "./lib/availability";
@@ -43,7 +43,8 @@ export const mine = companyQuery({
     return {
       email: ctx.member.email,
       blocked: block ? { reason: block.reason, words: SUPPRESSION_WORDS[block.reason], at: block.at } : null,
-      categories: preferenceView(row, ctx.role),
+      categories: preferenceView(row, ctx.role).map((category) => ({ ...category, text: smsOn(row, category.category), textable: SMS_CATEGORIES.includes(category.category) })),
+      textQuiet: row?.smsQuiet ?? DEFAULT_SMS_QUIET,
       recent: recent.map((m) => ({
         id: m._id,
         event: m.notice?.event ?? null,
@@ -65,6 +66,31 @@ export const setEmail = companyMutation({
     if (result.refused) throw userError(result.refused, "not_allowed");
     if (result.changed) await recordEvent(ctx, { companyId: ctx.companyId, type: "notifications.changed", actor: { kind: "member", memberId: ctx.member._id }, subject: { table: "members", id: ctx.member._id }, data: { category: args.category, on: args.on, via: "settings" } });
     return { changed: result.changed };
+  },
+});
+
+/** Texts for one category to the person's own confirmed phone (convex/myPhone.ts). Selestial's own texts, never charged to the company. */
+export const setText = companyMutation({
+  args: { category: noticeCategoryValidator, on: v.boolean() },
+  handler: async (ctx, args) => {
+    const result = await storeSms(ctx, { companyId: ctx.companyId, member: ctx.member, category: args.category, on: args.on, now: Date.now() });
+    if (result.refused) throw userError(result.refused, "not_allowed");
+    if (result.changed) await recordEvent(ctx, { companyId: ctx.companyId, type: "notifications.changed", actor: { kind: "member", memberId: ctx.member._id }, subject: { table: "members", id: ctx.member._id }, data: { category: args.category, on: args.on, via: "settings", channel: "sms" } });
+    return { changed: result.changed };
+  },
+});
+
+/** When this person's texts wait until morning (company clock). Critical texts go anyway. */
+export const setTextQuiet = companyMutation({
+  args: { start: v.string(), end: v.string() },
+  handler: async (ctx, args) => {
+    const clock = /^([01]\d|2[0-3]):[0-5]\d$/;
+    if (!clock.test(args.start) || !clock.test(args.end)) throw userError("Use times like 21:00 and 07:00.");
+    const now = Date.now();
+    const row = await preferencesOf(ctx, ctx.companyId, ctx.member._id);
+    if (row) await ctx.db.patch(row._id, { smsQuiet: { start: args.start, end: args.end }, updatedAt: now });
+    else await ctx.db.insert("notificationPreferences", { companyId: ctx.companyId, memberId: ctx.member._id, email: [], smsQuiet: { start: args.start, end: args.end }, updatedAt: now });
+    return { start: args.start, end: args.end };
   },
 });
 

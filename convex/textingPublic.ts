@@ -101,7 +101,7 @@ export const signup = serverMutation({
       await setPermission(ctx, { companyId: company._id, recipient, channel: "sms", category: "marketing", status: "granted", source: "web_form", disclosureId: page.marketingDisclosureId, evidence, recordedBy: { kind: "recipient" }, at: now, actor: { kind: "system" } });
     }
     const address = normalAddress("sms", phone)!;
-    const stopped = (await activeSuppressions(ctx, company._id, "sms", address)).some((row) => row.reason === "stop_keyword");
+    const stopped = (await activeSuppressions(ctx, company._id, "sms", address)).some((row) => row.reason === "stop_keyword" || row.reason === "provider_block");
     const sender = (await ctx.db
       .query("complianceProfiles")
       .withIndex("by_company", (q) => q.eq("companyId", company._id))

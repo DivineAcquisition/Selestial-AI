@@ -15,7 +15,7 @@ import type { Doc } from "../../_generated/dataModel";
 
 type Purpose = Doc<"messages">["purpose"];
 
-const INCLUDED: ReadonlySet<Purpose> = new Set<Purpose>(["compliance_reply", "verification_code", "operator_alert", "member_notice"]);
+const INCLUDED: ReadonlySet<Purpose> = new Set<Purpose>(["compliance_reply", "verification_code", "operator_alert", "member_notice", "texting_test"]);
 
 export type BillingClass = "included" | "metered";
 

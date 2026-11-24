@@ -15,6 +15,7 @@ import { messageByKey, type SendIntent } from "../messaging/outbox";
 import { checkSend, type PolicyCode } from "../messaging/policy";
 import { messagingProvider, sendablePhone } from "../messaging/provider";
 import { linkToken, linkUrl } from "../sales/links";
+import { startingState } from "../messaging/planning";
 
 export type QualityPurpose = "quality_request" | "quality_reminder";
 
@@ -43,7 +44,8 @@ export async function queueQualityMessage(ctx: MutationCtx, planned: { company: 
       retryAt = answer.retryAt;
     }
   }
-  const status = !problem ? "queued" : retryAt !== undefined ? "held" : "not_sent";
+  const start = startingState({ problem, code: code, retryAt, now });
+  const status = start.status;
   const messageId = await ctx.db.insert("messages", {
     companyId: company._id,
     purpose: planned.purpose,
@@ -61,7 +63,7 @@ export async function queueQualityMessage(ctx: MutationCtx, planned: { company: 
     attempts: 0,
     provider: provider?.name,
     problem: problem ?? undefined,
-    refusal: status === "not_sent" && code ? code : undefined,
+    ...start.fields,
     queuedAt: now,
   });
   if (status !== "not_sent" && to) await ctx.db.insert("sendIntents", { companyId: company._id, messageId, channel: "sms", address: to, at: now, ...intent });

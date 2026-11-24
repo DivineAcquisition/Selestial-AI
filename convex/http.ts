@@ -42,6 +42,9 @@ import { exchange as googleExchange, googleApp as googleConnectApp, identityFrom
 import { endpoints as googleEndpoints } from "./lib/google/platform";
 import { googleKeys, pushData, tokenKid, verifyOidc } from "./lib/google/pubsub";
 import { receivedEmailId, verifyWebhook, webhookOutcome } from "./lib/messaging/resend";
+import { clerkEvent, isClerkCode } from "./lib/platform/clerk";
+import { countSegments } from "./lib/messagingBilling/segments";
+import { sendPlatformText } from "./platformSms";
 import { parseEvent, signingProvider, verifyBody } from "./lib/agreements/signing";
 import { photoRequestValid } from "./lib/dispatch/photoLinks";
 import { telnyxEvent, verifyTelnyx } from "./lib/messaging/telnyx";
@@ -83,6 +86,37 @@ const unsubscribeRoute = oneClickUnsubscribe({
 });
 http.route({ path: "/notify/unsubscribe", method: "POST", handler: unsubscribeRoute });
 http.route({ path: "/notify/unsubscribe", method: "GET", handler: unsubscribeRoute });
+
+/**
+ * Clerk, Selestial's sign-in service (docs/sms/00-architecture.md §4.6). Needs CLERK_WEBHOOK_SECRET (Svix,
+ * "whsec_…"). `sms.created` with "Delivered by Clerk" turned off for its template: Selestial texts Clerk's own
+ * words (the code included) from its code sender, after its limits. The words go straight to Telnyx from
+ * here and are never stored or logged. Clerk keeps the code, checks it, and makes the session: a text
+ * Selestial delivers grants nothing by itself.
+ */
+http.route({
+  path: "/webhooks/clerk",
+  method: "POST",
+  handler: providerWebhook({
+    verify: async (request, body) => {
+      const secret = process.env.CLERK_WEBHOOK_SECRET?.trim();
+      if (!secret) return false;
+      return verifyWebhook({ secret, id: request.headers.get("svix-id"), timestamp: request.headers.get("svix-timestamp"), signature: request.headers.get("svix-signature"), body, now: Date.now() });
+    },
+    handler: async (ctx, body, request) => {
+      const event = clerkEvent(body);
+      if (event.kind !== "sms" || event.deliveredByClerk) return;
+      // Clerk's security notices (password changed, passkey added or removed) carry no code: they go from the
+      // notice sender, kept as Selestial's own security notice. Only codes go from the code sender.
+      if (!isClerkCode(event.slug, event.message)) {
+        await ctx.runMutation(internal.platformSms.queueNotice, { kind: "security_notice", reason: event.slug, dedupeKey: `clerk:${request.headers.get("svix-id")!}`, to: event.to, body: event.message, ...(event.userId ? { userId: event.userId } : {}) });
+        return;
+      }
+      const decision = await ctx.runMutation(internal.platformSms.codeRequested, { deliveryId: request.headers.get("svix-id")!, to: event.to, ...(event.userId ? { userId: event.userId } : {}), reason: event.slug, segments: countSegments(event.message).segments });
+      if (decision.decision === "send") await sendPlatformText(ctx, { id: decision.id, to: event.to, body: event.message, sender: decision.sender });
+    },
+  }),
+});
 
 /**
  * Autumn tells Selestial something changed for a customer. The body only says who; the record itself is
@@ -224,11 +258,11 @@ http.route({
     handler: async (ctx, body) => {
       const event = telnyxEvent(body);
       if (event.kind === "receipt") {
-        await ctx.runMutation(internal.messaging.receipt, { provider: "telnyx", eventId: event.eventId, providerMessageId: event.providerMessageId, outcome: event.outcome, problem: event.problem ?? undefined, ...(event.costUnits !== null ? { providerCost: event.costUnits } : {}), ...(event.errorCode ? { errorCode: event.errorCode } : {}) });
+        await ctx.runMutation(internal.messaging.receipt, { provider: "telnyx", eventId: event.eventId, providerMessageId: event.providerMessageId, outcome: event.outcome, problem: event.problem ?? undefined, ...(event.costUnits !== null ? { providerCost: event.costUnits } : {}), ...(event.errorCode ? { errorCode: event.errorCode } : {}), ...(event.beforeCarrier ? { beforeCarrier: true } : {}) });
       } else if (event.kind === "registration") {
         await ctx.runMutation(internal.texting.registrationEvent, { eventId: event.eventId, type: event.type, ...(event.brandId ? { brandId: event.brandId } : {}), ...(event.campaignId ? { campaignId: event.campaignId } : {}), ...(event.phoneNumber ? { phoneNumber: event.phoneNumber } : {}) });
       } else if (event.kind === "inbound") {
-        await ctx.runMutation(internal.inbound.telnyx, { eventId: event.eventId, to: event.to, from: event.from, body: event.text, receivedAt: event.receivedAt, ...(event.providerMessageId ? { providerMessageId: event.providerMessageId } : {}), ...(event.parts ? { parts: event.parts } : {}), media: event.media });
+        await ctx.runMutation(internal.inbound.telnyx, { eventId: event.eventId, to: event.to, from: event.from, body: event.text, receivedAt: event.receivedAt, ...(event.providerMessageId ? { providerMessageId: event.providerMessageId } : {}), ...(event.parts ? { parts: event.parts } : {}), media: event.media, ...(event.autoresponseType ? { autoresponseType: event.autoresponseType } : {}) });
       }
     },
   }),

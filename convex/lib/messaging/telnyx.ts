@@ -17,6 +17,11 @@ import type { MessagingProvider, SendInput, SendResult } from "./provider";
 
 const API = "https://api.telnyx.com/v2/messages";
 const FIVE_MINUTES = 5 * 60;
+/**
+ * How long a send may take. A request that times out may still have reached Telnyx, so it is never
+ * failed or retried blindly: it is left unconfirmed and checked again under the same idempotency key.
+ */
+const SEND_TIMEOUT_MS = 15_000;
 
 /**
  * Words for a person from Telnyx's error codes, never the raw response. Only codes whose meaning
@@ -26,11 +31,17 @@ const FIVE_MINUTES = 5 * 60;
 const ERRORS: Record<string, { retryable: boolean; problem: string }> = {
   "40001": { retryable: false, problem: "The carrier says this number cannot receive texts (it may be a landline)." },
   "40002": { retryable: false, problem: "The carrier blocked this text as spam." },
-  // Telnyx documents 40300 both for a recipient who texted STOP and for a sending number with no messaging profile.
-  "40300": { retryable: false, problem: "Telnyx refused this text: the number has opted out with STOP, or the company's texting number is not set up to send." },
   "40305": { retryable: false, problem: "The company's texting number is not assigned to a Telnyx messaging profile." },
   "40310": { retryable: false, problem: "The phone number on file is not valid." },
+  "40329": { retryable: false, problem: "Selestial's toll-free number isn't verified yet, so carriers block its texts." },
 };
+
+/**
+ * 40300 "Blocked due to STOP message": the recipient opted out of this messaging profile at Telnyx
+ * (developers.telnyx.com/docs/messaging/messages/advanced-opt-in-out). Recorded as a suppression.
+ */
+const PROVIDER_BLOCK = "40300";
+const BLOCK_WORDS = "This number opted out of texts from this business with the carrier (it replied STOP), so the text was not sent.";
 
 /** Where this deployment takes Telnyx webhooks. Convex sets CONVEX_SITE_URL on every deployment. */
 export function telnyxWebhookUrl(): string | null {
@@ -53,13 +64,21 @@ export function telnyxProvider(fetcher: typeof fetch = fetch): MessagingProvider
       const key = process.env.TELNYX_API_KEY?.trim();
       if (!key) return { ok: false, retryable: false, problem: "Telnyx is chosen, but its API key is not set on the deployment." };
       if (!input.from) return { ok: false, retryable: false, problem: "The company has no texting number to send from." };
-      const profile = process.env.TELNYX_MESSAGING_PROFILE_ID?.trim();
+      // The company's own profile; the deployment-wide one only for a number provisioned before profiles were per company.
+      const profile = input.messagingProfileId?.trim() || process.env.TELNYX_MESSAGING_PROFILE_ID?.trim();
       const hooks = telnyxWebhookUrl();
-      const response = await fetcher(API, {
-        method: "POST",
-        headers: { authorization: `Bearer ${key}`, "content-type": "application/json", accept: "application/json", "idempotency-key": `selestial-${input.idempotencyKey}`.slice(0, 255) },
-        body: JSON.stringify({ from: input.from, to: input.to, text: input.body, type: "SMS", ...(profile ? { messaging_profile_id: profile } : {}), ...(hooks ? { webhook_url: hooks } : {}) }),
-      });
+      let response: Response;
+      try {
+        response = await fetcher(API, {
+          method: "POST",
+          headers: { authorization: `Bearer ${key}`, "content-type": "application/json", accept: "application/json", "idempotency-key": `selestial-${input.idempotencyKey}`.slice(0, 255) },
+          body: JSON.stringify({ from: input.from, to: input.to, text: input.body, type: "SMS", ...(profile ? { messaging_profile_id: profile } : {}), ...(hooks ? { webhook_url: hooks } : {}) }),
+          signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
+        });
+      } catch {
+        // Timed out or the connection dropped: Telnyx may have taken it. Checked again under the same key, never resent blindly.
+        return { ok: false, retryable: false, uncertain: true, problem: "Telnyx didn't answer in time, so it isn't known yet whether the text went. It will be checked again under the same key; it is not sent twice." };
+      }
       let json: unknown = null;
       try {
         json = await response.json();
@@ -82,6 +101,7 @@ export function telnyxProvider(fetcher: typeof fetch = fetch): MessagingProvider
       // Telnyx holds a different request under this key, so the first attempt reached it. Not failed, and not sent again.
       if (response.status === 422) return { ok: false, retryable: false, uncertain: true, problem: "Telnyx already has an earlier attempt of this text under its key, with different wording, so it was not sent again. It most likely went the first time." };
       const code = (json as { errors?: { code?: unknown }[] } | null)?.errors?.[0]?.code;
+      if (code === PROVIDER_BLOCK) return { ok: false, retryable: false, providerBlock: true, problem: BLOCK_WORDS };
       const known = typeof code === "string" ? ERRORS[code] : undefined;
       if (known) return { ok: false, ...known };
       if (response.status === 429) return { ok: false, retryable: true, problem: "Telnyx asked us to slow down. The text will be tried again." };
@@ -119,8 +139,13 @@ export async function verifyTelnyx(input: { publicKey: string; signature: string
 }
 
 export type TelnyxEvent =
-  | { kind: "receipt"; eventId: string; providerMessageId: string; outcome: "delivered" | "failed"; problem: string | null; costUnits: number | null; errorCode: string | null }
-  | { kind: "inbound"; eventId: string; from: string; to: string; text: string; receivedAt: number; providerMessageId: string | null; parts: number | null; media: number }
+  /**
+   * `unconfirmed`: finalized as `delivery_unconfirmed`, the carrier never said. `beforeCarrier`: finalized as
+   * `sending_failed`, it never left Telnyx for the carrier network (Selestial doesn't charge for those).
+   */
+  | { kind: "receipt"; eventId: string; providerMessageId: string; outcome: "delivered" | "failed" | "unconfirmed"; problem: string | null; costUnits: number | null; errorCode: string | null; beforeCarrier: boolean; occurredAt: number | null }
+  /** `autoresponseType`: Telnyx already answered this STOP, START or HELP itself (the profile's auto-response). */
+  | { kind: "inbound"; eventId: string; from: string; to: string; text: string; receivedAt: number; providerMessageId: string | null; parts: number | null; media: number; autoresponseType: "stop" | "start" | "help" | null; messagingProfileId: string | null }
   /** A 10DLC brand, campaign or number update. Only a hint: the registration's state is always read back from Telnyx. */
   | { kind: "registration"; eventId: string; type: string; brandId: string | null; campaignId: string | null; phoneNumber: string | null }
   | { kind: "ignored" };
@@ -154,7 +179,9 @@ export function telnyxEvent(body: string): TelnyxEvent {
   if (registration) return registration;
   const data = (parsed as { data?: { id?: unknown; event_type?: unknown; occurred_at?: unknown; payload?: Record<string, unknown> } }).data;
   if (!data || typeof data.id !== "string" || !data.payload) return { kind: "ignored" };
-  const payload = data.payload as { id?: unknown; text?: unknown; parts?: unknown; media?: unknown[]; cost?: { amount?: unknown; currency?: unknown } | null; from?: { phone_number?: unknown }; to?: { phone_number?: unknown; status?: unknown }[]; errors?: { code?: unknown; title?: unknown }[] };
+  const payload = data.payload as { id?: unknown; text?: unknown; parts?: unknown; media?: unknown[]; cost?: { amount?: unknown; currency?: unknown } | null; from?: { phone_number?: unknown }; to?: { phone_number?: unknown; status?: unknown }[]; errors?: { code?: unknown; title?: unknown }[]; autoresponse_type?: unknown; messaging_profile_id?: unknown };
+  const occurred = typeof data.occurred_at === "string" ? Date.parse(data.occurred_at) : NaN;
+  const occurredAt = Number.isFinite(occurred) ? occurred : null;
   // What Telnyx charged Selestial (USD, as a decimal string), kept in units of $0.0001 for internal margin tracking.
   const costAmount = payload.cost && payload.cost.currency === "USD" ? Number(payload.cost.amount) : NaN;
   const costUnits = Number.isFinite(costAmount) ? Math.round(costAmount * 10_000) : null;
@@ -163,21 +190,24 @@ export function telnyxEvent(body: string): TelnyxEvent {
   if (data.event_type === "message.finalized") {
     const status = payload.to?.[0]?.status;
     if (typeof payload.id !== "string") return { kind: "ignored" };
-    if (status === "delivered") return { kind: "receipt", eventId: data.id, providerMessageId: payload.id, outcome: "delivered", problem: null, costUnits, errorCode };
-    if (status === "delivery_failed" || status === "sending_failed") {
+    if (status === "delivered") return { kind: "receipt", eventId: data.id, providerMessageId: payload.id, outcome: "delivered", problem: null, costUnits, errorCode, beforeCarrier: false, occurredAt };
+    if (status === "delivery_failed" || status === "sending_failed" || status === "expired") {
       const code = payload.errors?.[0]?.code;
-      return { kind: "receipt", eventId: data.id, providerMessageId: payload.id, outcome: "failed", problem: typeof code === "string" ? (ERRORS[code]?.problem ?? null) : null, costUnits, errorCode };
+      const problem = code === PROVIDER_BLOCK ? BLOCK_WORDS : typeof code === "string" ? (ERRORS[code]?.problem ?? null) : null;
+      return { kind: "receipt", eventId: data.id, providerMessageId: payload.id, outcome: "failed", problem, costUnits, errorCode, beforeCarrier: status !== "delivery_failed", occurredAt };
     }
-    // delivery_unconfirmed: the carrier never said. The message stays "sent", which already says that.
+    // The carrier never confirmed the phone got it. Kept as its own state: "Delivery not confirmed", never "Delivered".
+    if (status === "delivery_unconfirmed") return { kind: "receipt", eventId: data.id, providerMessageId: payload.id, outcome: "unconfirmed", problem: null, costUnits, errorCode, beforeCarrier: false, occurredAt };
     return { kind: "ignored" };
   }
   if (data.event_type === "message.received") {
     const from = payload.from?.phone_number;
     const to = payload.to?.[0]?.phone_number;
     if (typeof from !== "string" || typeof to !== "string") return { kind: "ignored" };
-    const at = typeof data.occurred_at === "string" ? Date.parse(data.occurred_at) : NaN;
     const parts = typeof payload.parts === "number" && Number.isInteger(payload.parts) && payload.parts > 0 ? payload.parts : null;
-    return { kind: "inbound", eventId: data.id, from, to, text: typeof payload.text === "string" ? payload.text : "", receivedAt: Number.isFinite(at) ? at : Date.now(), providerMessageId: typeof payload.id === "string" ? payload.id : null, parts, media: Array.isArray(payload.media) ? payload.media.length : 0 };
+    const auto = typeof payload.autoresponse_type === "string" ? payload.autoresponse_type.toLowerCase() : "";
+    const autoresponseType = auto === "stop" || auto === "start" || auto === "help" ? auto : null;
+    return { kind: "inbound", eventId: data.id, from, to, text: typeof payload.text === "string" ? payload.text : "", receivedAt: occurredAt ?? Date.now(), providerMessageId: typeof payload.id === "string" ? payload.id : null, parts, media: Array.isArray(payload.media) ? payload.media.length : 0, autoresponseType, messagingProfileId: s(payload.messaging_profile_id) };
   }
   return { kind: "ignored" };
 }

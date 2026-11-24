@@ -13,6 +13,7 @@ import { recordEvent, type Actor } from "../events";
 import type { Agent } from "../statuses";
 import { checkSend, type PolicyCode } from "./policy";
 import { sendablePhone } from "./provider";
+import { startingState } from "./planning";
 
 export type MessagePurpose = Doc<"messages">["purpose"];
 
@@ -66,6 +67,10 @@ type Plan = {
   /** A problem found before the policy is asked: no number, no link. */
   problem: string | null;
   intent: SendIntent;
+  /** The person it goes to asked for it themselves (their own test text): no contact permission is needed. */
+  requestedByRecipient?: boolean;
+  /** The team member who wrote it, when a person did. */
+  authorId?: Id<"members">;
 };
 
 /**
@@ -80,14 +85,15 @@ async function plan(ctx: MutationCtx, input: Plan): Promise<Doc<"messages">> {
   let code: PolicyCode | null = null;
   let retryAt: number | undefined;
   if (!problem && input.to) {
-    const answer = await checkSend(ctx, { companyId: input.companyId, channel: "sms", to: input.to, now, ...input.intent });
+    const answer = await checkSend(ctx, { companyId: input.companyId, channel: "sms", to: input.to, now, ...input.intent, ...(input.requestedByRecipient ? { requestedCode: true } : {}) });
     if (!answer.ok) {
       problem = answer.words;
       code = answer.code;
       retryAt = answer.retryAt;
     }
   }
-  const status = !problem ? "queued" : retryAt !== undefined ? "held" : "not_sent";
+  const start = startingState({ problem, code: code, retryAt, now });
+  const status = start.status;
   const messageId = await ctx.db.insert("messages", {
     companyId: input.companyId,
     purpose: input.purpose,
@@ -99,11 +105,12 @@ async function plan(ctx: MutationCtx, input: Plan): Promise<Doc<"messages">> {
     to: input.to ?? undefined,
     body: input.body,
     dedupeKey: input.dedupeKey,
+    ...(input.authorId ? { authorId: input.authorId, draftedBy: "person" as const } : {}),
     status,
     attempts: 0,
     provider: provider?.name,
     problem: problem ?? undefined,
-    refusal: status === "not_sent" && code ? code : undefined,
+    ...start.fields,
     queuedAt: now,
   });
   // What the message is for, kept so the policy can be asked again at sending time and the weekly limit counted.
@@ -177,6 +184,47 @@ export async function queueReply(ctx: MutationCtx, input: { companyId: Id<"compa
     actor: { kind: "system" },
     problem: to ? null : "The number is not valid.",
     intent: { category: "operational", origin: "integration", reply: input.reply },
+  });
+}
+
+/**
+ * The Owner's own test text from Business texting (convex/businessTexting.ts), to their own confirmed phone.
+ * It takes the same path as every business text: the company's number and profile, the policy, the provider.
+ */
+export async function queueOwnerTest(ctx: MutationCtx, input: { companyId: Id<"companies">; to: string; memberId: Id<"members">; body: string; dedupeKey: string }): Promise<Doc<"messages">> {
+  const to = sendablePhone(input.to);
+  return plan(ctx, {
+    companyId: input.companyId,
+    purpose: "texting_test",
+    to,
+    body: input.body,
+    dedupeKey: input.dedupeKey,
+    actor: { kind: "member", memberId: input.memberId },
+    problem: to ? null : "The number is not valid.",
+    intent: { category: "operational", origin: "manual" },
+    requestedByRecipient: true,
+  });
+}
+
+/**
+ * A person on the team writing in an Inbox conversation. Same path and the same policy as every business text:
+ * the recipient's permission, STOP, sending hours, the company's pause and balance. One per key from the
+ * person's browser, so a double click sends once.
+ */
+export async function queueMemberReply(ctx: MutationCtx, input: { companyId: Id<"companies">; to: string; memberId: Id<"members">; body: string; dedupeKey: string; recipient?: Recipient }): Promise<Doc<"messages">> {
+  const existing = await messageByKey(ctx, input.companyId, input.dedupeKey);
+  if (existing) return existing;
+  const to = sendablePhone(input.to);
+  return plan(ctx, {
+    companyId: input.companyId,
+    purpose: "conversation_reply",
+    to,
+    body: input.body,
+    dedupeKey: input.dedupeKey,
+    actor: { kind: "member", memberId: input.memberId },
+    problem: to ? null : "The number is not valid.",
+    intent: { category: "operational", origin: "manual", ...(input.recipient ? { recipient: input.recipient } : {}) },
+    authorId: input.memberId,
   });
 }
 

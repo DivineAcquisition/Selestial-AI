@@ -213,6 +213,9 @@ describe("Sales agent: behaviours restored after the rebuild", () => {
   });
 
   it("writes to an imported prospect only after a person records how they agreed", async () => {
+    // Customer texts go only inside sending hours, 8 AM to 9 PM the customer's time. The harness clock is 6 AM in
+    // Chicago, so this runs at 8 AM.
+    vi.setSystemTime(Date.now() + 2 * 60 * 60 * 1000);
     const s = await agentSetup({ autonomous: true });
     await s.as.mutation(api.salesInquiries.importProspects, { companyId: s.companyId, rows: [{ name: "Old Lead", phone: "+15550106060", kind: "residential", note: "Asked about a clean in the spring." }] });
     await flush(s.t);

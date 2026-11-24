@@ -833,6 +833,144 @@ const companyDeletions: Detector = {
   },
 };
 
+/** Below this, the Telnyx account warns (TELNYX_BALANCE_ALERT_DOLLARS, default $50). Telnyx refuses campaign filings under $30. */
+export function telnyxBalanceFloor(): number {
+  const dollars = Number(process.env.TELNYX_BALANCE_ALERT_DOLLARS);
+  return Math.round((Number.isFinite(dollars) && dollars > 0 ? dollars : 50) * 10_000);
+}
+
+/**
+ * Selestial's own provider accounts, from the hourly read-only probe (convex/providerHealth.ts). The source
+ * is the provider, not one probe, so the incident always reads the latest answer and clears once Telnyx
+ * answers well again.
+ */
+const providerHealth: Detector = {
+  check: "provider_health",
+  everyMinutes: 15,
+  scan: async (ctx) => {
+    const latest = await ctx.db
+      .query("opsSignals")
+      .withIndex("by_kind_at", (q) => q.eq("kind", "provider_probe"))
+      .order("desc")
+      .first();
+    return latest ? [ref("opsSignals", "telnyx")] : [];
+  },
+  evaluate: async (ctx, source, now) => {
+    if (source.table !== "opsSignals" || source.id !== "telnyx") return null;
+    const recent = (
+      await ctx.db
+        .query("opsSignals")
+        .withIndex("by_kind_at", (q) => q.eq("kind", "provider_probe").gt("at", now - 6 * HOUR))
+        .order("desc")
+        .take(10)
+    ).filter((row) => row.source === "telnyx");
+    const latest = recent[0];
+    if (!latest) return null;
+    const base = { area: "platform" as const, provider: "telnyx", source, since: latest.at, attempts: recent.length };
+    if (latest.outcome === "refused") {
+      const firstRefused = recent.find((row, i) => row.outcome === "refused" && recent[i + 1]?.outcome !== "refused") ?? latest;
+      return {
+        ...base,
+        key: "provider:telnyx:key",
+        kind: "telnyx_key_refused",
+        severity: "critical",
+        state: "needs_staff",
+        title: "Telnyx refuses Selestial's API key",
+        impact: "No company can text, buy a number or register: every Telnyx call is refused. Incoming texts still arrive.",
+        nextAction: "In Telnyx, create a new API v2 key (it starts with KEY), then set TELNYX_API_KEY on this backend. The next hourly check clears this.",
+        diagnostics: latest.detail.slice(0, 200),
+        since: firstRefused.at,
+      };
+    }
+    if (latest.outcome === "unreachable" && recent[1]?.outcome === "unreachable") {
+      return {
+        ...base,
+        key: "provider:telnyx:reach",
+        kind: "telnyx_unreachable",
+        severity: "high",
+        state: "waiting_provider",
+        title: "Telnyx hasn't answered two checks in a row",
+        impact: "Texts may be waiting or unconfirmed until Telnyx answers again; they are not sent twice.",
+        nextAction: "Check status.telnyx.com. Nothing to change in Selestial unless Telnyx reports a problem with the account.",
+        diagnostics: latest.detail.slice(0, 200),
+        since: recent[1].at,
+      };
+    }
+    const floor = telnyxBalanceFloor();
+    if (latest.outcome === "ok" && latest.balanceUnits !== undefined && latest.balanceUnits < floor) {
+      const dollars = (latest.balanceUnits / 10_000).toFixed(2);
+      return {
+        ...base,
+        key: "provider:telnyx:balance",
+        kind: "telnyx_balance_low",
+        severity: latest.balanceUnits < 100_000 ? "critical" : "high",
+        state: "needs_staff",
+        title: `Telnyx account has $${dollars} left`,
+        impact: "When it runs out, every company's texts stop. Telnyx also refuses new campaign filings below $30.",
+        nextAction: "Add funds in Telnyx (Billing). The next hourly check clears this.",
+        diagnostics: `available $${dollars}, warning below $${(floor / 10_000).toFixed(2)}`,
+      };
+    }
+    return null;
+  },
+};
+
+/**
+ * Selestial's own texts in the last hour (convex/platformSms.ts): sign-in codes refused by the limits in
+ * bulk (likely SMS pumping or a script), the platform circuit breaker tripping, or Selestial's codes and
+ * notices failing to send. Read from records only; never a phone number or a code.
+ */
+const platformSms: Detector = {
+  check: "platform_sms",
+  everyMinutes: 10,
+  scan: async (ctx, now) => {
+    const recent = await ctx.db
+      .query("platformMessages")
+      .withIndex("by_kind_queued", (q) => q.eq("kind", "auth_code").gt("queuedAt", now - HOUR))
+      .first();
+    return recent ? [ref("platformMessages", "codes"), ref("platformMessages", "delivery")] : [];
+  },
+  evaluate: async (ctx, source, now) => {
+    if (source.table !== "platformMessages") return null;
+    const codes = await ctx.db
+      .query("platformMessages")
+      .withIndex("by_kind_queued", (q) => q.eq("kind", "auth_code").gt("queuedAt", now - HOUR))
+      .take(2000);
+    if (codes.length === 0) return null;
+    const base = { area: "platform" as const, provider: "telnyx", source, since: codes[0].queuedAt, attempts: codes.length };
+    if (source.id === "codes") {
+      const limited = codes.filter((row) => row.refusal === "destination_limit" || row.refusal === "person_limit" || row.refusal === "number_block_limit" || row.refusal === "unsupported_route");
+      const breaker = codes.some((row) => row.refusal === "platform_limit");
+      if (!breaker && limited.length < 20) return null;
+      return {
+        ...base,
+        key: "platform:verification_abuse",
+        kind: "verification_abuse",
+        severity: breaker ? "critical" : "high",
+        state: "needs_staff",
+        title: breaker ? "Sign-in code texts hit the platform's hourly limit" : `${limited.length} sign-in code texts refused by limits in the last hour`,
+        impact: breaker ? "New sign-in codes aren't texted until the hour passes; people can still use their other sign-in methods." : "Someone may be requesting codes in bulk (SMS pumping). Refused codes cost nothing.",
+        nextAction: "Look at the refusals by reason in Operations. If it's abuse, tighten Clerk's SMS country list or bot protection; if it's real demand, raise PLATFORM_SMS_CODES_PER_HOUR.",
+        diagnostics: `${codes.length} code requests, ${limited.length} refused by limits${breaker ? ", circuit breaker tripped" : ""}`,
+      };
+    }
+    const tried = codes.filter((row) => row.status !== "not_sent" && row.status !== "queued");
+    const bad = tried.filter((row) => row.status === "failed" || row.status === "unconfirmed");
+    if (bad.length < 5 || bad.length * 2 < tried.length) return null;
+    return {
+      ...base,
+      key: "platform:sms_failing",
+      kind: "platform_sms_failing",
+      severity: "critical",
+      state: "needs_staff",
+      title: `${bad.length} of ${tried.length} sign-in code texts failed in the last hour`,
+      impact: "People asking for a code by text may not get one.",
+      nextAction: "Check the code sender in Telnyx (toll-free verification, messaging profile). If it can't be fixed quickly, turn \"Delivered by Clerk\" back on for Clerk's SMS templates so Clerk sends codes itself.",
+      diagnostics: `${tried.length} sent, ${bad.length} failed or unconfirmed`,
+    };
+  },
+};
+
 export const DETECTORS: readonly Detector[] = [
   agentWork,
   chatRuns,
@@ -849,6 +987,8 @@ export const DETECTORS: readonly Detector[] = [
   messagingBilling,
   messagingAttention,
   companyDeletions,
+  providerHealth,
+  platformSms,
 ];
 
 export function detectorFor(check: Check): Detector {

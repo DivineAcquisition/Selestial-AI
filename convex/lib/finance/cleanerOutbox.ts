@@ -16,6 +16,7 @@ import { messageByKey, type SendIntent } from "../messaging/outbox";
 import { checkSend, type PolicyCode } from "../messaging/policy";
 import { isEmail } from "../text";
 import { liveStatementLink, statementToken, statementUrl } from "./statementLinks";
+import { startingState } from "../messaging/planning";
 
 type Ctx = QueryCtx | MutationCtx;
 type Channel = "email" | "sms";
@@ -53,7 +54,8 @@ export async function queueCleanerStatement(
       retryAt = answer.retryAt;
     }
   }
-  const status = !problem ? "queued" : retryAt !== undefined ? "held" : "not_sent";
+  const start = startingState({ problem, code: code, retryAt, now });
+  const status = start.status;
   const messageId = await ctx.db.insert("messages", {
     companyId: company._id,
     purpose: "earnings_statement",
@@ -68,7 +70,7 @@ export async function queueCleanerStatement(
     attempts: 0,
     provider: provider?.name,
     problem: problem ?? undefined,
-    refusal: status === "not_sent" && code ? code : undefined,
+    ...start.fields,
     queuedAt: now,
   });
   if (status !== "not_sent" && to) await ctx.db.insert("sendIntents", { companyId: company._id, messageId, channel, address: to, at: now, ...intent });

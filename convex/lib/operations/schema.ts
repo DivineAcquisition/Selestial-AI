@@ -162,11 +162,19 @@ export const operationsTables = {
     .index("by_lockdown", ["lockdownId"]),
 
   opsSignals: defineTable({
-    kind: v.literal("webhook_failed"),
-    /** Where it happened, for example the webhook path /webhooks/telnyx. */
+    /**
+     * `webhook_failed`: a provider callback threw. `provider_probe`: the hourly read-only check of a provider
+     * account (convex/providerHealth.ts): its key works, it answers, and what balance it has left.
+     */
+    kind: v.union(v.literal("webhook_failed"), v.literal("provider_probe")),
+    /** Where it happened, for example the webhook path /webhooks/telnyx, or the provider probed. */
     source: v.string(),
     /** The error's first line, without request contents. */
     detail: v.string(),
     at: v.number(),
+    /** A probe's answer: the key works, the key is refused, or the provider couldn't be reached. */
+    outcome: v.optional(v.union(v.literal("ok"), v.literal("refused"), v.literal("unreachable"))),
+    /** What the provider account can still spend, in units of $0.0001 (USD only). */
+    balanceUnits: v.optional(v.number()),
   }).index("by_kind_at", ["kind", "at"]),
 };

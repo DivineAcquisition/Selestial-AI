@@ -5,7 +5,7 @@ against Telnyx's API reference and support articles on 2026-11-19), and how the 
 top of what is already here. The outbox (`messages`), the sending policy (`checkSend`), the consent
 records and `textingRequests` provisioning stay. Everything below extends them.
 
-Checked against `main` at 0b51ef8 and the live backend (terrific-avocet-835).
+Checked against `main` at 0b51ef8 and the development backend (terrific-avocet-835). Production is stoic-gazelle-731 (`convex/lib/environment.ts`); see `docs/sms/00-architecture.md`.
 
 ## 1. What exists
 

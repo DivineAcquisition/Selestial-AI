@@ -5,6 +5,9 @@
  *   node scripts/auth-doctor.mjs --fix      also does the two things the service's API allows:
  *                                           makes the record's token template, turns its organizations off
  *   ... --fix --live                        the same on a live instance, on purpose
+ *   ... --sms-selestial                     Selestial delivers Clerk's SMS (through Telnyx) for every template
+ *                                           Clerk lets be switched; needs the code sender set up first
+ *   ... --sms-clerk                         back to Clerk delivering every SMS (the failover)
  *
  * Reads NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY from the environment. Prints no secret.
  * The rest (which details sign-up asks for, how email is confirmed) can only be changed in the
@@ -15,6 +18,8 @@ import { templates } from "./auth-emails.mjs";
 const API = "https://api.clerk.com/v1";
 const fix = process.argv.includes("--fix");
 const liveOk = process.argv.includes("--live");
+const smsToSelestial = process.argv.includes("--sms-selestial");
+const smsToClerk = process.argv.includes("--sms-clerk");
 
 /** The claims the record needs in its token. Without the email and its confirmed status, nobody can be invited. */
 export const RECORD_TOKEN = { name: "convex", claims: { aud: "convex", name: "{{user.full_name}}", email: "{{user.primary_email_address}}", email_verified: "{{user.email_verified}}" }, lifetime: 60, allowed_clock_skew: 5 };
@@ -89,6 +94,23 @@ async function main() {
   }
   console.log("");
   say(branded === set.length, `The sign-in emails are Selestial's (${branded} of ${set.length})`, "Run: node scripts/auth-emails.mjs --apply --app-origin <the workspace's address>");
+
+  // SMS (docs/sms/00-architecture.md §4.6): who delivers each of Clerk's SMS templates. A template Clerk lets be
+  // switched can be delivered by Selestial through Telnyx (Clerk's sms.created webhook to /webhooks/clerk);
+  // one it doesn't stays with Clerk. Switch only after Selestial's code sender is verified and set up.
+  if ((smsToSelestial || smsToClerk) && live && !liveOk) throw new Error("This is a live instance. Add --live to change SMS delivery on purpose.");
+  const sms = await api("GET", "/templates/sms");
+  console.log("\n  SMS templates (who delivers each):");
+  for (const template of Array.isArray(sms) ? sms : (sms?.data ?? [])) {
+    let byClerk = template.delivered_by_clerk;
+    const wanted = smsToSelestial ? false : smsToClerk ? true : null;
+    if (wanted !== null && template.can_toggle && byClerk !== wanted) {
+      await api("POST", `/templates/sms/${template.slug}/toggle_delivery`, { delivered_by_clerk: wanted });
+      byClerk = wanted;
+    }
+    console.log(`         ${template.slug.padEnd(30)} ${byClerk ? "Clerk" : "Selestial (Telnyx)"}${template.can_toggle ? "" : "   (Clerk doesn't let this one be switched)"}`);
+  }
+  console.log("         Selestial delivers only with CLERK_WEBHOOK_SECRET and PLATFORM_SMS_CODES_FROM/_PROFILE_ID set on the backend.");
 
   const failed = rows.filter((ok) => !ok).length;
   console.log(failed === 0 ? "\nReady." : `\n${failed} thing${failed === 1 ? "" : "s"} to fix.`);

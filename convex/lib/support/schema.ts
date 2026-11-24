@@ -76,7 +76,7 @@ export const supportTables = {
     /** Who did it: a staff id, or "console" for the command line. */
     by: v.union(v.id("staff"), v.literal("console")),
     staffId: v.id("staff"),
-    kind: v.union(v.literal("added"), v.literal("removed"), v.literal("role"), v.literal("granted"), v.literal("revoked")),
+    kind: v.union(v.literal("added"), v.literal("removed"), v.literal("role"), v.literal("granted"), v.literal("revoked"), v.literal("alert_phone_set"), v.literal("alert_phone_removed")),
     capability: v.optional(capabilityValidator),
     reason: v.optional(v.string()),
     at: v.number(),

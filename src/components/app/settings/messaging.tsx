@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCompany } from "@/components/app/company";
 import { Disclosures, Messaging, Readiness } from "@/components/app/screens/compliance";
 import { Guard } from "@/components/app/settings/guard";
+import { BusinessTexting } from "@/components/app/texting/business-texting";
 import { ChevronRight } from "@/components/icons";
 
 /** Where the rest of email and texting lives. Each has one editor; this page links to it. */
@@ -44,6 +45,9 @@ function Related() {
 export function MessagingSetup() {
   return (
     <div className="grid gap-5">
+      <Guard>
+        <BusinessTexting />
+      </Guard>
       <Guard>
         <Readiness />
       </Guard>

@@ -9,7 +9,6 @@ import { AddressField } from "@/components/app/address-field";
 import { DeletionStatus } from "@/components/app/closing";
 import { useCompany } from "@/components/app/company";
 import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
-import { TextingEntry } from "@/components/app/texting/entry";
 import { Panel } from "@/components/app/shell";
 import { AlertTriangle, ArrowRight, CircleCheckIcon, Download, ShieldCheck } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
@@ -261,7 +260,6 @@ export function Messaging() {
               </p>
             ) : null}
             <MessagingForm profile={profile} />
-            <TextingEntry />
             <Registration profile={profile} />
           </div>
         )}

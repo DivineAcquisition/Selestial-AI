@@ -8,6 +8,7 @@
  * some exist, never their words or amounts.
  */
 import { textingProvider } from "./lib/quo/route";
+import { messageState } from "./lib/messaging/lifecycle";
 import { v } from "convex/values";
 
 import { internal } from "./_generated/api";
@@ -38,17 +39,6 @@ async function memberNames(ctx: Ctx, ids: (Id<"members"> | undefined)[]) {
   }
   return names;
 }
-
-const STATUS_WORDS: Record<Doc<"messages">["status"], string> = {
-  queued: "Sending",
-  held: "Waiting to send",
-  sending: "Sending",
-  sent: "Sent, delivery not confirmed",
-  delivered: "Delivered",
-  failed: "Failed",
-  unconfirmed: "Unknown: the send never confirmed",
-  not_sent: "Not sent",
-};
 
 /** The conversation, oldest first: messages both ways and internal notes, plus who holds it and what is scheduled. */
 export const thread = companyQuery({
@@ -100,7 +90,7 @@ export const thread = companyQuery({
         subject: m.subject ?? null,
         body: m.body,
         status: m.status,
-        statusWords: m.scheduledFor && m.status === "held" ? "Scheduled" : STATUS_WORDS[m.status],
+        statusWords: messageState(m).label,
         problem: m.problem ?? null,
         by: m.authorId ? (names.get(m.authorId) ?? "A team member") : BILLING_PURPOSES.includes(m.purpose) ? "Finance" : "Selestial",
         draftedBy: m.draftedBy ?? null,

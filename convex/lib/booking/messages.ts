@@ -22,6 +22,7 @@ import { bookingSettingsOf } from "./settings";
 import { customerName } from "./session";
 import { newToken, tokenHash } from "./tokens";
 import { unsubscribeUrl } from "./unsubscribe";
+import { startingState } from "../messaging/planning";
 
 type Purpose = "booking_confirmation" | "booking_request_received" | "booking_recovery";
 
@@ -88,7 +89,8 @@ export async function queueBookingMessage(ctx: MutationCtx, input: { sessionId: 
       retryAt = answer.retryAt;
     }
   }
-  const status = !problem ? "queued" : retryAt !== undefined ? "held" : "not_sent";
+  const start = startingState({ problem, code: code, retryAt, now });
+  const status = start.status;
   const replyTo = settings.profile.email ?? undefined;
   const messageId = await ctx.db.insert("messages", {
     companyId: company._id,
@@ -105,7 +107,7 @@ export async function queueBookingMessage(ctx: MutationCtx, input: { sessionId: 
     attempts: 0,
     provider: provider?.name,
     problem: problem ?? undefined,
-    refusal: status === "not_sent" && code ? code : undefined,
+    ...start.fields,
     queuedAt: now,
   });
   if (status !== "not_sent" && to) await ctx.db.insert("sendIntents", { companyId: company._id, messageId, channel: "email", address: to, at: now, ...intent });
