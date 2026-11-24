@@ -2,10 +2,10 @@
 
 **"A busy owner can watch one short video beside the task, then finish that task in the real app."**
 
-Status, November 24, 2026: all six guides scripted, storyboarded and recorded from the real application;
-the pilot (**Set up your company**) is narrated, assembled and verified in the app. The other five wait for the
-Owner's confirmation of the voice and of how "Selestial" is pronounced. Nothing is published: staff publish each
-guide at /staff/tutorials after review. How to reproduce everything: `tutorials/SETUP-SERIES.md`.
+Status, November 24, 2026: all six guides are recorded from the real application, narrated with ElevenLabs
+(stock voice Eric; "Selestial" said like "celestial", confirmed by the Owner), assembled, and verified in the app
+from every placement. Nothing is published: the files are uploaded to Vercel Blob and staff publish each guide at
+/staff/tutorials after review (see Still needed). How to reproduce everything: `tutorials/SETUP-SERIES.md`.
 
 ## What was there before
 
@@ -52,17 +52,21 @@ next step (closing card). Storyboards: `tutorials/storyboards/setup-*.json`; the
 script, and the transcript. Fictional company **Juniper Cleaning Co.**, Austin TX; people and addresses are
 fictional, emails are example.com, phones 555-01xx, the EIN is the IRS's own example.
 
-| Guide | Narration | Speech | Notes |
-|---|---|---|---|
-| 1 | 1,152 characters | 69 s; video 77.6 s | Narrated and assembled |
-| 2 | 1,099 | ~81 s | Recorded |
-| 3 | 1,284 | ~90 s | Recorded; form-filling shown at 2×, labelled "Sped up 2×" |
-| 4 | 854 | ~59 s | Recorded; typing at 1.6×, labelled |
-| 5 | 1,143 | ~77 s | Recorded; business details at 2×, labelled |
-| 6 | 983 | ~70 s | Recorded |
+| Guide | Narration | Video | Target | Notes |
+|---|---|---|---|---|
+| 1 Set up your company | 1,152 characters | 77.6 s | 60–90 s | |
+| 2 Build your services and pricing | 1,099 | 80.3 s | 90–150 s | |
+| 3 Bring in your clients and upcoming work | 1,284 | 94.1 s | 90–150 s | Visit form at 2× and new client at 1.5×, both labelled |
+| 4 Get your cleaners ready | 854 | 63.4 s | 90–150 s | Add cleaner at 1.6×, pay at 1.6×, labelled |
+| 5 Connect your email and phone | 1,143 | 79.2 s | 90–150 s | Business details at 2×, labelled |
+| 6 Put your agents to work | 983 | 69.9 s | 90–150 s | |
 
-ElevenLabs usage: 6,515 characters for all six. This billing cycle: 868 of 10,000 used before the pilot, 2,020
-after it (the account is on the free tier, resets December 20). The remaining five need 5,363.
+Four guides run under the 90-second target: the scripts say only what the screens show, without padding.
+Each is 4–6 MB at 1080p (H.264/AAC, faststart).
+
+ElevenLabs usage: 6,515 characters for all six, plus 230 for the voice samples. This billing cycle: 6,400 of
+10,000 used (free tier, resets December 20). Neighbouring-line context is not billed; unchanged lines are reused
+from the cache.
 
 ## Blockers and limits found (not demonstrated, or demonstrated with care)
 
@@ -103,6 +107,10 @@ after it (the account is on the free tier, resets December 20). The remaining fi
   motion): no autoplay; plays when asked; 23 caption cues showing; `k` pauses and `c` toggles captions from the
   player's buttons; transcript readable and downloadable; no horizontal overflow; Escape closes; focus returns to
   the card; typed but unsaved Business details survive opening and closing; the next action returns to the task.
+- Every placement (47/47), with all six published in the local backend: setup's first step (next action "Continue
+  setup"), Business details, Services & Pricing, Clients & Properties, the migration workspace, Cleaners, Connected
+  apps, business texting and Agent controls each show their card with the real length, open the right guide,
+  play it and close without errors; Home and Help & tutorials list all six.
 - Failure paths (13/13): a missing video says it didn't load and offers a retry, with steps, transcript and
   next action still there; "Needs update" removes the card; republishing restores it; Home shows Getting started
   only while a published guide's task is open, with "To do" from records; Help & tutorials opens from the account
@@ -112,12 +120,10 @@ after it (the account is on the free tier, resets December 20). The remaining fi
 
 ## Still needed
 
-1. **Owner:** confirm the voice and how "Selestial" is said (two samples: as written, or like "celestial"; the pilot
-   uses the second). Then narrate and assemble guides 2–6 (`tutorials/SETUP-SERIES.md`, about 5,400 characters).
-2. **Owner:** the ElevenLabs account is on the free tier, whose terms don't cover commercial use and require
+1. **Owner:** the ElevenLabs account is on the free tier, whose terms don't cover commercial use and require
    attribution. Upgrade to a paid plan (Starter is enough for this series) before these videos are published.
-3. **Media upload:** `tutorials/scripts/publish.mjs <id>` uploads each build to the `selestial-tutorials` Blob store;
+2. **Media upload:** `tutorials/scripts/publish.mjs <id>` uploads each build to the `selestial-tutorials` Blob store;
    it needs `BLOB_READ_WRITE_TOKEN`, which this session doesn't hold. Then paste the printed media entry at
    /staff/tutorials (Replace media version) and set the state to Published, or put it in `setup.ts` `media`.
-4. Re-record a guide when its screens change (`--from <scene>` re-captures from one scene; unchanged narration is
+3. Re-record a guide when its screens change (`--from <scene>` re-captures from one scene; unchanged narration is
    reused from the cache at no cost).

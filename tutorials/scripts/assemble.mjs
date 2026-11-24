@@ -30,6 +30,17 @@ const TAIL = 0.9; // and after it ends, to read the screen
 // A short crossfade between scenes, inside the silent lead and tail, so no word is faded. 0 for hard cuts.
 const FADE = board.transition === "cut" ? 0 : 0.3;
 
+/** A font for labels drawn at assembly ("Sped up 1.5×"): Inter where installed, else the system sans. */
+const LABEL_FONT = (() => {
+  try {
+    return execFileSync("fc-match", ["-f", "%{file}", "Inter:weight=600"]).toString().trim();
+  } catch {
+    return "";
+  }
+})();
+/** ffmpeg drawtext needs its text escaped. */
+const drawable = (text) => text.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\u2019").replace(/%/g, "\\%");
+
 const probe = (file) => Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file]).toString().trim());
 
 function clipOf(scene) {
@@ -97,10 +108,14 @@ scenes.forEach(({ scene, clip, spans, length }, i) => {
   const zoomChain = f
     ? `,scale=w='trunc(${W}*${z}/2)*2':h='trunc(${H}*${z}/2)*2':eval=frame,crop=${W}:${H}:x='min(max(${cx}*iw/${W}-${W}/2\\,0)\\,iw-${W})':y='min(max(${cy}*ih/${H}-${H}/2\\,0)\\,ih-${H})'`
     : "";
+  // A scene played faster carries a visible label for its whole length, unless the recording drew one already.
+  const label = scene.tag
+    ? `,drawtext=${LABEL_FONT ? `fontfile='${LABEL_FONT}':` : ""}text='${drawable(scene.tag)}':fontsize=27:fontcolor=white:box=1:boxcolor=0x1c1530@0.88:boxborderw=14|20:x=w-tw-46:y=34`
+    : "";
   filters.push(
     ...parts,
     joined,
-    `[s${i}j]setpts=PTS/${speed},fps=${FPS},scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=0x0b0b14,setsar=1${zoomChain},tpad=stop_mode=clone:stop_duration=${length.toFixed(3)},trim=duration=${length.toFixed(3)},setpts=PTS-STARTPTS[v${i}]`,
+    `[s${i}j]setpts=PTS/${speed},fps=${FPS},scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=0x0b0b14,setsar=1${zoomChain},tpad=stop_mode=clone:stop_duration=${length.toFixed(3)},trim=duration=${length.toFixed(3)},setpts=PTS-STARTPTS${label}[v${i}]`,
     `[${v + 1}:a]aresample=48000,adelay=${Math.round(LEAD * 1000)}:all=1,apad,atrim=duration=${length.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`,
   );
   timeline.push({ id: scene.id, start, length });

@@ -562,6 +562,7 @@ import type * as lib_trust_staffSchema from "../lib/trust/staffSchema.js";
 import type * as lib_tutorials_catalog from "../lib/tutorials/catalog.js";
 import type * as lib_tutorials_schema from "../lib/tutorials/schema.js";
 import type * as lib_tutorials_setup from "../lib/tutorials/setup.js";
+import type * as lib_tutorials_setup from "../lib/tutorials/setup.js";
 import type * as lib_uploads from "../lib/uploads.js";
 import type * as links from "../links.js";
 import type * as media from "../media.js";
@@ -1211,6 +1212,7 @@ declare const fullApi: ApiFromModules<{
   "lib/trust/seed": typeof lib_trust_seed;
   "lib/trust/staffSchema": typeof lib_trust_staffSchema;
   "lib/tutorials/catalog": typeof lib_tutorials_catalog;
+  "lib/tutorials/setup": typeof lib_tutorials_setup;
   "lib/tutorials/schema": typeof lib_tutorials_schema;
   "lib/tutorials/setup": typeof lib_tutorials_setup;
   "lib/uploads": typeof lib_uploads;

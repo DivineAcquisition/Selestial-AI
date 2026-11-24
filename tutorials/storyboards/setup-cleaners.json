@@ -329,7 +329,9 @@
           }
         ]
       },
-      "minSeconds": 8
+      "minSeconds": 10.5,
+      "speed": 1.6,
+      "tag": "Sped up 1.6×"
     },
     {
       "id": "active",

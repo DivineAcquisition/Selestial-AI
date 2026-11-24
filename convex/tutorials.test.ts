@@ -156,15 +156,19 @@ describe("Setup guides", () => {
     expect(await refusal(other.as.query(api.tutorials.setupStatus, { companyId }))).toBe(NOT_FOUND);
   });
 
-  it("publish with their video only once their transcript is reviewed", async () => {
+  it("are recorded and reviewed, and reach owners with their video once staff publish them", async () => {
+    // Every guide was followed in the app and its narration reviewed: both are required to publish a video.
+    for (const tutorial of SETUP_TUTORIALS) {
+      expect(tutorial.interfaceVerifiedOn, tutorial.id).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(tutorial.transcript?.length ?? 0, tutorial.id).toBeGreaterThan(200);
+    }
     const t = start();
     const { admin } = await staffSetup(t);
-    // Recorded and reviewed: setup-company carries its transcript.
-    await admin.mutation(api.tutorials.setMedia, { tutorialId: "setup-company", media: { ...MEDIA, transcript: "https://media.example/t/v2.txt" } });
-    await admin.mutation(api.tutorials.setState, { tutorialId: "setup-company", state: "published" });
-    // Not yet recorded and reviewed: refused.
-    await admin.mutation(api.tutorials.setMedia, { tutorialId: "setup-agents", media: MEDIA });
-    await expect(admin.mutation(api.tutorials.setState, { tutorialId: "setup-agents", state: "published" })).rejects.toThrow();
+    const { as, companyId } = await company(t, "owner-a", "Alpha Cleaning");
+    await admin.mutation(api.tutorials.setMedia, { tutorialId: "setup-agents", media: { ...MEDIA, transcript: "https://media.example/t/v2.txt" } });
+    await admin.mutation(api.tutorials.setState, { tutorialId: "setup-agents", state: "published" });
+    const shown = await as.query(api.tutorials.published, { companyId });
+    expect(shown.map((row) => [row.id, row.guide, row.media?.transcript])).toEqual([["setup-agents", "walkthrough", "https://media.example/t/v2.txt"]]);
     // A transcript address must be https or on Selestial's own site.
     await expect(admin.mutation(api.tutorials.setMedia, { tutorialId: "setup-company", media: { ...MEDIA, transcript: "ftp://media.example/t.txt" } })).rejects.toThrow(/https/);
   });
