@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { DOCUMENT_KINDS, DOCUMENT_VERSIONS } from "../../../../convex/lib/trust/documents";
+import { DOCUMENT_KINDS, DOCUMENT_VERSIONS, inForce, versionById } from "../../../../convex/lib/trust/documents";
 import { DOCUMENT_TEXTS, textFor } from "./index";
 
 const LINK = /\[([^\]]+)\]\(([^)]+)\)/g;
@@ -42,5 +42,15 @@ describe("the public documents", () => {
     expect(all).toMatch(/scrape/);
     expect(all).toContain("we assign them to your business");
     expect(all).toContain("the Terms of Service apply");
+  });
+
+  it("puts the owner-approved EULA in force, until staff withdraw it, and leaves other versions to staff", () => {
+    const eula = versionById("eula-2026-11-24")!;
+    const terms = versionById("terms-2026-11-16")!;
+    expect(inForce(eula, [])).toBe(true);
+    expect(inForce(eula, [{ documentId: eula.id, status: "withdrawn" }])).toBe(false);
+    expect(inForce(eula, [{ documentId: eula.id, status: "published" }])).toBe(true);
+    expect(inForce(terms, [])).toBe(false);
+    expect(inForce(terms, [{ documentId: terms.id, status: "published" }])).toBe(true);
   });
 });
