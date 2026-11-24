@@ -10,7 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { company, refusal } from "../tests/harness";
-import { DAY, emailsTo, flush, HOUR, indeedApplication, invited, later, mail, MONDAY_10AM, recruiterTestEnv, setup, type Setup } from "../tests/recruiterHarness";
+import { DAY, emailsTo, flush, HOUR, indeedApplication, invited, later, mail, MONDAY_10AM, recruiterTestEnv, setup, zipApplication, type Setup } from "../tests/recruiterHarness";
 import { billing } from "../tests/setupBilling";
 import { api, internal } from "./_generated/api";
 import { mockDrafter } from "./lib/recruiter/drafting";
@@ -375,5 +375,34 @@ describe("Recruiter's background work and notices", () => {
     const summary = (await notices(s)).filter((m) => m.notice?.event === "recruiter_activity");
     expect(summary).toHaveLength(1);
     expect(summary[0].notice?.facts).toMatchObject({ kind: "summary", applied: 2, asked: 1, ready: 3 });
+  });
+});
+
+describe("confirming a job board's forwarding", () => {
+  let undo: () => void;
+  beforeEach(() => {
+    undo = recruiterTestEnv();
+  });
+  afterEach(() => undo());
+
+  it("looks again at that board's applications already on file, prepares their links, and sends nothing", async () => {
+    const s = await setup();
+    // As in a real inbox: ZipRecruiter applicants known only by the board's forwarding address.
+    await s.receive(zipApplication({ id: "z1" }), zipApplication({ id: "z2", from: "Ana Ruiz via ZipRecruiter <ana.r.11aa@reply.ziprecruiter.com>", subject: "New candidate: Ana Ruiz for House Cleaner", text: "Ana Ruiz applied for your House Cleaner job.\nCandidate ID: ZR-2" }));
+    expect((await s.findings()).open.map((row) => row.kind)).toEqual(["contact_needed", "contact_needed"]);
+    await s.as.mutation(api.recruiter.setVerifiedRelays, { companyId: s.companyId, sources: ["ziprecruiter"] });
+    await flush(s.t);
+    const ready = await s.ready();
+    expect(ready.map((row) => [row.kind, row.prepared?.toKind]).sort()).toEqual([
+      ["new_application", "relay"],
+      ["new_application", "relay"],
+    ]);
+    expect(mockEmails).toEqual([]);
+    // Withdrawn again: back to needing a contact, nothing prepared to the forwarding address.
+    await s.as.mutation(api.recruiter.setVerifiedRelays, { companyId: s.companyId, sources: [] });
+    await flush(s.t);
+    expect((await s.findings()).open.map((row) => row.kind)).toEqual(["contact_needed", "contact_needed"]);
+    const manager = await s.manager();
+    expect(await refusal(manager.mutation(api.recruiter.setVerifiedRelays, { companyId: s.companyId, sources: ["indeed"] }))).toBeTruthy();
   });
 });
