@@ -174,6 +174,21 @@ describe("Instant Shine pilot migration", () => {
     expect(await refusal(office.mutation(api.migrationSources.stageFile, { companyId, source: "instant_shine", kind: "customers", name: "x", header: ["externalId", "name"], rowCount: 1, sha256: "0".repeat(64) }))).toBeTruthy();
   });
 
+  it("applies Instant Shine's crew pay to imported contractors only, keeping pay already set, and only for the Owner", async () => {
+    const { t, as, companyId } = await pilot();
+    await importAll(t, as, companyId);
+    const [dee, eli] = (await everything(t, companyId)).cleaners.sort((a, b) => a.name.localeCompare(b.name));
+    await t.run(async (ctx) => ctx.db.patch(eli._id, { pay: { kind: "share", shareBps: 3500 } }));
+    const manager = await addMember(t, as, companyId, "manager-bay", "manager");
+    expect(await refusal(manager.mutation(api.migrationSources.applyImportedPay, { companyId, shareBps: 4000 }))).toBeTruthy();
+    expect(await as.mutation(api.migrationSources.applyImportedPay, { companyId, shareBps: 4000 })).toEqual({ set: 1, kept: 1 });
+    const after = await everything(t, companyId);
+    expect(after.cleaners.find((c) => c._id === dee._id)!.pay).toEqual({ kind: "share", shareBps: 4000 });
+    expect(after.cleaners.find((c) => c._id === eli._id)!.pay).toEqual({ kind: "share", shareBps: 3500 });
+    // The accepted visit keeps the pay recorded in Instant Shine, whatever the rule now says.
+    expect(after.assignments.map((a) => a.payCents)).toEqual([5240, 5240]);
+  });
+
   it("undoes the untouched import, its accepted crew included", async () => {
     const { t, as, companyId } = await pilot();
     await importAll(t, as, companyId);

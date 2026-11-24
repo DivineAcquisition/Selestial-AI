@@ -32,6 +32,7 @@ import { ImportStep } from "./step-import";
 import { OrganizeStep } from "./step-organize";
 import { ReviewStep } from "./step-review";
 import { SourceStep } from "./step-source";
+import { InstantShinePanel } from "./source-instant-shine";
 import { VerifyStep } from "./step-verify";
 
 export function MigrationWorkspace() {
@@ -89,6 +90,7 @@ function Message({ title, body }: { title: string; body: string }) {
 function Frame() {
   const { view, step, go, busy, error, locked } = useMigration();
   const router = useRouter();
+  const params = useSearchParams();
   const index = STEPS.findIndex((row) => row.id === step);
   const previous = STEPS[index - 1];
   const next = STEPS[index + 1];
@@ -123,6 +125,8 @@ function Frame() {
           Selestial Support is helping with this migration. Their changes are marked &ldquo;By Selestial Support&rdquo;, questions for you are under &ldquo;Questions for you&rdquo; in Review &amp; fix, and you start the import and release it.
         </p>
       ) : null}
+
+      {view.migration.source === "instant_shine" || params.get("from") === "instant_shine" ? <InstantShinePanel /> : null}
 
       {/* Phone and tablet: compact progress. */}
       <div className="min-w-0 xl:hidden">

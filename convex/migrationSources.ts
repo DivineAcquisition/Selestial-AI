@@ -8,13 +8,13 @@
  * and releasing stay with migration.startImport (Owner or Manager) and migration.release (Owner only), which
  * a support session can't call.
  *
- * Public: stageFile, stageRows, finishFile, saveReport, report
+ * Public: stageFile, stageRows, finishFile, saveReport, report, applyImportedPay
  */
 import { v } from "convex/values";
 
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
-import { managerMutation, managerQuery, type MemberAccess } from "./lib/builders";
+import { managerMutation, managerQuery, ownerMutation, type MemberAccess } from "./lib/builders";
 import { userError } from "./lib/errors";
 import { byMember, recordEvent } from "./lib/events";
 import { FIELDS, IMPORTABLE, valuesOf, type Importable } from "./lib/migration/rules";
@@ -154,5 +154,34 @@ export const report = managerQuery({
     const row = await ctx.db.query("migrationSourceReports").withIndex("by_migration", (q) => q.eq("migrationId", migration._id)).first();
     if (!row) return null;
     return { source: row.source, instance: row.instance, snapshotAt: row.snapshotAt, savedAt: row.savedAt, report: row.report };
+  },
+});
+
+/**
+ * The source's pay rule for the cleaners this migration imported: a share of the job (the crew pay rule decides
+ * whether it is split). Only contractors with no pay set yet: pay the Owner already chose is never overwritten.
+ * Owner only, like setting any cleaner's pay.
+ */
+export const applyImportedPay = ownerMutation({
+  args: { shareBps: v.number() },
+  handler: async (ctx, args) => {
+    if (!Number.isInteger(args.shareBps) || args.shareBps <= 0 || args.shareBps > 10000) throw userError("The share must be between 0% and 100%.");
+    const migration = await requireMigration(ctx);
+    const links = await ctx.db.query("migrationLinks").withIndex("by_migration", (q) => q.eq("migrationId", migration._id)).take(5000);
+    let set = 0;
+    let kept = 0;
+    for (const link of links) {
+      if (link.table !== "cleaners") continue;
+      const cleaner = await ctx.db.get(link.recordId as Id<"cleaners">);
+      if (!cleaner || cleaner.companyId !== ctx.companyId) continue;
+      if (cleaner.pay || cleaner.engagement !== "contractor") {
+        kept += 1;
+        continue;
+      }
+      await ctx.db.patch(cleaner._id, { pay: { kind: "share", shareBps: args.shareBps } });
+      await recordEvent(ctx, { companyId: ctx.companyId, type: "cleaner.pay_changed", actor: byMember(ctx), subject: { table: "cleaners", id: cleaner._id }, data: { kind: "share", via: "migration" } });
+      set += 1;
+    }
+    return { set, kept };
   },
 });
