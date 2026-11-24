@@ -379,8 +379,10 @@
           }
         ]
       },
-      "minSeconds": 7,
-      "poster": true
+      "minSeconds": 8.5,
+      "poster": true,
+      "speed": 1.5,
+      "tag": "Sped up 1.5×"
     },
     {
       "id": "next",

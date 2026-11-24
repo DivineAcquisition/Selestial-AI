@@ -54,18 +54,21 @@ fictional, emails are example.com, phones 555-01xx, the EIN is the IRS's own exa
 
 | Guide | Narration | Video | Target | Notes |
 |---|---|---|---|---|
-| 1 Set up your company | 1,152 characters | 77.6 s | 60–90 s | |
-| 2 Build your services and pricing | 1,099 | 80.3 s | 90–150 s | |
-| 3 Bring in your clients and upcoming work | 1,284 | 94.1 s | 90–150 s | Visit form at 2× and new client at 1.5×, both labelled |
-| 4 Get your cleaners ready | 854 | 63.4 s | 90–150 s | Add cleaner at 1.6×, pay at 1.6×, labelled |
-| 5 Connect your email and phone | 1,143 | 79.2 s | 90–150 s | Business details at 2×, labelled |
-| 6 Put your agents to work | 983 | 69.9 s | 90–150 s | |
+| 1 Set up your company | 1,151 characters | 78.8 s | 60–90 s | |
+| 2 Build your services and pricing | 1,099 | 74.9 s | 90–150 s | Publishing at 2×, labelled |
+| 3 Bring in your clients and upcoming work | 1,284 | 94.1 s | 90–150 s | Organize at 1.3×, new client at 1.5×, visit form at 2×, all labelled |
+| 4 Get your cleaners ready | 854 | 64.7 s | 90–150 s | Add cleaner and pay at 1.6×, Make active at 1.5×, labelled |
+| 5 Connect your email and phone | 1,111 | 77.5 s | 90–150 s | Business details at 2×, labelled |
+| 6 Put your agents to work | 986 | 71.9 s | 90–150 s | |
+
+Version 2 of every guide was re-recorded on November 24 after main reorganized Settings (#151), redesigned
+Services & Pricing (#161), added business configuration to setup (#160) and texting infrastructure (#155).
 
 Four guides run under the 90-second target: the scripts say only what the screens show, without padding.
 Each is 4–6 MB at 1080p (H.264/AAC, faststart).
 
-ElevenLabs usage: 6,515 characters for all six, plus 230 for the voice samples. This billing cycle: 6,400 of
-10,000 used (free tier, resets December 20). Neighbouring-line context is not billed; unchanged lines are reused
+ElevenLabs usage: 6,515 characters for the first versions, 1,239 for the lines that changed in version 2, plus
+230 for the voice samples. This billing cycle: 8,622 of 10,000 used (free tier, resets December 20). Neighbouring-line context is not billed; unchanged lines are reused
 from the cache.
 
 ## Blockers and limits found (not demonstrated, or demonstrated with care)
@@ -112,13 +115,13 @@ from the cache.
   motion): no autoplay; plays when asked; 23 caption cues showing; `k` pauses and `c` toggles captions from the
   player's buttons; transcript readable and downloadable; no horizontal overflow; Escape closes; focus returns to
   the card; typed but unsaved Business details survive opening and closing; the next action returns to the task.
-- Every placement (47/47), with all six published in the local backend: setup's first step (next action "Continue
-  setup"), Business details, Services & Pricing, Clients & Properties, the migration workspace, Cleaners, Connected
-  apps, business texting and Agent controls each show their card with the real length, open the right guide,
+- Every placement (52/52), with version 2 of all six published in the local backend: setup's first step (next action
+  "Continue setup"), Company profile, Services & Pricing, Clients & Properties, the migration workspace, Cleaners,
+  Email & texting, Connected apps, business texting and Agent permissions each show their card with the real length, open the right guide,
   play it and close without errors; Home and Help & tutorials list all six.
-- Failure paths (13/13): a missing video says it didn't load and offers a retry, with steps, transcript and
-  next action still there; "Needs update" removes the card; republishing restores it; Home shows Getting started
-  only while a published guide's task is open, with "To do" from records; Help & tutorials opens from the account
+- Failure paths (14/14): a missing video says it didn't load and offers a retry, with steps, transcript and
+  next action still there; "Needs update" removes the card; republishing restores it; Home shows "Done" and "To do" from
+  records; Help & tutorials opens from the account
   menu and its next action navigates to the task.
 - Every recorded frame was taken from the running application with synthetic data; no real inbox, phone, payment
   or customer record appears, and nothing was sent, bought or charged.

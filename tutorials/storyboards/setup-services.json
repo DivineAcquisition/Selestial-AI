@@ -332,7 +332,9 @@
           }
         ]
       },
-      "minSeconds": 8
+      "minSeconds": 9.5,
+      "speed": 2,
+      "tag": "Sped up 2×"
     },
     {
       "id": "live",
