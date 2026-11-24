@@ -45,11 +45,37 @@ describe("Telnyx: sending", () => {
     expect(JSON.parse(String(calls[0].init.body))).toEqual({ from: "+15125551000", to: "+15550101010", text: "Hello", type: "SMS", webhook_url: "https://happy-otter-123.convex.site/webhooks/telnyx" });
   });
 
+  it("sends on the company's own messaging profile", async () => {
+    process.env.TELNYX_API_KEY = "KEY_test";
+    process.env.TELNYX_MESSAGING_PROFILE_ID = "deployment-wide";
+    const bodies: Record<string, unknown>[] = [];
+    const provider = telnyxProvider(async (_url, init) => {
+      bodies.push(JSON.parse(String(init!.body)));
+      return new Response(JSON.stringify({ data: { id: "tx-2" } }), { status: 200 });
+    });
+    await provider.send({ to: "+15550101010", from: "+15125551000", messagingProfileId: "company-a", body: "Hi", idempotencyKey: "m1", attempt: 1 });
+    await provider.send({ to: "+15550101010", from: "+15125551000", body: "Hi", idempotencyKey: "m2", attempt: 1 });
+    delete process.env.TELNYX_MESSAGING_PROFILE_ID;
+    expect(bodies[0].messaging_profile_id).toBe("company-a");
+    // A number from before profiles were per company still sends on the deployment's profile.
+    expect(bodies[1].messaging_profile_id).toBe("deployment-wide");
+  });
+
+  it("never fails or resends a request that timed out: it is left to be checked under the same key", async () => {
+    process.env.TELNYX_API_KEY = "KEY_test";
+    const provider = telnyxProvider(async () => {
+      throw new DOMException("The operation timed out.", "TimeoutError");
+    });
+    expect(await provider.send({ to: "+15550101010", from: "+15125551000", body: "Hi", idempotencyKey: "m", attempt: 1 })).toMatchObject({ ok: false, retryable: false, uncertain: true });
+  });
+
   it("says why a text did not go, and retries only what may work later", async () => {
     process.env.TELNYX_API_KEY = "KEY_test";
     const answer = (status: number, code?: string) => telnyxProvider(async () => new Response(JSON.stringify(code ? { errors: [{ code, title: "t" }] } : {}), { status }));
     const send = (provider: ReturnType<typeof telnyxProvider>) => provider.send({ to: "+15550101010", from: "+15125551000", body: "x", idempotencyKey: "m", attempt: 1 });
-    expect(await send(answer(403, "40300"))).toMatchObject({ ok: false, retryable: false, problem: expect.stringContaining("opted out with STOP") });
+    // 40300 is Telnyx's own STOP block: reported as a provider block so Selestial records a suppression.
+    expect(await send(answer(403, "40300"))).toMatchObject({ ok: false, retryable: false, providerBlock: true, problem: expect.stringContaining("opted out") });
+    expect(await send(answer(400, "40329"))).toMatchObject({ ok: false, retryable: false, problem: expect.stringContaining("toll-free") });
     expect(await send(answer(400, "40310"))).toMatchObject({ ok: false, retryable: false, problem: "The phone number on file is not valid." });
     expect(await send(answer(400, "49999"))).toMatchObject({ ok: false, retryable: false, problem: "Telnyx would not send this text (code 49999)." });
     expect(await send(answer(429))).toMatchObject({ ok: false, retryable: true });
@@ -80,10 +106,22 @@ describe("Telnyx: webhooks", () => {
   it("reads delivery reports and incoming texts, and ignores the rest", () => {
     expect(telnyxEvent(finalized("e1", "tx-1", "delivered"))).toMatchObject({ kind: "receipt", outcome: "delivered", providerMessageId: "tx-1" });
     expect(telnyxEvent(finalized("e2", "tx-1", "delivery_failed", "40001"))).toMatchObject({ kind: "receipt", outcome: "failed", problem: expect.stringContaining("landline") });
-    expect(telnyxEvent(finalized("e3", "tx-1", "delivery_unconfirmed"))).toEqual({ kind: "ignored" });
+    // The carrier never confirmed: its own outcome, never "delivered" and never "failed".
+    expect(telnyxEvent(finalized("e3", "tx-1", "delivery_unconfirmed"))).toMatchObject({ kind: "receipt", outcome: "unconfirmed", beforeCarrier: false });
+    // Failed before reaching the carrier network vs. failed at the carrier.
+    expect(telnyxEvent(finalized("e6", "tx-1", "sending_failed"))).toMatchObject({ kind: "receipt", outcome: "failed", beforeCarrier: true });
+    expect(telnyxEvent(finalized("e7", "tx-1", "delivery_failed", "40300"))).toMatchObject({ kind: "receipt", outcome: "failed", beforeCarrier: false, errorCode: "40300", problem: expect.stringContaining("opted out") });
     expect(telnyxEvent(received("e4", "+15550101010", "+15125551000", "STOP"))).toMatchObject({ kind: "inbound", from: "+15550101010", to: "+15125551000", text: "STOP" });
     expect(telnyxEvent("not json")).toEqual({ kind: "ignored" });
     expect(telnyxEvent(JSON.stringify({ data: { id: "e5", event_type: "message.sent", payload: {} } }))).toEqual({ kind: "ignored" });
+  });
+
+  it("notes when Telnyx already answered a STOP, START or HELP itself", () => {
+    const body = JSON.parse(received("e8", "+15550101010", "+15125551000", "STOP"));
+    body.data.payload.autoresponse_type = "STOP";
+    body.data.payload.messaging_profile_id = "profile-a";
+    expect(telnyxEvent(JSON.stringify(body))).toMatchObject({ kind: "inbound", autoresponseType: "stop", messagingProfileId: "profile-a" });
+    expect(telnyxEvent(received("e9", "+15550101010", "+15125551000", "Hi"))).toMatchObject({ kind: "inbound", autoresponseType: null });
   });
 });
 

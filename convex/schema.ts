@@ -828,7 +828,7 @@ export default defineSchema({
     holdReason: v.optional(v.union(v.literal("quiet_hours"), v.literal("messaging_balance"), v.literal("messaging_limit"), v.literal("billing_unavailable"))),
     heldAt: v.optional(v.number()),
     /** A delivery report that arrived before the send was settled; applied when it is. */
-    earlyReceipt: v.optional(v.object({ outcome: v.union(v.literal("delivered"), v.literal("failed"), v.literal("bounced")), problem: v.optional(v.string()), at: v.number() })),
+    earlyReceipt: v.optional(v.object({ outcome: v.union(v.literal("delivered"), v.literal("failed"), v.literal("bounced"), v.literal("unconfirmed")), problem: v.optional(v.string()), at: v.number(), beforeCarrier: v.optional(v.boolean()), errorCode: v.optional(v.string()) })),
     /** Booking messages: the session whose private link the message carries as "{link}". */
     bookingSessionId: v.optional(v.id("bookingSessions")),
     /** Where on the cleaner pages the link opens, for example "/delay". */
@@ -852,6 +852,18 @@ export default defineSchema({
     sentAt: v.optional(v.number()),
     deliveredAt: v.optional(v.number()),
     failedAt: v.optional(v.number()),
+    /**
+     * The provider took the text and then finalized it without the carrier ever confirming the phone got it
+     * (Telnyx `delivery_unconfirmed`). The status stays "sent"; screens say "Delivery not confirmed"
+     * (convex/lib/messaging/lifecycle.ts). It is charged like any text the carriers took.
+     */
+    deliveryUnconfirmedAt: v.optional(v.number()),
+    /**
+     * A short fingerprint of the exact text the first attempt sent (links included). Link tokens are never
+     * stored, so a check with the provider rebuilds the text; when the rebuilt text differs, the same
+     * idempotency key would only get a 422, so the check stops and a person decides instead.
+     */
+    sentFingerprint: v.optional(v.string()),
     /**
      * An unconfirmed text being checked with the provider under its own idempotency key
      * (convex/lib/operations/reconcile.ts). `deadline` is inside the provider's replay window from the
@@ -891,10 +903,11 @@ export default defineSchema({
     early: v.optional(
       v.object({
         providerMessageId: v.string(),
-        outcome: v.union(v.literal("delivered"), v.literal("failed"), v.literal("bounced"), v.literal("complained"), v.literal("suppressed"), v.literal("delayed")),
+        outcome: v.union(v.literal("delivered"), v.literal("failed"), v.literal("bounced"), v.literal("complained"), v.literal("suppressed"), v.literal("delayed"), v.literal("unconfirmed")),
         problem: v.optional(v.string()),
         providerCost: v.optional(v.number()),
         errorCode: v.optional(v.string()),
+        beforeCarrier: v.optional(v.boolean()),
         appliedAt: v.optional(v.number()),
       }),
     ),

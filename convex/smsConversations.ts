@@ -19,17 +19,8 @@ import { recipientsAt } from "./lib/compliance/recipients";
 import { userError } from "./lib/errors";
 import { recordEvent } from "./lib/events";
 import { quoConnectionOf } from "./lib/quo/route";
+import { messageState } from "./lib/messaging/lifecycle";
 
-const STATUS_WORDS: Record<Doc<"messages">["status"], string> = {
-  queued: "Waiting to send",
-  held: "Held",
-  sending: "Sending",
-  sent: "Accepted by the provider",
-  delivered: "Delivered to the phone",
-  failed: "Failed",
-  unconfirmed: "Not known whether it went",
-  not_sent: "Not sent",
-};
 
 const ASSIGNMENT_WORDS: Record<string, string> = { offered: "Offer open", accepted: "Cleaner accepted the job", declined: "Cleaner declined", expired: "Offer expired", cancelled: "Offer withdrawn", completed: "Visit completed", in_progress: "Visit in progress" };
 
@@ -113,7 +104,7 @@ export const thread = companyQuery({
         provider: m.provider ?? null,
         by: m.agent ? `${m.agent[0].toUpperCase()}${m.agent.slice(1)} agent` : m.authorId ? (names.get(m.authorId) ?? "A team member") : "Selestial",
         status: m.status,
-        statusWords: STATUS_WORDS[m.status],
+        statusWords: messageState(m).label,
         problem: m.problem ?? null,
         purpose: m.purpose,
         // The business outcome, kept apart from the text's delivery.

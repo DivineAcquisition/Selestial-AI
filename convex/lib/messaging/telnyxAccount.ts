@@ -27,6 +27,8 @@ async function call<T>(fetcher: Fetcher, method: "GET" | "POST" | "PUT" | "DELET
       method,
       headers: { authorization: `Bearer ${key}`, accept: "application/json", ...(body ? { "content-type": "application/json" } : {}) },
       body: body ? JSON.stringify(body) : undefined,
+      // A call that hangs is treated like one that never answered: the caller looks for what it may have made before trying again.
+      signal: AbortSignal.timeout(20_000),
     });
   } catch {
     return { ok: false, problem: "Telnyx could not be reached.", retryable: true };
@@ -328,6 +330,38 @@ export function getMessagingProfile(fetcher: Fetcher, id: string): Promise<Answe
     if (!row || typeof row !== "object") return null;
     return { name: str(row.name), enabled: row.enabled !== false, webhookUrl: str(row.webhook_url) };
   });
+}
+
+/**
+ * A company's own messaging profile (developers.telnyx.com/api-reference/messaging-profiles). Telnyx keeps
+ * opt-outs per profile, so one per company keeps one company's STOP from blocking another's texts. US only;
+ * texts coming in and delivery reports go to this backend.
+ */
+export function createMessagingProfile(fetcher: Fetcher, input: { name: string; webhookUrl: string }): Promise<Answer<{ id: string; name: string | null }>> {
+  return call(fetcher, "POST", "/messaging_profiles", { name: input.name, enabled: true, webhook_url: input.webhookUrl, webhook_api_version: "2", whitelisted_destinations: ["US"] }, (json) => {
+    const row = (json as { data?: Record<string, unknown> } | null)?.data;
+    const id = str(row?.id);
+    return id ? { id, name: str(row?.name) } : null;
+  });
+}
+
+/** Profiles with exactly this name, to find one whose creation answer was lost before making another. */
+export function findMessagingProfiles(fetcher: Fetcher, name: string): Promise<Answer<{ id: string; name: string }[]>> {
+  return call(fetcher, "GET", `/messaging_profiles?filter%5Bname%5D=${encodeURIComponent(name)}&page%5Bsize%5D=250`, null, (json) => {
+    const list = (json as { data?: unknown } | null)?.data;
+    if (!Array.isArray(list)) return null;
+    return list
+      .map((row) => ({ id: str((row as Record<string, unknown>).id), name: str((row as Record<string, unknown>).name) }))
+      .filter((row): row is { id: string; name: string } => row.id !== null && row.name === name);
+  });
+}
+
+/**
+ * The profile's own answer to STOP, START or HELP, in the company's registered words. Telnyx answers these
+ * itself (and blocks on STOP); Selestial records the opt-out from the inbound webhook and doesn't answer twice.
+ */
+export function setAutoResponse(fetcher: Fetcher, profileId: string, input: { op: "stop" | "start" | "info"; keywords: string[]; text: string }): Promise<Answer<true>> {
+  return call(fetcher, "POST", `/messaging_profiles/${encodeURIComponent(profileId)}/autoresp_configs`, { op: input.op, keywords: input.keywords, country_code: "US", resp_text: input.text.slice(0, 320) }, () => true);
 }
 
 /** Removes a mock filing made by the staff Telnyx check. */

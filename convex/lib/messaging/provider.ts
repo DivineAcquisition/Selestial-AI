@@ -6,8 +6,12 @@
 import { countSegments } from "../messagingBilling/segments";
 import { telnyxProvider } from "./telnyx";
 
-/** `from` is the company's texting number. The mock ignores it. */
-export type SendInput = { to: string; from?: string; body: string; idempotencyKey: string; attempt: number };
+/**
+ * `from` is the company's texting number. `messagingProfileId` is the company's own Telnyx messaging
+ * profile: opt-outs are kept per profile at Telnyx, so a company's texts never ride on another company's
+ * profile. The mock ignores both.
+ */
+export type SendInput = { to: string; from?: string; messagingProfileId?: string; body: string; idempotencyKey: string; attempt: number };
 
 export type SendResult =
   /**
@@ -20,8 +24,10 @@ export type SendResult =
    * It did not go. `retryable` means trying again may work. `problem` is words for a person, never a raw
    * response. `uncertain`: the provider holds a different request under this key, so whether the first
    * one went is still not known; the message is left unconfirmed rather than failed.
+   * `providerBlock`: the provider refused because the recipient opted out with it (Telnyx 40300). Selestial
+   * records that as a suppression, so nothing else is tried to that number from this company.
    */
-  | { ok: false; retryable: boolean; problem: string; uncertain?: boolean };
+  | { ok: false; retryable: boolean; problem: string; uncertain?: boolean; providerBlock?: boolean };
 
 export interface MessagingProvider {
   name: string;
@@ -47,7 +53,8 @@ export function resetMockProvider() {
  * Test numbers, by their last four digits:
  * 0001 never deliverable. 0002 fails twice, then goes. 0003 the send dies with no answer.
  * 0004 accepted, but no delivery report ever comes. 0006 accepted, then the connection dies before the
- * answer (a provider timing out after accepting). Anything else is accepted and delivered.
+ * answer (a provider timing out after accepting). 0007 refused because the person opted out with the
+ * provider (Telnyx 40300). Anything else is accepted and delivered.
  */
 export const mockProvider: MessagingProvider = {
   name: "mock",
@@ -62,6 +69,10 @@ export const mockProvider: MessagingProvider = {
       mockAccepted.set(input.idempotencyKey, { to: input.to, body: input.body, providerMessageId: `mock-${input.idempotencyKey}`, parts: countSegments(input.body).segments });
       mockOutbox.push({ ...input, result: "accepted" });
       throw new Error("mock: accepted, then the connection timed out");
+    }
+    if (tail === "0007") {
+      mockOutbox.push({ ...input, result: "failed" });
+      return { ok: false, retryable: false, providerBlock: true, problem: "This number opted out of texts from this business with the carrier (it replied STOP), so the text was not sent." };
     }
     if (tail === "0003") {
       mockOutbox.push({ ...input, result: "threw" });

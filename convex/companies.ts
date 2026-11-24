@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 
 import { companyQuery, ownerMutation, signedInMutation, signedInQuery } from "./lib/builders";
+import { AGENTS } from "./lib/statuses";
 import { isTimezone } from "./lib/availability";
 import { acceptTerms, NOT_CURRENT } from "./lib/compliance/agreements";
 import { userError } from "./lib/errors";
@@ -173,7 +174,8 @@ export const pauseAll = ownerMutation({
   args: {},
   support: { capability: "agents.recover", summary: "paused every agent" },
   handler: async (ctx) => {
-    const all = ["dispatch", "sales", "recruiter", "retention"] as const;
+    // Every agent there is, Quality included: the emergency stop must leave nothing sending on its own.
+    const all = AGENTS;
     if (all.every((agent) => ctx.company.pausedAgents.includes(agent))) return { changed: false };
     await applyPolicy(ctx, ctx.company, { kind: "pause", summary: "Paused every agent", paused: [...new Set([...ctx.company.pausedAgents, ...all])], by: ctx.member._id, actor: byMember(ctx) });
     return { changed: true };

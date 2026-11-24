@@ -166,7 +166,7 @@ export async function checkSend(ctx: Ctx, input: PolicyInput): Promise<PolicyAns
     if (suppression) {
       return no(
         "suppressed",
-        suppression.reason === "stop_keyword"
+        suppression.reason === "stop_keyword" || suppression.reason === "provider_block"
           ? "This number replied STOP, so it gets no texts from this business until it replies START."
           : `This ${input.channel === "sms" ? "number" : "address"} is on the do-not-contact list${suppression.scope === "all" ? "" : ` for ${CATEGORY_WORDS[suppression.scope as Category]} messages`}.`,
       );

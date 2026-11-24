@@ -145,7 +145,7 @@ export const lift = ownerMutation({
   handler: async (ctx, args) => {
     const row = await ctx.db.get(args.suppressionId);
     if (!row || row.companyId !== ctx.companyId) notFound();
-    if (row.reason === "stop_keyword") throw userError("Only the person can undo STOP, by replying START.");
+    if (row.reason === "stop_keyword" || row.reason === "provider_block") throw userError("Only the person can undo STOP, by replying START.");
     if (row.liftedAt !== undefined) throw userError("This stop was already lifted.");
     await liftSuppression(ctx, row, { liftedBy: { kind: "member", memberId: ctx.member._id }, note: text(args.note, "The reason", 500), actor: byMember(ctx) });
     return null;

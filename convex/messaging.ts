@@ -42,6 +42,9 @@ import { portalUrl } from "./lib/cleaners/portal";
 import { sendProblem, type ApplicantPurpose } from "./lib/recruiter/outbox";
 import { recruiterSettings } from "./lib/recruiter/settings";
 import { captureCharge, heldNotice, markPending, planOutbound, refundCharge, releaseCharge } from "./lib/messagingBilling/ledger";
+import { addSuppression } from "./lib/compliance/permissions";
+import { normalAddress } from "./lib/compliance/recipients";
+import { fingerprint } from "./lib/messaging/fingerprint";
 import { reserveCharge } from "./messagingBilling";
 
 const MAX_ATTEMPTS = 3;
@@ -323,17 +326,26 @@ export const claim = internalMutation({
       }
       email = { from: framed.from, html: framed.html, text: framed.text, headers: {} };
     }
+    // A check with the provider replays the first attempt under the same key. Telnyx answers a different body
+    // under that key with 422, so a text that would now read differently (a link reissued, a name changed) is
+    // not sent at all: it stays unconfirmed and a person decides.
+    const sentAs = fingerprint(body);
+    if (message.reconcile && message.sentFingerprint !== undefined && message.sentFingerprint !== sentAs) {
+      return backToUnconfirmed(ctx, message, "Not checked with the provider: the text would now read differently from the first attempt, so the same request can't be repeated. A person needs to decide.");
+    }
     const attempt = message.attempts + 1;
     // The provider is the one this send really uses, so its delivery reports find the message.
     const provider = channel === "email" ? (via ? "gmail" : (emailProvider()?.name ?? message.provider)) : quo ? "quo" : (messagingProvider()?.name ?? message.provider);
     const attemptedAt = Date.now();
-    await ctx.db.patch(message._id, { status: "sending", attempts: attempt, attemptedAt, ...(message.firstAttemptedAt === undefined ? { firstAttemptedAt: message.attemptedAt ?? attemptedAt } : {}), provider, sentVia: provider, holdReason: undefined });
-    // A text goes from the conversation's number. The send policy has already checked the route is ready.
-    const from = channel === "sms" ? (quo ? quo.sender : ((await readProfile(ctx, message.companyId)).messaging.smsNumber ?? "")) : "";
+    await ctx.db.patch(message._id, { status: "sending", attempts: attempt, attemptedAt, ...(message.firstAttemptedAt === undefined ? { firstAttemptedAt: message.attemptedAt ?? attemptedAt } : {}), ...(message.sentFingerprint === undefined ? { sentFingerprint: sentAs } : {}), provider, sentVia: provider, holdReason: undefined });
+    // A text goes from the conversation's number, on the company's own messaging profile. The send policy has already checked the route is ready.
+    const messagingSetup = channel === "sms" && !quo ? (await readProfile(ctx, message.companyId)).messaging : null;
+    const from = channel === "sms" ? (quo ? quo.sender : (messagingSetup?.smsNumber ?? "")) : "";
+    const messagingProfileId = messagingSetup?.messagingProfileId ?? "";
     // The conversation's route is fixed by its first text, so a later change of default doesn't move it.
     if (channel === "sms" && message.to && from) await ensureConversation(ctx, message.companyId, message.to, quo ? { provider: "quo", sender: quo.sender, connectionId: quo.connectionId, senderId: quo.senderId } : { provider: "native", sender: from });
     const agentWritten = sendIntent.agent !== undefined && sendIntent.origin !== "integration" && sendIntent.origin !== "manual";
-    return { to: message.to, from, body, attempt, channel, subject: message.subject ?? "", replyTo: message.replyTo ?? "", fromName, via, email, threadId, notice: false, billing: billed.kind === "reserve" ? { chargeId: billed.chargeId, needsLock: billed.needsLock } : null, quo: quo ? { connectionId: quo.connectionId, senderId: quo.senderId, queuedAt: message.queuedAt, agentWritten, operational: sendIntent.category === "operational" } : null };
+    return { to: message.to, from, messagingProfileId, body, attempt, channel, subject: message.subject ?? "", replyTo: message.replyTo ?? "", fromName, via, email, threadId, notice: false, billing: billed.kind === "reserve" ? { chargeId: billed.chargeId, needsLock: billed.needsLock } : null, quo: quo ? { connectionId: quo.connectionId, senderId: quo.senderId, queuedAt: message.queuedAt, agentWritten, operational: sendIntent.category === "operational" } : null };
   },
 });
 
@@ -361,6 +373,7 @@ async function claimNotice(ctx: MutationCtx, message: Doc<"messages">) {
   return {
     to: message.to!,
     from: "",
+    messagingProfileId: "",
     body: composed.email.text,
     attempt,
     channel: "email" as const,
@@ -378,7 +391,7 @@ async function claimNotice(ctx: MutationCtx, message: Doc<"messages">) {
 
 const resultValidator = v.union(
   v.object({ ok: v.literal(true), providerMessageId: v.string(), delivered: v.boolean(), parts: v.optional(v.number()), replayed: v.optional(v.boolean()) }),
-  v.object({ ok: v.literal(false), retryable: v.boolean(), problem: v.string(), bounced: v.optional(v.boolean()), waitForInbox: v.optional(v.boolean()), uncertain: v.optional(v.boolean()) }),
+  v.object({ ok: v.literal(false), retryable: v.boolean(), problem: v.string(), bounced: v.optional(v.boolean()), waitForInbox: v.optional(v.boolean()), uncertain: v.optional(v.boolean()), providerBlock: v.optional(v.boolean()) }),
 );
 
 export const settle = internalMutation({
@@ -402,7 +415,10 @@ export const settle = internalMutation({
       if (result.delivered) await logStep(ctx, message, { type: "message.delivered", data: { purpose: message.purpose } });
       if (message.applicationId) await afterApplicantMessage(ctx, (await ctx.db.get(message._id))!, "accepted");
       // A delivery report that arrived before this settled is applied now instead of being lost.
-      if (message.earlyReceipt && !result.delivered) await applyOutcome(ctx, (await ctx.db.get(message._id))!, message.earlyReceipt.outcome, message.earlyReceipt.problem);
+      if (message.earlyReceipt && !result.delivered) {
+        if (message.earlyReceipt.beforeCarrier || message.earlyReceipt.errorCode) await reconcileCharge(ctx, message._id, { errorCode: message.earlyReceipt.errorCode, beforeCarrier: message.earlyReceipt.beforeCarrier });
+        await applyOutcome(ctx, (await ctx.db.get(message._id))!, message.earlyReceipt.outcome, message.earlyReceipt.problem, message.earlyReceipt.errorCode);
+      }
       const early = message.provider
         ? await ctx.db
             .query("providerReceipts")
@@ -412,8 +428,8 @@ export const settle = internalMutation({
       for (const row of early) {
         if (!row.early || row.early.appliedAt !== undefined) continue;
         await ctx.db.patch(row._id, { early: { ...row.early, appliedAt: now } });
-        await reconcileCharge(ctx, message._id, { providerCost: row.early.providerCost, errorCode: row.early.errorCode });
-        await applyOutcome(ctx, (await ctx.db.get(message._id))!, row.early.outcome, row.early.problem);
+        await reconcileCharge(ctx, message._id, { providerCost: row.early.providerCost, errorCode: row.early.errorCode, beforeCarrier: row.early.beforeCarrier });
+        await applyOutcome(ctx, (await ctx.db.get(message._id))!, row.early.outcome, row.early.problem, row.early.errorCode);
       }
       if (message.retentionActionId) await afterCareMessage(ctx, (await ctx.db.get(message._id))!);
       if (message.qualityRequestId) await afterQualityMessage(ctx, (await ctx.db.get(message._id))!);
@@ -425,6 +441,16 @@ export const settle = internalMutation({
       await ctx.db.patch(message._id, { status: "held", problem: result.problem, refusal: WAITING_FOR_INBOX });
       await logStep(ctx, message, { type: "message.held", data: { purpose: message.purpose, policy: WAITING_FOR_INBOX } });
       if (charge) await releaseCharge(ctx, charge._id, "Nothing was sent; the message waits for the inbox to be reconnected.");
+      return null;
+    }
+    // The person opted out with the provider (Telnyx 40300): nothing went. Recorded as a suppression, so nothing
+    // else is tried to this number from this company until they reply START.
+    if (result.providerBlock) {
+      await ctx.db.patch(message._id, { status: "not_sent", problem: result.problem, refusal: "provider_block" });
+      if (charge) await releaseCharge(ctx, charge._id, "The carrier refused the text because the person opted out, so nothing was charged.");
+      await suppressProviderBlock(ctx, message, now);
+      await logStep(ctx, message, { type: "message.not_sent", data: { purpose: message.purpose, policy: "provider_block" } });
+      await afterNotSent(ctx, message, result.problem);
       return null;
     }
     // The provider holds another request under this key: the first attempt reached it. Still not known, never failed.
@@ -556,7 +582,7 @@ export const deliver = internalAction({
       return null;
     }
     // If this throws, nobody knows whether the text went. The message stays "sending" and the sweep marks it unconfirmed.
-    const result = await provider.send({ to: claimed.to, from: claimed.from || undefined, body: claimed.body, idempotencyKey: args.messageId, attempt: claimed.attempt });
+    const result = await provider.send({ to: claimed.to, from: claimed.from || undefined, ...(claimed.messagingProfileId ? { messagingProfileId: claimed.messagingProfileId } : {}), body: claimed.body, idempotencyKey: args.messageId, attempt: claimed.attempt });
     await ctx.runMutation(internal.messaging.settle, { messageId: args.messageId, result });
     return null;
   },
@@ -574,12 +600,16 @@ const receiptArgs = {
   provider: v.string(),
   eventId: v.string(),
   providerMessageId: v.string(),
-  outcome: v.union(v.literal("delivered"), v.literal("failed"), v.literal("bounced"), v.literal("complained"), v.literal("suppressed"), v.literal("delayed")),
+  outcome: v.union(v.literal("delivered"), v.literal("failed"), v.literal("bounced"), v.literal("complained"), v.literal("suppressed"), v.literal("delayed"), v.literal("unconfirmed")),
   problem: v.optional(v.string()),
   /** What the provider charged Selestial for it, in units of $0.0001, when it says. */
   providerCost: v.optional(v.number()),
   errorCode: v.optional(v.string()),
+  /** It failed before it left the provider for the carrier network (Telnyx `sending_failed`). */
+  beforeCarrier: v.optional(v.boolean()),
 };
+
+type Outcome = "delivered" | "failed" | "bounced" | "complained" | "suppressed" | "delayed" | "unconfirmed";
 
 export const receipt = internalMutation({
   args: receiptArgs,
@@ -587,7 +617,7 @@ export const receipt = internalMutation({
 });
 
 /** The receipt's logic, shared with Quo's events (lib/quo/events.ts). */
-export async function applyReceipt(ctx: MutationCtx, args: { provider: string; eventId: string; providerMessageId: string; outcome: "delivered" | "failed" | "bounced" | "complained" | "suppressed" | "delayed"; problem?: string; providerCost?: number; errorCode?: string }) {
+export async function applyReceipt(ctx: MutationCtx, args: { provider: string; eventId: string; providerMessageId: string; outcome: Outcome; problem?: string; providerCost?: number; errorCode?: string; beforeCarrier?: boolean }) {
   const seen = await ctx.db
     .query("providerReceipts")
     .withIndex("by_provider_event", (q) => q.eq("provider", args.provider).eq("eventId", args.eventId))
@@ -601,39 +631,74 @@ export async function applyReceipt(ctx: MutationCtx, args: { provider: string; e
   if (!message) {
     // Out of order: the report beat the send's own answer, which is what records the provider's id. Kept, and
     // applied when that send settles (a later retry of this report would be a duplicate and dropped).
-    await ctx.db.patch(receiptId, { early: { providerMessageId: args.providerMessageId, outcome: args.outcome, problem: args.problem, providerCost: args.providerCost, errorCode: args.errorCode } });
+    await ctx.db.patch(receiptId, { early: { providerMessageId: args.providerMessageId, outcome: args.outcome, problem: args.problem, providerCost: args.providerCost, errorCode: args.errorCode, beforeCarrier: args.beforeCarrier } });
     return "early" as const;
   }
   // Reconciliation: what the provider charged Selestial, and no charge to the company for a text the provider did not charge for.
-  await reconcileCharge(ctx, message._id, { providerCost: args.providerCost, errorCode: args.errorCode });
-  if (message.status === "sending" && (args.outcome === "delivered" || args.outcome === "failed" || args.outcome === "bounced")) {
-    // The report beat the send's own answer. Kept, and applied when the send settles.
-    await ctx.db.patch(message._id, { earlyReceipt: { outcome: args.outcome, problem: args.problem, at: Date.now() } });
+  if (message.status === "sending" && (args.outcome === "delivered" || args.outcome === "failed" || args.outcome === "bounced" || args.outcome === "unconfirmed")) {
+    // The report beat the send's own answer. Kept, and applied when the send settles (its charge too, which isn't captured yet).
+    if (args.providerCost !== undefined) await reconcileCharge(ctx, message._id, { providerCost: args.providerCost });
+    await ctx.db.patch(message._id, { earlyReceipt: { outcome: args.outcome, problem: args.problem, at: Date.now(), ...(args.beforeCarrier ? { beforeCarrier: true } : {}), ...(args.errorCode ? { errorCode: args.errorCode } : {}) } });
     return "deferred" as const;
   }
-  return applyOutcome(ctx, message, args.outcome, args.problem);
+  await reconcileCharge(ctx, message._id, { providerCost: args.providerCost, errorCode: args.errorCode, beforeCarrier: args.beforeCarrier });
+  return applyOutcome(ctx, message, args.outcome, args.problem, args.errorCode);
 }
 
 /** Telnyx does not charge for a text that expired in its own queue before it was sent (40014). */
 const PROVIDER_NOT_CHARGED = new Set(["40014"]);
 
-async function reconcileCharge(ctx: MutationCtx, messageId: Id<"messages">, input: { providerCost?: number; errorCode?: string }) {
+/**
+ * Selestial's retail rule (docs/sms/00-architecture.md §1): a text is charged once it reaches the carrier
+ * network, even if the carrier later can't deliver it. A text that never left the provider for the
+ * carriers (Telnyx `sending_failed`, `expired`, or 40014) is not charged, and a capture is refunded.
+ */
+async function reconcileCharge(ctx: MutationCtx, messageId: Id<"messages">, input: { providerCost?: number; errorCode?: string; beforeCarrier?: boolean }) {
   const charge = await ctx.db
     .query("messagingCharges")
     .withIndex("by_message", (q) => q.eq("messageId", messageId))
     .first();
   if (!charge) return;
   if (input.providerCost !== undefined) await ctx.db.patch(charge._id, { providerCost: input.providerCost, updatedAt: Date.now() });
-  if (input.errorCode && PROVIDER_NOT_CHARGED.has(input.errorCode)) {
-    if (charge.state === "captured") await refundCharge(ctx, charge._id, { reason: "The provider expired this text before sending it, so it was not charged." });
-    else await releaseCharge(ctx, charge._id, "The provider expired this text before sending it.");
+  const expired = input.errorCode !== undefined && PROVIDER_NOT_CHARGED.has(input.errorCode);
+  if (expired || input.beforeCarrier) {
+    const words = expired ? "The provider expired this text before sending it" : "The text never reached the carrier network";
+    if (charge.state === "captured") await refundCharge(ctx, charge._id, { reason: `${words}, so it was not charged.` });
+    else await releaseCharge(ctx, charge._id, `${words}.`);
   }
 }
 
-async function applyOutcome(ctx: MutationCtx, message: Doc<"messages">, outcome: "delivered" | "failed" | "bounced" | "complained" | "suppressed" | "delayed", reported?: string) {
+/** A STOP held by the provider (Telnyx 40300), mirrored as Selestial's own suppression for this company and number. */
+async function suppressProviderBlock(ctx: MutationCtx, message: Doc<"messages">, at: number) {
+  const address = message.to ? normalAddress("sms", message.to) : null;
+  if (!address) return;
+  await addSuppression(ctx, { companyId: message.companyId, channel: "sms", address, scope: "all", reason: "provider_block", note: "The carrier or Telnyx refused a text because this number opted out (40300).", at, actor: { kind: "system" } });
+}
+
+/** What the workflows that sent a message are told when it won't go: the same as a refusal at claim. */
+async function afterNotSent(ctx: MutationCtx, message: Doc<"messages">, problem: string) {
+  if (message.assignmentId && (message.purpose === "offer" || message.purpose === "backup_offer")) {
+    const intent = await intentOf(ctx, message);
+    await ctx.scheduler.runAfter(0, internal.dispatchOps.offerTextRefused, { messageId: message._id, byAgent: intent.agent !== undefined });
+  }
+  if (message.retentionActionId) await afterCareMessage(ctx, { ...message, status: "not_sent", problem });
+  if (message.qualityRequestId) await afterQualityMessage(ctx, { ...message, status: "not_sent", problem });
+  if (message.applicationId) await afterApplicantMessage(ctx, { ...message, status: "not_sent", problem }, "failed");
+  if (message.opportunityId) await afterSalesMessage(ctx, { ...message, status: "not_sent", problem });
+}
+
+async function applyOutcome(ctx: MutationCtx, message: Doc<"messages">, outcome: Outcome, reported?: string, errorCode?: string) {
     const args = { outcome, problem: reported };
     const now = Date.now();
     const open = message.status === "sent" || message.status === "unconfirmed";
+
+    if (args.outcome === "unconfirmed") {
+      // The provider took it and finalized it without the carrier confirming. It went; delivery is not known.
+      if (!open || message.deliveryUnconfirmedAt !== undefined) return "ignored" as const;
+      await ctx.db.patch(message._id, { status: "sent", deliveryUnconfirmedAt: now, ...(message.sentAt === undefined ? { sentAt: now } : {}) });
+      await logStep(ctx, message, { type: "message.delivery_unconfirmed", data: { purpose: message.purpose } });
+      return "unconfirmed" as const;
+    }
 
     if (args.outcome === "complained") {
       if (message.status !== "sent" && message.status !== "delivered" && message.status !== "unconfirmed") return "ignored" as const;
@@ -651,7 +716,7 @@ async function applyOutcome(ctx: MutationCtx, message: Doc<"messages">, outcome:
     }
     if (!open) return "ignored" as const;
     if (args.outcome === "delivered") {
-      await ctx.db.patch(message._id, { status: "delivered", deliveredAt: now });
+      await ctx.db.patch(message._id, { status: "delivered", deliveredAt: now, deliveryUnconfirmedAt: undefined });
       await logStep(ctx, message, { type: "message.delivered", data: { purpose: message.purpose } });
       return "delivered" as const;
     }
@@ -669,6 +734,7 @@ async function applyOutcome(ctx: MutationCtx, message: Doc<"messages">, outcome:
     await ctx.db.patch(message._id, { status: "failed", failedAt: now, problem, ...(bounced ? { bouncedAt: now } : {}) });
     await logStep(ctx, message, { type: bounced ? "message.bounced" : suppressed ? "message.suppressed" : "message.failed", data: { purpose: message.purpose, attempts: message.attempts } });
     if (bounced || suppressed) await suppressAfterProblem(ctx, message, bounced ? "bounce" : "provider", now);
+    if (errorCode === "40300" && (message.channel ?? "sms") === "sms") await suppressProviderBlock(ctx, message, now);
     if (message.purpose === "member_notice") return bounced ? ("bounced" as const) : ("failed" as const);
     if (message.applicationId) await afterApplicantMessage(ctx, (await ctx.db.get(message._id))!, "failed");
     else if (message.retentionActionId) await afterCareMessage(ctx, { ...message, status: "failed", problem });

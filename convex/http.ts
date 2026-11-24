@@ -185,11 +185,11 @@ http.route({
     handler: async (ctx, body) => {
       const event = telnyxEvent(body);
       if (event.kind === "receipt") {
-        await ctx.runMutation(internal.messaging.receipt, { provider: "telnyx", eventId: event.eventId, providerMessageId: event.providerMessageId, outcome: event.outcome, problem: event.problem ?? undefined, ...(event.costUnits !== null ? { providerCost: event.costUnits } : {}), ...(event.errorCode ? { errorCode: event.errorCode } : {}) });
+        await ctx.runMutation(internal.messaging.receipt, { provider: "telnyx", eventId: event.eventId, providerMessageId: event.providerMessageId, outcome: event.outcome, problem: event.problem ?? undefined, ...(event.costUnits !== null ? { providerCost: event.costUnits } : {}), ...(event.errorCode ? { errorCode: event.errorCode } : {}), ...(event.beforeCarrier ? { beforeCarrier: true } : {}) });
       } else if (event.kind === "registration") {
         await ctx.runMutation(internal.texting.registrationEvent, { eventId: event.eventId, type: event.type, ...(event.brandId ? { brandId: event.brandId } : {}), ...(event.campaignId ? { campaignId: event.campaignId } : {}), ...(event.phoneNumber ? { phoneNumber: event.phoneNumber } : {}) });
       } else if (event.kind === "inbound") {
-        await ctx.runMutation(internal.inbound.telnyx, { eventId: event.eventId, to: event.to, from: event.from, body: event.text, receivedAt: event.receivedAt, ...(event.providerMessageId ? { providerMessageId: event.providerMessageId } : {}), ...(event.parts ? { parts: event.parts } : {}), media: event.media });
+        await ctx.runMutation(internal.inbound.telnyx, { eventId: event.eventId, to: event.to, from: event.from, body: event.text, receivedAt: event.receivedAt, ...(event.providerMessageId ? { providerMessageId: event.providerMessageId } : {}), ...(event.parts ? { parts: event.parts } : {}), media: event.media, ...(event.autoresponseType ? { autoresponseType: event.autoresponseType } : {}) });
       }
     },
   }),

@@ -164,13 +164,15 @@ Platform codes never share a lane, a sender or a profile with company traffic.
 
 | Resource | One per | Created by |
 |---|---|---|
-| Messaging profile (webhook = the backend's own public origin, STOP/HELP wording, AI opt-out detection off) | Company, per backend | Provisioning, before the number order |
+| Messaging profile (webhook = the backend's own public origin, STOP/START/HELP answers in the company's registered words; Telnyx's AI opt-out detection left at its default, its blocks surface as `provider_block`) | Company | Provisioning (`texting.ts` step D0), before the number order |
 | Number | Company | Existing order flow, onto that company's profile |
 | Brand + campaign | Company | Existing guided registration |
 | Platform notice profile + toll-free number + verification | Selestial | Platform setup (staff) |
 | Platform code profile + toll-free number + verification | Selestial | Platform setup (staff) |
 
-Development uses its own profiles and refuses to order onto a production profile.
+A backend that is not production never writes to Telnyx at all (`telnyxAccount.ts` `call`, `isNonProduction`),
+so development can't create profiles or order onto production's. Numbers provisioned before this change keep
+sending on `TELNYX_MESSAGING_PROFILE_ID` until moved.
 
 ### 4.6 Platform SMS and sign-in
 

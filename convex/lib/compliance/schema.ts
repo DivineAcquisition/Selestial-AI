@@ -60,7 +60,11 @@ export const SUPPRESSION_SCOPES = ["all", "operational", "marketing", "recruitin
 export type SuppressionScope = (typeof SUPPRESSION_SCOPES)[number];
 export const suppressionScopeValidator = literals(SUPPRESSION_SCOPES);
 
-export const SUPPRESSION_REASONS = ["stop_keyword", "unsubscribe", "natural_language", "manual", "bounce", "complaint"] as const;
+/**
+ * `provider_block`: the person opted out with the carrier network or Telnyx itself (a STOP Telnyx answered,
+ * or a send refused with 40300). Like `stop_keyword`, only the person lifts it, by replying START.
+ */
+export const SUPPRESSION_REASONS = ["stop_keyword", "unsubscribe", "natural_language", "manual", "bounce", "complaint", "provider_block"] as const;
 export type SuppressionReason = (typeof SUPPRESSION_REASONS)[number];
 export const suppressionReasonValidator = literals(SUPPRESSION_REASONS);
 
@@ -136,6 +140,12 @@ export const messagingSetupValidator = v.object({
   senderName: v.optional(v.string()),
   /** The company's texting number, E.164. Inbound texts find the company by it. */
   smsNumber: v.optional(v.string()),
+  /**
+   * The company's own Telnyx messaging profile, which its number sits on. Telnyx keeps opt-outs per
+   * profile, so each company has its own: one company's STOP never blocks another company. Absent for a
+   * number provisioned before profiles were per company (it uses the deployment's TELNYX_MESSAGING_PROFILE_ID).
+   */
+  messagingProfileId: v.optional(v.string()),
   emailFromAddress: v.optional(v.string()),
   registration: registrationValidator,
   /** Null means no quiet hours. */
@@ -203,6 +213,14 @@ export const complianceTables = {
     step: v.optional(v.string()),
     problem: v.optional(v.string()),
     numberOrderId: v.optional(v.string()),
+    /**
+     * The company's own Telnyx messaging profile, made before its number is bought so the number lands on it.
+     * `profileAttemptAt` marks a creation whose answer may have been lost (looked up by name before trying
+     * again); `profileRepliesAt`, when its STOP/START/HELP replies were set in the company's own words.
+     */
+    messagingProfileId: v.optional(v.string()),
+    profileAttemptAt: v.optional(v.number()),
+    profileRepliesAt: v.optional(v.number()),
     brandId: v.optional(v.string()),
     campaignId: v.optional(v.string()),
     assignedAt: v.optional(v.number()),
@@ -277,7 +295,7 @@ export const complianceTables = {
     ),
     releasedAt: v.optional(v.number()),
     /** Raw provider states for Selestial staff. Never shown to the owner. */
-    diagnostics: v.optional(v.object({ brand: v.optional(v.string()), campaign: v.optional(v.string()), assignment: v.optional(v.string()), order: v.optional(v.string()), at: v.number() })),
+    diagnostics: v.optional(v.object({ brand: v.optional(v.string()), campaign: v.optional(v.string()), assignment: v.optional(v.string()), order: v.optional(v.string()), profileReplies: v.optional(v.string()), at: v.number() })),
     /** When anything about this request last changed, for "last update" on each milestone. */
     updatedAt: v.optional(v.number()),
   })

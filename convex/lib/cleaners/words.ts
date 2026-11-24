@@ -143,10 +143,10 @@ export const MESSAGE_STATE_WORDS: Record<Doc<"messages">["status"], string> = {
   queued: "being prepared",
   held: "waiting for quiet hours to end",
   sending: "being sent",
-  sent: "sent",
+  sent: "accepted by the carrier network, not yet confirmed delivered",
   delivered: "delivered",
   failed: "not delivered",
-  unconfirmed: "sent, but delivery is not confirmed",
+  unconfirmed: "possibly not sent: the send never confirmed",
   not_sent: "not sent",
 };
 
