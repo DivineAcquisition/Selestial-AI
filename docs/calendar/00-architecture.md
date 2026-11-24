@@ -14,7 +14,7 @@ does, traced on November 23, 2026, where that differs from comments and older do
 |---|---|
 | Delivery | Phase by phase. Pause for review after phase 2 and after phase 4. |
 | New records | Business events (meetings, manual appointments, members' unavailable time), onboarding and training sessions, scheduled quality inspections. Consultations are walkthroughs (assessments), not a new record. |
-| Access | Every role opens Calendar. Office sees visits, crews and cleaners' availability, and Dispatch's own due dates; not interviews, walkthroughs, inspections, private events, members' time or applicant details. Office cannot reschedule from Calendar. Owners and Managers see and change what they can already change elsewhere. |
+| Access | Every role opens Calendar. Office sees visits, crews and cleaners' availability, and Dispatch's own due dates; not interviews, walkthroughs, inspections, private events, members' time or applicant details. Office reschedules visits, as in Dispatch (decided November 23, 2026, superseding "Office cannot reschedule"); a recurring series and Calendar's own events stay with Owners and Managers. Owners and Managers see and change what they can already change elsewhere. |
 | Notifications on a reschedule | The confirmation lists who would be told under existing rules (customer, crew), all on by default; the person may turn a recipient off before saving. |
 | Members' availability | Owners and Managers get optional weekly working hours and unavailable blocks, used for conflicts on business events, walkthroughs, interviews, training and inspections. Interview slots stay as they are. |
 | Google Calendar | Business events are mirrored through the existing `googleCalendarLinks` mapping, Selestial being the source of truth, outside edits flagged. |
@@ -61,8 +61,8 @@ training sessions, inspections, members' weekly hours.
 3. **Rescheduling is `jobs.reschedule`** (any role, version-checked when crew is affected). It re-checks
    each accepted cleaner and reopens a place rather than double-booking, texts cleaners, records
    `job.rescheduled`, and never tells the customer. Calendar uses the same `planMove`/`commitMove`; the
-   customer notice and the per-recipient choice are added in phase 4. Calendar's own entry point is
-   Manager+, by the owner's decision; Dispatch keeps its current rule (open question below).
+   customer notice and the per-recipient choice are added in phase 4. Calendar's own entry point was
+   Manager+ at first; since November 23, 2026 Office reschedules from Calendar too, as in Dispatch.
 4. **Moving one occurrence of a Sales plan** moves the job only; `planVisits.state = "moved"` is never
    set. Calendar must read a moved Sales visit as its job's time, not the plan's.
 5. **Google Calendar sync is a sweep, not a reaction.** No job or interview mutation queues a sync; the
@@ -204,15 +204,34 @@ Team view is read-only: reassigning a cleaner stays in the visit's record panel 
   rules; an ambiguous name is asked about). Both read only; changes are made in Calendar, where the move
   is previewed. No separate calendar agent: these are Dispatch's tools, and every result names its records.
 
-## Phase 6 (not yet)
+## Phase 6: accessibility and responsive pass
 
-A dedicated accessibility, responsive and live-verification pass. What the phases above already did:
-keyboard moves and a form for every drag, words for everything color shows, Agenda as the phone default,
-and browser checks of each view, form and panel with fixture data. Not yet done: a screen-reader and
-keyboard-only walk-through of the whole page, a phone-width pass over every dialog, and a signed-in
-session against a live backend.
+Checked with axe-core (WCAG 2.2 A and AA plus best practice) on the full Calendar screen with fixture
+data: every view in light and dark, at 1440 px and 390 px, with filters open, the Create menu, each
+create form, the item panel and the move dialog (as an Owner and as Office). It reports no violations
+after these fixes:
 
-## Open questions
+- **Contrast (1.4.3).** Secondary words on the layers' tints and on muted grounds were 2.6 to 4.5:1.
+  They now use `QUIET` (`text-strong/70`, `look.tsx`). Projected and cancelled blocks are no longer
+  faded with opacity; a projected visit is a dashed, unfilled outline, a cancelled one is struck
+  through on no fill. Inactive view tabs and the shared Select placeholder are stronger too.
+- **Target size (2.5.8).** Month view's day numbers, entries and "more" links are at least 24 px tall.
+- **Headings.** Agenda's day headings are `h2` under the page's `h1`.
+- **Keyboard.** The view tabs are one Tab stop with the arrows, Home and End, and the view is their
+  tab panel. The Create menu puts focus on its first entry when opened (Enter or the down arrow), moves
+  with the arrows, and Escape returns to Create. A form opened from it returns focus to Create when it
+  closes (`Modal`'s `returnFocus`). Opening a day from Month view puts focus on the day view. The item
+  panel and the move dialog take focus and give it back to the item. Moves have Alt+arrow keys, as
+  before.
+- **Phone width.** No view or dialog makes the page scroll sideways. Dialogs become full-width sheets.
+  Week and Month scroll sideways inside their own frame, and Agenda stays the narrow default.
+- **A label bug found on the way.** A week within one month read "Nov 22 – 2026 (day: 28)" in browsers:
+  a day and a year without a month have no pattern of their own. It is built from parts now and tested.
 
-- Dispatch lets any role reschedule a visit (`jobs.reschedule` is a `companyMutation`). Calendar's
-  reschedule is Manager+ by the owner's decision. Should Dispatch be tightened to match?
+Not covered by automation: a screen reader by ear. The labels it would read (each block's full
+sentence, the live range label, the dialogs' titles) are in place.
+
+## Decided after the first build
+
+- Office can reschedule (November 23, 2026). Calendar's visit move (`calendarMoves`) is open to every
+  role, as Dispatch's `jobs.reschedule` already was; series changes and Calendar's own events are not.

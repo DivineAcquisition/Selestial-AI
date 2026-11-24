@@ -17,12 +17,13 @@ describe("Calendar: moving a visit", () => {
   });
   afterEach(() => undo());
 
-  it("shows who is asked again and what goes, refuses Office and a stale preview, and moves the visit", async () => {
+  it("shows who is asked again and what goes, refuses a stale preview, and moves the visit, for Office too", async () => {
     const s = await setup();
     const a = await accepted(s);
     const office = await addMember(s.t, s.as, s.companyId, "office-a", "office");
     const to = { startsAt: JOB_START + 3 * HOUR, endsAt: JOB_START + 5 * HOUR };
-    expect(await refusal(office.query(api.calendarMoves.previewVisit, { companyId: s.companyId, jobId: a.jobId, ...to }))).toBe("Not allowed.");
+    // Office reschedules, as in Dispatch.
+    expect((await office.query(api.calendarMoves.previewVisit, { companyId: s.companyId, jobId: a.jobId, ...to })).blocking).toEqual([]);
 
     const preview = await s.as.query(api.calendarMoves.previewVisit, { companyId: s.companyId, jobId: a.jobId, ...to });
     expect(preview.blocking).toEqual([]);
@@ -33,9 +34,7 @@ describe("Calendar: moving a visit", () => {
 
     // Someone else changes the visit in between: the move that was previewed is refused, nothing happens.
     expect(await refusal(s.as.mutation(api.calendarMoves.moveVisit, { companyId: s.companyId, jobId: a.jobId, ...to, version: "stale", notifyCustomer: false, quiet: [] }))).toBe("This visit changed since you looked at the move. Review what the move does again, then confirm it.");
-    expect(await refusal(office.mutation(api.calendarMoves.moveVisit, { companyId: s.companyId, jobId: a.jobId, ...to, version: preview.plan.version, notifyCustomer: false, quiet: [] }))).toBe("Not allowed.");
-
-    const result = await s.as.mutation(api.calendarMoves.moveVisit, { companyId: s.companyId, jobId: a.jobId, ...to, version: preview.plan.version, notifyCustomer: false, quiet: [], reason: "Client asked for the afternoon." });
+    const result = await office.mutation(api.calendarMoves.moveVisit, { companyId: s.companyId, jobId: a.jobId, ...to, version: preview.plan.version, notifyCustomer: false, quiet: [], reason: "Client asked for the afternoon." });
     expect(result).toMatchObject({ askedAgain: 1, placesReopened: 0, customerNotice: { status: "not_chosen" } });
     expect((await s.job(a.jobId)).job.startsAt).toBe(to.startsAt);
     // The same visit shows the new time in Calendar and in Dispatch: one record.

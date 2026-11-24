@@ -27,7 +27,7 @@ const when = (at: number, timezone: string) => `${dayName(at, timezone)}, ${cloc
  * be typed here, so the move never needs a mouse.
  */
 export function MoveVisitDialog({ item, proposed, onDone }: { item: Item; proposed: { startsAt: number; endsAt: number }; onDone: () => void }) {
-  const { companyId, timezone } = useCompany();
+  const { companyId, timezone, role } = useCompany();
   const jobId = item.source.id as Id<"jobs">;
   const [date, setDate] = useState(localDate(proposed.startsAt, timezone));
   const [from, setFrom] = useState(localTime(proposed.startsAt, timezone));
@@ -49,7 +49,8 @@ export function MoveVisitDialog({ item, proposed, onDone }: { item: Item; propos
   const affected = useQuery(api.servicePlans.affected, series?.system === "service" && scope !== "this" && seriesFrom ? { companyId, planId: series.planId as Id<"servicePlans">, from: seriesFrom } : "skip");
   const salesPreview = useQuery(api.plans.changePreview, series?.system === "sales" && scope !== "this" && seriesFrom ? { companyId, planId: series.planId as Id<"recurringPlans">, effectiveFrom: seriesFrom } : "skip");
   const { busy, error, run, setError } = useRun();
-  const seriesAllowed = Boolean(series?.running && series.sameWeekday);
+  // A recurring series is changed only by Owners and Managers, through the plan's own steps.
+  const seriesAllowed = Boolean(series?.running && series.sameWeekday) && (role === "owner" || role === "manager");
   /** A company-calendar date in words: "Tue, Mar 2". */
   const dateWords = (date: string) => {
     const at = zonedInstant(date, "12:00", timezone);
@@ -128,7 +129,7 @@ export function MoveVisitDialog({ item, proposed, onDone }: { item: Item; propos
             onValueChange={(value) => setScope(value)}
             options={[
               { value: "this", label: "This visit only", description: "The plan and its other visits stay as they are." },
-              { value: "following", label: "This and following visits", description: seriesAllowed ? `From ${dateWords(series.date)}, every visit starts at ${series.time}. Earlier and completed visits, and their prices, stay as they are.` : "Not here: the series can change its time of day from Calendar, not its weekday. Change the plan itself for that.", disabled: !seriesAllowed },
+              { value: "following", label: "This and following visits", description: seriesAllowed ? `From ${dateWords(series.date)}, every visit starts at ${series.time}. Earlier and completed visits, and their prices, stay as they are.` : role === "office" ? "An Owner or Manager changes the series." : "Not here: the series can change its time of day from Calendar, not its weekday. Change the plan itself for that.", disabled: !seriesAllowed },
               { value: "series", label: "Every upcoming visit", description: seriesAllowed ? `From today, every visit not yet done starts at ${series.time}. Completed visits and their prices stay as they are.` : "Not here, for the same reason.", disabled: !seriesAllowed },
             ]}
           />
