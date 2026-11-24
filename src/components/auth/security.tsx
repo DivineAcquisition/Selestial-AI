@@ -1,6 +1,7 @@
 "use client";
 
 import { useSession, useUser } from "@clerk/nextjs";
+import QRCode from "qrcode";
 import { useCallback, useEffect, useState } from "react";
 
 import { Panel } from "@/components/app/shell";
@@ -436,9 +437,159 @@ function Sessions() {
   );
 }
 
+/**
+ * Two-step sign-in with an authenticator app (TOTP), and one-time backup codes for when the phone is not
+ * at hand. Setting it up: scan the code (or type the key), then enter a code from the app to prove it
+ * works; only then is it on. Turning it off, or making new backup codes, may ask for the password again.
+ */
+function TwoStep() {
+  const { user } = useUser();
+  const { guarded, prompt } = useConfirm();
+  const [setup, setSetup] = useState<{ uri: string; secret: string; qr: string | null } | null>(null);
+  const [code, setCode] = useState("");
+  const [codes, setCodes] = useState<string[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<AuthProblem | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  if (!user) return null;
+  const on = user.totpEnabled;
+
+  const run = async (work: () => Promise<void>) => {
+    setBusy(true);
+    setProblem(null);
+    setDone(null);
+    try {
+      await guarded(work);
+    } catch (error) {
+      if (!wasCancelled(error)) setProblem(problemOf(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const start = () =>
+    run(async () => {
+      const totp = await user.createTOTP();
+      const uri = totp.uri ?? "";
+      const qr = uri ? await QRCode.toDataURL(uri, { margin: 1, width: 192 }).catch(() => null) : null;
+      setSetup({ uri, secret: totp.secret ?? "", qr });
+      setCode("");
+    });
+
+  const verify = (event: React.FormEvent) => {
+    event.preventDefault();
+    void run(async () => {
+      await user.verifyTOTP({ code: code.trim() });
+      // Backup codes come with it, shown once, for a lost phone.
+      const backup = await user.createBackupCode();
+      setCodes(backup.codes);
+      setSetup(null);
+      setCode("");
+      await user.reload();
+      setDone("Two-step sign-in is on. Sign-in now asks for a code from your authenticator app.");
+    });
+  };
+
+  const newCodes = () =>
+    run(async () => {
+      const backup = await user.createBackupCode();
+      setCodes(backup.codes);
+      setDone("New backup codes are ready. The old ones no longer work.");
+    });
+
+  const turnOff = () =>
+    run(async () => {
+      await user.disableTOTP();
+      await user.reload();
+      setCodes(null);
+      setDone("Two-step sign-in is off.");
+    });
+
+  return (
+    <div className="grid gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className="text-sm font-semibold text-strong">Two-step sign-in</h3>
+        {on ? <Badge variant="success">On</Badge> : <Badge variant="outline">Off</Badge>}
+      </div>
+      <p className="max-w-prose text-sm text-muted-foreground">
+        {on
+          ? "Sign-in asks for a code from your authenticator app after your password. Keep your backup codes somewhere safe in case you lose your phone."
+          : "Add a second step to sign-in: after your password, a code from an authenticator app such as Google Authenticator, 1Password or Authy. It protects the account even if the password leaks."}
+      </p>
+      {done ? <Notice tone="success">{done}</Notice> : null}
+      {problem ? <Notice tone="error">{problem.message}</Notice> : null}
+
+      {setup ? (
+        <form onSubmit={verify} className="grid max-w-md gap-3 rounded-xl border border-border p-4">
+          <p className="text-sm text-strong">1. Scan this code with your authenticator app.</p>
+          {/* A generated data URL: there is nothing for next/image to optimise. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {setup.qr ? <img src={setup.qr} alt="QR code for your authenticator app" width={192} height={192} className="rounded-lg border border-border bg-white p-1" /> : null}
+          <p className="text-xs text-muted-foreground">
+            Can&apos;t scan it? Enter this key in the app instead: <code className="break-all rounded bg-muted px-1 py-0.5 text-strong">{setup.secret}</code>
+            {setup.uri ? (
+              <>
+                {" "}
+                or{" "}
+                <a href={setup.uri} className="font-medium text-brand-600 underline-offset-2 hover:underline">
+                  open it in the app on this device
+                </a>
+              </>
+            ) : null}
+            .
+          </p>
+          <p className="text-sm text-strong">2. Enter the 6-digit code the app shows.</p>
+          <CodeField label="Code from the app" value={code} onChange={setCode} disabled={busy} autoFocus />
+          <div className="flex gap-2">
+            <Button type="submit" variant="primary" size="sm" loading={busy} disabled={code.trim().length < 6}>
+              Turn on
+            </Button>
+            <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => setSetup(null)}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      ) : on ? (
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" loading={busy} onClick={() => void newCodes()}>
+            New backup codes
+          </Button>
+          <Button variant="ghost" size="sm" disabled={busy} onClick={() => void turnOff()}>
+            Turn off
+          </Button>
+        </div>
+      ) : (
+        <div>
+          <Button variant="primary" size="sm" loading={busy} onClick={() => void start()}>
+            Set up an authenticator app
+          </Button>
+        </div>
+      )}
+
+      {codes ? (
+        <div className="grid max-w-md gap-2 rounded-xl border border-warning/40 bg-warning/10 p-4">
+          <p className="text-sm font-medium text-strong">Your backup codes</p>
+          <p className="text-xs text-muted-foreground">Each works once, instead of an app code. Save them now; they won&apos;t be shown again.</p>
+          <ul className="grid grid-cols-2 gap-1 font-mono text-sm text-strong">
+            {codes.map((one) => (
+              <li key={one}>{one}</li>
+            ))}
+          </ul>
+          <div>
+            <Button variant="outline" size="sm" onClick={() => void navigator.clipboard?.writeText(codes.join("\n"))}>
+              Copy codes
+            </Button>
+          </div>
+        </div>
+      ) : null}
+      {prompt}
+    </div>
+  );
+}
+
 /** Settings → Security: the account's email, its password, and where it is signed in. */
 export function SecuritySettings() {
-  const { user, isLoaded } = useUser();
+  const { isLoaded } = useUser();
   return (
     <section id="security" className="scroll-mt-24">
       <Panel title="Security">
@@ -449,14 +600,7 @@ export function SecuritySettings() {
             <ChangeEmail />
             <ChangePassword />
             <Sessions />
-            <div>
-              <h3 className="text-sm font-semibold text-strong">Two-step sign-in</h3>
-              <p className="mt-1 max-w-prose text-sm text-muted-foreground">
-                {user?.twoFactorEnabled
-                  ? "This account has a second step turned on, and sign-in asks for it. Changing it from this page is not built yet."
-                  : "A second step at sign-in (an authenticator app or a text code) is not offered from this page yet. When you sign in from a device that has not been used before, a code may still be sent to your email."}
-              </p>
-            </div>
+            <TwoStep />
           </div>
         )}
       </Panel>
