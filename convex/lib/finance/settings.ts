@@ -26,6 +26,8 @@ export type FinanceSettings = {
   remindersOn: boolean;
   replyTo: string | null;
   tipsOn: boolean;
+  /** Which provider takes new online payment requests (docs/finance/square.md). */
+  paymentProvider: "stripe" | "square";
   expenseCategories: ExpenseCategory[];
   invoicePrefix: string;
   nextInvoiceNumber: number;
@@ -50,6 +52,7 @@ export function settingsOf(row: Doc<"financeSettings"> | null): FinanceSettings 
     remindersOn: row?.remindersOn ?? true,
     replyTo: row?.replyTo ?? null,
     tipsOn: row?.tipsOn ?? true,
+    paymentProvider: row?.paymentProvider ?? "stripe",
     expenseCategories: row?.expenseCategories ?? DEFAULT_CATEGORIES,
     invoicePrefix: row?.invoicePrefix ?? DEFAULTS.invoicePrefix,
     nextInvoiceNumber: row?.nextInvoiceNumber ?? DEFAULTS.nextInvoiceNumber,

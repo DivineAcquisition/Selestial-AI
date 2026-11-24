@@ -11,6 +11,9 @@
  * GET  /oauth/highlevel/callback  where HighLevel sends an Owner back after installing Selestial's app (Quality reads it).
  * POST /webhooks/highlevel      the Selestial HighLevel app's signed events.
  * GET  /oauth/jobber/callback   where Jobber sends an Owner back after they allowed Selestial to read their clients.
+ * GET  /oauth/square/callback   where Square sends an Owner back after they authorized their Square account (Finance).
+ * POST /webhooks/square         payment, refund and authorization events from connected Square accounts, signed
+ *                               with SQUARE_WEBHOOK_SIGNATURE_KEY over the exact notification URL and body.
  * POST /webhooks/google/calendar  Calendar push notifications, checked against each channel's own secret token.
  * POST /webhooks/google/pubsub    Gmail and Business Profile notifications through Pub/Sub, with Google's signed OIDC token.
  * POST /webhooks/google/leads     Google Ads lead form leads, with the company's lead key.
@@ -26,10 +29,13 @@ import { oauthCallback, oneClickUnsubscribe, providerWebhook, selfCheckRoute, si
 import { evidenceRequestValid } from "./lib/texting/evidence";
 import { siteOrigin } from "./lib/dispatch/links";
 import { exchangeCode, googleApp } from "./lib/recruiter/gmail";
+import { parseSquareEvent, squareConfig, verifySquareSignature } from "./lib/finance/square";
+import { squareCallback } from "./financeSquare";
 import { hashToken, randomToken, seal, unseal } from "./lib/recruiter/secrets";
 import { afterConnect, googleRedirectUri, pendingBinding } from "./recruiterMailbox";
 import { afterGoogle, pendingBinding as googlePendingBinding } from "./google";
 import { jobberCallback } from "./connectors";
+import { quickbooksCallback } from "./quickbooks";
 import { highLevelCallback } from "./qualityHighLevel";
 import { verifyHighLevel } from "./lib/quality/comms/highlevel";
 import { exchange as googleExchange, googleApp as googleConnectApp, identityFrom, redirectUri as googleConnectRedirect } from "./lib/google/oauth";
@@ -207,6 +213,39 @@ http.route({
   }),
 });
 
+/**
+ * Square: the Owner's browser back from Square's authorization page. Nothing is connected here; the
+ * signed-in Owner confirms the business in Finance (convex/financeSquare.ts).
+ */
+http.route({
+  path: "/oauth/square/callback",
+  method: "GET",
+  handler: oauthCallback({ handler: (ctx, params) => squareCallback(ctx, params) }),
+});
+
+/**
+ * Square: events from every connected Square account, for one application. The signature covers the exact
+ * notification URL registered with Square and the raw body. The event only names an object; it is read back
+ * from Square with the company's own token. An event for a Square account no company has connected is noted
+ * for Selestial's team (operations checks), never matched by guessing.
+ */
+http.route({
+  path: "/webhooks/square",
+  method: "POST",
+  handler: providerWebhook({
+    verify: async (request, body) => {
+      const config = squareConfig();
+      return verifySquareSignature({ key: config?.webhookKey ?? null, notificationUrl: config?.webhookUrl ?? null, body, header: request.headers.get("x-square-hmacsha256-signature") });
+    },
+    handler: async (ctx, body) => {
+      const event = parseSquareEvent(body);
+      if (!event) return;
+      const result = await ctx.runMutation(internal.financeSquarePay.webhookReceived, { event });
+      if (result.unmatched) await ctx.runMutation(internal.operations.webhookFailed, { source: "/webhooks/square", detail: `An event (${event.type}) arrived for a Square account no company has connected.` });
+    },
+  }),
+});
+
 http.route({
   path: "/webhooks/telnyx",
   method: "POST",
@@ -344,6 +383,16 @@ http.route({
       await ctx.runMutation(internal.qualityHighLevel.webhook, { body });
     },
   }),
+});
+
+/**
+ * GET /oauth/quickbooks/callback  where Intuit sends the Owner back after they allowed Selestial to use their
+ * QuickBooks Online company (convex/quickbooks.ts). The one-time state is checked before anything else.
+ */
+http.route({
+  path: "/oauth/quickbooks/callback",
+  method: "GET",
+  handler: oauthCallback({ handler: (ctx, params) => quickbooksCallback(ctx, params) }),
 });
 
 http.route({

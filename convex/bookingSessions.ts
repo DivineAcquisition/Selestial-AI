@@ -117,7 +117,21 @@ export const paymentAttempt = bookingQuery({
     if (!ctx.booking?.open) return null;
     const { session } = ctx.booking;
     const payment = await ctx.db.get(args.paymentId);
-    if (!payment || !session.invoiceId || payment.invoiceId !== session.invoiceId || !payment.stripe) return null;
+    if (!payment || !session.invoiceId || payment.invoiceId !== session.invoiceId) return null;
+    if (payment.square) {
+      return {
+        status: payment.status,
+        preparing: (payment.status === "awaiting_customer" || payment.status === "checking") && !payment.square.checkoutUrl,
+        amountCents: payment.amountCents,
+        problem: payment.problem ?? null,
+        clientSecret: null,
+        publishableKey: null,
+        accountId: null,
+        // Square's hosted checkout, only while this attempt can still be paid.
+        checkoutUrl: payment.status === "awaiting_customer" && payment.square.checkoutUrl ? payment.square.checkoutUrl : null,
+      };
+    }
+    if (!payment.stripe) return null;
     const config = stripeConfig();
     const ready = payment.status === "awaiting_customer" && Boolean(payment.stripe.paymentIntentId && payment.stripe.clientSecret);
     return {
@@ -128,6 +142,7 @@ export const paymentAttempt = bookingQuery({
       clientSecret: ready ? payment.stripe.clientSecret! : null,
       publishableKey: ready ? (config?.publishableKey ?? null) : null,
       accountId: ready ? payment.stripe.accountId : null,
+      checkoutUrl: null,
     };
   },
 });
@@ -416,10 +431,10 @@ export const confirm = bookingMutation({
 });
 
 export const startPayment = bookingMutation({
-  args: { clientKey: v.string() },
+  args: { clientKey: v.string(), returnTo: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const session = await recalc(ctx, ctx.session._id);
-    return startBookingPayment(ctx, session, args.clientKey);
+    return startBookingPayment(ctx, session, args.clientKey, args.returnTo);
   },
 });
 
@@ -428,8 +443,8 @@ export const paymentReturned = bookingMutation({
   args: { paymentId: v.id("payments") },
   handler: async (ctx, args) => {
     const payment = await ctx.db.get(args.paymentId);
-    if (!payment || payment.invoiceId !== ctx.session.invoiceId || payment.source !== "stripe") return { ok: false };
-    await ctx.scheduler.runAfter(0, internal.financeStripe.syncPayment, { paymentId: payment._id });
+    if (!payment || payment.invoiceId !== ctx.session.invoiceId || payment.source === "manual") return { ok: false };
+    await ctx.scheduler.runAfter(0, payment.source === "square" ? internal.financeSquarePay.syncPayment : internal.financeStripe.syncPayment, { paymentId: payment._id });
     return { ok: true };
   },
 });

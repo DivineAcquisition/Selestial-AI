@@ -111,8 +111,8 @@ export function roleOfPath(pathname: string): PathRole {
   // Crawler rules, icons, domain checks and Clerk's own proxy path are needed wherever the app answers.
   if (path === "/robots.txt" || path === "/icon.svg" || path === "/favicon.ico") return "shared";
   if (under(path, "/.well-known") || under(path, "/__clerk")) return "shared";
-  // Google's return after an Owner allows access, passed straight through to the backend (next.config.ts).
-  if (path === "/oauth/google/callback") return "shared";
+  // Google's and QuickBooks' return after an Owner allows access, passed straight through to the backend (next.config.ts).
+  if (path === "/oauth/google/callback" || path === "/oauth/quickbooks/callback") return "shared";
   // The Selestial staff console. Sign-in stays on the workspace host, which staff share with everyone.
   if (under(path, "/staff")) return "admin";
   if (under(path, "/app") || isAuthPath(path)) return "app";

@@ -4,7 +4,7 @@ import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { problemWords } from "@/components/cleaner/shell";
 import { calendarDate, clientKey, moneyInput, parseMoney, usd } from "@/lib/app/finance";
@@ -18,19 +18,23 @@ type View = NonNullable<FunctionReturnType<typeof api.pay.view>>;
 
 /**
  * The customer's pay page. It shows one invoice and nothing else, says what is owed and why, and takes
- * a card or bank payment through the company's own Stripe account. "Received" is only shown once Stripe
- * confirms it: until then the page says the payment is processing.
+ * a card or bank payment through the company's own Stripe account, or sends the customer to Square's
+ * secure checkout on the company's own Square account. "Received" is only shown once the provider
+ * confirms it: being sent back from a checkout proves nothing, so until then the page says it is checking.
  */
 export function PayPage({ token }: { token: string }) {
   const view = useQuery(api.pay.view, { token });
   const [paymentId, setPaymentId] = useState<Id<"payments"> | null>(() => {
     if (typeof window === "undefined") return null;
-    return (new URLSearchParams(window.location.search).get("payment") as Id<"payments"> | null) ?? null;
+    const search = new URLSearchParams(window.location.search);
+    return ((search.get("payment") ?? search.get("square")) as Id<"payments"> | null) ?? null;
   });
   const returned = useMutation(api.pay.returned);
-  // Back from a bank or card check: ask Stripe now, not when its notice arrives.
+  // Back from a bank or card check, or from Square's checkout: ask the provider now, not when its notice arrives.
   useEffect(() => {
-    if (paymentId && typeof window !== "undefined" && new URLSearchParams(window.location.search).get("redirect_status")) void returned({ token, paymentId }).catch(() => undefined);
+    if (!paymentId || typeof window === "undefined") return;
+    const search = new URLSearchParams(window.location.search);
+    if (search.get("redirect_status") || search.get("square") === paymentId) void returned({ token, paymentId }).catch(() => undefined);
   }, [paymentId, returned, token]);
 
   if (view === undefined) {
@@ -68,7 +72,7 @@ export function PayPage({ token }: { token: string }) {
       ) : null}
       <Details view={view} />
       <p className="px-2 text-center text-xs text-muted-foreground">
-        Payments go directly to {view.company} through Stripe. Your card details are never seen or stored by {view.company} or Selestial.
+        Payments go directly to {view.company} through {view.provider === "square" ? "Square" : "Stripe"}. Your card details are never seen or stored by {view.company} or Selestial.
       </p>
     </Shell>
   );
@@ -164,7 +168,7 @@ function Pay({ token, view, onStarted }: { token: string; view: View; onStarted:
   const invalid = amount === null || amount < view.minCents || amount > view.requestedCents || tipInvalid;
   return (
     <Panel>
-      <p className="text-sm font-semibold text-strong">Pay by card or bank</p>
+      <p className="text-sm font-semibold text-strong">{view.provider === "square" ? "Pay by card, Apple Pay or Google Pay" : "Pay by card or bank"}</p>
       {view.allowPartial ? (
         <div role="radiogroup" aria-label="How much to pay" className="mt-3 grid gap-2">
           <label className={cn("flex cursor-pointer items-center justify-between gap-3 rounded-xl border px-3.5 py-3 text-sm", mode === "full" ? "border-brand-500/60 bg-brand-500/6" : "border-border")}>
@@ -293,11 +297,17 @@ function Attempt({ token, paymentId, view, onRestart }: { token: string; payment
         <p className="text-lg font-semibold text-strong">Payment received. Thank you!</p>
         <p className="mt-1 text-sm text-muted-foreground">
           {usd(attempt.amountCents + attempt.tipCents)} {attempt.methodLabel ? `from your ${attempt.methodLabel}` : ""} reached {view.company}
-          {attempt.tipCents ? `, including your ${usd(attempt.tipCents)} tip for the crew` : ""}. A receipt is on its way if they have your email.
+          {attempt.tipCents ? `, including your ${usd(attempt.tipCents)} tip for the crew` : ""}. {attempt.receiptUrl ? "" : "A receipt is on its way if they have your email."}
         </p>
+        {attempt.receiptUrl ? (
+          <a href={attempt.receiptUrl} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex min-h-11 items-center text-sm font-medium text-info-foreground underline-offset-4 hover:underline">
+            View your Square receipt
+          </a>
+        ) : null}
       </Panel>
     );
   }
+  if (attempt.provider === "square") return <SquareAttempt attempt={attempt} paymentId={paymentId} onRestart={onRestart} />;
   if (attempt.status === "processing") {
     return (
       <Panel>
@@ -341,6 +351,68 @@ function Attempt({ token, paymentId, view, onRestart }: { token: string; payment
       <Elements stripe={stripe} options={{ clientSecret: attempt.clientSecret, appearance: { theme: "stripe", variables: { colorPrimary: "#6838ef", borderRadius: "10px", fontFamily: "Inter, system-ui, sans-serif" } } }}>
         <ConfirmForm token={token} paymentId={paymentId} amountCents={attempt.amountCents + attempt.tipCents} />
       </Elements>
+    </Panel>
+  );
+}
+
+type AttemptView = NonNullable<FunctionReturnType<typeof api.pay.attempt>>;
+
+/**
+ * A Square payment: the customer pays on Square's own checkout and comes back here. Whether money arrived
+ * is read from Square by the server; until it says so, this page says it is checking.
+ */
+function SquareAttempt({ attempt, paymentId, onRestart }: { attempt: AttemptView; paymentId: Id<"payments">; onRestart: () => void }) {
+  const back = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("square") === paymentId;
+  const sent = useRef(false);
+  // Fresh from "Pay": open Square's checkout as soon as it is ready. Coming back from it, stay here and check.
+  useEffect(() => {
+    if (!back && attempt.checkoutUrl && !sent.current) {
+      sent.current = true;
+      window.location.assign(attempt.checkoutUrl);
+    }
+  }, [attempt.checkoutUrl, back]);
+  if (attempt.status === "processing" || attempt.status === "checking" || (back && attempt.status === "awaiting_customer" && !attempt.problem)) {
+    return (
+      <Panel>
+        <p className="text-sm font-semibold text-strong">We&apos;re checking whether this payment completed</p>
+        <p className="mt-1 text-sm text-muted-foreground">Selestial is confirming with Square. This page updates on its own. Please don&apos;t pay again; nothing will be charged twice.</p>
+        <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-muted">
+          <div className="h-full w-1/3 animate-[pulse_1.2s_ease-in-out_infinite] rounded-full bg-brand-500/70" />
+        </div>
+        {back && attempt.checkoutUrl ? (
+          <a href={attempt.checkoutUrl} className="mt-4 inline-flex min-h-11 items-center text-sm font-medium text-info-foreground underline-offset-4 hover:underline">
+            I didn&apos;t finish paying: back to Square checkout
+          </a>
+        ) : null}
+      </Panel>
+    );
+  }
+  if (attempt.status === "failed" || attempt.status === "canceled") {
+    return (
+      <Panel>
+        <p className="text-sm font-semibold text-strong">{attempt.status === "failed" ? "That payment didn't go through" : "That payment was stopped"}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{attempt.problem ?? "Nothing was charged."}</p>
+        <button type="button" onClick={onRestart} className="mt-4 min-h-11 w-full rounded-xl border border-border bg-card px-4 text-sm font-semibold text-strong">
+          Try again
+        </button>
+      </Panel>
+    );
+  }
+  return (
+    <Panel>
+      <p className="text-sm font-semibold text-strong">{attempt.checkoutUrl ? (attempt.problem ? "Square declined the payment" : "Continue to Square to pay") : "Preparing Square's secure checkout…"}</p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {attempt.problem ?? `You'll pay ${usd(attempt.amountCents + attempt.tipCents)}${attempt.tipCents ? ` (including a ${usd(attempt.tipCents)} tip)` : ""} on Square's checkout, then come back here.`}
+      </p>
+      {attempt.checkoutUrl ? (
+        <a href={attempt.checkoutUrl} className="mt-4 flex min-h-12 w-full items-center justify-center rounded-xl bg-brand-500 px-4 text-sm font-semibold text-white hover:bg-brand-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500">
+          {attempt.problem ? "Try another card on Square" : "Continue to Square checkout"}
+        </a>
+      ) : (
+        <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-muted">
+          <div className="h-full w-1/3 animate-[pulse_1.2s_ease-in-out_infinite] rounded-full bg-brand-500/70" />
+        </div>
+      )}
     </Panel>
   );
 }

@@ -100,6 +100,15 @@ export function ownerCard(incident: Doc<"incidents">): OwnerCard | null {
         places: ["home", "integrations"],
         tone: "info",
       };
+    case "quickbooks_reconnect":
+      return {
+        title: "QuickBooks needs reconnecting",
+        affected: "Selestial can't reach your QuickBooks company until you reconnect it. Nothing in QuickBooks was changed.",
+        done: selestialDid(incident, ""),
+        action: { kind: "link", label: "Reconnect QuickBooks", href: "/app/settings/integrations/quickbooks" },
+        places: ["home", "integrations"],
+        tone: "action",
+      };
     case "connector_reconnect":
       return {
         title: `${incident.provider === "housecall_pro" ? "Housecall Pro" : "Jobber"} needs reconnecting`,

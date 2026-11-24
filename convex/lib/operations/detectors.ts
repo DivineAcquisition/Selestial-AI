@@ -564,6 +564,24 @@ const connectors: Detector = {
   },
 };
 
+/** QuickBooks Online: Intuit ended the authorization (convex/quickbooks.ts), so only the Owner reconnecting helps. */
+const quickbooks: Detector = {
+  check: "quickbooks",
+  everyMinutes: 15,
+  async scan(ctx) {
+    const rows = await ctx.db
+      .query("quickbooksConnections")
+      .withIndex("by_status", (q) => q.eq("status", "needs_reconnect"))
+      .take(200);
+    return rows.map((row) => ref("quickbooksConnections", row._id));
+  },
+  async evaluate(ctx, source) {
+    const connection = await load(ctx, "quickbooksConnections", source);
+    if (!connection || connection.status !== "needs_reconnect") return null;
+    return { key: `quickbooks_reconnect:${connection._id}`, kind: "quickbooks_reconnect", area: "connections", companyId: connection.companyId, provider: "quickbooks", severity: "low", state: "waiting_owner", title: "QuickBooks needs reconnecting", impact: "Selestial can't reach QuickBooks until the Owner reconnects it. Nothing in QuickBooks was changed.", nextAction: "The owner reconnects QuickBooks.", diagnostics: connection.problem?.slice(0, 200), source, since: connection.lastRefreshAt ?? connection.connectedAt, attempts: 0 };
+  },
+};
+
 // ── Billing ───────────────────────────────────────────────────────────────────────────────────────
 
 /** The settlement sweeps run every 5 minutes. A settlement due an hour ago means they are not. */
@@ -963,6 +981,7 @@ export const DETECTORS: readonly Detector[] = [
   mailboxes,
   google,
   connectors,
+  quickbooks,
   texting,
   aiBilling,
   messagingBilling,
