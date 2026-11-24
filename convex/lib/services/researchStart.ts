@@ -136,7 +136,7 @@ export async function startBrief(
         ...(input.member ? { memberId: input.member._id } : {}),
         source: { table: "researchBriefs", id: briefId },
         origin: input.origin === "setup" ? "automatic" : input.origin === "chat" ? "chat" : "member",
-        link: { label: "Research & Insights", path: "/app/services/research" },
+        link: { label: "Market research", path: "/app/services/research" },
       });
       if (!opened.ok) blocked = `Web research did not run: ${opened.message} This brief uses your sources and your own records only.`;
       else {

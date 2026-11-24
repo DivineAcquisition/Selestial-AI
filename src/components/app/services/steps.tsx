@@ -826,13 +826,16 @@ function ExtraRow({ addOn: a, spec, disabled, startOpen, onChange, onRemove }: {
   );
 }
 
-export function ExtrasStep({ spec, edit, disabled }: StepProps) {
+/** Extras and adjustments. `part` shows just one of them, for the editor's Price section and More options. */
+export function ExtrasStep({ spec, edit, disabled, part }: StepProps & { part?: "extras" | "adjustments" }) {
   const m = spec.modifiers;
   const setM = (patch: Partial<Spec["modifiers"]>) => edit((s) => ({ ...s, modifiers: { ...s.modifiers, ...patch } }));
   const setAddOn = (id: string, patch: Partial<Spec["addOns"][number]>) => edit((s) => ({ ...s, addOns: s.addOns.map((a) => (a.id === id ? { ...a, ...patch } : a)) }));
   const [fresh, setFresh] = useState<string[]>([]);
   return (
     <div className="grid grid-cols-1 gap-6">
+      {part !== "adjustments" ? (
+        <>
       <SectionTitle title="Extras" tip="Add-ons a customer can choose. Open one to change it." />
       <ul className="grid grid-cols-1 gap-2">
         {spec.addOns.map((a) => (
@@ -855,6 +858,11 @@ export function ExtrasStep({ spec, edit, disabled }: StepProps) {
         </div>
       ) : null}
 
+          <Problems spec={spec} prefix="addOns" />
+        </>
+      ) : null}
+      {part !== "extras" ? (
+        <>
       <SectionTitle title="Adjustments" tip="Switch on only what this service needs. Each one shows up in the price breakdown with its reason, in a fixed order." />
       <ul className="grid grid-cols-1 gap-2">
         <AdjustmentCard
@@ -1085,8 +1093,9 @@ export function ExtrasStep({ spec, edit, disabled }: StepProps) {
           {m.rounding.stepCents ? <Segmented label="Direction" value={m.rounding.mode} disabled={disabled} options={[{ id: "nearest", label: "Nearest" }, { id: "up", label: "Always up" }]} onChange={(mode) => setM({ rounding: { ...m.rounding, mode } })} /> : null}
         </AdjustmentCard>
       </ul>
-      <Problems spec={spec} prefix="addOns" />
       <Problems spec={spec} prefix="modifiers" />
+        </>
+      ) : null}
     </div>
   );
 }

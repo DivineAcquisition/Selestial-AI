@@ -9,7 +9,7 @@ import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/
 import { FileSpreadsheet, Plus, Sparkles, TemplateIcon, Upload } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { SegmentedControl, SelectionCards } from "@/components/ui/selection";
+import { SegmentedControl, Select, SelectionCards } from "@/components/ui/selection";
 import { importPath, SERVICES_ROOT, servicePath } from "@/lib/app/services";
 import { cn } from "@/lib/utils";
 
@@ -20,10 +20,10 @@ import { Notice } from "./shared";
 
 type Mode = "selestial" | "template" | "import" | "blank";
 const MODES: { id: Mode; label: string; blurb: string; icon: typeof Sparkles }[] = [
-  { id: "selestial", label: "Build with Selestial", blurb: "Describe your business. Selestial asks a few questions at a time and writes drafts.", icon: Sparkles },
+  { id: "selestial", label: "Describe it", blurb: "Say what the service is. Selestial drafts it beside the editor and asks what a price needs.", icon: Sparkles },
   { id: "template", label: "Use a template", blurb: "Start from a structure for a kind of cleaning and make it yours.", icon: TemplateIcon },
-  { id: "import", label: "Import existing pricing", blurb: "A spreadsheet or a pasted price list, reviewed row by row.", icon: Upload },
-  { id: "blank", label: "Add a service", blurb: "Start from an empty service and fill it in step by step.", icon: Plus },
+  { id: "import", label: "Import prices", blurb: "A spreadsheet or a pasted price list, reviewed row by row.", icon: Upload },
+  { id: "blank", label: "Create manually", blurb: "Start from an empty service and fill it in yourself.", icon: Plus },
 ];
 
 const CATEGORY_BLURB: Record<Category, string> = {
@@ -60,37 +60,47 @@ export function NewService() {
 }
 
 const EXAMPLES = [
-  "We clean homes in Austin: standard, deep and move-out. Two crews of two, paid hourly.",
-  "Help me price Airbnb turnovers for 1–4 bedroom homes, with laundry done on site.",
-  "I want to add office cleaning priced by square foot, after hours.",
+  "A standard home clean for regular customers: kitchen, bathrooms, floors and dusting. Two cleaners, about three hours.",
+  "Airbnb turnovers for 1–4 bedroom homes, with laundry done on site and restocking.",
+  "Office cleaning after hours, priced by square foot.",
 ];
 
-/** A Chat conversation that builds structured drafts with the same tools the workspace uses. */
+/**
+ * Describe a service and Selestial drafts it, in the service's own workspace: the draft is created here,
+ * the request goes to Selestial beside it, and the page opens with the conversation alongside the editor.
+ */
 function BuildWithSelestial() {
   const { companyId } = useCompany();
   const router = useRouter();
+  const start = useMutation(api.services.startDraft);
   const send = useMutation(api.chat.send);
   const { busy, error, run } = useRun();
   const [text, setText] = useState("");
-  const start = () =>
+  const [name, setName] = useState("");
+  const [category, setCategory] = useState<Category>("residential");
+  const begin = () =>
     run(async () => {
-      const message = `${text.trim() || "Help me build my services."}\n\nWork in Services & Pricing: ask me a few questions at a time about my services, areas, team and costs; say "I'm not sure" is fine. Start drafts with start_service_draft (from a template when one fits) and fill them with edit_service_draft using only amounts I give. Don't submit anything for review until I say so.`;
-      const sent = await send({ companyId, text: message, clientKey: `new-service-${Date.now()}`, page: SERVICES_ROOT });
-      router.push(`/app/chat/${sent.conversationId}`);
+      const { serviceId, revision } = await start({ companyId, category, spec: { ...blankSpec(category), name: name.trim() }, origin: "manual" });
+      await send({ companyId, text: `Draft this service from my description. Ask me for anything a price needs; use only amounts I give.\n\n${text.trim()}`, clientKey: `describe-${serviceId}`, origin: { kind: "service_draft", serviceId }, draftRevision: revision, page: servicePath(serviceId) });
+      router.push(`${servicePath(serviceId)}?panel=assistant`);
     });
   return (
-    <div className="grid grid-cols-1 gap-4 rounded-2xl border border-brand-500/25 bg-gradient-to-b from-brand-500/[0.06] to-card p-4 sm:p-6">
-      <div className="flex items-center gap-3">
-        <span className="flex size-10 items-center justify-center rounded-full bg-brand-500/15 text-brand-600" aria-hidden>
-          <Sparkles className="size-5" />
-        </span>
-        <div>
-          <h2 className="font-heading text-lg tracking-tight text-strong">Tell Selestial about your services</h2>
-          <p className="text-sm text-muted-foreground">It asks only what a price needs, writes drafts you can open here, and never publishes anything. Each answer uses one Chat credit, like any Chat answer.</p>
-        </div>
+    <div className="grid grid-cols-1 gap-4 rounded-2xl border border-border bg-card p-4 sm:p-6">
+      <div>
+        <h2 className="font-heading text-lg tracking-tight text-strong">Describe it to Selestial</h2>
+        <p className="mt-1 text-sm text-muted-foreground">Selestial drafts the scope, crew and questions, and asks for any amount a price needs. You see every change beside the editor, can undo any of them, and nothing is published. Each answer uses one Chat credit.</p>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Service name">
+          <TextInput value={name} onChange={(event) => setName(event.target.value)} placeholder="Standard clean" maxLength={80} />
+        </Field>
+        <label className="grid grid-cols-1 gap-1.5 text-sm">
+          <span className="font-medium text-strong">Kind of cleaning</span>
+          <Select value={category} onValueChange={(next) => setCategory((next ?? "residential") as Category)} options={CATEGORIES.map((c) => ({ value: c, label: CATEGORY_LABELS[c] }))} />
+        </label>
       </div>
       <Field label="In your own words">
-        <TextArea value={text} rows={3} onChange={(event) => setText(event.target.value)} placeholder={EXAMPLES[0]} />
+        <TextArea value={text} rows={4} onChange={(event) => setText(event.target.value)} placeholder={EXAMPLES[0]} />
       </Field>
       <div className="flex flex-wrap gap-2">
         {EXAMPLES.map((example) => (
@@ -101,8 +111,8 @@ function BuildWithSelestial() {
       </div>
       <FormError message={error} />
       <div>
-        <Button variant="primary" loading={busy} onClick={() => void start()}>
-          <Sparkles aria-hidden /> Start the conversation
+        <Button variant="primary" loading={busy} disabled={!name.trim() || !text.trim()} onClick={() => void begin()}>
+          <Sparkles aria-hidden /> Draft it with Selestial
         </Button>
       </div>
     </div>
@@ -190,7 +200,6 @@ function ImportPricing() {
   const { companyId } = useCompany();
   const router = useRouter();
   const create = useMutation(api.servicesImports.create);
-  const send = useMutation(api.chat.send);
   const { busy, error, run, setError } = useRun();
   const [text, setText] = useState("");
   const [name, setName] = useState("");
@@ -241,20 +250,8 @@ function ImportPricing() {
         >
           Read it
         </Button>
-        <Button
-          variant="secondary"
-          disabled={!text.trim() || busy}
-          onClick={() =>
-            void run(async () => {
-              const sent = await send({ companyId, text: `Read my existing price list below and turn each service into a draft in Services & Pricing (start_service_draft, then edit_service_draft). Use only the amounts in it. Where a unit is unclear — for example an hourly price that doesn't say per cleaner or per crew — ask me before drafting it. Don't submit anything for review.\n\n${text.slice(0, 20_000)}`, clientKey: `import-chat-${Date.now()}`, page: SERVICES_ROOT });
-              router.push(`/app/chat/${sent.conversationId}`);
-            })
-          }
-        >
-          <Sparkles aria-hidden /> Ask Selestial to read it instead
-        </Button>
       </div>
-      <p className="text-xs text-muted-foreground">Asking Selestial is a Chat conversation and uses Chat credits; it can follow up on anything unclear. PDFs and photos of price lists are not read yet: paste their text.</p>
+      <p className="text-xs text-muted-foreground">PDFs and photos of price lists are not read yet: paste their text.</p>
     </div>
   );
 }

@@ -468,7 +468,7 @@ class Unavailable extends Component<{ children: React.ReactNode; fallback: React
   }
 }
 
-function ConversationBody({ conversationId, compact, onChoice }: { conversationId: string; compact?: boolean; onChoice: (text: string) => void }) {
+export function ConversationBody({ conversationId, compact, onChoice }: { conversationId: string; compact?: boolean; onChoice: (text: string) => void }) {
   const { companyId } = useCompany();
   const thread = useQuery(api.chat.thread, { companyId, conversationId });
   const retry = useMutation(api.chat.retry);

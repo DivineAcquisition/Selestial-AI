@@ -20,7 +20,7 @@ import { serviceKey } from "./lib/dispatch/templates";
 import { userError } from "./lib/errors";
 import { byMember, recordEvent, type Actor } from "./lib/events";
 import { isManager, isOwner } from "./lib/roles";
-import { priceSummary, quote as runQuote, type QuoteInput } from "./lib/services/engine";
+import { checkSpec, priceSummary, quote as runQuote, type QuoteInput } from "./lib/services/engine";
 import { emptyCosts, profitability } from "./lib/services/profit";
 import { contextValidator, evidenceValidator, quoteInputValidator } from "./lib/services/schema";
 import { blankSpec, categoryValidator, specValidator, type Spec } from "./lib/services/spec";
@@ -39,8 +39,11 @@ import {
 } from "./lib/services/store";
 import { costsValidator } from "./lib/services/profit";
 import { businessSettingsOf } from "./lib/settings/business";
-import { actorLabel, changeHash, closeChange, createDraft, STALE_DRAFT, submitDraft, writeDraft } from "./lib/services/workflow";
+import { actorLabel, bookingForms, changeHash, closeChange, createDraft, impactLines, STALE_DRAFT, submitDraft, writeDraft } from "./lib/services/workflow";
 import { assumptionsFor, emptyContext } from "./lib/services/setup";
+import { PART_LABELS, undone } from "./lib/services/edits";
+import { choiceFor } from "./lib/configure/catalog";
+import { CATEGORY_CHOICES, FACTS, factsOf } from "./lib/setup/facts";
 import { applyPropertyPrice, dayWords, extrasView, ownPricesFor, propertyName, propertyPriceProblem, untilWords } from "./lib/services/propertyPrices";
 import { startSetupResearch } from "./lib/services/researchStart";
 
@@ -72,8 +75,12 @@ export const catalog = companyQuery({
         status: service.status,
         origin: service.origin,
         live: live ? { version: live.version, summary: priceSummary(live.spec), method: live.spec.pricing.method, publishedAt: service.publishedAt ?? live.createdAt, description: live.spec.summary, included: live.spec.included.length, addOns: live.spec.addOns.length, crew: live.spec.team.crewSize, skills: live.spec.team.skills } : null,
-        draft: draft ? { revision: draft.revision, updatedAt: draft.updatedAt, by: await actorLabel(ctx, draft.updatedBy, draft.via), step: draft.step, name: draft.spec.name, summary: priceSummary(draft.spec), illustrative: draft.spec.illustrative, blockers: submissionProblems(draft.spec).length } : null,
+        draft: draft ? { revision: draft.revision, updatedAt: draft.updatedAt, by: await actorLabel(ctx, draft.updatedBy, draft.via), step: draft.step, name: draft.spec.name, summary: priceSummary(draft.spec), priced: hasPrice(draft.spec), illustrative: draft.spec.illustrative, blockers: submissionProblems(draft.spec).length, firstBlocker: submissionProblems(draft.spec)[0] ?? null, changed: live !== null && canonical(live.spec) !== canonical(draft.spec) } : null,
         openChange: open ? { id: open._id, state: open.state, effectiveAt: open.effectiveAt ?? null } : null,
+        /** Prepared by Selestial (business configuration or setup), not started by a person. */
+        prepared: service.createdBy.kind !== "member",
+        /** How customers get it: a firm price on a live booking form, an estimate request, or not online yet. */
+        booking: await bookingWay(ctx, service, (draft?.spec ?? live?.spec)!),
       });
     }
     services.sort((a, b) => a.name.localeCompare(b.name));
@@ -99,6 +106,105 @@ export const catalog = companyQuery({
     };
   },
 });
+
+/**
+ * What the company already told Selestial that shapes its services, with where each part came from, so
+ * the workspace starts from it instead of asking again. Read only: facts are changed in company details.
+ *  - confirmed: the Owner said or checked it. imported: read from a file they brought. suggested: found
+ *    (on their website, say) and not checked yet. unknown: nothing yet. A conflicting value is shown, not
+ *    picked.
+ *  - pricing: how they said they price today, which picks the path the workspace leads with.
+ */
+export const startingPoint = companyQuery({
+  args: {},
+  handler: async (ctx) => {
+    const facts = await factsOf(ctx, ctx.companyId);
+    const words = (key: string, value: string | string[]) => {
+      const list = Array.isArray(value) ? value : [value];
+      if (key === "services.categories") return list.map((c) => CATEGORY_CHOICES.find((x) => x.value === c)?.label ?? c).join(", ");
+      if (key === "services.offered") return list.map((id) => choiceFor(id)?.label ?? id).join(", ");
+      return list.join(", ");
+    };
+    const SOURCE_WORDS: Record<string, string> = { owner: "you", website: "your website", import: "a file you brought", sign_in: "your sign-in" };
+    const known = (["services.categories", "services.offered", "company.areas"] as const).map((key) => {
+      const row = facts.find((f) => f.key === key);
+      const provenance = !row ? "unknown" : row.state === "confirmed" ? "confirmed" : row.source === "import" ? "imported" : "suggested";
+      return {
+        key,
+        label: FACTS[key].label,
+        value: row ? words(key, row.value) : null,
+        provenance: provenance as "confirmed" | "imported" | "suggested" | "unknown",
+        from: row ? (SOURCE_WORDS[row.source] ?? row.source) : null,
+        conflict: row?.conflict ? { value: words(key, row.conflict.value), from: SOURCE_WORDS[row.conflict.source] ?? row.conflict.source } : null,
+      };
+    });
+    const profile = await ctx.db
+      .query("pricingProfiles")
+      .withIndex("by_company", (q) => q.eq("companyId", ctx.companyId))
+      .first();
+    const setup = await ctx.db
+      .query("companySetups")
+      .withIndex("by_company", (q) => q.eq("companyId", ctx.companyId))
+      .first();
+    const said = setup?.answers["pricing.state"];
+    const pricing = said === "set_prices" || said === "some_prices" ? "existing" : said === "starting_out" ? "help" : said === "quote_each" ? "quote" : null;
+    return {
+      known,
+      costs: profile?.setupCompletedAt !== undefined ? ("confirmed" as const) : ("unknown" as const),
+      pricing: pricing as "existing" | "help" | "quote" | null,
+      canConfigure: isOwner(ctx.role),
+    };
+  },
+});
+
+/**
+ * The person's own conversation with Selestial beside this service, if they have one, so the panel picks
+ * up where they left off. Conversations are private to the person who started them.
+ */
+export const assistant = companyQuery({
+  args: { serviceId: v.id("services") },
+  handler: async (ctx, args) => {
+    const service = await ownedService(ctx, ctx.companyId, args.serviceId);
+    const recent = await ctx.db
+      .query("conversations")
+      .withIndex("by_company_creator_shelf_updated", (q) => q.eq("companyId", ctx.companyId).eq("createdBy", ctx.member._id).eq("shelf", "active"))
+      .order("desc")
+      .take(100);
+    const mine = recent.find((c) => c.origin?.kind === "service_draft" && c.origin.serviceId === service._id);
+    return { conversationId: mine?._id ?? null };
+  },
+});
+
+/** Whether a spec carries a real price yet (a custom quote needs none). Zero is never shown as a price. */
+function hasPrice(spec: Spec): boolean {
+  const p = spec.pricing;
+  switch (p.method) {
+    case "fixed":
+      return p.amountCents > 0;
+    case "hourly_per_cleaner":
+    case "hourly_per_crew":
+      return p.rateCents > 0;
+    case "size_bands":
+      return p.bands.some((b) => b.amountCents > 0);
+    case "per_area":
+      return p.rateMillicents > 0;
+    case "bed_bath":
+      return p.baseCents > 0;
+    case "per_unit":
+      return p.unitCents > 0;
+    case "recurring_package":
+      return p.monthlyCents > 0;
+    case "custom_quote":
+      return true;
+  }
+}
+
+async function bookingWay(ctx: Ctx, service: Doc<"services">, spec: Spec | undefined) {
+  const forms = await bookingForms(ctx, ctx.companyId, service.key);
+  const live = forms.filter((f) => f.live).length;
+  const estimate = spec?.pricing.method === "custom_quote";
+  return { estimate, liveForms: live, forms: forms.length };
+}
 
 /** One service: its live version, the draft, every version and every change. */
 export const service = companyQuery({
@@ -399,6 +505,62 @@ export const applySuggestion = managerMutation({
   },
 });
 
+// ── Selestial's edits: what changed, and undo ─────────────────────────────────────────────────────────
+
+/** Selestial's recent edits to this service's draft, newest first, with what each changed and whether it can still be undone. */
+export const draftEdits = companyQuery({
+  args: { serviceId: v.id("services") },
+  handler: async (ctx, args) => {
+    const service = await ownedService(ctx, ctx.companyId, args.serviceId);
+    const draft = await draftOf(ctx, ctx.companyId, service._id);
+    const rows = await ctx.db
+      .query("serviceDraftEdits")
+      .withIndex("by_company_service", (q) => q.eq("companyId", ctx.companyId).eq("serviceId", service._id))
+      .order("desc")
+      .take(20);
+    return rows.map((row) => {
+      const still = draft && !row.undone ? undone(draft.spec, row) : null;
+      return {
+        id: row._id,
+        at: row.at,
+        summary: row.summary,
+        parts: row.fields.map((f) => PART_LABELS[f.key as keyof Spec] ?? f.key),
+        conversationId: row.conversationId ?? null,
+        undone: row.undone ? { at: row.undone.at, kept: row.undone.kept } : null,
+        /** Undo would put back at least one part; parts edited since are named and kept. */
+        canUndo: Boolean(isManager(ctx.role) && still && still.reverted.length > 0),
+        keptIfUndone: still?.kept ?? [],
+      };
+    });
+  },
+});
+
+/**
+ * Undoes one of Selestial's edits. Only the parts that still hold what it wrote go back; anything changed
+ * since (by a person or a later edit) is kept and named, so undo never erases later work.
+ */
+export const undoEdit = managerMutation({
+  args: { editId: v.id("serviceDraftEdits") },
+  handler: async (ctx, args) => {
+    const edit = await ctx.db.get(args.editId);
+    if (!edit || edit.companyId !== ctx.companyId) throw userError("That change no longer exists.", "not_found");
+    if (edit.undone) return { reverted: [] as string[], kept: edit.undone.kept, revision: null };
+    const service = await ownedService(ctx, ctx.companyId, edit.serviceId);
+    const draft = await draftOf(ctx, ctx.companyId, service._id);
+    if (!draft) throw userError("This draft was published or discarded, so there is nothing to undo here. Earlier versions are in the service's history.");
+    const result = undone(draft.spec, edit);
+    const now = Date.now();
+    if (!result.reverted.length) {
+      await ctx.db.patch(edit._id, { undone: { at: now, by: ctx.member._id, revision: draft.revision, kept: result.kept } });
+      return { reverted: [], kept: result.kept, revision: draft.revision };
+    }
+    const saved = await writeDraft(ctx, service, draft, normalizeSpec(result.spec), draft.step, byMember(ctx), "workspace");
+    await ctx.db.patch(edit._id, { undone: { at: now, by: ctx.member._id, revision: saved.revision, kept: result.kept } });
+    await recordEvent(ctx, { companyId: ctx.companyId, type: "service.draft_edit_undone", actor: byMember(ctx), subject: { table: "services", id: service._id }, data: { reverted: result.reverted.join(", "), kept: result.kept.join(", ") } });
+    return { reverted: result.reverted, kept: result.kept, revision: saved.revision };
+  },
+});
+
 // ── Review ──────────────────────────────────────────────────────────────────────────────────────────
 
 const noticeValidator = v.object({ required: v.boolean(), note: v.string() });
@@ -412,6 +574,62 @@ export const submit = managerMutation({
   support: { capability: "records.edit", summary: "sent a service change to you for approval" },
   args: { serviceId: v.id("services"), expectedRevision: v.number(), reason: v.string(), customerNotice: noticeValidator, contractReview: noticeValidator, effectiveAt: v.optional(v.number()), evidence: v.optional(v.array(evidenceValidator)) },
   handler: async (ctx, args) => submitDraft(ctx, { ...args, actor: byMember(ctx) }),
+});
+
+/**
+ * Everything the Review & publish panel shows for the draft on screen, before anything is submitted: what
+ * changes and the prices before and after, what still blocks it, what publishing does to connected work
+ * (from what the application really does), the booking forms that offer it, and a review already open.
+ */
+export const reviewPreview = companyQuery({
+  args: { serviceId: v.id("services") },
+  handler: async (ctx, args) => {
+    const service = await ownedService(ctx, ctx.companyId, args.serviceId);
+    const draft = await draftOf(ctx, ctx.companyId, service._id);
+    const live = await publishedSpec(ctx, service);
+    const open = (await openChanges(ctx, ctx.companyId, service._id)).find((c) => c.kind === "publish") ?? null;
+    const forms = await bookingForms(ctx, ctx.companyId, service.key);
+    if (!draft) return { draft: null, live: live ? { version: live.version } : null, forms, openChange: null, canPublish: isOwner(ctx.role), canSubmit: isManager(ctx.role) };
+    const problems = checkSpec(draft.spec);
+    return {
+      draft: {
+        revision: draft.revision,
+        sameAsLive: live !== null && canonical(live.spec) === canonical(draft.spec),
+        changes: describeChanges(live?.spec ?? null, draft.spec),
+        prices: priceComparison(live?.spec ?? null, draft.spec),
+        blockers: submissionProblems(draft.spec),
+        warnings: problems.filter((p) => p.severity === "warning").map((p) => p.message),
+        impact: await impactLines(ctx, { service, liveName: live?.spec.name ?? null, spec: draft.spec, version: null }),
+        ownPrices: (await ownPricesFor(ctx, ctx.companyId, service._id)).length,
+      },
+      live: live ? { version: live.version } : null,
+      forms,
+      openChange: open ? { id: open._id, state: open.state, hash: open.hash, fromThisDraft: open.draftRevision === draft.revision, submittedAt: open.submittedAt, version: open.version ?? null } : null,
+      canPublish: isOwner(ctx.role),
+      canSubmit: isManager(ctx.role),
+    };
+  },
+});
+
+/**
+ * The Owner's Review & publish, in the workspace: the draft they reviewed (by its revision) becomes a new
+ * version, is approved for its exact hash and goes live, in one step. Every check of submit, approve and
+ * publish still applies. A retry finds the draft already published and changes nothing.
+ */
+export const publishDraft = ownerMutation({
+  args: { serviceId: v.id("services"), expectedRevision: v.number(), reason: v.string(), effectiveAt: v.optional(v.number()), customerNotice: v.optional(noticeValidator), contractReview: v.optional(noticeValidator) },
+  handler: async (ctx, args) => {
+    const service = await ownedService(ctx, ctx.companyId, args.serviceId);
+    const draft = await draftOf(ctx, ctx.companyId, service._id);
+    if (!draft) return { state: "nothing" as const, version: service.publishedVersion ?? null };
+    const { changeId, version } = await submitDraft(ctx, { serviceId: service._id, expectedRevision: args.expectedRevision, reason: args.reason, customerNotice: args.customerNotice ?? { required: false, note: "" }, contractReview: args.contractReview ?? { required: false, note: "" }, ...(args.effectiveAt !== undefined ? { effectiveAt: args.effectiveAt } : {}), actor: byMember(ctx) });
+    const change = (await ctx.db.get(changeId))!;
+    const now = Date.now();
+    await ctx.db.patch(change._id, { state: "approved", approval: { by: ctx.member._id, at: now, hash: change.hash }, updatedAt: now });
+    await recordEvent(ctx, { companyId: ctx.companyId, type: "service.approved", actor: byMember(ctx), subject: { table: "serviceChanges", id: change._id }, data: { version, inWorkspace: true } });
+    const result = await publishOrSchedule(ctx, (await ctx.db.get(change._id))!);
+    return { state: result.state, version };
+  },
 });
 
 /** Asks to stop offering a live service. Visits already booked keep it; new ones cannot choose it. */

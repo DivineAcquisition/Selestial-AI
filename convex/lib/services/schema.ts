@@ -180,6 +180,29 @@ export const servicesTables = {
     createdAt: v.number(),
   }).index("by_company_service_version", ["companyId", "serviceId", "version"]),
 
+  /**
+   * One change Selestial made to a service draft on a person's request, field by field, so it can be shown
+   * and undone. Undo puts back only the fields that still hold what Selestial wrote: anything edited since
+   * is kept, and named.
+   */
+  serviceDraftEdits: defineTable({
+    companyId: v.id("companies"),
+    serviceId: v.id("services"),
+    conversationId: v.optional(v.id("conversations")),
+    runId: v.optional(v.id("chatRuns")),
+    actor: actorValidator,
+    fromRevision: v.number(),
+    toRevision: v.number(),
+    /** Top-level parts of the service that changed, as canonical JSON before and after. */
+    fields: v.array(v.object({ key: v.string(), before: v.string(), after: v.string() })),
+    /** The change in words, for the person. */
+    summary: v.array(v.string()),
+    at: v.number(),
+    undone: v.optional(v.object({ at: v.number(), by: v.id("members"), revision: v.number(), kept: v.array(v.string()) })),
+  })
+    .index("by_company_service", ["companyId", "serviceId", "at"])
+    .index("by_run", ["runId"]),
+
   serviceDrafts: defineTable({
     companyId: v.id("companies"),
     serviceId: v.id("services"),

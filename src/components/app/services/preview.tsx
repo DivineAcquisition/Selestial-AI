@@ -391,6 +391,7 @@ export function CustomerView({ spec, result }: { spec: Spec; result: Quote }) {
         <p className="mt-1 text-sm text-muted-foreground">{spec.summary || "No description yet."}</p>
         <p className="mt-2 text-sm font-medium text-strong">{priceSummary(spec)}</p>
       </div>
+      <OutcomeLine result={result} />
       <QuoteLines result={result} />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
@@ -418,7 +419,53 @@ export function CustomerView({ spec, result }: { spec: Spec; result: Quote }) {
           </ul>
         </div>
       ) : null}
+      {spec.modifiers.recurring.enabled && spec.modifiers.recurring.options.length ? (
+        <div>
+          <p className="text-sm font-medium text-strong">Regular visits</p>
+          <ul className="mt-1 grid gap-0.5 text-sm text-muted-foreground">
+            {spec.modifiers.recurring.options.map((o) => (
+              <li key={o.schedule}>
+                {scheduleLabel(o.schedule)}: {o.discount.value ? (o.discount.kind === "percent" ? `${o.discount.value}% off each visit` : `${formatCents(o.discount.value)} off each visit`) : "same price"}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {spec.questions.length ? (
+        <div>
+          <p className="text-sm font-medium text-strong">Customers are asked</p>
+          <ul className="mt-1 grid gap-0.5 text-sm text-muted-foreground">
+            {spec.questions.map((q) => (
+              <li key={q.id}>
+                {q.label}
+                {q.required ? "" : " (optional)"}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {spec.requirements.length ? <p className="text-xs text-muted-foreground">Your team confirms: {spec.requirements.map((r) => r.label).join("; ")}. Customers don&apos;t see this list.</p> : null}
     </div>
+  );
+}
+
+/** Whether this job gets a firm price, an estimate, or a walkthrough first, as booking would decide it. */
+function OutcomeLine({ result }: { result: Quote }) {
+  const words =
+    result.outcome === "firm"
+      ? { tone: "success" as const, text: "Firm price: the customer can book this online." }
+      : result.outcome === "estimate"
+        ? { tone: "info" as const, text: "Estimate: the customer sees a starting price and the team confirms it." }
+        : result.outcome === "walkthrough"
+          ? { tone: "warning" as const, text: `Walkthrough first: ${result.reasons[0] ?? "the team sees the property before giving a price."}` }
+          : { tone: "warning" as const, text: `No price yet: needs ${result.missing.join(", ") || "more answers"}.` };
+  return (
+    <p className="flex items-center gap-2 text-sm">
+      <Badge variant={words.tone} size="sm">
+        {result.outcome === "firm" ? "Firm" : result.outcome === "estimate" ? "Estimate" : result.outcome === "walkthrough" ? "Walkthrough" : "Incomplete"}
+      </Badge>
+      <span className="text-strong">{words.text}</span>
+    </p>
   );
 }
 
@@ -530,7 +577,8 @@ export function ServicePreview({ spec, costs, canSeeCosts }: { spec: Spec; costs
     <div className="grid grid-cols-1 gap-4">
       <Segmented label="Preview" value={view} options={VIEWS} onChange={setView} />
       <details className="rounded-xl border border-border bg-card p-3" open={view === "costs"}>
-        <summary className="cursor-pointer text-sm font-medium text-strong">Example job</summary>
+        <summary className="cursor-pointer text-sm font-medium text-strong">Try an example job</summary>
+        <p className="mt-1 text-xs text-muted-foreground">Change the job to see the price booking would give. It&apos;s an example: nothing is booked, quoted or saved.</p>
         <div className="mt-3">
           <JobInputs spec={spec} input={input} onInput={setInput} compact />
         </div>

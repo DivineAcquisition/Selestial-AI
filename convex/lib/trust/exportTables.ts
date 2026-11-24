@@ -161,6 +161,7 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   { table: "services", index: "by_company_status" },
   { table: "serviceVersions", index: "by_company_service_version" },
   { table: "serviceDrafts", index: "by_company_service" },
+  { table: "serviceDraftEdits", index: "by_company_service" },
   { table: "serviceChanges", index: "by_company_updated", omit: ["scheduledFunctionId"], why: "An internal reference to the scheduler." },
   { table: "propertyPrices", index: "by_company_state" },
   // Clients & Properties (convex/lib/clients/schema.ts): contacts, plans, internal notes and texts clients sent.

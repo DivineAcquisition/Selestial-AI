@@ -313,6 +313,7 @@ export const DELETION_PLAN: readonly TablePlan[] = [
   del("services", "The service catalog."),
   del("serviceVersions", "Versions of services."),
   del("serviceDrafts", "Service drafts."),
+  del("serviceDraftEdits", "Selestial's edits to service drafts, kept so they can be undone."),
   del("serviceChanges", "Service changes."),
   del("propertyPrices", "Prices for particular properties."),
   del("pricingProfiles", "Pricing settings."),
