@@ -153,6 +153,11 @@ export const salesTables = {
     propertyId: v.optional(v.id("properties")),
     /** Where the draft was started (pipeline, quotes, customer, dispatch), for the back link. */
     entry: v.optional(v.object({ from: v.string(), id: v.optional(v.string()) })),
+    /**
+     * The key of the click that started it ("New booking" on Internal Booking). Starting again with the same
+     * key, from a double click or a retried request, returns this draft instead of making a second one.
+     */
+    clientKey: v.optional(v.string()),
     /** The form's answers. Checked in full by every action that commits anything; never trusted for money. */
     body: v.any(),
     revision: v.number(),

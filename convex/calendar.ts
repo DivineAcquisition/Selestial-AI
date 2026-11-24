@@ -339,7 +339,7 @@ async function walkthroughs(ctx: Ctx, from: number, to: number, limits: Limit[],
       propertyId: row.propertyId,
       agent: "sales",
       problems: row.status === "scheduled" && !row.assessorMemberId ? ["Nobody is going yet"] : [],
-      href: row.draftId ? `/app/agents/sales/book/${row.draftId}` : `/app/clients/${row.customerId}`,
+      href: row.draftId ? `/app/agents/sales/book/${row.draftId}?from=calendar` : `/app/clients/${row.customerId}`,
       version: row.updatedAt,
     });
   }

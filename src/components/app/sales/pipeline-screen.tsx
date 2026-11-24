@@ -184,7 +184,7 @@ export function PipelineScreen() {
                         ) : null}
                         {row.draftId ? (
                           <Button size="sm" variant="outline" asChild>
-                            <Link href={`/app/agents/sales/book/${row.draftId}`}>Open workspace</Link>
+                            <Link href={`/app/agents/sales/book/${row.draftId}?from=pipeline`}>Open workspace</Link>
                           </Button>
                         ) : (
                           <>

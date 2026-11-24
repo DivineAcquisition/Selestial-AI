@@ -61,8 +61,8 @@ export function ServicesTab({ profile }: { profile: Profile }) {
           trigger={<span>Create booking or proposal</span>}
           actions={[
             { label: "Book a visit now", onSelect: () => setBooking(true), disabled: !profile.properties.some((p) => p.status === "active") },
-            { label: "Booking in Sales (quote, payment, agreement)", href: `/app/agents/sales/new?mode=booking&customer=${profile.id}` },
-            { label: "Proposal in Sales", href: `/app/agents/sales/new?mode=proposal&customer=${profile.id}` },
+            { label: "Booking in Sales (quote, payment, agreement)", href: `/app/agents/sales/new?mode=booking&customer=${profile.id}&from=customer` },
+            { label: "Proposal in Sales", href: `/app/agents/sales/new?mode=proposal&customer=${profile.id}&from=customer` },
             { label: "Agreement only", href: `/app/agreements/new?mode=selestial&customer=${profile.id}` },
           ]}
         />

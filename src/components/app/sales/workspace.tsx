@@ -2,15 +2,19 @@
 
 import { useMutation, useQuery } from "convex/react";
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { usePathname } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { useBottomBar, useStickyToolbar } from "@/components/app/layout";
+import { Breadcrumbs, useBottomBar, useStickyToolbar } from "@/components/app/layout";
+import { useDeclareNavOwner } from "@/components/app/nav-owner";
 import { FormError, messageOf } from "@/components/app/form";
 import { ArrowLeft, ChatIcon, ChevronDown, Eye, Save } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { money } from "@/lib/app/format";
+import { breadcrumbsFor } from "@/lib/app/navigation-helpers";
+import { workspaceOwner, workspaceReturn, workspaceTitle } from "@/lib/app/sales-workspace";
 import { cn } from "@/lib/utils";
 
 import { api } from "../../../../convex/_generated/api";
@@ -115,9 +119,21 @@ function CustomerPreview({ working, data, onClose }: { working: Working; data: N
   );
 }
 
-export function SalesWorkspace({ draftId }: { draftId: Id<"salesDrafts"> }) {
+/**
+ * `from` is where this visit came from (Internal Booking, Quotes & Proposals, Pipeline, a customer, Calendar,
+ * Dispatch); the back link returns there. The sidebar and breadcrumbs follow the draft's mode, not the
+ * address, which is the same for bookings and proposals: switching the mode moves them, and loses nothing.
+ */
+export function SalesWorkspace({ draftId, from }: { draftId: Id<"salesDrafts">; from?: string }) {
   const { companyId } = useCompany();
+  const pathname = usePathname();
   const { data, working, state, update, setBody, flush, reload, revision } = useDraft(companyId, draftId);
+  const owner = working ? workspaceOwner(working.mode) : null;
+  useDeclareNavOwner(owner);
+  const title = data && working ? workspaceTitle(data.customer && data.customer._id === working.customerId ? data.customer.name : (data.opportunity?.title ?? (working.mode === "booking" ? "New booking" : "New proposal")), working.mode) : null;
+  useEffect(() => {
+    if (title) document.title = title;
+  }, [title]);
   const summary = useQuery(api.sales.price, { companyId, draftId });
   const sendChat = useMutation(api.chat.send);
   const [asking, setAsking] = useState(false);
@@ -134,7 +150,8 @@ export function SalesWorkspace({ draftId }: { draftId: Id<"salesDrafts"> }) {
   const booking = summary?.mode === "booking" ? summary : null;
   const sectionDone = (section: string) => Boolean(summary && !summary.needs.some((n) => n.section === section && n.blocking));
   const name = data.customer && data.customer._id === working.customerId ? data.customer.name : (data.opportunity?.title ?? "New customer");
-  const back = data.draft.entry?.from === "dispatch" ? "/app/agents/dispatch/schedule" : data.draft.entry?.from === "calendar" ? "/app/calendar" : data.draft.entry?.from === "customer" ? "/app/customers" : "/app/agents/sales/quotes-proposals";
+  const back = workspaceReturn({ mode: working.mode, from, entry: data.draft.entry ?? null });
+  const crumbs = [...breadcrumbsFor(pathname, owner), { label: name, href: null }];
   // Chat opens in a new tab with this draft as its context, so the call in progress is never lost.
   const askChat = () => {
     setChatError(null);
@@ -159,12 +176,15 @@ export function SalesWorkspace({ draftId }: { draftId: Id<"salesDrafts"> }) {
       */}
       <div ref={toolbar} className="relative z-sticky -mx-app-gutter mb-5 border-b border-border bg-background/90 px-app-gutter py-3 backdrop-blur @xl/main:tall:sticky @xl/main:tall:top-app-chrome">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <Link href={back} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-strong">
+          <Link href={back.href} className="inline-flex min-h-9 items-center gap-1 rounded-lg text-sm text-muted-foreground hover:text-strong focus-visible:outline-2 focus-visible:outline-brand-500" title={`Back to ${back.label}`}>
             <ArrowLeft aria-hidden className="size-4" />
-            <span className="sr-only">Back</span>
+            <span className="sr-only">Back to {back.label}</span>
           </Link>
           <div className="min-w-0">
-            <p className="text-[0.6875rem] font-semibold tracking-wide text-brand-600 uppercase">{working.mode === "booking" ? "Book service" : "Prepare proposal"}</p>
+            <div className="hidden @xl/main:block [&_nav]:mb-0.5">
+              <Breadcrumbs crumbs={crumbs} />
+            </div>
+            <p className="text-[0.6875rem] font-semibold tracking-wide text-brand-600 uppercase">{working.mode === "booking" ? (working.bookingKind === "recurring" ? "Recurring booking" : "One-time booking") : "Prepare proposal"}</p>
             <h1 className="truncate font-heading text-lg tracking-tight text-strong">{name}</h1>
           </div>
           <Segmented

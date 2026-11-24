@@ -27,6 +27,7 @@ import { Notice, SubmitButton, TextField } from "@/components/auth/fields";
 import { AuthShell, useEvents, type TraceStep } from "@/components/auth/shell";
 import { UserMenu, useSignOut } from "@/components/auth/user-menu";
 import { Sidebar, SidebarStateProvider, type BusinessOption } from "@/components/app/sidebar";
+import { NavOwnerProvider } from "@/components/app/nav-owner";
 import { useNow } from "@/components/app/use-now";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -216,6 +217,7 @@ function Workspace({ companyId, role, userId, businesses, onSwitch, support, chi
   return (
     <CompanyProvider company={{ companyId, name: company.name, timezone: company.timezone, role }}>
       <TutorialHost>
+      <NavOwnerProvider>
       <ChatProvider userId={userId} companyId={companyId}>
         <DetailProvider>
           <SidebarStateProvider userId={userId} companyId={companyId}>
@@ -236,6 +238,7 @@ function Workspace({ companyId, role, userId, businesses, onSwitch, support, chi
           </SidebarStateProvider>
         </DetailProvider>
       </ChatProvider>
+      </NavOwnerProvider>
       </TutorialHost>
     </CompanyProvider>
   );

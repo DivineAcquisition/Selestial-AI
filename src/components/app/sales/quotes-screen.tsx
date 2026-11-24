@@ -1,21 +1,38 @@
 "use client";
 
+/**
+ * Sales › Quotes & Proposals: saved quotes and their follow-through, and commercial, office and short-term
+ * rental proposals from draft to acceptance. Starting and resuming bookings is Internal Booking's
+ * (internal-booking-screen.tsx). A quote saved from a booking stays listed here, and "Continue to booking"
+ * opens its draft; the quote and the draft are the same records in both places, never copies.
+ */
 import { useQuery } from "convex/react";
 import Link from "next/link";
 import { useState } from "react";
 
 import { useCompany } from "@/components/app/company";
 import { PageHeader, Panel } from "@/components/app/shell";
-import { BuildingsIcon, FileText, HouseIcon, Plus } from "@/components/icons";
+import { ArrowRight, BuildingsIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import { SegmentedControl } from "@/components/ui/selection";
 import { Skeleton } from "@/components/ui/skeleton";
 import { money } from "@/lib/app/format";
+import { INTERNAL_BOOKING_PATH, workspaceHref } from "@/lib/app/sales-workspace";
 
 import { api } from "../../../../convex/_generated/api";
 import { Chip } from "./kit";
 
-const QUOTE_TONE: Record<string, "neutral" | "brand" | "success" | "warning" | "danger"> = { saved: "brand", sent: "brand", accepted: "success", expired: "warning", superseded: "neutral", withdrawn: "neutral" };
+const QUOTE_TONE: Record<string, "neutral" | "brand" | "success" | "warning" | "danger"> = { saved: "brand", sent: "brand", accepted: "success", expired: "warning", superseded: "neutral", withdrawn: "neutral", declined: "danger", awaiting_approval: "warning" };
+const QUOTE_WORDS: Record<string, string> = { sent: "Sent", accepted: "Accepted", expired: "Expired", superseded: "Replaced", withdrawn: "Withdrawn", declined: "Declined", awaiting_approval: "Waiting for approval" };
 const SEGMENT_WORD: Record<string, string> = { residential: "Residential", commercial: "Commercial", office: "Office", str: "Short-term rental" };
+const DRAFT_WORDS: Record<string, string> = { open: "Draft", quoted: "Draft", proposal_created: "Proposal created" };
+
+type View = "quotes" | "proposals" | "drafts";
+const VIEWS: { id: View; label: string }[] = [
+  { id: "quotes", label: "Quotes" },
+  { id: "proposals", label: "Proposals" },
+  { id: "drafts", label: "Proposal drafts" },
+];
 
 function shortDay(at: number) {
   return new Date(at).toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -26,63 +43,50 @@ export function QuotesProposalsScreen() {
   const quotes = useQuery(api.sales.quotes, { companyId });
   const drafts = useQuery(api.sales.drafts, { companyId });
   const proposals = useQuery(api.proposals.list, { companyId });
-  const [tab, setTab] = useState<"quotes" | "proposals" | "drafts">("quotes");
+  const [view, setView] = useState<View>("quotes");
+  // Only proposal drafts still being prepared: booking drafts are Internal Booking's, and a proposal that was
+  // created is listed under Proposals.
+  const proposalDrafts = drafts?.filter((d) => d.mode === "proposal" && (d.status === "open" || d.status === "quoted"));
   return (
     <div className="min-w-0">
       <PageHeader
         title="Quotes & Proposals"
-        lead="Take a booking over the phone, save a quote, or prepare a commercial, office or short-term rental proposal."
+        lead="Review saved quotes and follow them through, and prepare and manage commercial, office or short-term rental proposals."
         actions={
-          <>
-            <Button asChild variant="outline">
-              <Link href="/app/agents/sales/new?mode=proposal&segment=commercial&from=quotes">
-                <BuildingsIcon aria-hidden className="size-4" /> Prepare proposal
-              </Link>
-            </Button>
-            <Button asChild>
-              <Link href="/app/agents/sales/new?mode=booking&from=quotes">
-                <Plus aria-hidden className="size-4" /> Book service
-              </Link>
-            </Button>
-          </>
+          <Button asChild>
+            <Link href="/app/agents/sales/new?mode=proposal&segment=commercial&from=quotes">
+              <BuildingsIcon aria-hidden className="size-4" /> New proposal
+            </Link>
+          </Button>
         }
       />
-      <div className="mb-4 grid gap-3 sm:grid-cols-3">
-        <Link href="/app/agents/sales/new?mode=booking&from=quotes" className="group rounded-2xl border border-border bg-card p-4 hover:border-brand-500/40 focus-visible:outline-2 focus-visible:outline-brand-500">
-          <HouseIcon aria-hidden className="size-5 text-brand-600" />
-          <p className="mt-2 font-medium text-strong">One-time visit</p>
-          <p className="text-xs text-muted-foreground">Price it live, hold the time, send a payment link.</p>
-        </Link>
-        <Link href="/app/agents/sales/new?mode=booking&kind=recurring&from=quotes" className="group rounded-2xl border border-border bg-card p-4 hover:border-brand-500/40 focus-visible:outline-2 focus-visible:outline-brand-500">
-          <FileText aria-hidden className="size-5 text-brand-600" />
-          <p className="mt-2 font-medium text-strong">Recurring service</p>
-          <p className="text-xs text-muted-foreground">Cadence, first visit, calendar preview and billing.</p>
-        </Link>
-        <Link href="/app/agents/sales/new?mode=proposal&segment=office&from=quotes" className="group rounded-2xl border border-border bg-card p-4 hover:border-brand-500/40 focus-visible:outline-2 focus-visible:outline-brand-500">
-          <BuildingsIcon aria-hidden className="size-5 text-brand-600" />
-          <p className="mt-2 font-medium text-strong">Commercial, office or STR proposal</p>
-          <p className="text-xs text-muted-foreground">Sites, walkthroughs, rates and terms the client accepts online.</p>
-        </Link>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <SegmentedControl label="Show" hideLabel value={view} options={VIEWS} onChange={setView} density="compact" />
+        <p className="text-sm text-muted-foreground">
+          Booking for a customer?{" "}
+          <Link href={INTERNAL_BOOKING_PATH} className="font-medium text-strong underline-offset-4 hover:underline">
+            Go to Internal Booking
+          </Link>
+        </p>
       </div>
-      <div role="tablist" aria-label="Show" className="mb-3 inline-flex rounded-xl border border-border bg-muted/60 p-1">
-        {(["quotes", "proposals", "drafts"] as const).map((id) => (
-          <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`rounded-lg px-3 py-1.5 text-sm ${tab === id ? "bg-card font-medium text-strong shadow-sm ring-1 ring-border" : "text-muted-foreground"}`}>
-            {id === "quotes" ? "Quotes" : id === "proposals" ? "Proposals" : "Drafts in progress"}
-          </button>
-        ))}
-      </div>
-      {tab === "quotes" ? (
+      {view === "quotes" ? (
         <Panel flush>
           {quotes === undefined ? (
             <Skeleton className="m-4 h-32" />
           ) : quotes.length === 0 ? (
-            <p className="p-6 text-sm text-muted-foreground">No quotes yet. Book service and choose Save quote.</p>
+            <p className="p-6 text-sm text-muted-foreground">
+              No quotes yet. A quote is saved from a booking in{" "}
+              <Link href={INTERNAL_BOOKING_PATH} className="font-medium text-strong underline-offset-4 hover:underline">
+                Internal Booking
+              </Link>{" "}
+              with Save quote.
+            </p>
           ) : (
             <ul className="divide-y divide-border">
               {quotes.map((q) => (
                 <li key={q._id}>
-                  <Link href={`/app/agents/sales/book/${q.draftId}`} className="flex flex-wrap items-center gap-3 px-4 py-3 hover:bg-muted/40">
-                    <div className="min-w-0 flex-1">
+                  <Link href={workspaceHref(q.draftId, "quotes")} className="group flex flex-wrap items-center gap-3 px-4 py-3 hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500">
+                    <div className="min-w-0 flex-1 basis-56">
                       <p className="truncate text-sm font-medium text-strong">{q.customer}</p>
                       <p className="truncate text-xs text-muted-foreground">
                         {q.service}
@@ -90,7 +94,11 @@ export function QuotesProposalsScreen() {
                       </p>
                     </div>
                     <span className="text-sm font-semibold text-strong tabular-nums">{money(q.firstCents ?? q.totalCents)}</span>
-                    <Chip tone={QUOTE_TONE[q.status] ?? "neutral"}>{q.status === "saved" ? `Held until ${shortDay(q.expiresAt)}` : q.status}</Chip>
+                    <Chip tone={QUOTE_TONE[q.status] ?? "neutral"}>{q.status === "saved" ? `Held until ${shortDay(q.expiresAt)}` : (QUOTE_WORDS[q.status] ?? q.status)}</Chip>
+                    <span className="inline-flex items-center gap-1 text-sm font-medium text-brand-300 group-hover:underline">
+                      {q.status === "saved" || q.status === "sent" ? "Continue to booking" : "Open"}
+                      <ArrowRight aria-hidden className="size-4" />
+                    </span>
                   </Link>
                 </li>
               ))}
@@ -98,17 +106,17 @@ export function QuotesProposalsScreen() {
           )}
         </Panel>
       ) : null}
-      {tab === "proposals" ? (
+      {view === "proposals" ? (
         <Panel flush>
           {proposals === undefined ? (
             <Skeleton className="m-4 h-32" />
           ) : proposals.length === 0 ? (
-            <p className="p-6 text-sm text-muted-foreground">No proposals yet.</p>
+            <p className="p-6 text-sm text-muted-foreground">No proposals yet. Start one with New proposal.</p>
           ) : (
             <ul className="divide-y divide-border">
               {proposals.map((p) => (
                 <li key={p._id}>
-                  <Link href={p.setupId ? `/app/agents/sales/setups/${p.setupId}` : p.draftId ? `/app/agents/sales/book/${p.draftId}` : "/app/agents/sales/quotes-proposals"} className="flex flex-wrap items-center gap-3 px-4 py-3 hover:bg-muted/40">
+                  <Link href={p.setupId ? `/app/agents/sales/setups/${p.setupId}` : p.draftId ? workspaceHref(p.draftId, "quotes") : "/app/agents/sales/quotes-proposals"} className="flex flex-wrap items-center gap-3 px-4 py-3 hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500">
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-strong">{p.title}</p>
                       <p className="truncate text-xs text-muted-foreground">
@@ -124,24 +132,28 @@ export function QuotesProposalsScreen() {
           )}
         </Panel>
       ) : null}
-      {tab === "drafts" ? (
+      {view === "drafts" ? (
         <Panel flush>
-          {drafts === undefined ? (
+          {proposalDrafts === undefined ? (
             <Skeleton className="m-4 h-32" />
-          ) : drafts.length === 0 ? (
-            <p className="p-6 text-sm text-muted-foreground">No drafts in progress.</p>
+          ) : proposalDrafts.length === 0 ? (
+            <p className="p-6 text-sm text-muted-foreground">No proposal drafts in progress. Booking drafts are in Internal Booking.</p>
           ) : (
             <ul className="divide-y divide-border">
-              {drafts.map((d) => (
+              {proposalDrafts.map((d) => (
                 <li key={d._id}>
-                  <Link href={`/app/agents/sales/book/${d._id}`} className="flex flex-wrap items-center gap-3 px-4 py-3 hover:bg-muted/40">
+                  <Link href={workspaceHref(d._id, "quotes")} className="group flex flex-wrap items-center gap-3 px-4 py-3 hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500">
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-strong">{d.customer ?? "Customer not chosen"}</p>
                       <p className="truncate text-xs text-muted-foreground">
-                        {d.mode === "booking" ? (d.bookingKind === "recurring" ? "Recurring booking" : "One-time booking") : `${SEGMENT_WORD[d.segment]} proposal`} · edited by {d.by ?? "a team member"} {shortDay(d.updatedAt)}
+                        {SEGMENT_WORD[d.segment] ?? d.segment} proposal · edited by {d.by ?? "a team member"} {shortDay(d.updatedAt)}
                       </p>
                     </div>
-                    <Chip tone={d.status === "confirmed" ? "success" : d.status === "open" ? "neutral" : "brand"}>{d.status === "open" ? "Draft" : d.status.replace(/_/g, " ")}</Chip>
+                    <Chip tone="neutral">{DRAFT_WORDS[d.status] ?? d.status.replace(/_/g, " ")}</Chip>
+                    <span className="inline-flex items-center gap-1 text-sm font-medium text-brand-300 group-hover:underline">
+                      Continue
+                      <ArrowRight aria-hidden className="size-4" />
+                    </span>
                   </Link>
                 </li>
               ))}

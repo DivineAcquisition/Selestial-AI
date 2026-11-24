@@ -6,6 +6,8 @@ import { useEffect, useRef, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
 import { messageOf } from "@/components/app/form";
+import { useDeclareNavOwner } from "@/components/app/nav-owner";
+import { workspaceHref, workspaceOwner } from "@/lib/app/sales-workspace";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import { api } from "../../../../convex/_generated/api";
@@ -17,9 +19,10 @@ const SEGMENTS = ["residential", "commercial", "office", "str"] as const;
  * Opens the workspace from any entry point (Sales, a customer, Dispatch), with what that entry point
  * knows filled in. An opportunity always reopens its own draft rather than starting a second one.
  */
-export function StartDraft(props: { mode: "booking" | "proposal"; segment?: string; kind?: string; customerId?: string; propertyId?: string; opportunityId?: string; jobId?: string; from?: string }) {
+export function StartDraft(props: { mode: "booking" | "proposal"; segment?: string; kind?: string; customerId?: string; propertyId?: string; opportunityId?: string; jobId?: string; from?: string; clientKey?: string }) {
   const { companyId } = useCompany();
   const router = useRouter();
+  useDeclareNavOwner(workspaceOwner(props.mode));
   const start = useMutation(api.sales.startDraft);
   const [error, setError] = useState<string | null>(null);
   const started = useRef(false);
@@ -37,8 +40,11 @@ export function StartDraft(props: { mode: "booking" | "proposal"; segment?: stri
       ...(props.opportunityId ? { opportunityId: props.opportunityId as Id<"salesOpportunities"> } : {}),
       ...(props.jobId ? { jobId: props.jobId as Id<"jobs"> } : {}),
       ...(props.from ? { from: props.from } : {}),
+      // With a key, reloading this address returns the draft it already made instead of a second one.
+      ...(props.clientKey ? { clientKey: props.clientKey } : {}),
     })
-      .then((draftId) => router.replace(`/app/agents/sales/book/${draftId}`))
+      // Replaced, not pushed: Back from the workspace skips this page instead of starting another draft.
+      .then((draftId) => router.replace(workspaceHref(draftId, props.from)))
       .catch((caught: unknown) => setError(messageOf(caught)));
   }, [companyId, props, router, start]);
   if (error)

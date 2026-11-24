@@ -7,6 +7,7 @@
  * name. Money shown here is always the engine's, on the published service version.
  */
 import { discountInBand } from "./lib/sales/settings";
+import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 
 import type { Doc, Id } from "./_generated/dataModel";
@@ -61,8 +62,21 @@ export const startDraft = companyMutation({
     opportunityId: v.optional(v.id("salesOpportunities")),
     jobId: v.optional(v.id("jobs")),
     from: v.optional(v.string()),
+    /** Names the one click that asked for this draft, so a double click or a retry makes one draft, not two. */
+    clientKey: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const clientKey = args.clientKey?.trim().slice(0, 80) || undefined;
+    if (clientKey) {
+      // The same person's same click: give back the draft it already made, whatever happened to it since.
+      const recent = await ctx.db
+        .query("salesDrafts")
+        .withIndex("by_company_updated", (q) => q.eq("companyId", ctx.companyId))
+        .order("desc")
+        .take(100);
+      const made = recent.find((row) => row.clientKey === clientKey && row.createdBy === ctx.member._id);
+      if (made) return made._id;
+    }
     const customer = args.customerId ? await owned(ctx, args.customerId) : null;
     const opportunity = args.opportunityId ? await owned(ctx, args.opportunityId) : null;
     // One open draft per opportunity: opening it again returns the same draft, never a duplicate.
@@ -101,6 +115,7 @@ export const startDraft = companyMutation({
       ...(customer ? { customerId: customer._id } : opportunity?.customerId ? { customerId: opportunity.customerId } : {}),
       ...(propertyId ? { propertyId } : {}),
       ...(args.from ? { entry: { from: args.from.slice(0, 40), ...(args.opportunityId ? { id: args.opportunityId } : args.customerId ? { id: args.customerId } : {}) } } : {}),
+      ...(clientKey ? { clientKey } : {}),
       body,
       revision: 0,
       status: "open",
@@ -130,6 +145,61 @@ export const drafts = companyQuery({
       out.push({ _id: row._id, mode: row.mode, segment: row.segment, bookingKind: row.bookingKind, status: row.status, customer: customer?.name ?? null, updatedAt: row.updatedAt, by: by?.name ?? (row.updatedBy ? null : "Sales agent"), bookingId: row.bookingId ?? null, proposalId: row.proposalId ?? null, quoteId: row.quoteId ?? null });
     }
     return out;
+  },
+});
+
+/** Where a booking draft stands, in the words Internal Booking shows. */
+export const BOOKING_DRAFT_WORDS = { open: "Draft", quoted: "Quote saved", requested: "Awaiting confirmation", confirmed: "Booked" } as const;
+const BOOKING_SHOWS = { active: ["open", "quoted", "requested"], booked: ["confirmed"], all: ["open", "quoted", "requested", "confirmed"] } as const;
+
+/**
+ * Sales › Internal Booking: booking drafts only, newest first, a page at a time. Proposal drafts are in
+ * Quotes & Proposals; a draft switched from one mode to the other moves with it. Reading changes nothing.
+ */
+export const bookingDrafts = companyQuery({
+  args: { show: v.union(v.literal("active"), v.literal("booked"), v.literal("all")), paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => {
+    const statuses: readonly string[] = BOOKING_SHOWS[args.show];
+    const page = await ctx.db
+      .query("salesDrafts")
+      .withIndex("by_company_updated", (q) => q.eq("companyId", ctx.companyId))
+      .order("desc")
+      .filter((q) => q.and(q.eq(q.field("mode"), "booking"), q.or(...statuses.map((status) => q.eq(q.field("status"), status)))))
+      .paginate(args.paginationOpts);
+    const names = new Map<string, string | null>();
+    const serviceName = async (key: string | undefined) => {
+      if (!key) return null;
+      if (!names.has(key)) {
+        const row = await ctx.db
+          .query("services")
+          .withIndex("by_company_key", (q) => q.eq("companyId", ctx.companyId).eq("key", key))
+          .first();
+        names.set(key, row?.name ?? null);
+      }
+      return names.get(key) ?? null;
+    };
+    const rows = [];
+    for (const row of page.page) {
+      const customer = row.customerId ? await ctx.db.get(row.customerId) : null;
+      const property = row.propertyId ? await ctx.db.get(row.propertyId) : null;
+      const opportunity = !customer && row.opportunityId ? await ctx.db.get(row.opportunityId) : null;
+      const editor = row.updatedBy ? await ctx.db.get(row.updatedBy) : null;
+      const body = (row.body ?? {}) as DraftBody;
+      rows.push({
+        _id: row._id,
+        label: customer?.name ?? opportunity?.title ?? null,
+        property: property && property.companyId === ctx.companyId ? [property.address.line1, property.address.city].filter(Boolean).join(", ") : null,
+        service: await serviceName(body.service?.key),
+        kind: row.bookingKind,
+        status: row.status as keyof typeof BOOKING_DRAFT_WORDS,
+        statusWords: BOOKING_DRAFT_WORDS[row.status as keyof typeof BOOKING_DRAFT_WORDS] ?? row.status,
+        quoteId: row.quoteId ?? null,
+        bookingId: row.bookingId ?? null,
+        updatedAt: row.updatedAt,
+        by: editor?.name ?? (row.updatedBy ? null : "Sales agent"),
+      });
+    }
+    return { ...page, page: rows };
   },
 });
 
