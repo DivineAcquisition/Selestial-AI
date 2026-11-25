@@ -108,7 +108,7 @@ function Steps({ steps, onRetry, busy }: { steps: CareDetail["steps"]; onRetry: 
   );
 }
 
-function RequestBody({ requestId }: { requestId: Id<"careRequests"> }) {
+export function RequestWorkspaceBody({ requestId }: { requestId: Id<"careRequests"> }) {
   const { companyId, timezone } = useCompany();
   const now = useNow();
   const detail = useStableQuery(api.clientCare.detail, { companyId, requestId });
@@ -359,7 +359,7 @@ export function RequestWorkspace({ id, onClose }: { id: string | null; onClose: 
     <Sheet open={id !== null} onOpenChange={(next) => (next ? undefined : onClose())}>
       <SheetPopup side="right" className="w-full max-w-5xl bg-background">
         <SheetTitle className="sr-only">Client request</SheetTitle>
-        <ScrollArea className="min-h-0 flex-1">{id ? <RequestBody requestId={id as Id<"careRequests">} /> : null}</ScrollArea>
+        <ScrollArea className="min-h-0 flex-1">{id ? <RequestWorkspaceBody requestId={id as Id<"careRequests">} /> : null}</ScrollArea>
       </SheetPopup>
     </Sheet>
   );

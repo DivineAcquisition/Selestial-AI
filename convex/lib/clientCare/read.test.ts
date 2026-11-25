@@ -55,6 +55,7 @@ describe("Care's rules reader", () => {
     expect(read("The bathroom still looks dirty").intents[0].category).toBe("complaint");
     expect(read("The bathroom still looks dirty").areas).toEqual(["bathroom"]);
     expect(read("Your cleaner broke my vase").serious).not.toBeNull();
+    for (const text of ["The kitchen counters weren't wiped", "The floors were not mopped", "Trash wasn't emptied"]) expect(categories(text), text).toContain("complaint");
   });
 
   it("reads invoices, extras and new service", () => {

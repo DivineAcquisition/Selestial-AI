@@ -363,8 +363,8 @@ async function settled(ctx: MutationCtx, step: Step, message?: Doc<"messages">) 
   if (!isOpen(request) && !step.payload.staleSafe) return;
   const problem = step.status === "partial"
     ? notify === "uncertain"
-      ? `${partsDetail(step, "change") ?? "The change was made"}. It is not known whether the message telling the client went; it was not sent again. Check with the client before sending another.`
-      : `${partsDetail(step, "change") ?? "The change was made"}. The message telling the client did not go: ${partsDetail(step, "notify") ?? "it could not be sent"}. Retry it or reach them another way.`
+      ? `${(partsDetail(step, "change") ?? "The change was made").replace(/\.$/, "")}. It is not known whether the message telling the client went; it was not sent again. Check with the client before sending another.`
+      : `${(partsDetail(step, "change") ?? "The change was made").replace(/\.$/, "")}. The message telling the client did not go: ${partsDetail(step, "notify") ?? "it could not be sent"}. Retry it or reach them another way.`
     : notify === "uncertain"
       ? "It is not known whether Client Care's message went. It was not sent again. Check with the client before sending another."
       : `Client Care's message did not go: ${partsDetail(step, "notify") ?? "it could not be sent"}.`;

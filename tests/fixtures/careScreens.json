@@ -1,0 +1,1549 @@
+{
+ "now": 1804014000078,
+ "overview": {
+  "activity": [
+   {
+    "at": 1804014000063,
+    "customer": "Lee Chen",
+    "kind": "update",
+    "requestId": "00000000000000010358careRequests",
+    "text": "Delivered: \"Hi Lee, this is Alpha Cleaning's assistant. I'm very sorry. I've passed this straight to the owner, who will contact you directly.\""
+   },
+   {
+    "at": 1804014000045,
+    "customer": "Sam Okafor",
+    "kind": "update",
+    "requestId": "00000000000000010296careRequests",
+    "text": "Delivered: \"Hi Sam, this is Alpha Cleaning's assistant. Happy to help. Do you mean 1) Just the visit on Tue, Mar 9 at 10:00 AM 2) Pause the service for a while 3) End the service? Reply with the number.\""
+   },
+   {
+    "at": 1804014000027,
+    "customer": "Jo Alvarez",
+    "kind": "problem",
+    "requestId": "00000000000000010234careRequests",
+    "text": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts.. Retry it or reach them another way."
+   },
+   {
+    "at": 1804014000009,
+    "customer": "Priya Nair",
+    "kind": "update",
+    "requestId": "00000000000000010172careRequests",
+    "text": "Delivered: \"Hi Priya, this is Alpha Cleaning's assistant. I'm sorry it wasn't right after your visit on Tue, Mar 2 at 10:00 AM. I've passed it to our team to review, and I'll update you by 1:00 PM Wed, Mar 3.\""
+   },
+   {
+    "at": 1803902400009,
+    "customer": "Dana Whitfield",
+    "kind": "resolved",
+    "requestId": "00000000000000010067careRequests",
+    "text": "Answered from the visit record."
+   }
+  ],
+  "agent": {
+   "available": false,
+   "paused": false,
+   "reader": "Your company's rules read each message. No AI credits are used.",
+   "reason": "Client Care needs an active plan. Requests are still recorded for your team."
+  },
+  "blocked": [],
+  "byCategory": [
+   {
+    "category": "preference",
+    "open": 1,
+    "words": "Preferences"
+   },
+   {
+    "category": "reschedule",
+    "open": 1,
+    "words": "Rescheduling"
+   },
+   {
+    "category": "cancellation",
+    "open": 1,
+    "words": "Skips and cancellations"
+   },
+   {
+    "category": "complaint",
+    "open": 2,
+    "words": "Complaints"
+   }
+  ],
+  "counts": {
+   "blocked": 1,
+   "decisions": 2,
+   "dueUpdates": 1,
+   "newToday": 4,
+   "open": 5,
+   "resolvedWeek": 1,
+   "stepsDoneWeek": 4,
+   "unread": 0,
+   "waitingClient": 1,
+   "waitingTeam": 2
+  },
+  "decisions": [
+   {
+    "blocker": null,
+    "category": "reschedule",
+    "categoryWords": "Rescheduling",
+    "channel": "sms",
+    "createdAt": 1803902400026,
+    "customer": {
+     "id": "00000000000000000010085customers",
+     "name": "Marcus Reed"
+    },
+    "held": false,
+    "id": "00000000000000010111careRequests",
+    "lastClientAt": 1803902400024,
+    "lastUpdateAt": null,
+    "nextAction": "Approve, change or skip it in Approvals.",
+    "owner": "You",
+    "promisedBy": null,
+    "property": "Reed House, 4 Oak Ave",
+    "status": "waiting_owner",
+    "statusWords": "Waiting for you",
+    "summary": "Asked to move a visit: \"Please reschedule Wednesday's cleaning to Thursday at 11am\"",
+    "updatedAt": 1803902400026,
+    "urgency": "high",
+    "urgencyReason": "It is about a visit in the next two days.",
+    "visit": "Wed, Mar 3 at 10:00 AM",
+    "waiting": "Your approval is needed before Client Care goes ahead.",
+    "writer": null
+   },
+   {
+    "blocker": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts.. Retry it or reach them another way.",
+    "category": "preference",
+    "categoryWords": "Preferences",
+    "channel": "sms",
+    "createdAt": 1804014000026,
+    "customer": {
+     "id": "00000000000000000010205customers",
+     "name": "Jo Alvarez"
+    },
+    "held": false,
+    "id": "00000000000000010234careRequests",
+    "lastClientAt": 1804014000024,
+    "lastUpdateAt": null,
+    "nextAction": "Retry the message, or reach the client another way.",
+    "owner": "You",
+    "promisedBy": null,
+    "property": "Alvarez House, 4 Oak Ave",
+    "status": "waiting_owner",
+    "statusWords": "Waiting for you",
+    "summary": "Gave a preference: \"Please don't clean the guest bedroom next Tuesday only\"",
+    "updatedAt": 1804014000027,
+    "urgency": "normal",
+    "urgencyReason": null,
+    "visit": "Tue, Mar 9 at 10:00 AM",
+    "waiting": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts.. Retry it or reach them another way.",
+    "writer": null
+   }
+  ],
+  "dueUpdates": [
+   {
+    "blocker": null,
+    "category": "complaint",
+    "categoryWords": "Complaints",
+    "channel": "sms",
+    "createdAt": 1804014000062,
+    "customer": {
+     "id": "00000000000000000010314customers",
+     "name": "Lee Chen"
+    },
+    "held": false,
+    "id": "00000000000000010358careRequests",
+    "lastClientAt": 1804014000060,
+    "lastUpdateAt": 1804014000063,
+    "nextAction": null,
+    "owner": "the Owner",
+    "promisedBy": 1804028400062,
+    "property": "Chen House, 4 Oak Ave",
+    "status": "waiting_team",
+    "statusWords": "Waiting for team",
+    "summary": "Reported a problem: \"Your cleaner broke a lamp in the hallway\"",
+    "updatedAt": 1804014000062,
+    "urgency": "urgent",
+    "urgencyReason": "The customer's words include \"broke\". Safety, damage, theft and staff-conduct concerns are handled by a person.",
+    "visit": "Tue, Mar 2 at 10:00 AM",
+    "waiting": "The Owner reviews a serious concern.",
+    "writer": null
+   }
+  ],
+  "troubled": [
+   {
+    "requestId": "00000000000000010234careRequests",
+    "result": "The message did not go: The carrier says this number cannot receive texts.",
+    "status": "partial",
+    "stepId": "00000000000000000010240careSteps",
+    "summary": "Add \"Please don't clean the guest bedroom next Tuesday only\" to the visit on Tue, Mar 9 at 10:00 AM only",
+    "words": "Done; the message didn't go"
+   }
+  ],
+  "unread": null,
+  "urgent": [
+   {
+    "blocker": null,
+    "category": "complaint",
+    "categoryWords": "Complaints",
+    "channel": "sms",
+    "createdAt": 1804014000062,
+    "customer": {
+     "id": "00000000000000000010314customers",
+     "name": "Lee Chen"
+    },
+    "held": false,
+    "id": "00000000000000010358careRequests",
+    "lastClientAt": 1804014000060,
+    "lastUpdateAt": 1804014000063,
+    "nextAction": null,
+    "owner": "the Owner",
+    "promisedBy": 1804028400062,
+    "property": "Chen House, 4 Oak Ave",
+    "status": "waiting_team",
+    "statusWords": "Waiting for team",
+    "summary": "Reported a problem: \"Your cleaner broke a lamp in the hallway\"",
+    "updatedAt": 1804014000062,
+    "urgency": "urgent",
+    "urgencyReason": "The customer's words include \"broke\". Safety, damage, theft and staff-conduct concerns are handled by a person.",
+    "visit": "Tue, Mar 2 at 10:00 AM",
+    "waiting": "The Owner reviews a serious concern.",
+    "writer": null
+   }
+  ]
+ },
+ "list": {
+  "categories": [
+   {
+    "id": "appointment",
+    "words": "Visit and service questions"
+   },
+   {
+    "id": "preference",
+    "words": "Preferences"
+   },
+   {
+    "id": "access",
+    "words": "Access instructions"
+   },
+   {
+    "id": "reschedule",
+    "words": "Rescheduling"
+   },
+   {
+    "id": "cancellation",
+    "words": "Skips and cancellations"
+   },
+   {
+    "id": "complaint",
+    "words": "Complaints"
+   },
+   {
+    "id": "billing",
+    "words": "Invoices and payments"
+   },
+   {
+    "id": "extra",
+    "words": "Extra services"
+   },
+   {
+    "id": "new_service",
+    "words": "New service (Sales)"
+   },
+   {
+    "id": "general",
+    "words": "Other requests"
+   }
+  ],
+  "rows": [
+   {
+    "blocker": null,
+    "category": "complaint",
+    "categoryWords": "Complaints",
+    "channel": "sms",
+    "createdAt": 1804014000062,
+    "customer": {
+     "id": "00000000000000000010314customers",
+     "name": "Lee Chen"
+    },
+    "held": false,
+    "id": "00000000000000010358careRequests",
+    "lastClientAt": 1804014000060,
+    "lastUpdateAt": 1804014000063,
+    "nextAction": null,
+    "owner": "the Owner",
+    "promisedBy": 1804028400062,
+    "property": "Chen House, 4 Oak Ave",
+    "status": "waiting_team",
+    "statusWords": "Waiting for team",
+    "summary": "Reported a problem: \"Your cleaner broke a lamp in the hallway\"",
+    "updatedAt": 1804014000062,
+    "urgency": "urgent",
+    "urgencyReason": "The customer's words include \"broke\". Safety, damage, theft and staff-conduct concerns are handled by a person.",
+    "visit": "Tue, Mar 2 at 10:00 AM",
+    "waiting": "The Owner reviews a serious concern.",
+    "writer": null
+   },
+   {
+    "blocker": null,
+    "category": "cancellation",
+    "categoryWords": "Skips and cancellations",
+    "channel": "sms",
+    "createdAt": 1804014000044,
+    "customer": {
+     "id": "00000000000000000010254customers",
+     "name": "Sam Okafor"
+    },
+    "held": false,
+    "id": "00000000000000010296careRequests",
+    "lastClientAt": 1804014000042,
+    "lastUpdateAt": 1804014000045,
+    "nextAction": "Waiting for Sam Okafor to answer: What would you like to cancel?",
+    "owner": "Client Care",
+    "promisedBy": null,
+    "property": null,
+    "status": "waiting_customer",
+    "statusWords": "Waiting for client",
+    "summary": "Asked to cancel: \"I need to cancel\"",
+    "updatedAt": 1804014000045,
+    "urgency": "normal",
+    "urgencyReason": null,
+    "visit": null,
+    "waiting": "Waiting for the client to answer: What would you like to cancel?",
+    "writer": null
+   },
+   {
+    "blocker": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts.. Retry it or reach them another way.",
+    "category": "preference",
+    "categoryWords": "Preferences",
+    "channel": "sms",
+    "createdAt": 1804014000026,
+    "customer": {
+     "id": "00000000000000000010205customers",
+     "name": "Jo Alvarez"
+    },
+    "held": false,
+    "id": "00000000000000010234careRequests",
+    "lastClientAt": 1804014000024,
+    "lastUpdateAt": null,
+    "nextAction": "Retry the message, or reach the client another way.",
+    "owner": "You",
+    "promisedBy": null,
+    "property": "Alvarez House, 4 Oak Ave",
+    "status": "waiting_owner",
+    "statusWords": "Waiting for you",
+    "summary": "Gave a preference: \"Please don't clean the guest bedroom next Tuesday only\"",
+    "updatedAt": 1804014000027,
+    "urgency": "normal",
+    "urgencyReason": null,
+    "visit": "Tue, Mar 9 at 10:00 AM",
+    "waiting": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts.. Retry it or reach them another way.",
+    "writer": null
+   },
+   {
+    "blocker": null,
+    "category": "complaint",
+    "categoryWords": "Complaints",
+    "channel": "sms",
+    "createdAt": 1804014000008,
+    "customer": {
+     "id": "00000000000000000010124customers",
+     "name": "Priya Nair"
+    },
+    "held": false,
+    "id": "00000000000000010172careRequests",
+    "lastClientAt": 1804014000006,
+    "lastUpdateAt": 1804014000009,
+    "nextAction": null,
+    "owner": "Quality and Retention",
+    "promisedBy": 1804100400008,
+    "property": "Nair House, 4 Oak Ave",
+    "status": "waiting_team",
+    "statusWords": "Waiting for team",
+    "summary": "Reported a problem: \"The kitchen counters weren't wiped\"",
+    "updatedAt": 1804014000008,
+    "urgency": "high",
+    "urgencyReason": "A client reported a problem with a visit.",
+    "visit": "Tue, Mar 2 at 10:00 AM",
+    "waiting": "Quality is reviewing the visit; Retention prepares any remedy.",
+    "writer": null
+   },
+   {
+    "blocker": null,
+    "category": "reschedule",
+    "categoryWords": "Rescheduling",
+    "channel": "sms",
+    "createdAt": 1803902400026,
+    "customer": {
+     "id": "00000000000000000010085customers",
+     "name": "Marcus Reed"
+    },
+    "held": false,
+    "id": "00000000000000010111careRequests",
+    "lastClientAt": 1803902400024,
+    "lastUpdateAt": null,
+    "nextAction": "Approve, change or skip it in Approvals.",
+    "owner": "You",
+    "promisedBy": null,
+    "property": "Reed House, 4 Oak Ave",
+    "status": "waiting_owner",
+    "statusWords": "Waiting for you",
+    "summary": "Asked to move a visit: \"Please reschedule Wednesday's cleaning to Thursday at 11am\"",
+    "updatedAt": 1803902400026,
+    "urgency": "high",
+    "urgencyReason": "It is about a visit in the next two days.",
+    "visit": "Wed, Mar 3 at 10:00 AM",
+    "waiting": "Your approval is needed before Client Care goes ahead.",
+    "writer": null
+   }
+  ],
+  "statuses": [
+   {
+    "id": "new",
+    "words": "New"
+   },
+   {
+    "id": "in_progress",
+    "words": "In progress"
+   },
+   {
+    "id": "waiting_customer",
+    "words": "Waiting for client"
+   },
+   {
+    "id": "waiting_team",
+    "words": "Waiting for team"
+   },
+   {
+    "id": "waiting_owner",
+    "words": "Waiting for you"
+   },
+   {
+    "id": "resolved",
+    "words": "Resolved"
+   },
+   {
+    "id": "closed_no_action",
+    "words": "Closed without action"
+   }
+  ]
+ },
+ "followUps": [
+  {
+   "approvalId": "00000000000000000010118approvals",
+   "blocker": null,
+   "category": "reschedule",
+   "categoryWords": "Rescheduling",
+   "channel": "sms",
+   "createdAt": 1803902400026,
+   "customer": {
+    "id": "00000000000000000010085customers",
+    "name": "Marcus Reed"
+   },
+   "held": false,
+   "id": "00000000000000010111careRequests",
+   "lastClientAt": 1803902400024,
+   "lastUpdateAt": null,
+   "mode": "approval",
+   "nextAction": "Approve, change or skip it in Approvals.",
+   "nextCheckAt": 1803904200026,
+   "overdue": false,
+   "owner": "You",
+   "planned": "Wait for your decision",
+   "promisedBy": null,
+   "property": "Reed House, 4 Oak Ave",
+   "reason": "Your approval is needed before Client Care goes ahead.",
+   "status": "waiting_owner",
+   "statusWords": "Waiting for you",
+   "summary": "Asked to move a visit: \"Please reschedule Wednesday's cleaning to Thursday at 11am\"",
+   "updatedAt": 1803902400026,
+   "urgency": "high",
+   "urgencyReason": "It is about a visit in the next two days.",
+   "visit": "Wed, Mar 3 at 10:00 AM",
+   "waiting": "Your approval is needed before Client Care goes ahead.",
+   "waitingFor": "You",
+   "writer": null
+  },
+  {
+   "approvalId": null,
+   "blocker": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts.. Retry it or reach them another way.",
+   "category": "preference",
+   "categoryWords": "Preferences",
+   "channel": "sms",
+   "createdAt": 1804014000026,
+   "customer": {
+    "id": "00000000000000000010205customers",
+    "name": "Jo Alvarez"
+   },
+   "held": false,
+   "id": "00000000000000010234careRequests",
+   "lastClientAt": 1804014000024,
+   "lastUpdateAt": null,
+   "mode": "blocked",
+   "nextAction": "Retry the message, or reach the client another way.",
+   "nextCheckAt": 1804015800026,
+   "overdue": false,
+   "owner": "You",
+   "planned": "Wait for your decision",
+   "promisedBy": null,
+   "property": "Alvarez House, 4 Oak Ave",
+   "reason": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts.. Retry it or reach them another way.",
+   "status": "waiting_owner",
+   "statusWords": "Waiting for you",
+   "summary": "Gave a preference: \"Please don't clean the guest bedroom next Tuesday only\"",
+   "updatedAt": 1804014000027,
+   "urgency": "normal",
+   "urgencyReason": null,
+   "visit": "Tue, Mar 9 at 10:00 AM",
+   "waiting": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts.. Retry it or reach them another way.",
+   "waitingFor": "You",
+   "writer": null
+  },
+  {
+   "approvalId": null,
+   "blocker": null,
+   "category": "complaint",
+   "categoryWords": "Complaints",
+   "channel": "sms",
+   "createdAt": 1804014000062,
+   "customer": {
+    "id": "00000000000000000010314customers",
+    "name": "Lee Chen"
+   },
+   "held": false,
+   "id": "00000000000000010358careRequests",
+   "lastClientAt": 1804014000060,
+   "lastUpdateAt": 1804014000063,
+   "mode": "automatic",
+   "nextAction": null,
+   "nextCheckAt": 1804028400062,
+   "overdue": false,
+   "owner": "the Owner",
+   "planned": "Send the promised update",
+   "promisedBy": 1804028400062,
+   "property": "Chen House, 4 Oak Ave",
+   "reason": "The Owner reviews a serious concern.",
+   "status": "waiting_team",
+   "statusWords": "Waiting for team",
+   "summary": "Reported a problem: \"Your cleaner broke a lamp in the hallway\"",
+   "updatedAt": 1804014000062,
+   "urgency": "urgent",
+   "urgencyReason": "The customer's words include \"broke\". Safety, damage, theft and staff-conduct concerns are handled by a person.",
+   "visit": "Tue, Mar 2 at 10:00 AM",
+   "waiting": "The Owner reviews a serious concern.",
+   "waitingFor": "the Owner",
+   "writer": null
+  },
+  {
+   "approvalId": null,
+   "blocker": null,
+   "category": "complaint",
+   "categoryWords": "Complaints",
+   "channel": "sms",
+   "createdAt": 1804014000008,
+   "customer": {
+    "id": "00000000000000000010124customers",
+    "name": "Priya Nair"
+   },
+   "held": false,
+   "id": "00000000000000010172careRequests",
+   "lastClientAt": 1804014000006,
+   "lastUpdateAt": 1804014000009,
+   "mode": "automatic",
+   "nextAction": null,
+   "nextCheckAt": 1804100400008,
+   "overdue": false,
+   "owner": "Quality and Retention",
+   "planned": "Send the promised update",
+   "promisedBy": 1804100400008,
+   "property": "Nair House, 4 Oak Ave",
+   "reason": "Quality is reviewing the visit; Retention prepares any remedy.",
+   "status": "waiting_team",
+   "statusWords": "Waiting for team",
+   "summary": "Reported a problem: \"The kitchen counters weren't wiped\"",
+   "updatedAt": 1804014000008,
+   "urgency": "high",
+   "urgencyReason": "A client reported a problem with a visit.",
+   "visit": "Tue, Mar 2 at 10:00 AM",
+   "waiting": "Quality is reviewing the visit; Retention prepares any remedy.",
+   "waitingFor": "Quality and Retention",
+   "writer": null
+  },
+  {
+   "approvalId": null,
+   "blocker": null,
+   "category": "cancellation",
+   "categoryWords": "Skips and cancellations",
+   "channel": "sms",
+   "createdAt": 1804014000044,
+   "customer": {
+    "id": "00000000000000000010254customers",
+    "name": "Sam Okafor"
+   },
+   "held": false,
+   "id": "00000000000000010296careRequests",
+   "lastClientAt": 1804014000042,
+   "lastUpdateAt": 1804014000045,
+   "mode": "automatic",
+   "nextAction": "Waiting for Sam Okafor to answer: What would you like to cancel?",
+   "nextCheckAt": 1804100400044,
+   "overdue": false,
+   "owner": "Client Care",
+   "planned": "One reminder to the client",
+   "promisedBy": null,
+   "property": null,
+   "reason": "Waiting for the client to answer: What would you like to cancel?",
+   "status": "waiting_customer",
+   "statusWords": "Waiting for client",
+   "summary": "Asked to cancel: \"I need to cancel\"",
+   "updatedAt": 1804014000045,
+   "urgency": "normal",
+   "urgencyReason": null,
+   "visit": null,
+   "waiting": "Waiting for the client to answer: What would you like to cancel?",
+   "waitingFor": "Sam Okafor",
+   "writer": null
+  }
+ ],
+ "setup": {
+  "agent": {
+   "available": false,
+   "paused": false,
+   "reader": "Your company's rules read each message. No AI credits are used.",
+   "reason": "Client Care needs an active plan. Requests are still recorded for your team."
+  },
+  "canEdit": true,
+  "categories": [
+   {
+    "id": "appointment",
+    "words": "Visit and service questions"
+   },
+   {
+    "id": "preference",
+    "words": "Preferences"
+   },
+   {
+    "id": "access",
+    "words": "Access instructions"
+   },
+   {
+    "id": "reschedule",
+    "words": "Rescheduling"
+   },
+   {
+    "id": "cancellation",
+    "words": "Skips and cancellations"
+   },
+   {
+    "id": "complaint",
+    "words": "Complaints"
+   },
+   {
+    "id": "billing",
+    "words": "Invoices and payments"
+   },
+   {
+    "id": "extra",
+    "words": "Extra services"
+   },
+   {
+    "id": "new_service",
+    "words": "New service (Sales)"
+   },
+   {
+    "id": "general",
+    "words": "Other requests"
+   }
+  ],
+  "channels": {
+   "email": {
+    "ready": false,
+    "words": "Email isn't connected for Selestial yet."
+   },
+   "sender": "Alpha Cleaning",
+   "sms": {
+    "ready": true,
+    "words": "Texting is ready from +15125551000."
+   }
+  },
+  "escalation": [
+   {
+    "chosen": false,
+    "id": "0000000000000000000010001members",
+    "name": "owner-a",
+    "role": "owner"
+   }
+  ],
+  "hours": [],
+  "permissions": [
+   {
+    "ceiling": "execute",
+    "implemented": true,
+    "key": "care.answer_question",
+    "label": "Answer a client's question from the visit, plan and invoice records",
+    "level": "execute",
+    "money": false,
+    "note": "Only what the visit, plan and invoice records say. It never gives an arrival estimate the record doesn't have.",
+    "standard": "execute",
+    "state": "level"
+   },
+   {
+    "ceiling": "execute",
+    "implemented": true,
+    "key": "care.acknowledge",
+    "label": "Acknowledge a client's request and ask only for what is missing or unclear",
+    "level": "execute",
+    "money": false,
+    "note": null,
+    "standard": "execute",
+    "state": "level"
+   },
+   {
+    "ceiling": "execute",
+    "implemented": true,
+    "key": "care.send_invoice_link",
+    "label": "Tell a client what an existing invoice shows and send its secure payment link",
+    "level": "execute",
+    "money": false,
+    "note": "The existing invoice's own link. Care never creates an invoice, marks one paid, refunds or charges.",
+    "standard": "execute",
+    "state": "level"
+   },
+   {
+    "ceiling": "execute",
+    "implemented": true,
+    "key": "care.complaint_intake",
+    "label": "Acknowledge a complaint and open or link the Quality and Retention cases (no findings, refunds or promises)",
+    "level": "execute",
+    "money": false,
+    "note": "Opens or joins Retention's recovery case for the visit, which starts Quality's investigation. Care states no finding, refund or re-clean time.",
+    "standard": "execute",
+    "state": "level"
+   },
+   {
+    "ceiling": "execute",
+    "implemented": true,
+    "key": "care.send_update",
+    "label": "Send a promised update about a request that is still being worked",
+    "level": "propose",
+    "money": false,
+    "note": null,
+    "standard": "execute",
+    "state": "level"
+   },
+   {
+    "ceiling": "execute",
+    "implemented": true,
+    "key": "care.update_preferences",
+    "label": "Record a client's preference for one visit, a property or every future visit",
+    "level": "execute",
+    "money": false,
+    "note": "A preference for one visit goes on that visit only. A standing one goes on the property or the client.",
+    "standard": "execute_and_report",
+    "state": "level"
+   },
+   {
+    "ceiling": "execute_and_report",
+    "implemented": true,
+    "key": "care.update_access",
+    "label": "Replace a property's access instructions with what the client sent",
+    "level": "propose",
+    "money": false,
+    "note": "Written to the property's restricted access field. The code never appears in notices, summaries or the activity.",
+    "standard": "execute_and_report",
+    "state": "level"
+   },
+   {
+    "ceiling": "execute",
+    "implemented": true,
+    "key": "care.reschedule_visit",
+    "label": "Move one visit to a time Dispatch can cover, inside the change notice",
+    "level": "propose",
+    "money": false,
+    "note": "Only times Dispatch's capacity check offers. Moving re-checks the time and the visit, then asks the crew again.",
+    "standard": "execute_and_report",
+    "state": "level"
+   },
+   {
+    "ceiling": "execute",
+    "implemented": true,
+    "key": "care.skip_visit",
+    "label": "Skip a recurring visit, or cancel a one-time visit, inside the change notice",
+    "level": "propose",
+    "money": false,
+    "note": "One visit only. The rest of a recurring series is unchanged.",
+    "standard": "execute_and_report",
+    "state": "level"
+   },
+   {
+    "ceiling": "execute",
+    "implemented": true,
+    "key": "care.change_plan",
+    "label": "Pause or end a recurring service at the client's request",
+    "level": "propose",
+    "money": false,
+    "note": "Through Retention's plan-change code, for exactly the visits the client was shown. Retention is told; it never delays a cancellation.",
+    "standard": "execute_and_report",
+    "state": "level"
+   },
+   {
+    "ceiling": "execute",
+    "implemented": false,
+    "key": "care.add_extra",
+    "label": "Add a published extra to an upcoming visit at its current price, once the client accepts it",
+    "level": null,
+    "money": false,
+    "note": "Care doesn't change a visit's price yet. It prepares the extra with its published price, and a person adds it to the visit.",
+    "standard": "execute_and_report",
+    "state": "unavailable"
+   },
+   {
+    "ceiling": "propose",
+    "implemented": false,
+    "key": "care.apply_fee",
+    "label": "Apply a late-change fee the client's agreement or Care Setup sets",
+    "level": null,
+    "money": true,
+    "note": "Care never applies a fee. When your policy sets one, the request comes to you; Finance adds it if you decide to.",
+    "standard": "propose",
+    "state": "unavailable"
+   },
+   {
+    "ceiling": "execute",
+    "implemented": true,
+    "key": "care.hand_off",
+    "label": "Hand a request to Sales, Dispatch, Quality, Retention or Finance",
+    "level": "execute",
+    "money": false,
+    "note": null,
+    "standard": "execute",
+    "state": "level"
+   }
+  ],
+  "readerNote": "Client Care's AI reading has no approved credit price yet, so your rules read every message and nothing is charged.",
+  "settings": {
+   "escalationMemberIds": [],
+   "policy": {
+    "changeNoticeHours": 24,
+    "lateChangeFeeCents": null,
+    "source": "Service terms"
+   },
+   "readInbox": false,
+   "requestTypes": [
+    "appointment",
+    "preference",
+    "access",
+    "reschedule",
+    "cancellation",
+    "complaint",
+    "billing",
+    "extra",
+    "new_service",
+    "general"
+   ],
+   "respondWithinMinutes": 30,
+   "revision": 1,
+   "signature": null,
+   "tone": "warm",
+   "updateEveryHours": 24
+  }
+ },
+ "details": {
+  "reschedule": {
+   "can": {
+    "close": true,
+    "handBack": false,
+    "reopen": false,
+    "resolve": true,
+    "runAgain": true,
+    "takeOver": true
+   },
+   "conversation": {
+    "channel": "sms",
+    "clientHref": "/app/clients/00000000000000000010085customers/conversations",
+    "held": null,
+    "inboxHref": "/app/inbox?conversation=0000000000010104smsConversations"
+   },
+   "customer": {
+    "id": "00000000000000000010085customers",
+    "kind": "home",
+    "name": "Marcus Reed"
+   },
+   "entries": [
+    {
+     "at": 1803902400026,
+     "by": "Client Care",
+     "id": "000000000000000010121careEntries",
+     "kind": "waiting",
+     "source": {
+      "id": "00000000000000000010118approvals",
+      "label": "Approval",
+      "table": "approvals"
+     },
+     "text": "Waiting for your approval: Move the visit on Wed, Mar 3 at 10:00 AM to Thu, Mar 4 at 11:00 AM (price and service unchanged)"
+    },
+    {
+     "at": 1803902400024,
+     "by": "Client Care",
+     "id": "000000000000000010115careEntries",
+     "kind": "received",
+     "source": {
+      "id": "00000000000000010107careMessages",
+      "label": "Text",
+      "table": "careMessages"
+     },
+     "text": "Marcus Reed wrote: \"Please reschedule Wednesday's cleaning to Thursday at 11am\""
+    }
+   ],
+   "facts": [
+    {
+     "at": 1803902400026,
+     "basis": "policy",
+     "key": "notice",
+     "source": null,
+     "value": "More than 24 hours before the visit (Care Setup: Service terms)."
+    }
+   ],
+   "linked": [],
+   "policy": {
+    "noticeHours": 24,
+    "source": "Care Setup: Service terms"
+   },
+   "property": {
+    "city": "Austin",
+    "hasAccess": false,
+    "id": "0000000000000000010090properties",
+    "name": "Reed House, 4 Oak Ave"
+   },
+   "request": {
+    "authority": {
+     "as": "client",
+     "limited": false,
+     "name": "Marcus Reed",
+     "roles": [
+      "primary",
+      "billing",
+      "signer",
+      "site"
+     ]
+    },
+    "blocker": null,
+    "category": "reschedule",
+    "categoryWords": "Rescheduling",
+    "channel": "sms",
+    "closedAt": null,
+    "createdAt": 1803902400026,
+    "customer": {
+     "id": "00000000000000000010085customers",
+     "name": "Marcus Reed"
+    },
+    "held": false,
+    "id": "00000000000000010111careRequests",
+    "lastClientAt": 1803902400024,
+    "lastUpdateAt": null,
+    "nextAction": "Approve, change or skip it in Approvals.",
+    "owner": "You",
+    "pending": null,
+    "promisedBy": null,
+    "property": "Reed House, 4 Oak Ave",
+    "reopened": [],
+    "requestedOutcome": "The visit moved to a time the team can cover.",
+    "resolution": null,
+    "status": "waiting_owner",
+    "statusWords": "Waiting for you",
+    "summary": "Asked to move a visit: \"Please reschedule Wednesday's cleaning to Thursday at 11am\"",
+    "updatedAt": 1803902400026,
+    "urgency": "high",
+    "urgencyReason": "It is about a visit in the next two days.",
+    "version": 1,
+    "visit": "Wed, Mar 3 at 10:00 AM",
+    "waiting": "Your approval is needed before Client Care goes ahead.",
+    "writer": null
+   },
+   "steps": [
+    {
+     "approvalId": "00000000000000000010118approvals",
+     "at": 1803902400026,
+     "id": "00000000000000000010117careSteps",
+     "kind": "reschedule",
+     "message": "Hi Marcus, this is Alpha Cleaning's assistant. Done: your visit is moved to Thu, Mar 4 at 11:00 AM. Same service and price. We're confirming the crew for the new time.",
+     "parts": [],
+     "permission": "Move one visit to a time Dispatch can cover, inside the change notice",
+     "result": "Waiting for approval.",
+     "retry": false,
+     "status": "awaiting_approval",
+     "statusWords": "Waiting for approval",
+     "summary": "Move the visit on Wed, Mar 3 at 10:00 AM to Thu, Mar 4 at 11:00 AM (price and service unchanged)"
+    }
+   ],
+   "thread": [
+    {
+     "at": 1803902400024,
+     "body": "Please reschedule Wednesday's cleaning to Thursday at 11am",
+     "by": "Marcus Reed",
+     "channel": "sms",
+     "direction": "in",
+     "id": "00000000000000010107careMessages",
+     "status": null,
+     "statusWords": null,
+     "withheld": false
+    }
+   ],
+   "visit": {
+    "held": false,
+    "id": "0000000000000000000000010095jobs",
+    "service": "standard",
+    "status": "scheduled",
+    "when": "Wed, Mar 3 at 10:00 AM"
+   }
+  },
+  "complaint": {
+   "can": {
+    "close": true,
+    "handBack": false,
+    "reopen": false,
+    "resolve": true,
+    "runAgain": true,
+    "takeOver": true
+   },
+   "conversation": {
+    "channel": "sms",
+    "clientHref": "/app/clients/00000000000000000010124customers/conversations",
+    "held": null,
+    "inboxHref": "/app/inbox?conversation=0000000000010165smsConversations"
+   },
+   "customer": {
+    "id": "00000000000000000010124customers",
+    "kind": "home",
+    "name": "Priya Nair"
+   },
+   "entries": [
+    {
+     "at": 1804014000009,
+     "by": "Client Care",
+     "id": "000000000000000010204careEntries",
+     "kind": "update",
+     "source": {
+      "id": "000000000000000000010198messages",
+      "label": "Message",
+      "table": "messages"
+     },
+     "text": "Delivered: \"Hi Priya, this is Alpha Cleaning's assistant. I'm sorry it wasn't right after your visit on Tue, Mar 2 at 10:00 AM. I've passed it to our team to review, and I'll update you by 1:00 PM Wed, Mar 3.\""
+    },
+    {
+     "at": 1804014000008,
+     "by": "Client Care",
+     "id": "000000000000000010196careEntries",
+     "kind": "did",
+     "source": {
+      "id": "000000000000010180retentionCases",
+      "label": "Recovery case",
+      "table": "retentionCases"
+     },
+     "text": "Opened a recovery case for the visit; Quality investigates it and Retention prepares any remedy. Client Care keeps the client informed."
+    },
+    {
+     "at": 1804014000006,
+     "by": "Client Care",
+     "id": "000000000000000010176careEntries",
+     "kind": "received",
+     "source": {
+      "id": "00000000000000010168careMessages",
+      "label": "Text",
+      "table": "careMessages"
+     },
+     "text": "Priya Nair wrote: \"The kitchen counters weren't wiped\""
+    }
+   ],
+   "facts": [],
+   "linked": [
+    {
+     "href": "/app/agents/retention/recovery?case=000000000000010180retentionCases",
+     "kind": "Retention recovery case",
+     "label": "Priya Nair: kitchen at Nair House, 4 Oak Ave",
+     "state": "needs attention"
+    }
+   ],
+   "policy": {
+    "noticeHours": 24,
+    "source": "Care Setup: Service terms"
+   },
+   "property": {
+    "city": "Austin",
+    "hasAccess": false,
+    "id": "0000000000000000010129properties",
+    "name": "Nair House, 4 Oak Ave"
+   },
+   "request": {
+    "authority": {
+     "as": "client",
+     "limited": false,
+     "name": "Priya Nair",
+     "roles": [
+      "primary",
+      "billing",
+      "signer",
+      "site"
+     ]
+    },
+    "blocker": null,
+    "category": "complaint",
+    "categoryWords": "Complaints",
+    "channel": "sms",
+    "closedAt": null,
+    "createdAt": 1804014000008,
+    "customer": {
+     "id": "00000000000000000010124customers",
+     "name": "Priya Nair"
+    },
+    "held": false,
+    "id": "00000000000000010172careRequests",
+    "lastClientAt": 1804014000006,
+    "lastUpdateAt": 1804014000009,
+    "nextAction": null,
+    "owner": "Quality and Retention",
+    "pending": null,
+    "promisedBy": 1804100400008,
+    "property": "Nair House, 4 Oak Ave",
+    "reopened": [],
+    "requestedOutcome": "The concern reviewed by Quality, any remedy arranged, and the client kept informed.",
+    "resolution": null,
+    "status": "waiting_team",
+    "statusWords": "Waiting for team",
+    "summary": "Reported a problem: \"The kitchen counters weren't wiped\"",
+    "updatedAt": 1804014000008,
+    "urgency": "high",
+    "urgencyReason": "A client reported a problem with a visit.",
+    "version": 1,
+    "visit": "Tue, Mar 2 at 10:00 AM",
+    "waiting": "Quality is reviewing the visit; Retention prepares any remedy.",
+    "writer": null
+   },
+   "steps": [
+    {
+     "approvalId": null,
+     "at": 1804014000008,
+     "id": "00000000000000000010179careSteps",
+     "kind": "complaint",
+     "message": "Hi Priya, this is Alpha Cleaning's assistant. I'm sorry it wasn't right after your visit on Tue, Mar 2 at 10:00 AM. I've passed it to our team to review, and I'll update you by 1:00 PM Wed, Mar 3.",
+     "parts": [
+      {
+       "at": 1804014000008,
+       "detail": "Opened a recovery case for the visit; Quality investigates it and Retention prepares any remedy. Client Care keeps the client informed.",
+       "name": "Change",
+       "state": "done"
+      },
+      {
+       "at": 1804014000009,
+       "detail": "Delivery confirmed",
+       "name": "Client message",
+       "state": "done"
+      }
+     ],
+     "permission": "Acknowledge a complaint and open or link the Quality and Retention cases (no findings, refunds or promises)",
+     "result": "care.complaint_intake: Act automatically",
+     "retry": false,
+     "status": "done",
+     "statusWords": "Done",
+     "summary": "Acknowledge Priya Nair's concern and open the recovery case for the visit on Tue, Mar 2 at 10:00 AM"
+    }
+   ],
+   "thread": [
+    {
+     "at": 1804014000006,
+     "body": "The kitchen counters weren't wiped",
+     "by": "Priya Nair",
+     "channel": "sms",
+     "direction": "in",
+     "id": "00000000000000010168careMessages",
+     "status": null,
+     "statusWords": null,
+     "withheld": false
+    },
+    {
+     "at": 1804014000008,
+     "body": "Hi Priya, this is Alpha Cleaning's assistant. I'm sorry it wasn't right after your visit on Tue, Mar 2 at 10:00 AM. I've passed it to our team to review, and I'll update you by 1:00 PM Wed, Mar 3.",
+     "by": "Client Care",
+     "channel": "sms",
+     "direction": "out",
+     "id": "000000000000000000010198messages",
+     "status": "delivered",
+     "statusWords": "Delivery confirmed",
+     "withheld": false
+    }
+   ],
+   "visit": {
+    "held": false,
+    "id": "0000000000000000000000010134jobs",
+    "service": "standard",
+    "status": "completed",
+    "when": "Tue, Mar 2 at 10:00 AM"
+   }
+  },
+  "partial": {
+   "can": {
+    "close": true,
+    "handBack": false,
+    "reopen": false,
+    "resolve": true,
+    "runAgain": true,
+    "takeOver": true
+   },
+   "conversation": {
+    "channel": "sms",
+    "clientHref": "/app/clients/00000000000000000010205customers/conversations",
+    "held": null,
+    "inboxHref": "/app/inbox?conversation=0000000000010227smsConversations"
+   },
+   "customer": {
+    "id": "00000000000000000010205customers",
+    "kind": "home",
+    "name": "Jo Alvarez"
+   },
+   "entries": [
+    {
+     "at": 1804014000027,
+     "by": "Client Care",
+     "id": "000000000000000010248careEntries",
+     "kind": "problem",
+     "source": {
+      "id": "000000000000000000010243messages",
+      "label": "Message",
+      "table": "messages"
+     },
+     "text": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts.. Retry it or reach them another way."
+    },
+    {
+     "at": 1804014000026,
+     "by": "Client Care",
+     "id": "000000000000000010241careEntries",
+     "kind": "did",
+     "source": {
+      "id": "0000000000000000000000010215jobs",
+      "label": "The visit",
+      "table": "jobs"
+     },
+     "text": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged."
+    },
+    {
+     "at": 1804014000024,
+     "by": "Client Care",
+     "id": "000000000000000010238careEntries",
+     "kind": "received",
+     "source": {
+      "id": "00000000000000010230careMessages",
+      "label": "Text",
+      "table": "careMessages"
+     },
+     "text": "Jo Alvarez wrote: \"Please don't clean the guest bedroom next Tuesday only\""
+    }
+   ],
+   "facts": [],
+   "linked": [],
+   "policy": {
+    "noticeHours": 24,
+    "source": "Care Setup: Service terms"
+   },
+   "property": {
+    "city": "Austin",
+    "hasAccess": false,
+    "id": "0000000000000000010210properties",
+    "name": "Alvarez House, 4 Oak Ave"
+   },
+   "request": {
+    "authority": {
+     "as": "client",
+     "limited": false,
+     "name": "Jo Alvarez",
+     "roles": [
+      "primary",
+      "billing",
+      "signer",
+      "site"
+     ]
+    },
+    "blocker": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts.. Retry it or reach them another way.",
+    "category": "preference",
+    "categoryWords": "Preferences",
+    "channel": "sms",
+    "closedAt": null,
+    "createdAt": 1804014000026,
+    "customer": {
+     "id": "00000000000000000010205customers",
+     "name": "Jo Alvarez"
+    },
+    "held": false,
+    "id": "00000000000000010234careRequests",
+    "lastClientAt": 1804014000024,
+    "lastUpdateAt": null,
+    "nextAction": "Retry the message, or reach the client another way.",
+    "owner": "You",
+    "pending": null,
+    "promisedBy": null,
+    "property": "Alvarez House, 4 Oak Ave",
+    "reopened": [],
+    "requestedOutcome": "The preference recorded where it applies, and the crew able to see it.",
+    "resolution": null,
+    "status": "waiting_owner",
+    "statusWords": "Waiting for you",
+    "summary": "Gave a preference: \"Please don't clean the guest bedroom next Tuesday only\"",
+    "updatedAt": 1804014000027,
+    "urgency": "normal",
+    "urgencyReason": null,
+    "version": 1,
+    "visit": "Tue, Mar 9 at 10:00 AM",
+    "waiting": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts.. Retry it or reach them another way.",
+    "writer": null
+   },
+   "steps": [
+    {
+     "approvalId": null,
+     "at": 1804014000026,
+     "id": "00000000000000000010240careSteps",
+     "kind": "preference",
+     "message": "Hi Jo, this is Alpha Cleaning's assistant. Done: I've added that to your visit on Tue, Mar 9 at 10:00 AM only. Your other visits are unchanged.",
+     "parts": [
+      {
+       "at": 1804014000026,
+       "detail": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged.",
+       "name": "Change",
+       "state": "done"
+      },
+      {
+       "at": 1804014000027,
+       "detail": "The carrier says this number cannot receive texts.",
+       "name": "Client message",
+       "state": "failed"
+      }
+     ],
+     "permission": "Record a client's preference for one visit, a property or every future visit",
+     "result": "The message did not go: The carrier says this number cannot receive texts.",
+     "retry": true,
+     "status": "partial",
+     "statusWords": "Done; the message didn't go",
+     "summary": "Add \"Please don't clean the guest bedroom next Tuesday only\" to the visit on Tue, Mar 9 at 10:00 AM only"
+    }
+   ],
+   "thread": [
+    {
+     "at": 1804014000024,
+     "body": "Please don't clean the guest bedroom next Tuesday only",
+     "by": "Jo Alvarez",
+     "channel": "sms",
+     "direction": "in",
+     "id": "00000000000000010230careMessages",
+     "status": null,
+     "statusWords": null,
+     "withheld": false
+    },
+    {
+     "at": 1804014000026,
+     "body": "Hi Jo, this is Alpha Cleaning's assistant. Done: I've added that to your visit on Tue, Mar 9 at 10:00 AM only. Your other visits are unchanged.",
+     "by": "Client Care",
+     "channel": "sms",
+     "direction": "out",
+     "id": "000000000000000000010243messages",
+     "status": "failed",
+     "statusWords": "The carrier says this number cannot receive texts.",
+     "withheld": false
+    }
+   ],
+   "visit": {
+    "held": false,
+    "id": "0000000000000000000000010215jobs",
+    "service": "standard",
+    "status": "scheduled",
+    "when": "Tue, Mar 9 at 10:00 AM"
+   }
+  },
+  "answered": {
+   "can": {
+    "close": false,
+    "handBack": false,
+    "reopen": true,
+    "resolve": false,
+    "runAgain": false,
+    "takeOver": false
+   },
+   "conversation": {
+    "channel": "sms",
+    "clientHref": "/app/clients/00000000000000000010006customers/conversations",
+    "held": null,
+    "inboxHref": "/app/inbox?conversation=0000000000010060smsConversations"
+   },
+   "customer": {
+    "id": "00000000000000000010006customers",
+    "kind": "home",
+    "name": "Dana Whitfield"
+   },
+   "entries": [
+    {
+     "at": 1803902400009,
+     "by": "Client Care",
+     "id": "000000000000000010082careEntries",
+     "kind": "resolved",
+     "source": {
+      "id": "00000000000000000010072careSteps",
+      "label": "Reply to Dana Whitfield",
+      "table": "careSteps"
+     },
+     "text": "Answered from the visit record."
+    },
+    {
+     "at": 1803902400009,
+     "by": "Client Care",
+     "id": "000000000000000010081careEntries",
+     "kind": "update",
+     "source": {
+      "id": "000000000000000000010073messages",
+      "label": "Message",
+      "table": "messages"
+     },
+     "text": "Delivered: \"Hi Dana, this is Alpha Cleaning's assistant. Lena is confirmed for Tue, Mar 2 at 10:00 AM.\""
+    },
+    {
+     "at": 1803902400006,
+     "by": "Client Care",
+     "id": "000000000000000010071careEntries",
+     "kind": "received",
+     "source": {
+      "id": "00000000000000010063careMessages",
+      "label": "Text",
+      "table": "careMessages"
+     },
+     "text": "Dana Whitfield wrote: \"Who is coming on Tuesday?\""
+    }
+   ],
+   "facts": [
+    {
+     "at": 1803902400008,
+     "basis": "record",
+     "key": "visit",
+     "source": {
+      "id": "0000000000000000000000010050jobs",
+      "label": "The visit",
+      "table": "jobs"
+     },
+     "value": "accepted"
+    }
+   ],
+   "linked": [],
+   "policy": {
+    "noticeHours": 24,
+    "source": "Care Setup: Service terms"
+   },
+   "property": {
+    "city": "Austin",
+    "hasAccess": false,
+    "id": "0000000000000000010011properties",
+    "name": "12 Elm St"
+   },
+   "request": {
+    "authority": {
+     "as": "client",
+     "limited": false,
+     "name": "Dana Whitfield",
+     "roles": [
+      "primary",
+      "billing",
+      "signer",
+      "site"
+     ]
+    },
+    "blocker": null,
+    "category": "appointment",
+    "categoryWords": "Visit and service questions",
+    "channel": "sms",
+    "closedAt": 1803902400009,
+    "createdAt": 1803902400008,
+    "customer": {
+     "id": "00000000000000000010006customers",
+     "name": "Dana Whitfield"
+    },
+    "held": false,
+    "id": "00000000000000010067careRequests",
+    "lastClientAt": 1803902400006,
+    "lastUpdateAt": 1803902400009,
+    "nextAction": null,
+    "owner": "Client Care",
+    "pending": null,
+    "promisedBy": null,
+    "property": "12 Elm St",
+    "reopened": [],
+    "requestedOutcome": "A verified answer about their visit.",
+    "resolution": {
+     "at": 1803902400009,
+     "evidence": [
+      {
+       "id": "00000000000000000010072careSteps",
+       "label": "Reply to Dana Whitfield",
+       "table": "careSteps"
+      }
+     ],
+     "words": "Answered from the visit record."
+    },
+    "status": "resolved",
+    "statusWords": "Resolved",
+    "summary": "Asked about a visit: \"Who is coming on Tuesday?\"",
+    "updatedAt": 1803902400009,
+    "urgency": "normal",
+    "urgencyReason": null,
+    "version": 1,
+    "visit": "Tue, Mar 2 at 10:00 AM",
+    "waiting": null,
+    "writer": null
+   },
+   "steps": [
+    {
+     "approvalId": null,
+     "at": 1803902400008,
+     "id": "00000000000000000010072careSteps",
+     "kind": "reply",
+     "message": "Hi Dana, this is Alpha Cleaning's assistant. Lena is confirmed for Tue, Mar 2 at 10:00 AM.",
+     "parts": [
+      {
+       "at": 1803902400009,
+       "detail": "Delivery confirmed",
+       "name": "Client message",
+       "state": "done"
+      }
+     ],
+     "permission": "Answer a client's question from the visit, plan and invoice records",
+     "result": "care.answer_question: Act automatically",
+     "retry": false,
+     "status": "done",
+     "statusWords": "Done",
+     "summary": "Reply to Dana Whitfield"
+    }
+   ],
+   "thread": [
+    {
+     "at": 1803902400006,
+     "body": "Who is coming on Tuesday?",
+     "by": "Dana Whitfield",
+     "channel": "sms",
+     "direction": "in",
+     "id": "00000000000000010063careMessages",
+     "status": null,
+     "statusWords": null,
+     "withheld": false
+    },
+    {
+     "at": 1803902400008,
+     "body": "Hi Dana, this is Alpha Cleaning's assistant. Lena is confirmed for Tue, Mar 2 at 10:00 AM.",
+     "by": "Client Care",
+     "channel": "sms",
+     "direction": "out",
+     "id": "000000000000000000010073messages",
+     "status": "delivered",
+     "statusWords": "Delivery confirmed",
+     "withheld": false
+    }
+   ],
+   "visit": {
+    "held": false,
+    "id": "0000000000000000000000010050jobs",
+    "service": "standard",
+    "status": "scheduled",
+    "when": "Tue, Mar 2 at 10:00 AM"
+   }
+  }
+ }
+}
