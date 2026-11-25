@@ -70,7 +70,7 @@ function useBeat(paused: boolean, still: boolean) {
 function Avatar({ actor, size = 40 }: { actor: Actor; size?: number }) {
   if (actor === "owner") {
     return (
-      <span aria-hidden className="grid shrink-0 place-items-center rounded-full bg-white text-[#3b1f99]" style={{ width: size, height: size }}>
+      <span aria-hidden className="grid shrink-0 place-items-center rounded-full bg-[#1d1240] text-white ring-2 ring-white" style={{ width: size, height: size }}>
         <svg viewBox="0 0 16 16" className="size-[55%]" fill="currentColor">
           <circle cx="8" cy="5.2" r="2.9" />
           <path d="M2.6 14c.5-3 2.7-4.7 5.4-4.7s4.9 1.7 5.4 4.7z" />
@@ -78,7 +78,7 @@ function Avatar({ actor, size = 40 }: { actor: Actor; size?: number }) {
       </span>
     );
   }
-  return <Image src={`/agents/${actor}.webp`} alt="" width={size * 2} height={size * 2} aria-hidden className="shrink-0 rounded-full ring-1 ring-white/25" style={{ width: size, height: size }} />;
+  return <Image src={`/agents/${actor}.webp`} alt="" width={size * 2} height={size * 2} aria-hidden className="shrink-0 rounded-full ring-2 ring-white" style={{ width: size, height: size }} />;
 }
 
 function DeskMap({ active, working, still }: { active: Actor | null; working: boolean; still: boolean }) {
@@ -90,7 +90,7 @@ function DeskMap({ active, working, still }: { active: Actor | null; working: bo
           const on = actor === active;
           return (
             <g key={actor}>
-              <line x1={sx(HUB.x)} y1={sy(HUB.y)} x2={sx(node.x)} y2={sy(node.y)} stroke="rgba(255,255,255,0.2)" strokeWidth={0.35} strokeDasharray="1 1.4" />
+              <line x1={sx(HUB.x)} y1={sy(HUB.y)} x2={sx(node.x)} y2={sy(node.y)} stroke="rgba(104,56,239,0.28)" strokeWidth={0.35} strokeDasharray="1 1.4" />
               {on ? (
                 <motion.line
                   key={`${actor}-beam`}
@@ -111,17 +111,17 @@ function DeskMap({ active, working, still }: { active: Actor | null; working: bo
         })}
         <defs>
           <linearGradient id="desk-beam" gradientUnits="userSpaceOnUse" x1="40" y1="0" x2="120" y2="0">
-            <stop offset="0" stopColor="#b39eff" />
-            <stop offset="1" stopColor="#ffffff" />
+            <stop offset="0" stopColor="#8e6df6" />
+            <stop offset="1" stopColor="#5126c7" />
           </linearGradient>
         </defs>
       </svg>
 
       {/* The hub: Selestial, coordinating. */}
       <div className="absolute -translate-x-1/2 -translate-y-1/2" style={{ left: `${HUB.x}%`, top: `${HUB.y}%` }}>
-        <div className="relative grid size-16 place-items-center rounded-2xl border border-white/20 bg-white/10 shadow-[0_0_60px_-10px_rgba(179,158,255,0.9)] backdrop-blur sm:size-[72px]">
-          {!still ? <span aria-hidden className="absolute inset-0 animate-ping rounded-2xl border border-white/30 [animation-duration:2.8s]" /> : null}
-          <LogoGlyph className="h-9 [filter:brightness(1.6)]" />
+        <div className="relative grid size-16 place-items-center rounded-2xl border border-[#e7e1fb] bg-white shadow-[0_14px_40px_-12px_rgba(104,56,239,0.55)] sm:size-[72px]">
+          {!still ? <span aria-hidden className="absolute inset-0 animate-ping rounded-2xl border border-[#6838ef]/25 [animation-duration:2.8s]" /> : null}
+          <LogoGlyph className="h-9" />
         </div>
       </div>
 
@@ -130,10 +130,10 @@ function DeskMap({ active, working, still }: { active: Actor | null; working: bo
         const on = actor === active;
         return (
           <div key={actor} className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1.5" style={{ left: `${node.x}%`, top: `${node.y}%` }}>
-            <motion.div animate={{ scale: on ? 1.08 : 1 }} transition={{ duration: 0.3 }} className={cn("rounded-full p-[3px] transition-shadow duration-300", on ? "bg-gradient-to-br from-[#b39eff] to-white shadow-[0_0_28px_-2px_rgba(179,158,255,0.95)]" : "bg-white/10")}>
+            <motion.div animate={{ scale: on ? 1.08 : 1 }} transition={{ duration: 0.3 }} className={cn("rounded-full p-[3px] transition-shadow duration-300", on ? "bg-gradient-to-br from-[#8e6df6] to-[#5126c7] shadow-[0_10px_28px_-6px_rgba(104,56,239,0.65)]" : "bg-[#ece6ff]")}>
               <Avatar actor={actor} size={actor === "owner" ? 34 : 40} />
             </motion.div>
-            <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap transition-colors", on ? "bg-white text-[#3b1f99]" : "text-white/70")}>
+            <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap transition-colors", on ? "bg-[#6838ef] text-white" : "text-[#5b5478]")}>
               {node.label}
               {on && working ? <span className="sr-only"> is working</span> : null}
             </span>
@@ -147,7 +147,7 @@ function DeskMap({ active, working, still }: { active: Actor | null; working: bo
 function Status({ actor, done }: { actor: Actor; done: boolean }) {
   if (done) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-400/15 px-2 py-0.5 text-[11px] font-medium text-emerald-200 ring-1 ring-emerald-300/25">
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-600/15">
         <svg aria-hidden viewBox="0 0 16 16" className="size-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M3.5 8.5l3 3 6-7" />
         </svg>
@@ -155,10 +155,10 @@ function Status({ actor, done }: { actor: Actor; done: boolean }) {
       </span>
     );
   }
-  if (actor === "owner") return <span className="rounded-full bg-amber-300/15 px-2 py-0.5 text-[11px] font-medium text-amber-100 ring-1 ring-amber-200/30">Needs you</span>;
+  if (actor === "owner") return <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800 ring-1 ring-amber-600/20">Needs you</span>;
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-medium text-white/85 ring-1 ring-white/15">
-      <span aria-hidden className="size-1.5 animate-pulse rounded-full bg-[#b39eff]" />
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-[#f1ecff] px-2 py-0.5 text-[11px] font-medium text-[#5126c7] ring-1 ring-[#6838ef]/20">
+      <span aria-hidden className="size-1.5 animate-pulse rounded-full bg-[#6838ef]" />
       Working
     </span>
   );
@@ -189,22 +189,25 @@ export function AgentDesk() {
       onMouseLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}
       onBlur={() => setPaused(false)}
-      className="relative w-full overflow-hidden rounded-[22px] border border-white/15 bg-white/[0.06] p-4 shadow-[0_40px_120px_-40px_rgba(10,4,40,0.9)] backdrop-blur-xl sm:p-5"
+      className="relative w-full overflow-hidden rounded-[22px] border border-[#e7e1fb] bg-white/90 p-4 shadow-[0_40px_100px_-40px_rgba(81,38,199,0.45),0_0_0_1px_rgba(104,56,239,0.04)] backdrop-blur-xl sm:p-5"
     >
-      <div aria-hidden className="pointer-events-none absolute -top-24 left-1/2 h-48 w-[80%] -translate-x-1/2 rounded-full bg-[#8e6df6]/30 blur-3xl" />
+      <div aria-hidden className="pointer-events-none absolute -top-24 left-1/2 h-48 w-[80%] -translate-x-1/2 rounded-full bg-[#b39eff]/25 blur-3xl" />
 
       <div className="relative flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <span className="relative flex size-2">
-            {!reduce ? <span aria-hidden className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-300 opacity-60" /> : null}
-            <span className="relative inline-flex size-2 rounded-full bg-emerald-300" />
+            {!reduce ? <span aria-hidden className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-60" /> : null}
+            <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
           </span>
-          <p className="text-[13px] font-medium text-white">{DESK.title}</p>
+          <p className="text-[13px] font-medium whitespace-nowrap text-strong">{DESK.title}</p>
         </div>
-        <p className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-semibold tracking-[0.12em] text-white/75 uppercase ring-1 ring-white/10">{DESK.demo}</p>
+        <p className="shrink-0 rounded-full bg-[#f4f0ff] px-2.5 py-1 text-[10px] font-semibold tracking-[0.12em] whitespace-nowrap text-[#5b5478] uppercase ring-1 ring-[#e7e1fb]">
+          <span className="sm:hidden">Demo data</span>
+          <span className="hidden sm:inline">{DESK.demo}</span>
+        </p>
       </div>
 
-      <div className="relative mt-3 rounded-2xl bg-[#0d0727]/40 px-2 pt-3 pb-6 ring-1 ring-white/10">
+      <div className="relative mt-3 rounded-2xl bg-[radial-gradient(80%_80%_at_50%_40%,#f6f2ff,#fbfaff)] px-2 pt-3 pb-6 ring-1 ring-[#efeafd]">
         <DeskMap active={current.agent} working={!currentDone} still={reduce} />
       </div>
 
@@ -223,16 +226,16 @@ export function AgentDesk() {
                 transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
                 className={cn(
                   "flex min-w-0 items-start gap-3 rounded-xl border px-3 py-2.5",
-                  step.agent === "owner" && !done ? "border-amber-200/40 bg-amber-200/10" : index === stepIndex && !done ? "border-white/25 bg-white/[0.12]" : "border-white/10 bg-white/[0.05]",
+                  step.agent === "owner" && !done ? "border-amber-200 bg-amber-50/70" : index === stepIndex && !done ? "border-[#d9ceff] bg-[#f7f4ff]" : "border-[#efeafd] bg-white",
                 )}
               >
                 <Avatar actor={step.agent} size={28} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="truncate text-[13px] font-medium text-white">{step.title}</p>
+                    <p className="truncate text-[13px] font-medium text-strong">{step.title}</p>
                     <Status actor={step.agent} done={done} />
                   </div>
-                  <p className="mt-0.5 truncate text-xs text-white/65">{done ? step.done : step.detail}</p>
+                  <p className="mt-0.5 truncate text-xs text-[#6b6488]">{done ? step.done : step.detail}</p>
                 </div>
               </motion.li>
             );
@@ -240,9 +243,9 @@ export function AgentDesk() {
         </AnimatePresence>
       </ol>
 
-      <div className="relative mt-3 flex items-center justify-between gap-3 border-t border-white/10 pt-3 text-xs">
-        <p className={cn("transition-colors", waiting ? "font-medium text-amber-100" : "text-white/70")}>{waiting ? DESK.waiting : DESK.clear}</p>
-        <p className="text-white/55 tabular-nums">
+      <div className="relative mt-3 flex items-center justify-between gap-3 border-t border-[#efeafd] pt-3 text-xs">
+        <p className={cn("transition-colors", waiting ? "font-medium text-amber-800" : "text-[#5b5478]")}>{waiting ? DESK.waiting : DESK.clear}</p>
+        <p className="text-[#8a83a6] tabular-nums">
           {doneCount} of {DESK.steps.length} handled
         </p>
       </div>

@@ -34,7 +34,7 @@ export const HERO = {
   secondary: "See how it works",
   priceLine: `${FOUNDING_PRICE}/month for your first ${FOUNDING_MONTHS} months`,
   priceThen: `then ${RENEWAL_PRICE}/month. Paid monthly, no trial. Cancel anytime.`,
-  visualCaption: "The Selestial workspace after setup starts: agents preparing a booking page and follow-ups for the owner to review. Demonstration data.",
+  visualCaption: "Illustration of a day in Selestial: each agent’s lane, what it is doing and what waits for you. Demonstration data.",
 };
 
 /**
@@ -117,14 +117,14 @@ export const WALKTHROUGH = {
   id: "how-it-works",
   eyebrow: "See the work happen",
   headline: "From a new inquiry to a covered visit.",
-  lead: "Real Selestial screens, shown with demonstration data.",
-  label: "Demonstration data",
+  lead: "An illustrated example of a workflow Selestial supports today, with demonstration data.",
+  label: "Illustration · demonstration data",
   steps: [
-    { n: "1", title: "An inquiry arrives", body: "A customer picks a clean on your booking page, priced from your own services.", image: "/founding/step-inquiry.webp", w: 440, h: 720, alt: "A Selestial booking page offering a Deep Clean at $299 and a Standard Clean at $179 for one property." },
-    { n: "2", title: "A booking is prepared", body: "The visit is confirmed with its date, arrival window and scope, and the customer gets one confirmation.", image: "/founding/step-booking.webp", w: 768, h: 585, alt: "A booking confirmation showing date, arrival window, service, location and reference." },
-    { n: "3", title: "Dispatch coordinates coverage", body: "Dispatch offers the job to a cleaner, who accepts or declines from a link in a text.", image: "/founding/step-dispatch.webp", w: 780, h: 1060, alt: "A cleaner's job offer page with time, length, area, estimated pay and Accept and Decline buttons." },
-    { n: "4", title: "The owner sees the outcome", body: "Each booking’s state is kept apart, so you can see what’s confirmed, still in progress or waiting.", image: "/founding/step-owner.webp", w: 1440, h: 360, alt: "The owner's recent bookings list with confirmed and in-progress bookings." },
-  ],
+    { n: "1", title: "An inquiry arrives", body: "A customer asks for a clean by text or email, and Sales replies with a quote from your own pricing rules.", visual: "inquiry", alt: "Illustration: a customer asks for a deep clean on Friday and Sales replies with a quote from the company’s pricing rules." },
+    { n: "2", title: "A booking is prepared", body: "The visit is confirmed with its date, arrival window and scope, and the customer gets one confirmation.", visual: "booking", alt: "Illustration: a confirmed booking with its date, arrival window, service and scope." },
+    { n: "3", title: "Dispatch coordinates coverage", body: "Dispatch offers the job to a cleaner, who accepts or declines from a link in a text.", visual: "dispatch", alt: "Illustration: Dispatch offers the visit to the usual cleaner, who accepts, with the next option held in reserve." },
+    { n: "4", title: "The owner sees the outcome", body: "Each booking’s state is kept apart, so you can see what’s confirmed, still in progress or waiting.", visual: "outcome", alt: "Illustration: the owner’s summary showing the visit booked and covered, the approval recorded and a follow-up scheduled." },
+  ] as const,
 };
 
 export const SETUP = {
@@ -148,7 +148,7 @@ export const SETUP = {
   },
   limits:
     "Not everything moves over. Payment methods, card details and customer subscriptions stay with your current provider, and other record types aren’t imported yet. Imported visits and plans stay on hold until you release them, so you can keep using your current software while you review the move.",
-  imageCaption: "Bring your business to Selestial: every imported record is reviewed before anything goes live. Demonstration data.",
+  imageCaption: "Illustration of a guided import: files read, records checked, and nothing live until you release it. Demonstration data.",
 };
 
 export const OFFER = {
@@ -236,7 +236,7 @@ export const FINAL = {
     { href: "#offer", label: "Founding offer terms" },
   ],
   support: `Questions? ${SUPPORT_EMAIL}`,
-  note: "Product screens on this page show demonstration data.",
+  note: "Product illustrations on this page show demonstration data.",
 };
 
 export const HEADER = { signIn: "Sign in" };

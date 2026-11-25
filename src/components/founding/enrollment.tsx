@@ -18,8 +18,18 @@ const ctaShape = "h-12! rounded-[10px]! px-6! text-[15px]! before:rounded-[9px]!
  * form; once enrollment is not open it becomes the configured next step (start on Operate, or talk with us),
  * so a closed offer never shows a claim button.
  */
-export function ClaimCta({ position, className, fullWidth = false, inverse = false }: { position: string; className?: string; fullWidth?: boolean; inverse?: boolean }) {
+export function ClaimCta({ position, className, fullWidth = false, inverse = false, compact = false }: { position: string; className?: string; fullWidth?: boolean; inverse?: boolean; compact?: boolean }) {
   const { view } = useFounding();
+  if (compact) {
+    // The header's button, styled like the main site's nav CTA (icon-gradient, 40px, rounded-xl).
+    const href = view.canClaim ? "#claim" : view.state === "not_open" || view.state === "unavailable" ? "/book-a-call" : "/signup";
+    const words = view.canClaim ? CTA : view.state === "not_open" || view.state === "unavailable" ? STATUS.talkCta : STATUS.afterCta;
+    return (
+      <a href={href} data-cta-position={position} onClick={() => view.canClaim && trackFounding("founding_cta_selected", position)} className={cn("icon-gradient h-10 items-center rounded-xl px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-[#6838ef]/60", className ?? "inline-flex")}>
+        {words}
+      </a>
+    );
+  }
   if (inverse) {
     // On the violet closing panel: a white button, same destinations as below.
     const href = view.canClaim ? "#claim" : view.state === "not_open" || view.state === "unavailable" ? "/book-a-call" : "/signup";

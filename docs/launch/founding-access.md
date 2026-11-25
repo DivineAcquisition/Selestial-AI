@@ -77,6 +77,13 @@ been confirmed."
 5. States: access claimed / payment still processing / ready to pay / something needs attention, from billing only.
 6. On verified claim: one `founding_claimed` owner notice (email via the notice system, deduplicated by key).
 
+## Visuals
+
+No product screenshots are used on the page. The hero's agent desk (`src/components/founding/agent-desk.tsx`)
+and the drawn illustrations (`src/components/founding/illustrations.tsx`: a day in Selestial, the four
+walkthrough steps, the guided import) show work the product supports today with made-up names and figures,
+each labelled "Illustration · demonstration data". The header matches the main site's floating nav.
+
 ## Analytics
 
 Client events (only if a consent choice already loaded a tool; no personal data): `founding_page_viewed`,

@@ -1,16 +1,17 @@
-import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { AgentMark } from "@/components/marketing/agent-mark";
 import { Logo } from "@/components/brand/logo";
 import { CookiePreferencesLink } from "@/components/consent/banner";
-import { AGENTS_SECTION, CLAIM, FAQ, FINAL, FOUNDING_MONTHS, FOUNDING_PRICE, HEADER, HERO, OFFER, SETUP, SUPPORT_EMAIL, WALKTHROUGH } from "@/lib/founding/content";
+import { AGENTS_SECTION, CLAIM, FAQ, FINAL, FOUNDING_MONTHS, FOUNDING_PRICE, HERO, OFFER, SETUP, SUPPORT_EMAIL, WALKTHROUGH } from "@/lib/founding/content";
 import { cn } from "@/lib/utils";
 
 import { AgentDesk } from "./agent-desk";
 import { ClaimForm } from "./claim-form";
 import { ClaimCta, EnrollmentStatus } from "./enrollment";
+import { FoundingNav } from "./founding-nav";
+import { SetupIllustration, WalkIllustration, WorkspaceIllustration } from "./illustrations";
 import { StickyCta } from "./sticky-cta";
 
 const gutter = "px-5 sm:px-6 lg:px-8";
@@ -34,17 +35,6 @@ function Section({ id, label, title, intro, children, className }: { id?: string
   );
 }
 
-function Shot({ src, alt, width, height, caption, priority = false, className }: { src: string; alt: string; width: number; height: number; caption?: string; priority?: boolean; className?: string }) {
-  return (
-    <figure className={className}>
-      <div className="overflow-hidden rounded-xl border border-border bg-white shadow-[0_30px_70px_-40px_rgba(33,26,53,0.45)]">
-        <Image src={src} alt={alt} width={width} height={height} priority={priority} sizes="(min-width: 1024px) 560px, 100vw" className="h-auto w-full" />
-      </div>
-      {caption ? <figcaption className="mt-3 text-xs leading-relaxed text-muted-foreground">{caption}</figcaption> : null}
-    </figure>
-  );
-}
-
 function Check() {
   return (
     <svg aria-hidden viewBox="0 0 16 16" className="mt-1 size-4 shrink-0 text-[#5c2fdb]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -53,55 +43,37 @@ function Check() {
   );
 }
 
-function Header() {
-  return (
-    <header className={cn(gutter, "sticky top-0 z-30 border-b border-border/70 bg-background/85 backdrop-blur")}>
-      <div className={cn(shell, "flex h-16 items-center justify-between gap-4")}>
-        <a href="#content" className="rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#6838ef]" aria-label="Selestial Founding Access, top of page">
-          <Logo />
-        </a>
-        <nav aria-label="Account" className="flex items-center gap-2 sm:gap-3">
-          <Link href={`/login?next=${encodeURIComponent("/app/founding")}`} className="rounded-lg px-3 py-2 text-sm font-medium text-strong hover:bg-muted">
-            {HEADER.signIn}
-          </Link>
-          <ClaimCta position="header" className="hidden h-10! px-4! text-sm! sm:inline-flex" />
-        </nav>
-      </div>
-    </header>
-  );
-}
-
 /** The end of the headline, drawn in the light gradient. */
 const HIGHLIGHT = "a team of AI agents.";
 
 function Hero() {
   return (
-    <section id="founding-hero" className={cn(gutter, "relative isolate overflow-hidden bg-[#140a33] pt-14 pb-24 text-white sm:pt-20 sm:pb-32")}>
-      {/* The field: deep violet with a soft light from the top right and a faint grid. Still, decorative. */}
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(70%_60%_at_80%_0%,rgba(142,109,246,0.45),transparent_65%),radial-gradient(50%_50%_at_0%_100%,rgba(104,56,239,0.35),transparent_70%)]" />
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 opacity-[0.18] [background-image:linear-gradient(rgba(255,255,255,0.18)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.18)_1px,transparent_1px)] [background-size:44px_44px] [mask-image:radial-gradient(70%_70%_at_60%_30%,black,transparent)]" />
+    <section id="founding-hero" className={cn(gutter, "relative isolate -mt-[72px] overflow-hidden bg-gradient-to-b from-white via-white to-background pt-32 pb-24 sm:-mt-[76px] sm:pt-36 sm:pb-32")}>
+      {/* The field: white, with soft lavender light and a faint grid. Still, decorative. */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(60%_55%_at_82%_8%,rgba(142,109,246,0.18),transparent_70%),radial-gradient(45%_45%_at_5%_80%,rgba(104,56,239,0.10),transparent_70%)] [mask-image:linear-gradient(to_bottom,black_65%,transparent)]" />
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 opacity-60 [background-image:linear-gradient(rgba(104,56,239,0.07)_1px,transparent_1px),linear-gradient(90deg,rgba(104,56,239,0.07)_1px,transparent_1px)] [background-size:44px_44px] [mask-image:radial-gradient(70%_65%_at_60%_35%,black,transparent)]" />
       <div className={cn(shell, "grid items-center gap-12 lg:grid-cols-[1fr_1.02fr] lg:gap-14")}>
         <div className="max-w-xl">
-          <p className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.07] px-3 py-1 text-[11px] font-semibold tracking-[0.16em] text-[#d9ceff] uppercase">
-            <span aria-hidden className="size-1.5 rounded-full bg-[#b39eff]" />
+          <p className="inline-flex items-center gap-2 rounded-full border border-[#e7e1fb] bg-white/80 px-3 py-1 text-[11px] font-semibold tracking-[0.16em] text-[#5126c7] uppercase shadow-[0_6px_20px_-12px_rgba(104,56,239,0.5)]">
+            <span aria-hidden className="size-1.5 rounded-full bg-[#6838ef]" />
             {HERO.eyebrow}
           </p>
-          <h1 className="mt-6 font-heading text-[40px] leading-[1.02] tracking-[-0.03em] text-balance sm:text-[58px]">
+          <h1 className="mt-6 font-heading text-[40px] leading-[1.02] tracking-[-0.03em] text-strong text-balance sm:text-[58px]">
             {HERO.headline.replace(HIGHLIGHT, "")}
-            <span className="bg-gradient-to-r from-[#d9ceff] via-white to-[#b39eff] bg-clip-text text-transparent">{HIGHLIGHT}</span>
+            <span className="bg-gradient-to-r from-[#8e6df6] via-[#6838ef] to-[#3f1d9e] bg-clip-text text-transparent">{HIGHLIGHT}</span>
           </h1>
-          <p className="mt-6 text-[16px] leading-relaxed text-white/75 sm:text-lg">{HERO.supporting}</p>
+          <p className="mt-6 text-[16px] leading-relaxed text-muted-foreground sm:text-lg">{HERO.supporting}</p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <ClaimCta position="hero" inverse />
-            <a href={`#${WALKTHROUGH.id}`} className="inline-flex h-12 items-center justify-center gap-2 rounded-[10px] border border-white/20 bg-white/[0.06] px-5 text-[15px] font-medium text-white transition-colors hover:bg-white/[0.12] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+            <ClaimCta position="hero" />
+            <a href={`#${WALKTHROUGH.id}`} className="inline-flex h-12 items-center justify-center gap-2 rounded-[10px] border border-border bg-white px-5 text-[15px] font-medium text-strong transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#6838ef]">
               {HERO.secondary}
               <svg aria-hidden viewBox="0 0 16 16" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M8 3v10M4 9l4 4 4-4" />
               </svg>
             </a>
           </div>
-          <p className="mt-5 text-sm text-white">
-            <span className="font-heading text-lg">{HERO.priceLine}</span> <span className="text-white/65">{HERO.priceThen}</span>
+          <p className="mt-5 text-sm text-strong">
+            <span className="font-heading text-lg">{HERO.priceLine}</span> <span className="text-muted-foreground">{HERO.priceThen}</span>
           </p>
         </div>
         <AgentDesk />
@@ -110,13 +82,13 @@ function Hero() {
   );
 }
 
-/** The enrollment card and a real product screen, lifted over the hero's lower edge. */
+/** The enrollment card beside an illustrated day in Selestial, just under the hero. */
 function FoundingStatusBand() {
   return (
-    <section aria-label="Founding enrollment" className={cn(gutter, "relative -mt-14 pb-16 sm:-mt-20 sm:pb-24")}>
+    <section aria-label="Founding enrollment" className={cn(gutter, "relative pb-16 sm:pb-24")}>
       <div className={cn(shell, "grid items-start gap-8 lg:grid-cols-[0.9fr_1.1fr]")}>
         <EnrollmentStatus />
-        <Shot src="/founding/workspace.webp" width={1392} height={770} alt="The Selestial workspace: Sales, Recruiter and Dispatch cards listing tasks, with a booking page draft and proposed answers ready for the owner's review." caption={HERO.visualCaption} />
+        <WorkspaceIllustration label="Illustration: each agent's lane of work today, with one decision waiting for the owner." caption={HERO.visualCaption} />
       </div>
     </section>
   );
@@ -167,11 +139,9 @@ function WalkStep({ step, wide = false }: { step: (typeof WALKTHROUGH.steps)[num
           <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{step.body}</p>
         </div>
       </div>
-      <div className="rounded-2xl bg-[#f3f0fd] p-4 sm:p-5">
+      <div className="rounded-2xl bg-[radial-gradient(90%_90%_at_50%_0%,#f4f0ff,#faf8ff)] p-4 ring-1 ring-[#efeafd] sm:p-5">
         <p className="mb-3 text-[11px] font-medium tracking-[0.08em] text-muted-foreground uppercase">{WALKTHROUGH.label}</p>
-        <div className={cn("flex justify-center", wide && "block")}>
-          <Shot src={step.image} width={step.w} height={step.h} alt={step.alt} className={cn("w-full", step.n === "1" || step.n === "3" ? "max-w-[280px]" : "")} />
-        </div>
+        <WalkIllustration visual={step.visual} label={step.alt} />
       </div>
     </li>
   );
@@ -216,7 +186,7 @@ function Setup() {
           </ul>
           <p className="mt-5 text-sm leading-relaxed text-muted-foreground">{SETUP.limits}</p>
         </div>
-        <Shot src="/founding/setup-review.webp" width={1204} height={830} alt="The Bring your business to Selestial screen at Review and fix: counts of records ready, possible duplicates and corrections, with a suggestion to group two properties under one commercial account." caption={SETUP.imageCaption} />
+        <SetupIllustration label="Illustration: three exported files read by Selestial into records ready to create, possible duplicates and corrections, with upcoming visits held until the owner releases them." caption={SETUP.imageCaption} />
       </div>
     </Section>
   );
@@ -373,7 +343,7 @@ export function FoundingPage() {
       <a href="#content" className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[60] focus:rounded-lg focus:bg-primary focus:px-3.5 focus:py-2 focus:text-sm focus:text-primary-foreground">
         Skip to content
       </a>
-      <Header />
+      <FoundingNav />
       <main id="content">
         <Hero />
         <FoundingStatusBand />
