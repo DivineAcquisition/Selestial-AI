@@ -8,6 +8,7 @@ import { CookiePreferencesLink } from "@/components/consent/banner";
 import { AGENTS_SECTION, CLAIM, FAQ, FINAL, FOUNDING_MONTHS, FOUNDING_PRICE, HEADER, HERO, OFFER, SETUP, SUPPORT_EMAIL, WALKTHROUGH } from "@/lib/founding/content";
 import { cn } from "@/lib/utils";
 
+import { AgentDesk } from "./agent-desk";
 import { ClaimForm } from "./claim-form";
 import { ClaimCta, EnrollmentStatus } from "./enrollment";
 import { StickyCta } from "./sticky-cta";
@@ -70,31 +71,52 @@ function Header() {
   );
 }
 
+/** The end of the headline, drawn in the light gradient. */
+const HIGHLIGHT = "a team of AI agents.";
+
 function Hero() {
   return (
-    <section id="founding-hero" className={cn(gutter, "relative overflow-hidden pt-12 pb-16 sm:pt-20 sm:pb-24")}>
-      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[520px] bg-[radial-gradient(60%_60%_at_70%_0%,rgba(104,56,239,0.12),transparent_70%)]" />
-      <div className={cn(shell, "grid items-start gap-12 lg:grid-cols-[1fr_0.95fr] lg:gap-14")}>
+    <section id="founding-hero" className={cn(gutter, "relative isolate overflow-hidden bg-[#140a33] pt-14 pb-24 text-white sm:pt-20 sm:pb-32")}>
+      {/* The field: deep violet with a soft light from the top right and a faint grid. Still, decorative. */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(70%_60%_at_80%_0%,rgba(142,109,246,0.45),transparent_65%),radial-gradient(50%_50%_at_0%_100%,rgba(104,56,239,0.35),transparent_70%)]" />
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 opacity-[0.18] [background-image:linear-gradient(rgba(255,255,255,0.18)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.18)_1px,transparent_1px)] [background-size:44px_44px] [mask-image:radial-gradient(70%_70%_at_60%_30%,black,transparent)]" />
+      <div className={cn(shell, "grid items-center gap-12 lg:grid-cols-[1fr_1.02fr] lg:gap-14")}>
         <div className="max-w-xl">
-          <p className={eyebrow}>{HERO.eyebrow}</p>
-          <h1 className="mt-5 font-heading text-[40px] leading-[1.02] tracking-[-0.03em] text-strong text-balance sm:text-[56px]">{HERO.headline}</h1>
-          <p className="mt-6 text-[16px] leading-relaxed text-muted-foreground sm:text-lg">{HERO.supporting}</p>
+          <p className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.07] px-3 py-1 text-[11px] font-semibold tracking-[0.16em] text-[#d9ceff] uppercase">
+            <span aria-hidden className="size-1.5 rounded-full bg-[#b39eff]" />
+            {HERO.eyebrow}
+          </p>
+          <h1 className="mt-6 font-heading text-[40px] leading-[1.02] tracking-[-0.03em] text-balance sm:text-[58px]">
+            {HERO.headline.replace(HIGHLIGHT, "")}
+            <span className="bg-gradient-to-r from-[#d9ceff] via-white to-[#b39eff] bg-clip-text text-transparent">{HIGHLIGHT}</span>
+          </h1>
+          <p className="mt-6 text-[16px] leading-relaxed text-white/75 sm:text-lg">{HERO.supporting}</p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <ClaimCta position="hero" />
-            <a href={`#${WALKTHROUGH.id}`} className="inline-flex h-12 items-center justify-center rounded-[10px] border border-border bg-background px-5 text-[15px] font-medium text-strong transition-colors hover:bg-muted">
+            <ClaimCta position="hero" inverse />
+            <a href={`#${WALKTHROUGH.id}`} className="inline-flex h-12 items-center justify-center gap-2 rounded-[10px] border border-white/20 bg-white/[0.06] px-5 text-[15px] font-medium text-white transition-colors hover:bg-white/[0.12] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
               {HERO.secondary}
+              <svg aria-hidden viewBox="0 0 16 16" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M8 3v10M4 9l4 4 4-4" />
+              </svg>
             </a>
           </div>
-          <p className="mt-5 text-sm text-strong">
-            <span className="font-heading text-lg">{HERO.priceLine}</span> <span className="text-muted-foreground">{HERO.priceThen}</span>
+          <p className="mt-5 text-sm text-white">
+            <span className="font-heading text-lg">{HERO.priceLine}</span> <span className="text-white/65">{HERO.priceThen}</span>
           </p>
         </div>
-        <div className="grid gap-5">
-          <EnrollmentStatus />
-        </div>
+        <AgentDesk />
       </div>
-      <div className={cn(shell, "mt-14 sm:mt-20")}>
-        <Shot src="/founding/workspace.webp" width={1392} height={770} priority alt="The Selestial workspace: Sales, Recruiter and Dispatch cards listing tasks, with a booking page draft and proposed answers ready for the owner's review." caption={HERO.visualCaption} />
+    </section>
+  );
+}
+
+/** The enrollment card and a real product screen, lifted over the hero's lower edge. */
+function FoundingStatusBand() {
+  return (
+    <section aria-label="Founding enrollment" className={cn(gutter, "relative -mt-14 pb-16 sm:-mt-20 sm:pb-24")}>
+      <div className={cn(shell, "grid items-start gap-8 lg:grid-cols-[0.9fr_1.1fr]")}>
+        <EnrollmentStatus />
+        <Shot src="/founding/workspace.webp" width={1392} height={770} alt="The Selestial workspace: Sales, Recruiter and Dispatch cards listing tasks, with a booking page draft and proposed answers ready for the owner's review." caption={HERO.visualCaption} />
       </div>
     </section>
   );
@@ -354,6 +376,7 @@ export function FoundingPage() {
       <Header />
       <main id="content">
         <Hero />
+        <FoundingStatusBand />
         <Agents />
         <Walkthrough />
         <Setup />

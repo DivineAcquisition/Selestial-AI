@@ -37,6 +37,29 @@ export const HERO = {
   visualCaption: "The Selestial workspace after setup starts: agents preparing a booking page and follow-ups for the owner to review. Demonstration data.",
 };
 
+/**
+ * The hero's agent desk (src/components/founding/agent-desk.tsx). Each step is work the product supports
+ * today: booking-page inquiries and quotes from pricing rules (Sales), an approval above the owner's limit,
+ * text-link job offers (Dispatch), hiring-inbox screening (Recruiter) and post-visit feedback (Retention).
+ * Names and figures are made up, and the panel is labelled as demonstration data.
+ */
+export const DESK = {
+  label: "Example of Selestial's agents at work, with demonstration data",
+  title: "Your agents are working",
+  demo: "Demonstration data",
+  waiting: "1 decision is waiting for you",
+  clear: "Nothing is waiting on you",
+  caption: "An example workflow: Sales answers an inquiry and prepares a quote, you approve a discount above your limit, Dispatch fills the visit, Recruiter screens applicants and Retention schedules feedback.",
+  steps: [
+    { id: "inquiry", agent: "sales", title: "New inquiry from your booking page", detail: "3 bed, 2 bath deep clean · Friday", done: "Details collected, quote next" },
+    { id: "quote", agent: "sales", title: "Quote from your pricing rules", detail: "Deep clean, oven included · $285", done: "Sent · customer asked for 15% off" },
+    { id: "approval", agent: "owner", title: "Discount above your 10% limit", detail: "Approve, change or decline", done: "Approved by you · booked Fri 9:00" },
+    { id: "dispatch", agent: "dispatch", title: "Friday 9:00 needs a cleaner", detail: "Offer sent to Maria R. by text link", done: "Maria accepted the job" },
+    { id: "recruit", agent: "recruiter", title: "2 applicants in your hiring inbox", detail: "Checking your requirements", done: "Interview times offered" },
+    { id: "feedback", agent: "retention", title: "After Friday’s visit", detail: "Planning the customer follow-up", done: "Feedback request scheduled" },
+  ] as const,
+};
+
 export const STATUS = {
   timerLabel: "Founding enrollment closes in",
   explain: "Join before enrollment closes to receive the founding offer.",
