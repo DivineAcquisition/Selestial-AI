@@ -87,6 +87,20 @@ describe("Internal Booking", () => {
     expect(await count()).toBe(3);
   });
 
+  it("lists proposal drafts for Quotes & Proposals however many booking drafts came after them", async () => {
+    const { as, companyId } = await setup();
+    const proposal = await as.mutation(api.sales.startDraft, { companyId, mode: "proposal", segment: "office", from: "quotes" });
+    for (let i = 1; i <= 61; i++) {
+      vi.setSystemTime(NOW + i * 1000);
+      await as.mutation(api.sales.startDraft, { companyId, mode: "booking", from: "internal-booking" });
+    }
+    // The unfiltered list is the 60 most recent: all bookings. Asked for proposals, the proposal is there.
+    expect((await as.query(api.sales.drafts, { companyId })).map((row) => row._id)).not.toContain(proposal);
+    const proposals = await as.query(api.sales.drafts, { companyId, mode: "proposal" });
+    expect(proposals.map((row) => row._id)).toEqual([proposal]);
+    expect((await as.query(api.sales.drafts, { companyId, mode: "booking" })).every((row) => row.mode === "booking")).toBe(true);
+  });
+
   it("keeps each company's booking drafts its own", async () => {
     const { t, as, companyId } = await setup();
     await as.mutation(api.sales.startDraft, { companyId, mode: "booking", clientKey: "shared-key" });

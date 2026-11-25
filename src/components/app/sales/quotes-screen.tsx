@@ -27,6 +27,23 @@ const QUOTE_WORDS: Record<string, string> = { sent: "Sent", accepted: "Accepted"
 const SEGMENT_WORD: Record<string, string> = { residential: "Residential", commercial: "Commercial", office: "Office", str: "Short-term rental" };
 const DRAFT_WORDS: Record<string, string> = { open: "Draft", quoted: "Draft", proposal_created: "Proposal created" };
 
+/** Which saved quotes to list, by where each stands. A quote past its hold reads as expired. */
+type QuoteShow = "all" | "open" | "accepted" | "expired" | "closed";
+const QUOTE_SHOWS: { id: QuoteShow; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "open", label: "Saved or sent" },
+  { id: "accepted", label: "Accepted" },
+  { id: "expired", label: "Expired" },
+  { id: "closed", label: "Withdrawn or declined" },
+];
+const QUOTE_GROUP: Record<string, Exclude<QuoteShow, "all">> = { saved: "open", sent: "open", awaiting_approval: "open", accepted: "accepted", expired: "expired", withdrawn: "closed", declined: "closed", superseded: "closed" };
+const QUOTE_EMPTY: Record<Exclude<QuoteShow, "all">, string> = {
+  open: "No quote is saved or with a customer right now.",
+  accepted: "No quote has been accepted yet.",
+  expired: "No quote has expired.",
+  closed: "No quote has been withdrawn, declined or replaced.",
+};
+
 type View = "quotes" | "proposals" | "drafts";
 const VIEWS: { id: View; label: string }[] = [
   { id: "quotes", label: "Quotes" },
@@ -41,12 +58,14 @@ function shortDay(at: number) {
 export function QuotesProposalsScreen() {
   const { companyId } = useCompany();
   const quotes = useQuery(api.sales.quotes, { companyId });
-  const drafts = useQuery(api.sales.drafts, { companyId });
+  // Proposal drafts only, chosen before the list's limit: booking drafts are Internal Booking's.
+  const drafts = useQuery(api.sales.drafts, { companyId, mode: "proposal" });
   const proposals = useQuery(api.proposals.list, { companyId });
   const [view, setView] = useState<View>("quotes");
-  // Only proposal drafts still being prepared: booking drafts are Internal Booking's, and a proposal that was
-  // created is listed under Proposals.
+  const [quoteShow, setQuoteShow] = useState<QuoteShow>("all");
+  // Only proposal drafts still being prepared: a proposal that was created is listed under Proposals.
   const proposalDrafts = drafts?.filter((d) => d.mode === "proposal" && (d.status === "open" || d.status === "quoted"));
+  const shownQuotes = quotes?.filter((q) => quoteShow === "all" || QUOTE_GROUP[q.status] === quoteShow);
   return (
     <div className="min-w-0">
       <PageHeader
@@ -69,9 +88,10 @@ export function QuotesProposalsScreen() {
           </Link>
         </p>
       </div>
+      {view === "quotes" && quotes && quotes.length > 0 ? <SegmentedControl label="Quote status" hideLabel value={quoteShow} options={QUOTE_SHOWS} onChange={setQuoteShow} density="compact" className="mb-3" /> : null}
       {view === "quotes" ? (
         <Panel flush>
-          {quotes === undefined ? (
+          {quotes === undefined || shownQuotes === undefined ? (
             <Skeleton className="m-4 h-32" />
           ) : quotes.length === 0 ? (
             <p className="p-6 text-sm text-muted-foreground">
@@ -81,11 +101,13 @@ export function QuotesProposalsScreen() {
               </Link>{" "}
               with Save quote.
             </p>
+          ) : shownQuotes.length === 0 ? (
+            <p className="p-6 text-sm text-muted-foreground">{quoteShow === "all" ? "" : QUOTE_EMPTY[quoteShow]}</p>
           ) : (
             <ul className="divide-y divide-border">
-              {quotes.map((q) => (
+              {shownQuotes.map((q) => (
                 <li key={q._id}>
-                  <Link href={workspaceHref(q.draftId, "quotes")} className="group flex flex-wrap items-center gap-3 px-4 py-3 hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500">
+                  <Link href={workspaceHref(q.draftId, "saved-quote")} className="group flex flex-wrap items-center gap-3 px-4 py-3 hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500">
                     <div className="min-w-0 flex-1 basis-56">
                       <p className="truncate text-sm font-medium text-strong">{q.customer}</p>
                       <p className="truncate text-xs text-muted-foreground">

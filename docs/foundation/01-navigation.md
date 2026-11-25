@@ -126,8 +126,19 @@ workspace tells the sidebar which tab it belongs to from the draft's mode
 (`SALES_WORKSPACE_TAB` in `navigation.ts`, applied as an `owner` hint in
 `navigation-helpers.ts`), and changes it if the mode is switched. The back link
 returns to where the person came from (`?from=`: Internal Booking, Quotes &
-Proposals, Pipeline, a customer, Calendar, Dispatch or the Sales overview), and
-otherwise to the tab the draft belongs to (`src/lib/app/sales-workspace.ts`).
+Proposals, a saved quote, Pipeline, a customer, Calendar, Dispatch or the Sales
+overview), and otherwise to the tab the draft belongs to
+(`src/lib/app/sales-workspace.ts`). Internal Booking and the proposal lists in
+Quotes & Proposals are returned to only while the draft still belongs there: a
+booking switched to a proposal goes back to Quotes & Proposals, and the other
+way round. A saved quote (`from=saved-quote`) always returns to Quotes &
+Proposals, because the quote stays listed there whatever its draft becomes.
+
+Quotes & Proposals asks for proposal drafts only (`sales.drafts` with
+`mode: "proposal"`), so booking drafts never crowd them off its list.
+`/app/agents/sales/new` starts a draft for entry points that link rather than
+call (a customer, Calendar, Dispatch, Pipeline) under a key kept for that visit,
+so reloading it while the draft is made does not make a second one.
 
 ### What Dispatch's tabs must hold
 
