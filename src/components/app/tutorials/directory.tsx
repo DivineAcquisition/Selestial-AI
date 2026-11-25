@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * The help directory: every published migration tutorial, searchable and filterable by system. Opening one
+ * Help & tutorials: the getting-started setup guides first, then every published migration tutorial, searchable
+ * and filterable by system. Opening one
  * uses the same dialog as everywhere else. Unpublished tutorials are not listed; the platforms' own help
  * centers and migration help are offered beside the list instead.
  */
@@ -13,7 +14,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 import { PLATFORM_WORDS, TASK_WORDS, type Platform } from "../../../../convex/lib/tutorials/catalog";
-import { supportHref, useTutorials } from "./host";
+import { isSetupGuide, lengthWords, supportHref, useTutorials } from "./host";
+import { GettingStarted } from "./setup-help";
 import { SegmentedControl } from "@/components/ui/selection";
 
 const FILTERS: { id: Platform | "all"; label: string }[] = [
@@ -37,6 +39,7 @@ export function TutorialDirectory() {
   const shown = useMemo(() => {
     const words = query.trim().toLowerCase();
     return (published ?? []).filter((tutorial) => {
+      if (isSetupGuide(tutorial)) return false;
       if (platform !== "all" && tutorial.platform !== platform) return false;
       if (!words) return true;
       return [tutorial.title, tutorial.purpose, TASK_WORDS[tutorial.task], PLATFORM_WORDS[tutorial.platform], ...tutorial.steps].join(" ").toLowerCase().includes(words);
@@ -45,7 +48,9 @@ export function TutorialDirectory() {
 
   return (
     <div className="mx-auto grid w-full max-w-4xl gap-5">
-      <PageHeader title="Moving your records" lead="Short walkthroughs for getting your records out of another system and into Selestial." />
+      <PageHeader title="Help & tutorials" lead="Short videos for setting up Selestial, and for moving your records in from another system." />
+      <GettingStarted placement="help" />
+      <h2 className="mt-2 font-display text-lg font-semibold text-strong">Moving your records</h2>
       <div className="grid gap-3">
         <label className="relative block">
           <span className="sr-only">Search tutorials</span>
@@ -69,7 +74,7 @@ export function TutorialDirectory() {
                   </span>
                   <span className="font-medium text-strong">{tutorial.title}</span>
                   <span className="text-sm text-muted-foreground">{tutorial.purpose}</span>
-                  <span className="text-xs text-muted-foreground">{tutorial.media ? `${Math.max(1, Math.round(tutorial.media.durationSeconds / 60))} min video` : "Written steps"}</span>
+                  <span className="text-xs text-muted-foreground">{tutorial.media ? `${lengthWords(tutorial.media.durationSeconds)} video` : "Written steps"}</span>
                 </span>
               </button>
             </li>
@@ -77,7 +82,7 @@ export function TutorialDirectory() {
         </ul>
       ) : (
         <p className="rounded-2xl border border-border bg-card p-4 text-sm text-muted-foreground" role="status">
-          {(published ?? []).length ? "No tutorial matches that. Try another word, or choose All." : "Walkthroughs are being checked against each system and will appear here once verified. Until then, each system's own help center and migration help are below."}
+          {(published ?? []).some((tutorial) => !isSetupGuide(tutorial)) ? "No tutorial matches that. Try another word, or choose All." : "Walkthroughs are being checked against each system and will appear here once verified. Until then, each system's own help center and migration help are below."}
         </p>
       )}
 

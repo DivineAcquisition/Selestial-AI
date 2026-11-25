@@ -61,7 +61,7 @@ export function RecordImport({ kind, platform = null }: { kind: RecordKind; plat
   const placement = PLACEMENT[kind];
   const detected = file ? detectSource(file.header) : null;
   // GoHighLevel has no importer of its own: its export is read as a plain CSV, with columns matched on the mapping step.
-  const source = detected ?? (platform && platform !== "spreadsheet" && platform !== "gohighlevel" ? platform : "csv");
+  const source = detected ?? (platform && platform !== "spreadsheet" && platform !== "gohighlevel" && platform !== "selestial" ? platform : "csv");
   const rows = file ? file.rows.map((cells) => toRecordRow(cells, mapping)) : [];
   const missing = REQUIRED_FOR[kind].filter((field) => mapping[field] === undefined && !(field === "clientName" && (mapping.clientEmail !== undefined || mapping.clientPhone !== undefined)));
 

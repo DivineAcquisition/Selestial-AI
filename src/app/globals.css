@@ -3191,3 +3191,13 @@ textarea.bk-input {
     grid-template-rows: subgrid;
   }
 }
+
+/* Tutorial captions (src/components/app/tutorials/player.tsx): readable in a small dialog, on a phone and full screen. */
+.tutorial-video::cue {
+  font-size: clamp(14px, 2.4vw, 20px);
+  line-height: 1.35;
+  background: rgb(0 0 0 / 0.78);
+}
+:fullscreen .tutorial-video::cue {
+  font-size: clamp(20px, 2.6vw, 40px);
+}

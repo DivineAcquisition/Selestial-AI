@@ -1,0 +1,438 @@
+{
+  "tutorial": "setup-services",
+  "version": 2,
+  "title": "Build your services and pricing",
+  "voice": "default",
+  "mark": false,
+  "sampleData": "Juniper Cleaning Co. after tutorial 1 (seed.mjs company). Set up with Selestial drafts its services from the setup answers; amounts are examples until replaced.",
+  "scenes": [
+    {
+      "id": "title",
+      "narration": "Let's build your first service, so customers and your agents quote real prices.",
+      "capture": {
+        "kind": "card",
+        "eyebrow": "Setup guide · 2 of 6",
+        "title": "Build your services and pricing",
+        "body": "Add a service, price it, review it, and publish it so it can be booked.",
+        "left": "Juniper Cleaning Co. is a fictional demo company. Prices are examples.",
+        "seconds": 7
+      },
+      "minSeconds": 5
+    },
+    {
+      "id": "start",
+      "narration": "In Services and Pricing, choose Set up with Selestial. It drafts your services from what you told it during setup. Nothing goes live until you publish it.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/services",
+        "actions": [
+          {
+            "do": "highlight",
+            "target": "text=Set up what you sell >> xpath=..",
+            "note": "Drafted from your setup answers",
+            "ms": 2000
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "Set up with Selestial"
+            }
+          },
+          {
+            "do": "waitFor",
+            "target": "text=/drafts prepared from your setup/",
+            "cut": true,
+            "timeout": 60000
+          },
+          {
+            "do": "pause",
+            "ms": 1200
+          }
+        ]
+      },
+      "minSeconds": 9
+    },
+    {
+      "id": "drafts",
+      "narration": "Each draft starts on example prices, marked clearly. Open one, and Selestial lists exactly what only you can confirm before it can be published. Close it to make the prices yours.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/services",
+        "actions": [
+          {
+            "do": "highlight",
+            "target": "text=/still on example prices/ >> xpath=..",
+            "note": "Example prices, not yours yet",
+            "ms": 2200
+          },
+          {
+            "do": "highlight",
+            "target": "text=Standard clean >> nth=0 >> xpath=../..",
+            "ms": 1400
+          },
+          {
+            "do": "click",
+            "target": "text=Standard clean >> nth=0"
+          },
+          {
+            "do": "waitFor",
+            "target": "text=Only you can confirm these",
+            "cut": true
+          },
+          {
+            "do": "highlight",
+            "target": "text=Only you can confirm these >> xpath=..",
+            "note": "The example amounts only you can confirm",
+            "ms": 2600
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "Close",
+              "exact": true
+            }
+          },
+          {
+            "do": "pause",
+            "ms": 600
+          }
+        ]
+      },
+      "minSeconds": 9
+    },
+    {
+      "id": "pricing",
+      "narration": "This one is priced by bedrooms and bathrooms. Replace the example amounts with your own, and the usual job updates as you type.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/services",
+        "actions": [
+          {
+            "do": "click",
+            "target": "text=Standard clean >> nth=0"
+          },
+          {
+            "do": "clickIfVisible",
+            "target": {
+              "role": "button",
+              "name": "Close",
+              "exact": true
+            },
+            "cut": true,
+            "timeout": 6000
+          },
+          {
+            "do": "waitFor",
+            "target": {
+              "role": "button",
+              "name": "Review & publish"
+            },
+            "cut": true
+          },
+          {
+            "do": "scroll",
+            "target": {
+              "role": "textbox",
+              "name": "Base price"
+            }
+          },
+          {
+            "do": "scroll",
+            "y": 120
+          },
+          {
+            "do": "type",
+            "target": {
+              "role": "textbox",
+              "name": "Base price"
+            },
+            "text": "130",
+            "clear": true
+          },
+          {
+            "do": "type",
+            "target": {
+              "role": "textbox",
+              "name": "Each extra bedroom"
+            },
+            "text": "22",
+            "clear": true
+          },
+          {
+            "do": "type",
+            "target": {
+              "role": "textbox",
+              "name": "Each extra bathroom"
+            },
+            "text": "18",
+            "clear": true
+          },
+          {
+            "do": "click",
+            "target": "text=A usual job"
+          },
+          {
+            "do": "highlight",
+            "target": "text=A usual job >> xpath=..",
+            "note": "Updates as you type",
+            "ms": 2200
+          }
+        ]
+      },
+      "minSeconds": 10
+    },
+    {
+      "id": "team",
+      "narration": "Time and Team says how many cleaners a visit needs and how long it should run. Dispatch uses this when it staffs the job.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/services",
+        "actions": [
+          {
+            "do": "click",
+            "target": "text=Standard clean >> nth=0"
+          },
+          {
+            "do": "clickIfVisible",
+            "target": {
+              "role": "button",
+              "name": "Close",
+              "exact": true
+            },
+            "cut": true,
+            "timeout": 6000
+          },
+          {
+            "do": "waitFor",
+            "target": {
+              "role": "button",
+              "name": "Review & publish"
+            },
+            "cut": true
+          },
+          {
+            "do": "scroll",
+            "target": "text=Usual crew"
+          },
+          {
+            "do": "scroll",
+            "y": -80
+          },
+          {
+            "do": "highlight",
+            "target": "text=Usual crew >> xpath=..",
+            "note": "Crew size Dispatch staffs for",
+            "ms": 2400
+          },
+          {
+            "do": "pause",
+            "ms": 600
+          }
+        ]
+      },
+      "minSeconds": 8
+    },
+    {
+      "id": "review",
+      "narration": "Review and publish shows prices for example homes, and what publishing does. Booked visits keep their price, and a service isn't added to a booking form by publishing it.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/services",
+        "actions": [
+          {
+            "do": "click",
+            "target": "text=Standard clean >> nth=0"
+          },
+          {
+            "do": "clickIfVisible",
+            "target": {
+              "role": "button",
+              "name": "Close",
+              "exact": true
+            },
+            "cut": true,
+            "timeout": 6000
+          },
+          {
+            "do": "waitFor",
+            "target": {
+              "role": "button",
+              "name": "Review & publish"
+            },
+            "cut": true
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "Review & publish"
+            }
+          },
+          {
+            "do": "pause",
+            "ms": 900
+          },
+          {
+            "do": "highlight",
+            "target": "text=Example prices >> visible=true >> xpath=..",
+            "note": "Worked out from your prices",
+            "ms": 2400
+          },
+          {
+            "do": "scroll",
+            "target": "text=What publishing does >> visible=true"
+          },
+          {
+            "do": "highlight",
+            "target": "text=What publishing does >> visible=true >> xpath=..",
+            "ms": 2600
+          }
+        ]
+      },
+      "minSeconds": 11
+    },
+    {
+      "id": "publish",
+      "narration": "Confirm the prices are right for your market, say why you're making the change, then publish.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/services",
+        "actions": [
+          {
+            "do": "click",
+            "target": "text=Standard clean >> nth=0"
+          },
+          {
+            "do": "clickIfVisible",
+            "target": {
+              "role": "button",
+              "name": "Close",
+              "exact": true
+            },
+            "cut": true,
+            "timeout": 6000
+          },
+          {
+            "do": "waitFor",
+            "target": {
+              "role": "button",
+              "name": "Review & publish"
+            },
+            "cut": true
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "Review & publish"
+            }
+          },
+          {
+            "do": "pause",
+            "ms": 700
+          },
+          {
+            "do": "scroll",
+            "target": "text=These prices are right for my market"
+          },
+          {
+            "do": "click",
+            "target": "text=These prices are right for my market"
+          },
+          {
+            "do": "scroll",
+            "target": {
+              "role": "textbox",
+              "name": "Why this change"
+            }
+          },
+          {
+            "do": "type",
+            "target": {
+              "role": "textbox",
+              "name": "Why this change"
+            },
+            "text": "Our standard home clean, with our own prices.",
+            "delay": 25
+          },
+          {
+            "do": "pause",
+            "ms": 600
+          },
+          {
+            "do": "click",
+            "target": "button:text-is('Publish'):not([disabled]):visible"
+          },
+          {
+            "do": "waitFor",
+            "target": "text=It becomes the live version now"
+          },
+          {
+            "do": "pause",
+            "ms": 900
+          },
+          {
+            "do": "click",
+            "target": ":is([role=dialog],[role=alertdialog]) button:text-is('Publish')"
+          },
+          {
+            "do": "wait",
+            "ms": 2500
+          }
+        ]
+      },
+      "minSeconds": 9.5,
+      "speed": 2,
+      "tag": "Sped up 2×"
+    },
+    {
+      "id": "live",
+      "narration": "It's live, as version one. From now on, new quotes and new visits use it. Visits already booked keep the price they were booked with.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/services",
+        "actions": [
+          {
+            "do": "click",
+            "target": {
+              "role": "tab",
+              "name": "/^Live/"
+            }
+          },
+          {
+            "do": "pause",
+            "ms": 700
+          },
+          {
+            "do": "highlight",
+            "target": "text=Standard clean >> visible=true >> nth=0 >> xpath=../..",
+            "note": "Live, version 1",
+            "ms": 2600
+          },
+          {
+            "do": "pause",
+            "ms": 1000
+          }
+        ]
+      },
+      "minSeconds": 8,
+      "poster": true
+    },
+    {
+      "id": "next",
+      "narration": "Next, bring in your clients and the work you already have booked.",
+      "capture": {
+        "kind": "card",
+        "eyebrow": "Up next",
+        "title": "Bring in your clients and upcoming work",
+        "whereLabel": "In the sidebar:",
+        "where": "Clients & Properties",
+        "left": "Setup guide · 2 of 6",
+        "seconds": 7
+      },
+      "minSeconds": 5
+    }
+  ]
+}

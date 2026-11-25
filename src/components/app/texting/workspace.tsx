@@ -31,6 +31,7 @@ import { NumberStep } from "./step-number";
 import { PermissionStep } from "./step-permission";
 import { ProgressStep } from "./step-progress";
 import { ReviewStep } from "./step-review";
+import { SetupHelpCard } from "@/components/app/tutorials/setup-help";
 
 export const STEPS: { id: StepId; label: string; short: string }[] = [
   { id: "business", label: "Your business", short: "Business" },
@@ -131,6 +132,7 @@ export function TextingFrame() {
           <p className="mt-1.5 text-xs text-muted-foreground">
             US carriers ask every business that texts customers to register first. This is called A2P 10DLC (application-to-person texting on a regular 10-digit number). It shows carriers who you are and how people agree to your texts, so your messages are delivered instead of filtered.
           </p>
+          <SetupHelpCard tutorialId="setup-communication" placement="texting.setup" className="mt-3" />
         </div>
         <div className="flex items-center gap-2">
           <p className="text-xs text-muted-foreground" role="status" aria-live="polite">

@@ -34,6 +34,7 @@ import { WebsiteProgress } from "./prepare";
 import { PrepareBusiness } from "./business";
 import { BusinessInputs } from "./business-inputs";
 import type { Method, Priority } from "../../../../convex/lib/setup/schema";
+import { SetupHelpCard } from "@/components/app/tutorials/setup-help";
 
 type View = FunctionReturnType<typeof api.setup.state>;
 type Setup = NonNullable<View["setup"]>;
@@ -285,6 +286,7 @@ function Flow({ view, setup, onReload }: { view: View; setup: Setup; onReload: (
             {step.id === "start" ? (
               <>
                 <StepHeading eyebrow="Your company" title="How would you like to start?" lead="Choose one or more. You can change your mind at any point, and nothing is used until you have seen it." />
+                <SetupHelpCard tutorialId="setup-company" placement="setup.flow" continueLabel="Continue setup" />
                 <SelectionCards
                   type="multiple"
                   aria-label="Ways to start"

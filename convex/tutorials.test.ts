@@ -12,6 +12,7 @@ import { ADMIN, staffSetup } from "../tests/trustHarness";
 import { api } from "./_generated/api";
 import { NOT_FOUND } from "./lib/errors";
 import { matches, PLACEMENTS, TUTORIALS, tutorialById } from "./lib/tutorials/catalog";
+import { SETUP_TUTORIALS } from "./lib/tutorials/setup";
 
 const MEDIA = { version: 2, video: "https://media.example/t/v2.mp4", poster: "https://media.example/t/v2.jpg", captions: "https://media.example/t/v2.vtt", durationSeconds: 84 };
 
@@ -28,7 +29,7 @@ describe("The tutorial catalog", () => {
       // Nothing starts published in a release without the interface checked and the narration reviewed.
       if (tutorial.defaultState === "published") expect(tutorial.interfaceVerifiedOn && tutorial.transcript).toBeTruthy();
       // Every platform export tutorial ends by sending the owner back to Selestial.
-      if (tutorial.platform !== "spreadsheet" && tutorial.steps.length > 1) expect(tutorial.steps.at(-1), tutorial.id).toMatch(/Selestial/);
+      if (tutorial.platform !== "spreadsheet" && tutorial.platform !== "selestial" && tutorial.steps.length > 1) expect(tutorial.steps.at(-1), tutorial.id).toMatch(/Selestial/);
     }
   });
 
@@ -101,5 +102,74 @@ describe("Tutorial publication", () => {
 
     const metrics = await admin.query(api.tutorials.metrics, { days: 30 });
     expect(metrics.tutorials.find((item) => item.id === row.id)?.counts).toMatchObject({ opened: 1, reported_outdated: 1 });
+  });
+});
+
+describe("Setup guides", () => {
+  beforeEach(() => {
+    process.env.STAFF_BOOTSTRAP_EMAIL = ADMIN.email;
+  });
+  afterEach(() => {
+    delete process.env.STAFF_BOOTSTRAP_EMAIL;
+  });
+
+  it("are six ordered guides, each beside its task, with a next step inside the app", () => {
+    expect(SETUP_TUTORIALS.map((tutorial) => tutorial.order)).toEqual([1, 2, 3, 4, 5, 6]);
+    for (const tutorial of SETUP_TUTORIALS) {
+      expect(tutorial.platform, tutorial.id).toBe("selestial");
+      expect(TUTORIALS.some((row) => row.id === tutorial.id)).toBe(true);
+      // Offered beside the task and in both getting-started lists.
+      expect(tutorial.placements, tutorial.id).toEqual(expect.arrayContaining(["help", "home.getting_started"]));
+      expect(tutorial.placements.length, tutorial.id).toBeGreaterThan(2);
+      // The next step is a screen in Selestial, never a page elsewhere.
+      expect(tutorial.action.kind === "open" && tutorial.action.href.startsWith("/app"), tutorial.id).toBe(true);
+      // A release never publishes one: staff do, after review.
+      expect(tutorial.defaultState, tutorial.id).toBe("draft");
+      // A video's words are its transcript: no transcript without the steps having been followed and recorded.
+      if (tutorial.transcript) expect(tutorial.interfaceVerifiedOn, tutorial.id).toBeTruthy();
+    }
+    // Whatever system the owner came from, a setup guide fits.
+    expect(matches(tutorialById("setup-company")!, "setup.flow", "jobber")).toBe(true);
+  });
+
+  it("say a task is done only from the company's records, never from watching", async () => {
+    const t = start();
+    const { admin } = await staffSetup(t);
+    const { as, companyId } = await company(t, "owner-a", "Alpha Cleaning");
+    const done = async () => Object.fromEntries((await as.query(api.tutorials.setupStatus, { companyId })).map((row) => [row.id, row.done]));
+    expect(Object.values(await done()).every((value) => value === false)).toBe(true);
+
+    // Watching the whole video changes nothing.
+    await admin.mutation(api.tutorials.setMedia, { tutorialId: "setup-company", media: MEDIA });
+    await admin.mutation(api.tutorials.setState, { tutorialId: "setup-company", state: "published" });
+    for (const kind of ["opened", "play_started", "play_completed", "action_selected"] as const) await as.mutation(api.tutorials.track, { companyId, tutorialId: "setup-company", kind, placement: "settings.business" });
+    expect((await done())["setup-company"]).toBe(false);
+
+    // Saving a service area does.
+    const business = await as.query(api.settings.business, { companyId });
+    await as.mutation(api.settings.saveBusiness, { companyId, expectedRevision: business.revision, name: business.name, timezone: business.timezone, serviceAreas: ["78701"], hours: business.hours, services: business.services });
+    expect(await done()).toMatchObject({ "setup-company": true, "setup-services": false, "setup-clients": false });
+
+    // Another company's records never count.
+    const other = await company(t, "owner-b", "Beta Cleaning");
+    expect((await other.as.query(api.tutorials.setupStatus, { companyId: other.companyId })).every((row) => !row.done)).toBe(true);
+    expect(await refusal(other.as.query(api.tutorials.setupStatus, { companyId }))).toBe(NOT_FOUND);
+  });
+
+  it("are recorded and reviewed, and reach owners with their video once staff publish them", async () => {
+    // Every guide was followed in the app and its narration reviewed: both are required to publish a video.
+    for (const tutorial of SETUP_TUTORIALS) {
+      expect(tutorial.interfaceVerifiedOn, tutorial.id).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(tutorial.transcript?.length ?? 0, tutorial.id).toBeGreaterThan(200);
+    }
+    const t = start();
+    const { admin } = await staffSetup(t);
+    const { as, companyId } = await company(t, "owner-a", "Alpha Cleaning");
+    await admin.mutation(api.tutorials.setMedia, { tutorialId: "setup-agents", media: { ...MEDIA, transcript: "https://media.example/t/v2.txt" } });
+    await admin.mutation(api.tutorials.setState, { tutorialId: "setup-agents", state: "published" });
+    const shown = await as.query(api.tutorials.published, { companyId });
+    expect(shown.map((row) => [row.id, row.guide, row.media?.transcript])).toEqual([["setup-agents", "walkthrough", "https://media.example/t/v2.txt"]]);
+    // A transcript address must be https or on Selestial's own site.
+    await expect(admin.mutation(api.tutorials.setMedia, { tutorialId: "setup-company", media: { ...MEDIA, transcript: "ftp://media.example/t.txt" } })).rejects.toThrow(/https/);
   });
 });

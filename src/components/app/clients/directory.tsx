@@ -32,6 +32,7 @@ import { ActionMenu } from "./menu";
 import { rememberScroll, takeScroll, useDirectoryState, viewOf, type DirectoryState } from "./state";
 import { Checkbox, Select, tableSelection } from "@/components/ui/selection";
 import { PageHeader } from "@/components/app/layout";
+import { SetupHelpCard } from "@/components/app/tutorials/setup-help";
 
 type Overview = FunctionReturnType<typeof api.clients.overview>;
 type Row = FunctionReturnType<typeof api.clients.directory>["page"][number];
@@ -93,6 +94,7 @@ export function ClientsScreen() {
           </>
         }
       />
+      <SetupHelpCard tutorialId="setup-clients" placement="clients.directory" />
 
       {overview?.needsPrepare ? <PrepareDirectory /> : null}
       <AttentionStrip overview={overview} active={state.attention as Attention | undefined} onPick={(attention) => update({ attention: state.attention === attention ? undefined : attention, view: attention ? "all" : state.view })} />

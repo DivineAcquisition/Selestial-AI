@@ -22,7 +22,7 @@ const dir = buildDir(board);
 const media = JSON.parse(readFileSync(join(dir, "media.json"), "utf8"));
 if (!process.env.BLOB_READ_WRITE_TOKEN) throw new Error("Set BLOB_READ_WRITE_TOKEN for the tutorial media store.");
 
-const TYPES = { video: "video/mp4", poster: "image/jpeg", captions: "text/vtt" };
+const TYPES = { video: "video/mp4", poster: "image/jpeg", captions: "text/vtt", transcript: "text/plain; charset=utf-8" };
 const urls = {};
 for (const [kind, file] of Object.entries(media.files)) {
   const blob = await put(`tutorials/${id}/v${board.version}/${file}`, readFileSync(join(dir, file)), {
@@ -36,4 +36,4 @@ for (const [kind, file] of Object.entries(media.files)) {
   urls[kind] = blob.url;
   console.log(`+ ${kind}: ${blob.url}`);
 }
-console.log(JSON.stringify({ version: board.version, video: urls.video, poster: urls.poster, captions: urls.captions, durationSeconds: media.durationSeconds }, null, 2));
+console.log(JSON.stringify({ version: board.version, video: urls.video, poster: urls.poster, captions: urls.captions, durationSeconds: media.durationSeconds, ...(urls.transcript ? { transcript: urls.transcript } : {}) }, null, 2));

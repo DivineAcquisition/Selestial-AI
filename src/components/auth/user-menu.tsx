@@ -4,7 +4,7 @@ import { useClerk, useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
-import { KeyIcon, SignOutIcon } from "@/components/icons";
+import { KeyIcon, PlayCircle, SignOutIcon } from "@/components/icons";
 import { AUTH } from "@/lib/auth/routes";
 
 function initials(name: string): string {
@@ -63,6 +63,10 @@ export function UserMenu() {
           <Link role="menuitem" href="/app/settings/security" onClick={() => setOpen(false)} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-strong hover:bg-muted focus-visible:bg-muted focus-visible:outline-none">
             <KeyIcon className="size-4 text-muted-foreground" aria-hidden />
             Security
+          </Link>
+          <Link role="menuitem" href="/app/help" onClick={() => setOpen(false)} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-strong hover:bg-muted focus-visible:bg-muted focus-visible:outline-none">
+            <PlayCircle className="size-4 text-muted-foreground" aria-hidden />
+            Help &amp; tutorials
           </Link>
           <button
             type="button"

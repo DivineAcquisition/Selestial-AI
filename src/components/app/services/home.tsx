@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { api } from "../../../../convex/_generated/api";
 import { CATEGORY_LABELS } from "../../../../convex/lib/services/spec";
 import { Empty, Notice, when } from "./shared";
+import { SetupHelpCard } from "@/components/app/tutorials/setup-help";
 
 type Catalog = NonNullable<ReturnType<typeof useQuery<typeof api.services.catalog>>>;
 type Row = Catalog["services"][number];
@@ -52,6 +53,7 @@ export function ServicesHome() {
   const waiting = catalog.counts.waiting;
   return (
     <div className="grid grid-cols-1 gap-5">
+      <SetupHelpCard tutorialId="setup-services" placement="services.home" />
       {catalog.canDraft ? <PreparedLead catalog={catalog} prep={prep ?? null} start={start ?? null} /> : null}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div role="tablist" aria-label="Show" className="inline-flex rounded-xl border border-border bg-card p-1">
@@ -333,6 +335,7 @@ function FirstTime({ catalog, start, prep }: { catalog: Catalog; start: Start | 
         {start ? <PricingPaths start={start} /> : null}
         {start ? <KnownFacts start={start} /> : null}
       </section>
+      <SetupHelpCard tutorialId="setup-services" placement="services.home" />
     </div>
   );
 }

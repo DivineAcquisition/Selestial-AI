@@ -2,13 +2,14 @@
 
 import { MigrationBanner } from "@/components/app/migration/entry";
 import { SetupChecklist } from "@/components/app/setup/checklist";
+import { GettingStarted } from "@/components/app/tutorials/setup-help";
 import { useUser } from "@clerk/nextjs";
 import { useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { Suspense, useState } from "react";
 
 import { IssueCards } from "@/components/app/issues/issue-cards";
-import { useCompany } from "@/components/app/company";
+import { canManage, useCompany } from "@/components/app/company";
 import { useDetail } from "@/components/app/detail-panel";
 import { messageOf } from "@/components/app/form";
 import { AgentsWorking } from "@/components/app/activation/home";
@@ -42,7 +43,7 @@ export function useApprove() {
 }
 
 export function OverviewScreen() {
-  const { companyId, timezone } = useCompany();
+  const { companyId, timezone, role } = useCompany();
   const { user } = useUser();
   const now = useNow();
   const open = useDetail();
@@ -83,6 +84,7 @@ export function OverviewScreen() {
         <>
           <MigrationBanner />
           <SetupChecklist />
+          {canManage(role) ? <GettingStarted placement="home.getting_started" compact /> : null}
         </>
       }
       attention={<IssueCards place="home" />}

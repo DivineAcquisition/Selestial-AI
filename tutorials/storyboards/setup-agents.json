@@ -1,0 +1,286 @@
+{
+  "tutorial": "setup-agents",
+  "version": 2,
+  "title": "Put your agents to work",
+  "voice": "default",
+  "mark": false,
+  "sampleData": "Juniper Cleaning Co. after tutorial 1 (seed.mjs company). Activation is started for real in the demo backend; it uses no AI credits and sends nothing. The result shown is the role draft Recruiter actually produced.",
+  "scenes": [
+    {
+      "id": "title",
+      "narration": "Let's put your agents to work, and see where their results and your decisions show up.",
+      "capture": {
+        "kind": "card",
+        "eyebrow": "Setup guide · 6 of 6",
+        "title": "Put your agents to work",
+        "body": "Choose how much each agent may do on its own, start their first work, and review what they made.",
+        "left": "Juniper Cleaning Co. is a fictional demo company.",
+        "seconds": 7
+      },
+      "minSeconds": 5
+    },
+    {
+      "id": "controls",
+      "narration": "In Settings, Agent permissions, you decide how much each agent may do on its own. For every action: ask me first, act and notify me, or act automatically. Actions that need something first, like a texting number, say exactly what.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/settings/agents",
+        "actions": [
+          {
+            "do": "highlight",
+            "target": "text=Review first >> xpath=..",
+            "note": "Start where everything asks you first",
+            "ms": 2200
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "/Actions and boundaries/",
+              "nth": 2
+            }
+          },
+          {
+            "do": "pause",
+            "ms": 900
+          },
+          {
+            "do": "scroll",
+            "target": "text=Send the first offers for a visit"
+          },
+          {
+            "do": "scroll",
+            "y": -60
+          },
+          {
+            "do": "highlight",
+            "target": "text=Ask me first >> visible=true >> nth=0",
+            "note": "The level for this action",
+            "ms": 2400
+          },
+          {
+            "do": "highlight",
+            "target": "text=Blocked: >> visible=true >> nth=0",
+            "note": "What it needs first",
+            "ms": 2400
+          }
+        ]
+      },
+      "minSeconds": 13
+    },
+    {
+      "id": "start",
+      "narration": "On Home, choose Review and start, and pick what to focus on first. Here, hiring. Each task says what you'll get, what it's allowed to do, and what it reads.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app",
+        "actions": [
+          {
+            "do": "highlight",
+            "target": "text=Start my first agent tasks",
+            "ms": 1400
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "/Review and start/"
+            }
+          },
+          {
+            "do": "waitFor",
+            "target": {
+              "role": "dialog"
+            },
+            "cut": true
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "radio",
+              "name": "/Hire cleaners/"
+            }
+          },
+          {
+            "do": "pause",
+            "ms": 900
+          },
+          {
+            "do": "scroll",
+            "target": "[role=dialog] >> text=Draft your hiring role and application"
+          },
+          {
+            "do": "highlight",
+            "target": "[role=dialog] >> text=You'll get >> nth=0 >> xpath=../..",
+            "note": "What it makes, may do and reads",
+            "ms": 2800
+          }
+        ]
+      },
+      "minSeconds": 10
+    },
+    {
+      "id": "run",
+      "narration": "Choose Start my agents. They work in the background, within the permissions you set. Each task shows where it is, and when it's waiting, exactly what for.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app",
+        "actions": [
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "/Review and start/"
+            }
+          },
+          {
+            "do": "waitFor",
+            "target": {
+              "role": "dialog"
+            },
+            "cut": true
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "radio",
+              "name": "/Hire cleaners/"
+            }
+          },
+          {
+            "do": "highlight",
+            "target": {
+              "role": "button",
+              "name": "Start my agents"
+            },
+            "ms": 1000
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "Start my agents"
+            }
+          },
+          {
+            "do": "waitFor",
+            "target": "text=Ready for review >> visible=true",
+            "timeout": 60000
+          },
+          {
+            "do": "pause",
+            "ms": 800
+          },
+          {
+            "do": "highlight",
+            "target": "text=Waiting for connection >> visible=true >> nth=0",
+            "note": "Says what it's waiting for",
+            "ms": 2400
+          }
+        ]
+      },
+      "minSeconds": 10
+    },
+    {
+      "id": "result",
+      "narration": "Open a result to review it. Recruiter drafted a cleaner role and application from your setup answers. It isn't published, and the pay is yours to approve.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app",
+        "actions": [
+          {
+            "do": "scroll",
+            "target": "text=Draft your hiring role and application >> visible=true"
+          },
+          {
+            "do": "highlight",
+            "target": "text=Left pay unset >> visible=true",
+            "ms": 1600
+          },
+          {
+            "do": "click",
+            "target": "a[href*='hiring-setup']:has-text('Open') >> nth=0"
+          },
+          {
+            "do": "waitFor",
+            "target": "text=Draft, not published",
+            "cut": true
+          },
+          {
+            "do": "highlight",
+            "target": "text=Pay not approved yet",
+            "note": "Pay is your decision",
+            "ms": 2000
+          },
+          {
+            "do": "highlight",
+            "target": "text=Draft, not published",
+            "ms": 1800
+          }
+        ]
+      },
+      "minSeconds": 10,
+      "poster": true
+    },
+    {
+      "id": "decisions",
+      "narration": "When an agent needs a decision, it waits in Approvals. The bell keeps you posted on what your agents did.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app",
+        "actions": [
+          {
+            "do": "highlight",
+            "target": {
+              "role": "link",
+              "name": "/^Approvals/"
+            },
+            "ms": 1400
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "link",
+              "name": "/^Approvals/"
+            }
+          },
+          {
+            "do": "wait",
+            "ms": 1500,
+            "cut": true
+          },
+          {
+            "do": "pause",
+            "ms": 1200
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "/^Notifications/"
+            }
+          },
+          {
+            "do": "pause",
+            "ms": 2600
+          }
+        ]
+      },
+      "minSeconds": 7
+    },
+    {
+      "id": "next",
+      "narration": "That's the essentials. You'll find these guides again under Help and tutorials, in your account menu.",
+      "capture": {
+        "kind": "card",
+        "eyebrow": "You're set up",
+        "title": "Help is always one click away",
+        "whereLabel": "Account menu:",
+        "where": "Help & tutorials",
+        "left": "Setup guide · 6 of 6",
+        "seconds": 6
+      },
+      "minSeconds": 5
+    }
+  ]
+}

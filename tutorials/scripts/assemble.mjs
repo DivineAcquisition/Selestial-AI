@@ -27,6 +27,19 @@ const H = 1080;
 const FPS = 30;
 const LEAD = 0.4; // seconds of picture before the voice starts
 const TAIL = 0.9; // and after it ends, to read the screen
+// A short crossfade between scenes, inside the silent lead and tail, so no word is faded. 0 for hard cuts.
+const FADE = board.transition === "cut" ? 0 : 0.3;
+
+/** A font for labels drawn at assembly ("Sped up 1.5×"): Inter where installed, else the system sans. */
+const LABEL_FONT = (() => {
+  try {
+    return execFileSync("fc-match", ["-f", "%{file}", "Inter:weight=600"]).toString().trim();
+  } catch {
+    return "";
+  }
+})();
+/** ffmpeg drawtext needs its text escaped. */
+const drawable = (text) => text.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\u2019").replace(/%/g, "\\%");
 
 const probe = (file) => Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file]).toString().trim());
 
@@ -65,8 +78,10 @@ const scenes = board.scenes.map((scene) => {
   const clip = clipOf(scene);
   const spans = keptSpans(scene, clip);
   const footage = spans.reduce((sum, [a, b]) => sum + (b - a), 0) / (scene.speed ?? 1);
-  const length = Math.max(narration.duration + LEAD + TAIL, scene.minSeconds ?? 0);
-  if (footage > length + 4) console.warn(`! ${scene.id}: ${footage.toFixed(1)}s of footage for ${length.toFixed(1)}s of narration; the end is cut. Trim it with "out" or speed it with "speed".`);
+  // A scene lasts as long as its narration (plus a breath), or its footage if that is longer: the end of a
+  // recording is usually the result, so it is never cut. Footage much longer than its words is flagged.
+  const length = Math.max(narration.duration + LEAD + TAIL, scene.minSeconds ?? 0, footage);
+  if (footage > narration.duration + LEAD + TAIL + 4) console.warn(`! ${scene.id}: ${footage.toFixed(1)}s of footage for ${narration.duration.toFixed(1)}s of narration; consider "speed" (with a "tag") or trimming with "out".`);
   return { scene, narration, clip, spans, length };
 });
 
@@ -75,6 +90,8 @@ const inputs = [];
 const filters = [];
 let start = 0;
 const timeline = [];
+// The small corner mark is optional: the setup guides show Selestial's own screens and branded cards already.
+const mark = board.mark !== false;
 const logo = join(ROOT, "public/brand/selestial-logo-white.png");
 const logoInput = scenes.length * 2;
 
@@ -93,41 +110,63 @@ scenes.forEach(({ scene, clip, spans, length }, i) => {
   const zoomChain = f
     ? `,scale=w='trunc(${W}*${z}/2)*2':h='trunc(${H}*${z}/2)*2':eval=frame,crop=${W}:${H}:x='min(max(${cx}*iw/${W}-${W}/2\\,0)\\,iw-${W})':y='min(max(${cy}*ih/${H}-${H}/2\\,0)\\,ih-${H})'`
     : "";
+  // A scene played faster carries a visible label for its whole length, unless the recording drew one already.
+  const label = scene.tag
+    ? `,drawtext=${LABEL_FONT ? `fontfile='${LABEL_FONT}':` : ""}text='${drawable(scene.tag)}':fontsize=27:fontcolor=white:box=1:boxcolor=0x1c1530@0.88:boxborderw=14|20:x=w-tw-46:y=34`
+    : "";
   filters.push(
     ...parts,
     joined,
-    `[s${i}j]setpts=PTS/${speed},fps=${FPS},scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=0x0b0b14,setsar=1${zoomChain},tpad=stop_mode=clone:stop_duration=${length.toFixed(3)},trim=duration=${length.toFixed(3)},setpts=PTS-STARTPTS[v${i}]`,
+    `[s${i}j]setpts=PTS/${speed},fps=${FPS},scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=0x0b0b14,setsar=1${zoomChain},tpad=stop_mode=clone:stop_duration=${length.toFixed(3)},trim=duration=${length.toFixed(3)},setpts=PTS-STARTPTS${label}[v${i}]`,
     `[${v + 1}:a]aresample=48000,adelay=${Math.round(LEAD * 1000)}:all=1,apad,atrim=duration=${length.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`,
   );
   timeline.push({ id: scene.id, start, length });
-  start += length;
+  // Each crossfade overlaps the next scene with this one's silent tail.
+  start += length - FADE;
 });
-inputs.push("-loop", "1", "-i", logo);
-filters.push(
-  `${scenes.map((_, i) => `[v${i}][a${i}]`).join("")}concat=n=${scenes.length}:v=1:a=1[vc][ac]`,
-  // A small, quiet mark in the corner: branding, not a banner.
-  `[${logoInput}:v]scale=150:-1,format=rgba,colorchannelmixer=aa=0.55[logo]`,
-  `[vc][logo]overlay=x=W-w-36:y=H-h-30:shortest=1,format=yuv420p[vout]`,
-  `[ac]loudnorm=I=-16:TP=-1.5:LRA=11[aout]`,
-);
+if (FADE > 0 && scenes.length > 1) {
+  // Picture: each xfade starts FADE seconds before the accumulated end. Sound: the same overlap, over silence.
+  let acc = scenes[0].length;
+  let vLabel = "v0";
+  let aLabel = "a0";
+  for (let i = 1; i < scenes.length; i++) {
+    const offset = acc - FADE;
+    filters.push(`[${vLabel}][v${i}]xfade=transition=fade:duration=${FADE}:offset=${offset.toFixed(3)}[vx${i}]`, `[${aLabel}][a${i}]acrossfade=d=${FADE}:c1=tri:c2=tri[ax${i}]`);
+    vLabel = `vx${i}`;
+    aLabel = `ax${i}`;
+    acc = offset + scenes[i].length;
+  }
+  filters.push(`[${vLabel}]null[vc]`, `[${aLabel}]anull[ac]`);
+} else filters.push(`${scenes.map((_, i) => `[v${i}][a${i}]`).join("")}concat=n=${scenes.length}:v=1:a=1[vc][ac]`);
+if (mark) {
+  inputs.push("-loop", "1", "-i", logo);
+  filters.push(
+    // A small, quiet mark in the corner: branding, not a banner.
+    `[${logoInput}:v]scale=150:-1,format=rgba,colorchannelmixer=aa=0.55[logo]`,
+    `[vc][logo]overlay=x=W-w-36:y=H-h-30:shortest=1,format=yuv420p[vout]`,
+  );
+} else filters.push(`[vc]format=yuv420p[vout]`);
+filters.push(`[ac]loudnorm=I=-16:TP=-1.5:LRA=11[aout]`);
 
 const output = join(dir, "tutorial.mp4");
 execFileSync("ffmpeg", ["-y", "-v", "error", ...inputs, "-filter_complex", filters.join(";"), "-map", "[vout]", "-map", "[aout]", "-c:v", "libx264", "-preset", "slow", "-crf", "20", "-profile:v", "high", "-r", String(FPS), "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", output], { stdio: "inherit" });
 
 // ── Captions from the voice's own timings ───────────────────────────────────────────────────────
 const lines = ["WEBVTT", ""];
-let n = 1;
-scenes.forEach(({ scene, narration }, i) => {
-  for (const cue of cues(scene.narration, narration.alignment)) {
-    lines.push(String(n++), `${vttTime(timeline[i].start + LEAD + cue.start)} --> ${vttTime(timeline[i].start + LEAD + cue.end + 0.25)}`, cue.text, "");
-  }
+const all = scenes.flatMap(({ scene, narration }, i) => cues(scene.narration, narration.alignment).map((cue) => ({ text: cue.text, start: timeline[i].start + LEAD + cue.start, end: timeline[i].start + LEAD + cue.end })));
+all.forEach((cue, n) => {
+  // Each cue lingers a quarter second to be read, but never into the next one.
+  const end = Math.min(cue.end + 0.25, all[n + 1]?.start ?? Infinity);
+  lines.push(String(n + 1), `${vttTime(cue.start)} --> ${vttTime(end)}`, cue.text, "");
 });
 writeFileSync(join(dir, "captions.vtt"), lines.join("\n"));
+// The searchable plain-text transcript: the narration as spoken, one scene per paragraph.
+writeFileSync(join(dir, "transcript.txt"), `${board.title}\n\n${board.scenes.map((scene) => scene.narration).join("\n\n")}\n`);
 
 const posterScene = timeline[Math.max(0, board.scenes.findIndex((scene) => scene.poster))];
-execFileSync("ffmpeg", ["-y", "-v", "error", "-ss", (posterScene.start + Math.min(2, posterScene.length - 0.2)).toFixed(2), "-i", output, "-frames:v", "1", "-q:v", "3", join(dir, "poster.jpg")]);
+execFileSync("ffmpeg", ["-y", "-v", "error", "-ss", (posterScene.start + Math.min(2, posterScene.length - 0.2)).toFixed(2), "-i", output, "-frames:v", "1", "-vf", "scale=1280:-2:flags=lanczos", "-q:v", "4", join(dir, "poster.jpg")]);
 
 const duration = probe(output);
-const media = { version: board.version, durationSeconds: Math.round(duration * 10) / 10, files: { video: "tutorial.mp4", poster: "poster.jpg", captions: "captions.vtt" }, timeline };
+const media = { version: board.version, durationSeconds: Math.round(duration * 10) / 10, files: { video: "tutorial.mp4", poster: "poster.jpg", captions: "captions.vtt", transcript: "transcript.txt" }, timeline };
 writeFileSync(join(dir, "media.json"), JSON.stringify(media, null, 1));
 console.log(`${output} · ${duration.toFixed(1)}s`);

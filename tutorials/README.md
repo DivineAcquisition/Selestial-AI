@@ -1,6 +1,7 @@
-# Migration tutorial production
+# Tutorial production
 
-How Selestial's narrated migration tutorials are made, checked and updated. The tutorials themselves (steps,
+How Selestial's narrated tutorials are made, checked and updated: the migration tutorials (this page) and the six
+setup guides (`SETUP-SERIES.md`, which records them from a local demo environment). The tutorials themselves (steps,
 sources, placements, transcript, media) are in `convex/lib/tutorials/catalog.ts`; publication state and media
 versions are changed by staff at **/staff/tutorials** without a release.
 
@@ -13,7 +14,8 @@ versions are changed by staff at **/staff/tutorials** without a release.
 - One task per tutorial, about 60 to 120 seconds, no long intro, no music, no promotional outro. The last line
   is the next step: "Return to Selestial and upload the file you just downloaded."
 - The voice is ElevenLabs **Eric** (`cjVigY5qzO86Huf0OWal`, `eleven_multilingual_v2`), chosen by the Owner on
-  November 20, 2026. It is a stock synthetic voice: no cloning.
+  November 20, 2026. It is a stock synthetic voice: no cloning. Its configuration, and how words are pronounced,
+  is in `voice/voice.json`; a storyboard with `"voice": "default"` uses it.
 - Narration is generated here, during production. The ElevenLabs key never goes into the app.
 
 ## Steps
