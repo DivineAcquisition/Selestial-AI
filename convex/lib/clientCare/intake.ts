@@ -22,7 +22,7 @@ import { allow } from "../rateLimit";
 import { noteStatedWish } from "../retention/continuity";
 import { writersAt } from "./context";
 import { withholdAccess, type Intent, type Reading } from "./read";
-import { addEntry, CARE, isOpen, moveRequest, openRequest, openRequestsFor, recentRequestsFor, reopenRequest, type Request } from "./requests";
+import { addEntry, CARE, cancelOpenSteps, isOpen, moveRequest, openRequest, openRequestsFor, recentRequestsFor, reopenRequest, type Request } from "./requests";
 import type { Authority, CareCategory } from "./schema";
 import { careSettings } from "./settings";
 import { advance } from "./workflows";
@@ -170,7 +170,9 @@ export async function applyReading(ctx: MutationCtx, company: Doc<"companies">, 
     if (asking && touched.has(asking._id) && asking.category === intent.category) continue;
     const same = open.find((row) => row.category === intent.category && !touched.has(row._id));
     if (same) {
-      // A reply on a request already open: its ask is updated with what is new, and anything prepared on the old one is checked again.
+      // A reply on a request already open: its ask is updated with what is new, and anything prepared on the old one is set aside,
+      // its approval withdrawn, so an outdated approval can never be carried out.
+      await cancelOpenSteps(ctx, same, `${authority.name} changed the request before it was carried out.`);
       const updated = await moveRequest(ctx, await received(same, intent.words), { ask: { ...same.ask, ...intent.ask }, material: true, clear: ["pending"], status: "in_progress" });
       touched.set(updated._id, { request: updated, text: intent.words, answer: false });
       continue;
@@ -205,7 +207,12 @@ export async function applyReading(ctx: MutationCtx, company: Doc<"companies">, 
   // Words that raise nothing Care recognises: a reply on the open request waiting for the client, or a message for a person.
   if (touched.size === 0) {
     const waiting = open.find((row) => row.status === "waiting_customer") ?? open[0];
-    if (waiting) {
+    // "Still not fixed" names no request type: it is about the request most recently resolved on this thread.
+    const undone = !waiting && UNDONE.test(message.text) ? recent.find((row) => !isOpen(row) && row.status === "resolved" && row.conversation.address === message.from) : undefined;
+    if (undone) {
+      const reopened = await reopenRequest(ctx, await received(undone, message.text), `${authority.name} wrote again: "${message.text.slice(0, 160)}"`);
+      touched.set(reopened._id, { request: reopened, text: message.text, answer: false });
+    } else if (waiting) {
       const request = await moveRequest(ctx, await received(waiting, message.text), { status: "in_progress", material: true });
       touched.set(request._id, { request, text: message.text, answer: false });
     } else {

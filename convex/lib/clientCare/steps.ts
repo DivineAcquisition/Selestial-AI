@@ -369,7 +369,9 @@ async function settled(ctx: MutationCtx, step: Step, message?: Doc<"messages">) 
       ? "It is not known whether Client Care's message went. It was not sent again. Check with the client before sending another."
       : `Client Care's message did not go: ${partsDetail(step, "notify") ?? "it could not be sent"}.`;
   await addEntry(ctx, request, { kind: "problem", text: problem, ...(message ? { source: { table: "messages", id: message._id, label: "Message" } } : {}) });
-  await moveRequest(ctx, request.status === "resolved" ? request : request, { status: "waiting_owner", waiting: { on: "owner", reason: problem, since: Date.now() }, blocker: problem, nextAction: step.status === "partial" && notify === "failed" ? "Retry the message, or reach the client another way." : "Reach the client yourself, or fix what stopped the message and retry it." });
+  // What the request already needed a person for stays in view beside the message problem.
+  const blocker = request.blocker && !request.blocker.includes(problem) ? `${problem} Before that: ${request.blocker}` : problem;
+  await moveRequest(ctx, request, { status: "waiting_owner", waiting: { on: "owner", reason: problem, since: Date.now() }, blocker: blocker.slice(0, 900), nextAction: step.status === "partial" && notify === "failed" ? "Retry the message, or reach the client another way." : "Reach the client yourself, or fix what stopped the message and retry it." });
   await recordEvent(ctx, { companyId: request.companyId, type: "care_request.needs_attention", actor: CARE, subject: { table: "careRequests", id: request._id }, data: { kind: "message_failed" } });
 }
 

@@ -20,6 +20,7 @@ import { money } from "../dispatch/pay";
 import { planMove } from "../dispatch/reschedule";
 import { invoiceState, STATE_WORDS } from "../finance/invoiceState";
 import { seal, unseal } from "../recruiter/secrets";
+import { addEntry as addCaseEntry } from "../retention/cases";
 import { loadPlan, previewPlanChange } from "../retention/planChanges";
 import { checkCapacity } from "../sales/capacity";
 import { fileInquiry } from "../sales/intake";
@@ -452,6 +453,15 @@ async function complaint(ctx: Ctx, w: W) {
   const { request, company } = w;
   const tz = company.timezone;
   const serious = request.ask.serious ?? null;
+  // The concern is already with Quality and Retention: what the client adds goes on the case, and they hear one short update.
+  if (request.retentionCaseId) {
+    const row = await ctx.db.get(request.retentionCaseId);
+    if (row && row.status !== "closed") {
+      await addCaseEntry(ctx, row, { kind: "evidence", basis: "customer_stated", text: "The client wrote again about this concern (through Client Care).", quote: w.text.slice(0, 600), actor: CARE });
+      const fresh = await moveRequest(ctx, request, { status: "waiting_team", waiting: request.waiting ?? { on: "team", reason: "Quality is reviewing the visit; Retention prepares any remedy.", who: "Quality and Retention", since: w.now } });
+      return say(ctx, { ...w, request: fresh }, `complaint-more:${w.now}`, "care.complaint_intake", compose(w.voice, `Thanks, I've added that to the review.${fresh.promised ? ` I'll update you by ${clock(fresh.promised.by, tz)} ${localParts(fresh.promised.by, tz).day === localParts(w.now, tz).day ? "today" : dayName(fresh.promised.by, tz)}.` : ""}`), {}, `Tell ${request.authority.name} their words were added to the review`);
+    }
+  }
   const recent = (
     await ctx.db
       .query("jobs")
