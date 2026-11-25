@@ -42,6 +42,8 @@ export default async function proxy(request: NextRequest, event: NextFetchEvent)
 
   // Until sign-in is connected there is no session to check, and the pages say so themselves.
   const connected = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY);
+  // The founding host's root shows the founding page. It holds no session, so Clerk is not consulted.
+  if (decision.kind === "rewrite") return NextResponse.rewrite(new URL(decision.to, request.url));
   const response = (connected ? await withSession(request, event) : null) ?? NextResponse.next();
   // Only the public site is for search engines.
   if (decision.noindex) response.headers.set("x-robots-tag", NOINDEX);

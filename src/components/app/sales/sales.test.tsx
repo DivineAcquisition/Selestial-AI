@@ -15,11 +15,19 @@ import { blankSpec, type Spec } from "../../../../convex/lib/services/spec";
 let data: Record<string, unknown> = {};
 vi.mock("convex/react", () => ({
   useQuery: (ref: Parameters<typeof getFunctionName>[0], args: unknown) => (args === "skip" ? undefined : data[getFunctionName(ref)]),
-  useMutation: () => async () => undefined,
+  useMutation: () => mutate,
+  usePaginatedQuery: (ref: Parameters<typeof getFunctionName>[0], args: unknown) => {
+    const page = args === "skip" ? undefined : (data[getFunctionName(ref)] as unknown[] | undefined);
+    return page === undefined ? { results: [], status: "LoadingFirstPage", loadMore: () => undefined } : { results: page, status: "Exhausted", loadMore: () => undefined };
+  },
 }));
+// Every mutation the screens call goes through here, so a test can say none was made.
+const mutate = vi.fn(async () => undefined);
 vi.mock("next/navigation", () => ({ usePathname: () => "/app/agents/sales", useRouter: () => ({ replace: () => undefined, push: () => undefined }), useSearchParams: () => new URLSearchParams() }));
 
 const { SalesWorkspace } = await import("./workspace");
+const { InternalBookingScreen } = await import("./internal-booking-screen");
+const { QuotesProposalsScreen } = await import("./quotes-screen");
 const { PipelineScreen } = await import("./pipeline-screen");
 const { PlanDetail } = await import("./plan-detail");
 const { ProposalPage } = await import("@/components/public/proposal-page");
@@ -212,5 +220,88 @@ describe("client pages", () => {
     expect(html).toContain("Version 3");
     expect(html).toContain("intend my typed name");
     expect(html).not.toContain("<script");
+  });
+});
+
+describe("Internal Booking and Quotes & Proposals", () => {
+  const drafts = [
+    { _id: "d1", label: "Dana Whitfield", property: "12 Elm St, Austin", service: "Standard clean", kind: "recurring", status: "quoted", statusWords: "Quote saved", quoteId: "q1", bookingId: null, updatedAt: Date.UTC(2027, 2, 1, 15), by: "Jordan" },
+    { _id: "d2", label: null, property: null, service: null, kind: "one_time", status: "open", statusWords: "Draft", quoteId: null, bookingId: null, updatedAt: Date.UTC(2027, 2, 1, 14), by: "Jordan" },
+  ];
+
+  it("starts bookings and lists booking drafts, and makes nothing by being opened", () => {
+    mutate.mockClear();
+    data = { "sales:bookingDrafts": drafts };
+    const html = render("office", <InternalBookingScreen />);
+    snapshot("internal-booking", html);
+    expect(html).toContain("Internal Booking");
+    expect(html).toContain("Book a service for a customer, arrange recurring cleaning, or continue a booking you started.");
+    expect(html).toContain("New booking");
+    expect(html).toContain("New recurring booking");
+    expect(html).toContain("Booking drafts");
+    expect(html).toContain("Dana Whitfield");
+    expect(html).toContain("12 Elm St, Austin");
+    expect(html).toContain("Recurring · Standard clean");
+    expect(html).toContain("Quote saved");
+    expect(html).toContain("Customer not chosen yet");
+    expect(html).toContain("One-time · service not chosen");
+    // Continue opens the existing workspace and returns here.
+    expect(html).toContain('href="/app/agents/sales/book/d1?from=internal-booking"');
+    expect(html).toContain('href="/app/agents/sales/quotes-proposals"');
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it("explains how to start when there are no drafts, without inventing any", () => {
+    data = { "sales:bookingDrafts": [] };
+    const html = render("office", <InternalBookingScreen />);
+    snapshot("internal-booking-empty", html);
+    expect(html).toContain("No booking drafts yet");
+    expect(html).toContain("New booking");
+    expect(html).not.toContain("Continue");
+  });
+
+  it("files the shared workspace under the tab its draft belongs to, and returns to where the visit came from", () => {
+    data = bookingData();
+    const booking = render("office", <SalesWorkspace draftId={draftId} />);
+    expect(booking).toContain("Internal Booking");
+    expect(booking).toContain("Back to Internal Booking");
+    expect(booking).toContain("Recurring booking");
+    const fromCalendar = render("office", <SalesWorkspace draftId={draftId} from="calendar" />);
+    expect(fromCalendar).toContain('href="/app/calendar"');
+    expect(fromCalendar).toContain("Back to Calendar");
+    // The same address holding a proposal belongs to Quotes & Proposals.
+    const proposal = bookingData();
+    (proposal["sales:draft"] as { draft: { mode: string; segment: string } }).draft.mode = "proposal";
+    (proposal["sales:draft"] as { draft: { mode: string; segment: string } }).draft.segment = "office";
+    data = proposal;
+    const html = render("office", <SalesWorkspace draftId={draftId} />);
+    expect(html).toContain("Back to Quotes &amp; Proposals");
+  });
+
+  it("keeps quotes and proposals, and leaves booking creation and booking drafts to Internal Booking", () => {
+    mutate.mockClear();
+    data = {
+      "sales:quotes": [{ _id: "q1", draftId: "d1", customer: "Dana Whitfield", kind: "recurring", status: "saved", totalCents: 14000, firstCents: 23000, service: "Standard clean", cadence: "Every 2 weeks", expiresAt: Date.UTC(2027, 2, 8), createdAt: Date.UTC(2027, 2, 1), by: "Jordan" }],
+      "sales:drafts": [
+        { _id: "d1", mode: "booking", segment: "residential", bookingKind: "recurring", status: "quoted", customer: "Dana Whitfield", updatedAt: 1, by: "Jordan", bookingId: null, proposalId: null, quoteId: "q1" },
+        { _id: "d3", mode: "proposal", segment: "office", bookingKind: "one_time", status: "open", customer: "Acme Offices", updatedAt: 1, by: "Jordan", bookingId: null, proposalId: null, quoteId: null },
+      ],
+      "proposals:list": [],
+    };
+    const html = render("office", <QuotesProposalsScreen />);
+    snapshot("quotes-proposals", html);
+    expect(html).toContain("New proposal");
+    expect(html).not.toContain("One-time visit");
+    expect(html).not.toContain("Recurring service");
+    expect(html).not.toContain("Book service");
+    // The saved quote stays here, and continues into its booking.
+    expect(html).toContain("Dana Whitfield");
+    expect(html).toContain("Continue to booking");
+    expect(html).toContain('href="/app/agents/sales/book/d1?from=saved-quote"');
+    // Saved, sent, accepted, expired and withdrawn quotes can be told apart.
+    expect(html).toContain("Quote status");
+    expect(html).toContain("Withdrawn or declined");
+    expect(html).toContain("Go to Internal Booking");
+    expect(mutate).not.toHaveBeenCalled();
   });
 });

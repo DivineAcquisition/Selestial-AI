@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
+import { useNavOwner } from "@/components/app/nav-owner";
 import { breadcrumbsFor } from "@/lib/app/navigation-helpers";
 import { chatStorageKey, parseStoredChat } from "@/lib/app/chat/session";
 
@@ -74,7 +75,8 @@ export function ChatProvider({ userId, companyId, children }: { userId: string; 
     return () => setOffers((before) => before.filter((entry) => entry.id !== id));
   }, []);
 
-  const crumbs = breadcrumbsFor(pathname);
+  const owner = useNavOwner();
+  const crumbs = breadcrumbsFor(pathname, owner);
   const own = pathname.startsWith("/app") && !pathname.startsWith("/app/chat") ? { path: pathname, label: crumbs.length ? crumbs.map((crumb) => crumb.label).join(" › ") : "Home" } : null;
   // A page's own description counts only while that page is open: what it shows, never record contents.
   const page = own && detail && detail.path.split("?")[0] === pathname ? detail : own;
@@ -87,7 +89,7 @@ export function ChatProvider({ userId, companyId, children }: { userId: string; 
     () => ({ conversationId: stored.conversationId, setConversationId, panelOpen: stored.panelOpen, openPanel, closePanel, artifactId, openArtifact: setArtifactId, page, offered, offer, describe, launcher }),
     // `page` is derived from the path and the page's own description.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [stored, setConversationId, openPanel, closePanel, artifactId, pathname, detail, offered, offer],
+    [stored, setConversationId, openPanel, closePanel, artifactId, pathname, owner, detail, offered, offer],
   );
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 }

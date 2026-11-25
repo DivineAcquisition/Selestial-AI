@@ -96,12 +96,49 @@ Names and order are the owner's. Playbook is always last. Chat is never a tab: i
 | Agent | Tabs |
 |---|---|
 | Marketing | Campaigns · Content & Creative · Promotions · Lead Sources · Performance · Playbook |
-| Sales | Pipeline · Quotes & Proposals · Follow-ups · Calls & Messages · Booking Forms · Playbook |
+| Sales | Pipeline · Internal Booking · Quotes & Proposals · Follow-ups · Conversations · Booking Forms · Playbook (Internal Booking added November 24, 2026: see below) |
 | Retention | Needs Attention · Recovery · Continuity & Renewals · Re-engagement · Playbook (changed November 18, 2026, when Retention was built: see `docs/retention/00-architecture.md`) |
 | Dispatch | Dispatch Board · Schedule · Offers & Coverage · Live Jobs · Action Links · Playbook |
 | Quality | Reviews · Cases · Corrections · Standards · Insights · Playbook (changed November 22, 2026, when Quality was built: see `docs/quality/00-architecture.md`) |
 | Customer Care | Conversations · Customer Setup · Service Requests · Rescheduling & Cancellations · Playbook |
 | Recruiter | Hiring Needs · Applicants · Screening · Interviews · Offers & Agreements · Onboarding & Readiness · Playbook |
+
+### Sales: Internal Booking, Quotes & Proposals and Booking Forms
+
+Three tabs, three jobs, one booking system behind them:
+
+- **Internal Booking** (`/app/agents/sales/internal-booking`) is where the
+  company books service for a customer itself: a new one-time or recurring
+  booking, and every booking draft still in progress, quoted, awaiting
+  confirmation or booked. Opening the tab creates nothing; a draft is made only
+  when someone chooses New booking or New recurring booking, and a double click
+  or a retried request returns the same draft.
+- **Quotes & Proposals** (`/app/agents/sales/quotes-proposals`) is where saved
+  quotes are reviewed (saved, sent, accepted, expired, withdrawn) and where
+  commercial, office and short-term rental proposals are prepared and followed
+  through. A quote saved from a booking stays listed here; "Continue to booking"
+  opens its draft.
+- **Booking Forms** configures what customers see when they book online.
+
+Both Internal Booking and Quotes & Proposals open the same workspace
+(`/app/agents/sales/book/[draftId]`). Its address is the same for both, so the
+workspace tells the sidebar which tab it belongs to from the draft's mode
+(`SALES_WORKSPACE_TAB` in `navigation.ts`, applied as an `owner` hint in
+`navigation-helpers.ts`), and changes it if the mode is switched. The back link
+returns to where the person came from (`?from=`: Internal Booking, Quotes &
+Proposals, a saved quote, Pipeline, a customer, Calendar, Dispatch or the Sales
+overview), and otherwise to the tab the draft belongs to
+(`src/lib/app/sales-workspace.ts`). Internal Booking and the proposal lists in
+Quotes & Proposals are returned to only while the draft still belongs there: a
+booking switched to a proposal goes back to Quotes & Proposals, and the other
+way round. A saved quote (`from=saved-quote`) always returns to Quotes &
+Proposals, because the quote stays listed there whatever its draft becomes.
+
+Quotes & Proposals asks for proposal drafts only (`sales.drafts` with
+`mode: "proposal"`), so booking drafts never crowd them off its list.
+`/app/agents/sales/new` starts a draft for entry points that link rather than
+call (a customer, Calendar, Dispatch, Pipeline) under a key kept for that visit,
+so reloading it while the draft is made does not make a second one.
 
 ### What Dispatch's tabs must hold
 

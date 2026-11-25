@@ -26,6 +26,7 @@ import { checkSpec, priceSummary } from "../../../../convex/lib/services/engine"
 import { CATEGORY_LABELS, type Spec } from "../../../../convex/lib/services/spec";
 import { canonical, keptTemplateAmounts, type KeptAmount } from "../../../../convex/lib/services/store";
 import { TEMPLATES } from "../../../../convex/lib/services/templates";
+import { FinishDialog, FinishPrompt, gapsOf } from "./finish";
 import { ServicePreview } from "./preview";
 import { PropertyPrices } from "./property-prices";
 import { ChangeBadge, day, Empty, formatCents, Notice, SectionTitle, Toggle, when } from "./shared";
@@ -85,6 +86,9 @@ function ServiceWorkspace({ view, costs, canSeeCosts }: { view: View; costs: Cos
   const [sheet, setSheet] = useState<Rail | null>(null);
   const [closed, setClosed] = useState<EditorSection[]>([]);
   const [seed, setSeed] = useState<{ text: string; n: number } | null>(null);
+  const [finishing, setFinishing] = useState(params?.get("finish") === "1");
+  const found = useQuery(api.services.assistant, { companyId, serviceId: view.service.id });
+  const sendChat = useMutation(api.chat.send);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latest = useRef({ spec: draft.spec, revision: draft.revision });
   const dirty = canonical(spec) !== canonical(base.spec);
@@ -167,6 +171,7 @@ function ServiceWorkspace({ view, costs, canSeeCosts }: { view: View; costs: Cos
   const template = useMemo(() => TEMPLATES.find((t) => t.id === view.service.templateId)?.spec ?? null, [view.service.templateId]);
   const kept = useMemo(() => (spec.illustrative && template ? keptTemplateAmounts(spec, template) : []), [spec, template]);
   const props: StepProps = { spec, edit, disabled: state.kind === "conflict" };
+  const gaps = useMemo(() => gapsOf(spec), [spec]);
 
   const goTo = (target: EditorSection | "review") => {
     if (target === "review") return open("review");
@@ -183,6 +188,13 @@ function ServiceWorkspace({ view, costs, canSeeCosts }: { view: View; costs: Cos
     setRail(next);
     if (typeof window !== "undefined" && !window.matchMedia("(min-width: 64rem)").matches) setSheet(next);
   };
+  /** Sends a request to Selestial beside this service, from exactly what is on screen, and shows the panel. */
+  const askNow = async (text: string) => {
+    const revision = await settle();
+    if (revision === null) throw new Error("Your latest edits aren't saved yet, so nothing was sent. Resolve the save above, then try again.");
+    await sendChat({ companyId, conversationId: found?.conversationId ?? undefined, text, clientKey: newClientKey(), origin: { kind: "service_draft", serviceId: view.service.id }, draftRevision: revision, page: window.location.pathname });
+    open("assistant");
+  };
   const ask = (text: string) => {
     setSeed((last) => ({ text, n: (last?.n ?? 0) + 1 }));
     open("assistant");
@@ -194,7 +206,7 @@ function ServiceWorkspace({ view, costs, canSeeCosts }: { view: View; costs: Cos
     ) : which === "assistant" ? (
       <AssistantPanel serviceId={view.service.id} settle={settle} seed={seed} />
     ) : (
-      <ReviewPanel view={view} spec={spec} edit={edit} kept={kept} revision={base.revision} dirty={dirty || state.kind === "saving"} blockers={blockers.map((b) => ({ message: b.message, section: sectionOf(b.field) }))} goTo={goTo} settle={settle} />
+      <ReviewPanel view={view} spec={spec} edit={edit} kept={kept} revision={base.revision} dirty={dirty || state.kind === "saving"} blockers={blockers.map((b) => ({ message: b.message, section: sectionOf(b.field) }))} goTo={goTo} settle={settle} onFinish={() => setFinishing(true)} />
     );
 
   return (
@@ -212,6 +224,12 @@ function ServiceWorkspace({ view, costs, canSeeCosts }: { view: View; costs: Cos
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <SaveStatus state={state} />
+          {gaps.length ? (
+            <Button size="sm" variant="secondary" onClick={() => setFinishing(true)}>
+              <Sparkles aria-hidden /> Finish draft
+              <span className="rounded-full bg-brand-500/10 px-1.5 text-xs tabular-nums text-brand-300">{gaps.length}</span>
+            </Button>
+          ) : null}
           <ActionMenu
             label="More actions"
             className="h-8 rounded-lg border border-border bg-card px-2"
@@ -309,6 +327,9 @@ function ServiceWorkspace({ view, costs, canSeeCosts }: { view: View; costs: Cos
           <div className="min-h-0 flex-1 overflow-y-auto">{panel(rail)}</div>
         </aside>
       </div>
+
+      <FinishDialog open={finishing} onClose={() => setFinishing(false)} spec={spec} edit={edit} disabled={state.kind === "conflict"} kept={kept} costs={costs} canPublish={canSeeCosts} onAsk={askNow} onGoTo={goTo} />
+      <FinishPrompt serviceId={view.service.id} gaps={gaps} hidden={finishing || sheet !== null} onOpen={() => setFinishing(true)} />
 
       {/* On a phone: a bar at the bottom opens each panel as a sheet. */}
       <nav aria-label="Service panels" className="fixed inset-x-0 bottom-0 z-sticky flex gap-2 border-t border-border bg-background/95 px-4 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur lg:hidden">
@@ -554,7 +575,7 @@ function DraftEdits({ serviceId }: { serviceId: Id<"services"> }) {
  * they reviewed; a Manager submits it for the Owner. A change already in review is approved here for its
  * exact version.
  */
-function ReviewPanel({ view, spec, edit, kept, revision, dirty, blockers, goTo, settle }: { view: View; spec: Spec; edit: StepProps["edit"]; kept: KeptAmount[]; revision: number; dirty: boolean; blockers: { message: string; section: EditorSection | "review" }[]; goTo: (section: EditorSection | "review") => void; settle: () => Promise<number | null> }) {
+function ReviewPanel({ view, spec, edit, kept, revision, dirty, blockers, goTo, settle, onFinish }: { view: View; spec: Spec; edit: StepProps["edit"]; kept: KeptAmount[]; revision: number; dirty: boolean; blockers: { message: string; section: EditorSection | "review" }[]; goTo: (section: EditorSection | "review") => void; settle: () => Promise<number | null>; onFinish: () => void }) {
   const { companyId } = useCompany();
   const router = useRouter();
   const preview = useQuery(api.services.reviewPreview, { companyId, serviceId: view.service.id });
@@ -662,6 +683,9 @@ function ReviewPanel({ view, spec, edit, kept, revision, dirty, blockers, goTo, 
 
       {blockers.length ? (
         <ReviewBlock title="To fix first">
+          <Button size="xs" variant="secondary" className="mb-1 w-fit" onClick={onFinish}>
+            <Sparkles aria-hidden /> Finish with Selestial
+          </Button>
           <ul className="grid gap-1">
             {blockers.map((b, i) => (
               <li key={i} className="flex items-center justify-between gap-2 rounded-lg border border-destructive/30 bg-destructive/[0.05] px-3 py-1.5 text-sm text-strong">

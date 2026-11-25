@@ -12,7 +12,7 @@
  */
 import { isAuthPath } from "./auth/routes";
 
-export const HOST_ROLES = ["public", "app", "link", "admin", "docs", "status"] as const;
+export const HOST_ROLES = ["public", "app", "link", "admin", "founding", "docs", "status"] as const;
 export type HostRole = (typeof HOST_ROLES)[number];
 
 /** The setting that names each host. Each holds an origin, such as https://app.selestial.io. */
@@ -21,6 +21,8 @@ export const HOST_SETTINGS: Record<HostRole, string> = {
   app: "APP_ORIGIN",
   link: "LINK_ORIGIN",
   admin: "ADMIN_ORIGIN",
+  /** The Selestial Founding Access page, for example https://beta.selestial.io. Its root shows /founding. */
+  founding: "FOUNDING_ORIGIN",
   docs: "DOCS_ORIGIN",
   status: "STATUS_ORIGIN",
 };
@@ -33,6 +35,9 @@ const UNBUILT_MESSAGE: Record<string, string> = {
   docs: "Not available yet.",
   status: "Not available yet.",
 };
+
+/** The page the founding host shows at its root (the address bar keeps "/"). */
+export const FOUNDING_PATH = "/founding";
 
 /** Where the staff host opens: the Operations workspace. */
 export const ADMIN_LANDING = "/staff/operations";
@@ -102,7 +107,7 @@ export function roleOfHost(host: string, map: HostMap): HostRole | null {
 }
 
 /** Which host a path belongs to. "shared" paths are served on every host. */
-export type PathRole = "public" | "app" | "link" | "admin" | "shared";
+export type PathRole = "public" | "app" | "link" | "admin" | "founding" | "shared";
 
 const under = (pathname: string, base: string) => pathname === base || pathname.startsWith(`${base}/`);
 
@@ -113,6 +118,8 @@ export function roleOfPath(pathname: string): PathRole {
   if (under(path, "/.well-known") || under(path, "/__clerk")) return "shared";
   // Google's and QuickBooks' return after an Owner allows access, passed straight through to the backend (next.config.ts).
   if (path === "/oauth/google/callback" || path === "/oauth/quickbooks/callback") return "shared";
+  // Founding Access: the page and its live status. The claim itself continues on the workspace host.
+  if (under(path, FOUNDING_PATH) || under(path, "/api/founding")) return "founding";
   // The Selestial staff console. Sign-in stays on the workspace host, which staff share with everyone.
   if (under(path, "/staff")) return "admin";
   if (under(path, "/app") || isAuthPath(path)) return "app";
@@ -123,6 +130,8 @@ export function roleOfPath(pathname: string): PathRole {
 
 export type Decision =
   | { kind: "next"; noindex: boolean }
+  /** Serve another path's page at this address (the founding host's root shows /founding). */
+  | { kind: "rewrite"; to: string; noindex: boolean }
   | { kind: "redirect"; to: string }
   | { kind: "not_found"; message: string };
 
@@ -138,7 +147,8 @@ export function decide(request: HostRequest, map: HostMap): Decision {
   if (role === null) return { kind: "next", noindex: false };
 
   const path = roleOfPath(request.pathname);
-  const noindex = role !== "public";
+  // The founding page is a public marketing page: indexable on its own host.
+  const noindex = role !== "public" && role !== "founding";
   if (path === "shared") return { kind: "next", noindex };
 
   if (UNBUILT_ROLES.includes(role)) return { kind: "not_found", message: UNBUILT_MESSAGE[role] };
@@ -150,8 +160,20 @@ export function decide(request: HostRequest, map: HostMap): Decision {
     if (!origin) return { kind: "next", noindex };
     // Only a plain page load is redirected. A form post to the wrong host is refused, not replayed.
     if (!safe) return { kind: "not_found", message: "Not found." };
-    return { kind: "redirect", to: `${origin}${pathname}${request.search ?? ""}` };
+    // The founding page lives at its host's root.
+    const target = to === "founding" && pathname === FOUNDING_PATH ? "/" : pathname;
+    return { kind: "redirect", to: `${origin}${target}${request.search ?? ""}` };
   };
+
+  if (role === "founding") {
+    // The root shows the founding page; its own path redirects to the root so there is one address.
+    if (request.pathname === "/" || request.pathname === "") return { kind: "rewrite", to: FOUNDING_PATH, noindex };
+    if (request.pathname === FOUNDING_PATH) return safe ? { kind: "redirect", to: `${map.founding}/${request.search ?? ""}` } : { kind: "next", noindex };
+    if (path === "founding") return { kind: "next", noindex };
+    // Sign-up, sign-in and the workspace go to the workspace host, keeping the claim in the query.
+    // Legal pages and the rest of the site go to the public host.
+    return send(path, request.pathname);
+  }
 
   if (role === "public") {
     if (path === "public") return { kind: "next", noindex };
@@ -186,7 +208,8 @@ export function decide(request: HostRequest, map: HostMap): Decision {
  */
 export function indexable(host: string, map: HostMap): boolean {
   if (!map.public) return true;
-  return roleOfHost(host, map) === "public";
+  const role = roleOfHost(host, map);
+  return role === "public" || role === "founding";
 }
 
 /** The public site's origin for canonical links and the sitemap, when it is set. */

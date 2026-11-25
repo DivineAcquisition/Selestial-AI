@@ -273,3 +273,38 @@ describe("requests that are not page loads", () => {
     expect(decide({ host: "app.example.test", pathname: "/app/settings", method: "POST" }, FULL)).toEqual(serves(true));
   });
 });
+
+describe("the founding host", () => {
+  const WITH = hostMap({ ...SETTINGS, FOUNDING_ORIGIN: "https://beta.example.test" });
+  const at = (pathname: string, search = "", method = "GET") => decide({ host: "beta.example.test", pathname, search, method }, WITH);
+
+  it("shows the founding page at its root, indexable, and keeps one address for it", () => {
+    expect(at("/")).toEqual({ kind: "rewrite", to: "/founding", noindex: false });
+    expect(at("/founding", "?utm_source=x")).toEqual(goesTo("https://beta.example.test/?utm_source=x"));
+    expect(at("/api/founding/status")).toEqual(serves(false));
+    expect(indexable("beta.example.test", WITH)).toBe(true);
+  });
+
+  it("sends sign-up, sign-in and the workspace to the workspace host with the claim intact", () => {
+    expect(at("/signup", "?next=%2Fapp%2Ffounding%3Fclaim%3Dabc")).toEqual(goesTo("https://app.example.test/signup?next=%2Fapp%2Ffounding%3Fclaim%3Dabc"));
+    expect(at("/login")).toEqual(goesTo("https://app.example.test/login"));
+    expect(at("/app/founding")).toEqual(goesTo("https://app.example.test/app/founding"));
+  });
+
+  it("sends legal and other public pages to the main site, which stays as it was", () => {
+    expect(at("/terms")).toEqual(goesTo("https://www.example.test/terms"));
+    expect(at("/privacy")).toEqual(goesTo("https://www.example.test/privacy"));
+    expect(get("www.example.test", "/", WITH)).toEqual(serves(false));
+    expect(get("www.example.test", "/founding", WITH)).toEqual(goesTo("https://beta.example.test/"));
+    expect(get("app.example.test", "/founding", WITH)).toEqual(goesTo("https://beta.example.test/"));
+  });
+
+  it("never replays a form post across hosts", () => {
+    expect(at("/terms", "", "POST")).toEqual({ kind: "not_found", message: "Not found." });
+  });
+
+  it("serves the page on previews and on the main site until the host is set", () => {
+    expect(get("www.example.test", "/founding")).toEqual(serves(false));
+    expect(decide({ host: "selestial-git-branch.vercel.app", pathname: "/founding" }, WITH)).toEqual(serves(false));
+  });
+});

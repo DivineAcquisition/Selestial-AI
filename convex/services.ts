@@ -28,6 +28,7 @@ import {
   canonical,
   describeChanges,
   draftOf,
+  hasPrice,
   normalizeSpec,
   openChanges,
   ownedService,
@@ -174,30 +175,6 @@ export const assistant = companyQuery({
     return { conversationId: mine?._id ?? null };
   },
 });
-
-/** Whether a spec carries a real price yet (a custom quote needs none). Zero is never shown as a price. */
-function hasPrice(spec: Spec): boolean {
-  const p = spec.pricing;
-  switch (p.method) {
-    case "fixed":
-      return p.amountCents > 0;
-    case "hourly_per_cleaner":
-    case "hourly_per_crew":
-      return p.rateCents > 0;
-    case "size_bands":
-      return p.bands.some((b) => b.amountCents > 0);
-    case "per_area":
-      return p.rateMillicents > 0;
-    case "bed_bath":
-      return p.baseCents > 0;
-    case "per_unit":
-      return p.unitCents > 0;
-    case "recurring_package":
-      return p.monthlyCents > 0;
-    case "custom_quote":
-      return true;
-  }
-}
 
 async function bookingWay(ctx: Ctx, service: Doc<"services">, spec: Spec | undefined) {
   const forms = await bookingForms(ctx, ctx.companyId, service.key);

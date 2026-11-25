@@ -257,21 +257,30 @@ export const AGREEMENT_PAGES: readonly { path: string; label: string; purpose: s
   { path: `${APP_ROOT}/agreements/[id]`, label: "Agreement", purpose: "One agreement: its document, parties, terms, versions, review and signatures, and activity." },
 ];
 
+/** Which Sales tab the shared workspace belongs to, by what the draft is for. */
+export const SALES_WORKSPACE_TAB = { booking: "internal-booking", proposal: "quotes-proposals" } as const;
+
 /** Pages inside Services & Pricing. The first four are its tabs; the rest are reached from them. They have no sidebar entry of their own. */
 /** Company setup: a full-screen guided start for the Owner, outside the sidebar. Reached at company creation and from Home. */
 export const SETUP_PAGES: readonly { path: string; label: string; purpose: string }[] = [
   { path: `${APP_ROOT}/setup`, label: "Set up your company", purpose: "The Owner confirms the company's details, chooses what Selestial helps with first, and opens the workspace." },
   { path: `${APP_ROOT}/setup/business`, label: "Your business setup", purpose: "What Selestial prepared from the Owner's answers: service drafts with suggested prices, booking forms, agreements and job standards, each with its status, what is missing and the next step. The answers it used can be changed here." },
+  { path: `${APP_ROOT}/founding`, label: "Founding Access", purpose: "An Owner arriving from the Founding Access page links their claim to the company, sees whether founding access is claimed, processing, ready to pay or needs attention, and pays through the same purchase as Plan & Usage." },
   { path: `${APP_ROOT}/first-work`, label: "Your first work", purpose: "Where setup lands: what is prepared, what waits for a decision, what agents sent, and one next step." },
   { path: `${APP_ROOT}/migration`, label: "Bring your business to Selestial", purpose: "Owners and Managers move customers, properties and upcoming work in from another system or a spreadsheet, review every record, and release the schedule when ready. Opened from setup, Settings, Clients and Home." },
   { path: `${APP_ROOT}/texting`, label: "Set up business texting", purpose: "The Owner gets the company its own number and texting registration, step by step, and follows it to ready. Opened from settings, agent pages and setup." },
   { path: `${APP_ROOT}/help`, label: "Moving your records", purpose: "A searchable directory of the published migration tutorials: exporting from Jobber, Housecall Pro or BookingKoala, preparing spreadsheets and checking imports. Opened from setup and import screens." },
 ];
 
-/** Pages inside Sales that are not tabs: the booking and proposal workspace and its entry point. */
+/**
+ * Pages inside Sales that are not tabs: the booking and proposal workspace and its entry point. One
+ * workspace serves both kinds of work, so the address alone does not say which tab it belongs to: a booking
+ * draft belongs to Internal Booking and a proposal draft to Quotes & Proposals (SALES_WORKSPACE_TAB), and
+ * the page tells the sidebar which (navigation-helpers.ts, `owner`).
+ */
 export const SALES_PAGES: readonly { path: string; label: string; purpose: string }[] = [
-  { path: `${APP_ROOT}/agents/sales/new`, label: "New booking or proposal", purpose: "Starts a workspace draft from Sales, a customer or Dispatch, with what they know filled in." },
-  { path: `${APP_ROOT}/agents/sales/book/[draftId]`, label: "Booking workspace", purpose: "Book one-time or recurring service, or prepare a commercial, office or short-term rental proposal." },
+  { path: `${APP_ROOT}/agents/sales/new`, label: "New booking or proposal", purpose: "Starts a workspace draft from Internal Booking, Quotes & Proposals, a customer, Calendar or Dispatch, with what they know filled in." },
+  { path: `${APP_ROOT}/agents/sales/book/[draftId]`, label: "Booking workspace", purpose: "Book one-time or recurring service (under Internal Booking), or prepare a commercial, office or short-term rental proposal (under Quotes & Proposals)." },
   { path: `${APP_ROOT}/agents/sales/setups/[setupId]`, label: "Service setup", purpose: "After a proposal is accepted: the agreement, billing, and each site's access and start." },
   { path: `${APP_ROOT}/agents/sales/plans/[planId]`, label: "Recurring plan", purpose: "One recurring plan: upcoming visits, staffing, billing, agreement, exceptions and history, and changes to a visit or the series." },
 ];
@@ -402,6 +411,9 @@ export const AGENTS: readonly AgentNav[] = [
     overview: LIVE,
     tabs: [
       ["pipeline", "Pipeline", LIVE],
+      // Its own tab from November 24, 2026: starting and resuming bookings is separate from reviewing quotes
+      // and preparing proposals. Both open the same workspace (SALES_PAGES), which says which tab it belongs to.
+      ["internal-booking", "Internal Booking", LIVE],
       ["quotes-proposals", "Quotes & Proposals", LIVE],
       ["follow-ups", "Follow-ups", LIVE],
       // Texts and emails only. The address keeps its first name so links already shared still open.
