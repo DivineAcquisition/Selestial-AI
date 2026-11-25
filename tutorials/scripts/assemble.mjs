@@ -78,8 +78,10 @@ const scenes = board.scenes.map((scene) => {
   const clip = clipOf(scene);
   const spans = keptSpans(scene, clip);
   const footage = spans.reduce((sum, [a, b]) => sum + (b - a), 0) / (scene.speed ?? 1);
-  const length = Math.max(narration.duration + LEAD + TAIL, scene.minSeconds ?? 0);
-  if (footage > length + 4) console.warn(`! ${scene.id}: ${footage.toFixed(1)}s of footage for ${length.toFixed(1)}s of narration; the end is cut. Trim it with "out" or speed it with "speed".`);
+  // A scene lasts as long as its narration (plus a breath), or its footage if that is longer: the end of a
+  // recording is usually the result, so it is never cut. Footage much longer than its words is flagged.
+  const length = Math.max(narration.duration + LEAD + TAIL, scene.minSeconds ?? 0, footage);
+  if (footage > narration.duration + LEAD + TAIL + 4) console.warn(`! ${scene.id}: ${footage.toFixed(1)}s of footage for ${narration.duration.toFixed(1)}s of narration; consider "speed" (with a "tag") or trimming with "out".`);
   return { scene, narration, clip, spans, length };
 });
 

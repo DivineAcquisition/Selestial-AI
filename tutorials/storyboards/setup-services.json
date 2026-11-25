@@ -55,7 +55,7 @@
     },
     {
       "id": "drafts",
-      "narration": "Each draft starts on example prices, marked clearly. Open one to make it yours.",
+      "narration": "Each draft starts on example prices, marked clearly. Open one, and Selestial lists exactly what only you can confirm before it can be published. Close it to make the prices yours.",
       "capture": {
         "kind": "playwright",
         "start": "/app/services",
@@ -77,11 +77,22 @@
           },
           {
             "do": "waitFor",
+            "target": "text=Only you can confirm these",
+            "cut": true
+          },
+          {
+            "do": "highlight",
+            "target": "text=Only you can confirm these >> xpath=..",
+            "note": "The example amounts only you can confirm",
+            "ms": 2600
+          },
+          {
+            "do": "click",
             "target": {
               "role": "button",
-              "name": "Review & publish"
-            },
-            "cut": true
+              "name": "Close",
+              "exact": true
+            }
           },
           {
             "do": "pause",
@@ -89,7 +100,7 @@
           }
         ]
       },
-      "minSeconds": 6
+      "minSeconds": 9
     },
     {
       "id": "pricing",
@@ -101,6 +112,16 @@
           {
             "do": "click",
             "target": "text=Standard clean >> nth=0"
+          },
+          {
+            "do": "clickIfVisible",
+            "target": {
+              "role": "button",
+              "name": "Close",
+              "exact": true
+            },
+            "cut": true,
+            "timeout": 6000
           },
           {
             "do": "waitFor",
@@ -174,6 +195,16 @@
             "target": "text=Standard clean >> nth=0"
           },
           {
+            "do": "clickIfVisible",
+            "target": {
+              "role": "button",
+              "name": "Close",
+              "exact": true
+            },
+            "cut": true,
+            "timeout": 6000
+          },
+          {
             "do": "waitFor",
             "target": {
               "role": "button",
@@ -213,6 +244,16 @@
           {
             "do": "click",
             "target": "text=Standard clean >> nth=0"
+          },
+          {
+            "do": "clickIfVisible",
+            "target": {
+              "role": "button",
+              "name": "Close",
+              "exact": true
+            },
+            "cut": true,
+            "timeout": 6000
           },
           {
             "do": "waitFor",
@@ -262,6 +303,16 @@
           {
             "do": "click",
             "target": "text=Standard clean >> nth=0"
+          },
+          {
+            "do": "clickIfVisible",
+            "target": {
+              "role": "button",
+              "name": "Close",
+              "exact": true
+            },
+            "cut": true,
+            "timeout": 6000
           },
           {
             "do": "waitFor",

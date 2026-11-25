@@ -223,6 +223,14 @@ async function record(browser, scene) {
       await page.goto(new URL(step.path, base).toString(), { waitUntil: "networkidle" });
       await page.evaluate(OVERLAY);
       await page.waitForTimeout(step.ms ?? 900);
+    } else if (step.do === "clickIfVisible") {
+      // Something the app may or may not show (a dismissible prompt): close it when it appears.
+      const target = locate(step.target);
+      const shown = await target.waitFor({ state: "visible", timeout: step.timeout ?? 3000 }).then(() => true, () => false);
+      if (shown) {
+        await target.click();
+        await page.waitForTimeout(step.ms ?? 500);
+      }
     } else if (step.do === "exec") {
       // Demo bookkeeping in the middle of a scene (mark it "cut"), such as giving a new demo company its plan.
       execFileSync(process.execPath, step.args.map((part) => part.replace("{auth}", storageLabel)), { cwd: ROOT, stdio: "inherit" });

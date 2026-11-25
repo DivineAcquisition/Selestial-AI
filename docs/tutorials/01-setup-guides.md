@@ -54,21 +54,22 @@ fictional, emails are example.com, phones 555-01xx, the EIN is the IRS's own exa
 
 | Guide | Narration | Video | Target | Notes |
 |---|---|---|---|---|
-| 1 Set up your company | 1,151 characters | 78.8 s | 60–90 s | |
-| 2 Build your services and pricing | 1,099 | 74.9 s | 90–150 s | Publishing at 2×, labelled |
-| 3 Bring in your clients and upcoming work | 1,284 | 94.1 s | 90–150 s | Organize at 1.3×, new client at 1.5×, visit form at 2×, all labelled |
-| 4 Get your cleaners ready | 854 | 64.7 s | 90–150 s | Add cleaner and pay at 1.6×, Make active at 1.5×, labelled |
-| 5 Connect your email and phone | 1,111 | 77.5 s | 90–150 s | Business details at 2×, labelled |
-| 6 Put your agents to work | 986 | 71.9 s | 90–150 s | |
+| 1 Set up your company | 1,151 characters | 81.0 s | 60–90 s | |
+| 2 Build your services and pricing | 1,121 | 87.9 s | 90–150 s | Publishing at 2×, labelled |
+| 3 Bring in your clients and upcoming work | 1,284 | 104.0 s | 90–150 s | Organize at 1.3×, new client at 1.5×, visit form at 2×, all labelled |
+| 4 Get your cleaners ready | 854 | 75.1 s | 90–150 s | Add cleaner and pay at 1.6×, Make active at 1.5×, labelled |
+| 5 Connect your email and phone | 1,111 | 83.0 s | 90–150 s | Business details at 2×, labelled |
+| 6 Put your agents to work | 986 | 75.3 s | 90–150 s | |
 
-Version 2 of every guide was re-recorded on November 24 after main reorganized Settings (#151), redesigned
-Services & Pricing (#161), added business configuration to setup (#160) and texting infrastructure (#155).
+Version 2 of every guide was re-recorded on November 24 and 25 after main reorganized Settings (#151), redesigned
+Services & Pricing (#161), added business configuration to setup (#160) and texting infrastructure (#155), and the Finish draft pop-up in Services (#163), which guide 2 now shows.
 
-Four guides run under the 90-second target: the scripts say only what the screens show, without padding.
+Guides 2, 4, 5 and 6 run under the 90-second target: the scripts say only what the screens show, without padding. A
+scene is never cut shorter than its recording, because a recording usually ends on its result.
 Each is 4–6 MB at 1080p (H.264/AAC, faststart).
 
-ElevenLabs usage: 6,515 characters for the first versions, 1,239 for the lines that changed in version 2, plus
-230 for the voice samples. This billing cycle: 8,622 of 10,000 used (free tier, resets December 20). Neighbouring-line context is not billed; unchanged lines are reused
+ElevenLabs usage: 6,515 characters for the first versions, 1,418 for the lines that changed in version 2, plus
+230 for the voice samples. This billing cycle: 8,801 of 10,000 used (free tier, resets December 20). Neighbouring-line context is not billed; unchanged lines are reused
 from the cache.
 
 ## Blockers and limits found (not demonstrated, or demonstrated with care)
