@@ -150,7 +150,7 @@ export function SalesWorkspace({ draftId, from }: { draftId: Id<"salesDrafts">; 
   const booking = summary?.mode === "booking" ? summary : null;
   const sectionDone = (section: string) => Boolean(summary && !summary.needs.some((n) => n.section === section && n.blocking));
   const name = data.customer && data.customer._id === working.customerId ? data.customer.name : (data.opportunity?.title ?? "New customer");
-  const back = workspaceReturn({ mode: working.mode, from, entry: data.draft.entry ?? null });
+  const back = workspaceReturn({ mode: working.mode, from, entry: data.draft.entry ?? null, customerId: working.customerId ?? null });
   const crumbs = [...breadcrumbsFor(pathname, owner), { label: name, href: null }];
   // Chat opens in a new tab with this draft as its context, so the call in progress is never lost.
   const askChat = () => {

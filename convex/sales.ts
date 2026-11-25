@@ -129,14 +129,19 @@ export const startDraft = companyMutation({
   },
 });
 
+/**
+ * Recent drafts, newest first. With `mode`, only that kind, chosen before the limit: Quotes & Proposals
+ * asks for proposal drafts, so a run of booking drafts can never push them off its list.
+ */
 export const drafts = companyQuery({
-  args: {},
-  handler: async (ctx) => {
-    const rows = await ctx.db
+  args: { mode: v.optional(literals(DRAFT_MODES)) },
+  handler: async (ctx, args) => {
+    const mode = args.mode;
+    const recent = ctx.db
       .query("salesDrafts")
       .withIndex("by_company_updated", (q) => q.eq("companyId", ctx.companyId))
-      .order("desc")
-      .take(60);
+      .order("desc");
+    const rows = await (mode ? recent.filter((q) => q.eq(q.field("mode"), mode)) : recent).take(60);
     const out = [];
     for (const row of rows) {
       if (row.status === "archived") continue;
@@ -180,7 +185,8 @@ export const bookingDrafts = companyQuery({
     };
     const rows = [];
     for (const row of page.page) {
-      const customer = row.customerId ? await ctx.db.get(row.customerId) : null;
+      const found = row.customerId ? await ctx.db.get(row.customerId) : null;
+      const customer = found && found.companyId === ctx.companyId ? found : null;
       const property = row.propertyId ? await ctx.db.get(row.propertyId) : null;
       const opportunity = !customer && row.opportunityId ? await ctx.db.get(row.opportunityId) : null;
       const editor = row.updatedBy ? await ctx.db.get(row.updatedBy) : null;

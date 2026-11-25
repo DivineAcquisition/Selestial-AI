@@ -297,7 +297,10 @@ describe("Internal Booking and Quotes & Proposals", () => {
     // The saved quote stays here, and continues into its booking.
     expect(html).toContain("Dana Whitfield");
     expect(html).toContain("Continue to booking");
-    expect(html).toContain('href="/app/agents/sales/book/d1?from=quotes"');
+    expect(html).toContain('href="/app/agents/sales/book/d1?from=saved-quote"');
+    // Saved, sent, accepted, expired and withdrawn quotes can be told apart.
+    expect(html).toContain("Quote status");
+    expect(html).toContain("Withdrawn or declined");
     expect(html).toContain("Go to Internal Booking");
     expect(mutate).not.toHaveBeenCalled();
   });
