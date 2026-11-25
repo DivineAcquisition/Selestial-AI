@@ -183,6 +183,7 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   { table: "retentionRuns", index: "by_company_kind", omit: ["payload"], why: "A customer's text held only until it is read; the conversation keeps it." },
   // Client Care (convex/lib/clientCare/schema.ts). Sealed access details never leave: they are only for the property's restricted field.
   { table: "careRequests", index: "by_company_status" },
+  { table: "careEntries", index: "by_company_request" },
   { table: "careMessages", index: "by_company_customer", omit: ["sealed"], why: "New access details, sealed until written to the property." },
   { table: "careSteps", index: "by_company_key", omit: ["payload.sealed"], why: "New access details, sealed until written to the property." },
   { table: "careRuns", index: "by_company_key" },

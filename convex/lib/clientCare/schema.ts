@@ -297,7 +297,9 @@ export const clientCareTables = {
     source: v.optional(sourceValidator),
     actor: actorValidator,
     at: v.number(),
-  }).index("by_request", ["requestId", "at"]),
+  })
+    .index("by_request", ["requestId", "at"])
+    .index("by_company_request", ["companyId", "requestId", "at"]),
 
   careSteps: defineTable({
     companyId: v.id("companies"),

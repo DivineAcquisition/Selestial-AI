@@ -198,8 +198,6 @@ export async function noticesForEvent(ctx: MutationCtx, event: Recorded): Promis
       await notifyMembers(ctx, { ...base, event: "retention_outcome", ref: row._id, facts: { outcome: row.outcome.code, at }, except: event.actor.kind === "member" ? [event.actor.memberId] : [] });
       return;
     }
-    case "dispatch.reported":
-    case "sales.reported":
     case "care_request.opened":
     case "care_request.waiting_owner":
     case "care_request.needs_attention": {
@@ -223,6 +221,8 @@ export async function noticesForEvent(ctx: MutationCtx, event: Recorded): Promis
       await notifyMembers(ctx, { ...base, event: "care_attention", ref: row._id, key: `attention:${event.id}`, facts: { kind: event.type === "care_request.needs_attention" ? "message_failed" : "decision" }, except, ...routing });
       return;
     }
+    case "dispatch.reported":
+    case "sales.reported":
     case "retention.reported":
     case "recruiter.reported":
     case "customer-care.reported": {

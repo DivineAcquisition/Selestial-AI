@@ -205,7 +205,7 @@ describe("Restoring without replaying anything", () => {
     for (const id of [a.companyId, b.companyId]) {
       const row = (await t.run((ctx) => ctx.db.get(id)))!;
       expect(row.suspendedAt).toBeDefined();
-      expect([...row.pausedAgents].sort()).toEqual(["dispatch", "quality", "recruiter", "retention", "sales"]);
+      expect([...row.pausedAgents].sort()).toEqual(["customer-care", "dispatch", "quality", "recruiter", "retention", "sales"]);
     }
     const status = await t.query(internal.restoration.status, {});
     expect(status.lockdown).toMatchObject({ lockedCompanies: 2 });
@@ -299,7 +299,7 @@ describe("custom domains", () => {
       const delta = (await t.run((ctx) => ctx.db.get(unpaid.companyId)))!;
       expect(delta.suspendedAt).toBeUndefined();
       expect(delta.billingLockedAt).toBe(lockedAt);
-      expect([...delta.pausedAgents].sort()).toEqual(["dispatch", "quality", "recruiter", "retention", "sales"]);
+      expect([...delta.pausedAgents].sort()).toEqual(["customer-care", "dispatch", "quality", "recruiter", "retention", "sales"]);
       expect((await t.run((ctx) => ctx.db.get(dunningId)))!.priorPausedAgents).toEqual(["sales"]);
       expect(why[unpaid.companyId]).toMatch(/unpaid plan/);
       // Echo: its pauses were changed since, so they are left as they are; its suspension was the lock-down's own.

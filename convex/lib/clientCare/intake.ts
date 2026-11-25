@@ -19,6 +19,7 @@ import type { MutationCtx } from "../../_generated/server";
 import { recipientsAt } from "../compliance/recipients";
 import { seal } from "../recruiter/secrets";
 import { allow } from "../rateLimit";
+import { noteStatedWish } from "../retention/continuity";
 import { writersAt } from "./context";
 import { withholdAccess, type Intent, type Reading } from "./read";
 import { addEntry, CARE, isOpen, moveRequest, openRequest, openRequestsFor, recentRequestsFor, reopenRequest, type Request } from "./requests";
@@ -214,6 +215,10 @@ export async function applyReading(ctx: MutationCtx, company: Doc<"companies">, 
     }
   }
   await ctx.db.patch(message._id, { status: "read", requestIds: [...touched.keys()] as Id<"careRequests">[], reader: reading.reader });
+  // A stated wish to cancel or to have less service is Retention's relationship signal, recorded once per message.
+  // It never delays the request: Care carries out what the client asked.
+  const wish = reading.intents.find((i) => i.category === "cancellation" && (i.ask.cancel === "end_plan" || i.ask.cancel === "pause_plan")) ?? (reading.answer?.cancel === "end_plan" || reading.answer?.cancel === "pause_plan" ? { ask: { cancel: reading.answer.cancel } } : null);
+  if (wish) await noteStatedWish(ctx, company, customer, message.text, message.receivedAt, message.channel === "sms" ? "text" : "email", wish.ask.cancel === "end_plan" ? "cancel_request" : "reduce_request");
   if (options.recordOnly) {
     for (const { request } of touched.values()) {
       const fresh = (await ctx.db.get(request._id))!;

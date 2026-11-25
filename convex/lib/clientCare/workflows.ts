@@ -20,7 +20,6 @@ import { money } from "../dispatch/pay";
 import { planMove } from "../dispatch/reschedule";
 import { invoiceState, STATE_WORDS } from "../finance/invoiceState";
 import { seal, unseal } from "../recruiter/secrets";
-import { noteStatedWish } from "../retention/continuity";
 import { loadPlan, previewPlanChange } from "../retention/planChanges";
 import { checkCapacity } from "../sales/capacity";
 import { fileInquiry } from "../sales/intake";
@@ -420,7 +419,6 @@ async function cancellation(ctx: Ctx, w: W) {
     return ask(ctx, w, "which_scope", "Which service do you mean?", options, compose(w.voice, `Which service do you mean? ${numbered(options)}.`));
   }
   if (!mayDo(request.authority, "change_plan", plan.propertyId)) return notAllowed(ctx, w, "change_plan");
-  await noteStatedWish(ctx, company, w.customer, w.text, w.now, request.conversation.channel === "sms" ? "text" : "email", kind === "end_plan" ? "cancel_request" : "reduce_request");
   const view = await loadPlan(ctx, company._id, plan.ref);
   const tomorrow = localParts(w.now + DAY, tz).day;
   const change = kind === "end_plan" ? ("end_service" as const) : ("pause_service" as const);

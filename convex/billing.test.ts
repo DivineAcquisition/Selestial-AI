@@ -268,14 +268,17 @@ describe("billing", () => {
       billing.seed(s.companyId, { plan: "expand", grant: 2000, purchased: 5000 });
       await sync(s.t, s.companyId);
       const company = await s.t.run(async (ctx) => (await ctx.db.get(s.companyId))!);
-      for (const agent of ["marketing", "customer-care"] as const) expect(agentVerdict(company, agent)).toMatchObject({ ok: false, block: "not_released" });
+      expect(agentVerdict(company, "marketing")).toMatchObject({ ok: false, block: "not_released" });
+      // Client Care is released with its workflows, on every plan (the Owner's decision of November 25, 2026).
+      expect(agentVerdict(company, "customer-care")).toEqual({ ok: true });
       // Quality is released with its workflows, and is part of Expand only: its plan access did not change.
       expect(agentVerdict(company, "quality")).toEqual({ ok: true });
       expect(agentVerdict({ plan: "operate" }, "quality")).toMatchObject({ ok: false, block: "plan" });
       // Team Coordinator was retired: it is not an agent any plan names, and its work is in Recruiter and Dispatch, in both plans.
-      for (const agent of ["dispatch", "recruiter", "sales", "retention"] as const) expect(agentVerdict(company, agent)).toEqual({ ok: true });
+      for (const agent of ["dispatch", "recruiter", "sales", "retention", "customer-care"] as const) expect(agentVerdict(company, agent)).toEqual({ ok: true });
+      expect(agentVerdict({ plan: "operate" }, "customer-care")).toEqual({ ok: true });
       const view = await s.as.query(api.billing.planAndUsage, { companyId: s.companyId });
-      expect(view.catalog.agents.filter((row) => row.here).map((row) => row.agent)).toEqual(["sales", "retention", "recruiter", "dispatch", "quality"]);
+      expect(view.catalog.agents.filter((row) => row.here).map((row) => row.agent)).toEqual(["sales", "retention", "recruiter", "dispatch", "quality", "customer-care"]);
       expect(view.catalog.agents.map((row) => row.agent)).not.toContain("team-coordinator");
     });
 
@@ -344,7 +347,8 @@ describe("billing", () => {
       await settle(s.t);
       const preview = (await s.as.query(api.billing.intent, { companyId: s.companyId, intentId }))!.preview!;
       // Nothing Recruiter or Dispatch does is lost on Operate: onboarding and visit coordination are theirs.
-      expect(preview.lostAgents).toEqual(["Marketing", "Quality", "Care"]);
+      // Client Care is on Operate too, so moving down loses nothing of it.
+      expect(preview.lostAgents).toEqual(["Marketing", "Quality"]);
       expect(preview.lostFeatures).toContain("Creative Studio");
       expect(preview.effectiveAt).toBe(billing.customerFor(`company_${s.companyId}`).periodEnd);
       await s.as.mutation(api.billing.confirmIntent, { companyId: s.companyId, intentId });

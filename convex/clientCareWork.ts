@@ -43,8 +43,12 @@ function stopped(company: Doc<"companies"> | null): string | null {
   return null;
 }
 
-/** Why Care only records requests for this company, if it does: its plan doesn't include Client Care. */
+/**
+ * Why Care only records requests for this company, if it does: its plan doesn't include Client Care. Like every
+ * agent's rules-based work, Care's runs before a plan is chosen; its AI reading is the plan's (openExecution).
+ */
 function recordOnly(company: Doc<"companies">): string | null {
+  if (!company.plan) return null;
   const verdict = agentVerdict(company, "customer-care");
   return verdict.ok ? null : `${verdict.message} Client Care recorded the request; a person answers it.`;
 }

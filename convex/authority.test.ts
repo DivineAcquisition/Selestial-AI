@@ -15,7 +15,16 @@ describe("permissions per action", () => {
     const { actions, personOnly } = await as.query(api.permissions.list, { companyId });
     expect(actions.length).toBe(ACTIONS.length);
     for (const def of ACTIONS.filter((entry) => entry.outsider)) {
-      expect(rank(actions.find((row) => row.key === def.key)!.level), def.key).toBeLessThanOrEqual(rank("propose"));
+      const level = actions.find((row) => row.key === def.key)!.level;
+      // The Owner's decision of November 25, 2026: Client Care's verified answers, invoice look-ups and
+      // acknowledgments start automatic. Nothing else may start above Ask me first.
+      if (def.initial) {
+        expect(def.agent, def.key).toBe("customer-care");
+        expect(["care.answer_question", "care.acknowledge", "care.send_invoice_link", "care.complaint_intake"]).toContain(def.key);
+        expect(level, def.key).toBe(def.initial);
+        continue;
+      }
+      expect(rank(level), def.key).toBeLessThanOrEqual(rank("propose"));
     }
     // Something no outsider sees starts where the brief puts it.
     expect(actions.find((row) => row.key === "dispatch.close_visit")).toMatchObject({ level: "execute_and_report", changed: false });

@@ -45,7 +45,7 @@ describe("the Overview", () => {
     const departments = (await as.query(api.overview.team, { companyId })).departments;
     expect(departments.map((row) => [row.id, row.agents.map((agent) => agent.agent)])).toEqual([
       ["growth", ["sales", "retention"]],
-      ["operations", ["dispatch", "quality"]],
+      ["operations", ["dispatch", "quality", "customer-care"]],
       ["team", ["recruiter"]],
     ]);
 
@@ -74,7 +74,7 @@ describe("the Overview", () => {
     expect(decision.run[2].detail).toMatch(/^Rosa first: Rosa /);
     expect((await as.query(api.overview.team, { companyId })).departments.find((row) => row.id === "operations")).toMatchObject({
       summary: "1 item needs your decision.",
-      agents: [{ agent: "dispatch", state: "needs_you" }, { agent: "quality" }],
+      agents: [{ agent: "dispatch", state: "needs_you" }, { agent: "quality" }, { agent: "customer-care" }],
     });
 
     // Approving carries it out: the offer goes to Rosa. Offered is still not accepted.
