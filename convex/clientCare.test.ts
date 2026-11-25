@@ -10,6 +10,7 @@ import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { NOT_FOUND } from "./lib/errors";
 import { mockOutbox } from "./lib/messaging/provider";
+import { composeNotice } from "./lib/notify/compose";
 
 let undo: () => void;
 beforeEach(() => {
@@ -408,6 +409,46 @@ describe("Client Care: when the message doesn't go", () => {
     expect(request.status).toBe("waiting_owner");
     expect(request.blocker).toMatch(/registration/);
     expect(s.replies()).toEqual([]);
+  });
+});
+
+describe("Client Care: what the Owner is told", () => {
+  beforeEach(() => {
+    process.env.EMAIL_PROVIDER = "mock";
+  });
+  afterEach(() => {
+    delete process.env.EMAIL_PROVIDER;
+  });
+  async function notices(s: Awaited<ReturnType<typeof careSetup>>) {
+    return s.t.run(async (ctx) => {
+      const rows = (await ctx.db.query("messages").collect()).filter((m) => m.companyId === s.companyId && m.purpose === "member_notice" && m.notice?.event.startsWith("care_"));
+      const out = [];
+      for (const row of rows) {
+        const composed = await composeNotice(ctx, row, Date.now());
+        out.push({ event: row.notice!.event, status: row.status, subject: composed.ok ? composed.email.subject : null, text: composed.ok ? composed.email.text : composed.problem });
+      }
+      return out;
+    });
+  }
+
+  it("tells the Owner at once about an urgent request, and about a message that didn't go, without the client's words", async () => {
+    const s = await careSetup();
+    await s.completed({ scope: "A full clean." });
+    await s.text("Your cleaner broke my grandmother's vase");
+    const urgent = (await notices(s)).filter((n) => n.event === "care_urgent");
+    expect(urgent).toHaveLength(1);
+    expect(urgent[0], JSON.stringify(urgent[0])).toMatchObject({ subject: expect.stringContaining("urgent") });
+    expect(urgent[0].status).not.toBe("held");
+    expect(urgent[0].text).not.toContain("grandmother");
+    // A change made whose message didn't go needs a person: they are told, once.
+    await s.as.mutation(api.customers.update, { companyId: s.companyId, customerId: s.place.customerId, phone: "+15550100001" });
+    await s.visit(TUESDAY_10 + WEEK);
+    await s.allow("care.update_preferences", "execute");
+    await s.text("Please don't clean the guest bedroom next Tuesday only", "+15550100001");
+    const attention = (await notices(s)).filter((n) => n.event === "care_attention");
+    expect(attention.length).toBeGreaterThanOrEqual(1);
+    expect(attention.map((n) => n.subject)).toContain("A message to a client didn't go");
+    expect(attention.every((n) => !(n.text ?? "").includes("guest bedroom"))).toBe(true);
   });
 });
 
