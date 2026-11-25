@@ -72,6 +72,12 @@ function Onboarding() {
   const create = useMutation(api.companies.create);
   const join = useMutation(api.members.join);
   const [name, setName] = useState("");
+  // A Founding Access claim on its way in (/app/founding?claim=...) already named the company: start from it.
+  const [claimKey] = useState(() => (typeof window !== "undefined" && window.location.pathname === "/app/founding" ? new URLSearchParams(window.location.search).get("claim") : null));
+  const claimed = useQuery(api.founding.claimPreview, claimKey ? { claimKey } : "skip");
+  const [touched, setTouched] = useState(false);
+  // Shown from the claim until the person types their own.
+  const companyName = touched ? name : name || claimed?.companyName || "";
   const [agreed, setAgreed] = useState(false);
   const terms = currentVersion("terms");
   // Starts at the zone this browser reports. Nothing is assumed when it reports none.
@@ -136,12 +142,12 @@ function Onboarding() {
           if (busy) return;
           note("Creating your company");
           void run(async () => {
-            await create({ name, timezone, setupKey, acceptTerms: terms.id });
+            await create({ name: companyName, timezone, setupKey, acceptTerms: terms.id });
             note("Company created");
           });
         }}
       >
-        <TextField label="Company name" name="organization" value={name} onChange={(event) => setName(event.target.value)} required maxLength={160} autoComplete="organization" autoFocus={!hasInvitations} />
+        <TextField label="Company name" name="organization" value={companyName} onChange={(event) => { setTouched(true); setName(event.target.value); }} required maxLength={160} autoComplete="organization" autoFocus={!hasInvitations} />
         <TextField label="Time zone" name="timezone" value={timezone} onChange={(event) => setTimezone(event.target.value)} required autoComplete="off" hint="The IANA name of your zone, such as America/Chicago. Schedules, availability and deadlines are shown on this clock." />
         <label className="flex items-start gap-2.5 text-sm text-[#3d3654]">
           <Checkbox checked={agreed} onCheckedChange={(checked) => setAgreed(checked)} required className="mt-0.5 shrink-0" />
@@ -158,7 +164,7 @@ function Onboarding() {
           </span>
         </label>
         {error ? <Notice tone="error">{error}</Notice> : null}
-        <SubmitButton busy={busy} busyLabel="Creating your company" disabled={name.trim() === "" || timezone.trim() === "" || !agreed}>
+        <SubmitButton busy={busy} busyLabel="Creating your company" disabled={companyName.trim() === "" || timezone.trim() === "" || !agreed}>
           Create company
         </SubmitButton>
       </form>
@@ -197,7 +203,10 @@ function Workspace({ companyId, role, userId, businesses, onSwitch, support, chi
   const setup = useQuery(api.setup.state, { companyId });
   const router = useRouter();
   const pathname = usePathname();
-  const inSetup = pathname === SETUP_PATH || pathname.startsWith(`${SETUP_PATH}/`);
+  // The Founding Access claim page is part of setup: it links the claim before setup starts, so it is
+  // shown full screen, like setup, and an Owner in setup is not sent away from it (and its claim) first.
+  const onFounding = pathname === "/app/founding";
+  const inSetup = pathname === SETUP_PATH || pathname.startsWith(`${SETUP_PATH}/`) || (onFounding && setup?.required === true);
   // Only an Owner who has not yet opened the workspace is taken to setup. Staff and older companies never are.
   const sendToSetup = setup?.required === true && !inSetup;
   useEffect(() => {

@@ -28,6 +28,7 @@ import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import type { AutumnEnv } from "./autumn";
 import { AUTUMN, EARLY_BONUS_AGENTS, EARLY_OFFER, PLANS } from "./catalog";
 import type { Projection } from "./projection";
+import { FOUNDING_OFFER, enrollmentState, type Campaign } from "../founding/offer";
 
 const HOUR = 3_600_000;
 export const DAY = 24 * HOUR;
@@ -78,7 +79,29 @@ export async function placesUsed(ctx: QueryCtx | MutationCtx, env: AutumnEnv, no
   return used + reserved.filter((row) => row.reservedUntil > now).length;
 }
 
-export type Eligibility = { eligible: boolean; placesLeft: number; reason: "eligible" | "off" | "full" | "held_before" | "paid_before" | "has_plan" };
+export type Eligibility = { eligible: boolean; placesLeft: number; reason: "eligible" | "off" | "full" | "held_before" | "paid_before" | "has_plan" | "enrollment_closed" };
+
+/** The Founding Access campaign (convex/lib/founding/offer.ts), or null before one was ever activated. */
+export async function foundingCampaign(ctx: QueryCtx | MutationCtx): Promise<(Campaign & { _id: Id<"foundingCampaigns"> }) | null> {
+  const row = await ctx.db
+    .query("foundingCampaigns")
+    .withIndex("by_offer", (q) => q.eq("offerId", FOUNDING_OFFER.id))
+    .unique();
+  return row ? { _id: row._id, status: row.status, enrollmentStartsAt: row.enrollmentStartsAt, enrollmentEndsAt: row.enrollmentEndsAt, closedAt: row.closedAt } : null;
+}
+
+/**
+ * Once a Founding Access campaign has been activated, its shared window is part of the offer: after the
+ * deadline (or a staff close) no new place is offered, whatever EARLY_OFFER says. Before any activation the
+ * rule is unchanged. A company's own live reservation is still honoured, so an Owner who confirmed before
+ * the deadline can finish paying inside the reservation's 24 hours.
+ */
+async function enrollmentClosed(ctx: QueryCtx | MutationCtx, used: number, now: number): Promise<boolean> {
+  const campaign = await foundingCampaign(ctx);
+  if (!campaign || campaign.status === "draft") return false;
+  const state = enrollmentState(campaign, used, now);
+  return state === "closed" || state === "closed_deadline" || state === "not_open";
+}
 
 /**
  * The offer is sold only once it is switched on: EARLY_OFFER=on on the Convex deployment. Off by default,
@@ -104,6 +127,7 @@ export async function eligibility(ctx: QueryCtx | MutationCtx, companyId: Id<"co
   if (row && (row.state === "claimed" || row.state === "ended")) return no("held_before");
   // Switched off: no new place is offered, though a reservation already made is still honoured.
   if (!earlyOfferOn() && !mine) return no("off");
+  if (!mine && (await enrollmentClosed(ctx, used, now))) return no("enrollment_closed");
   if (account?.plan) return no("has_plan");
   // A company that ever paid for a plan is not a first payment. Top-ups need a plan, so any paid invoice means one.
   if (account?.invoices.some((invoice) => invoice.status === "paid" && invoice.cents > 0)) return no("paid_before");
@@ -119,7 +143,7 @@ export async function reservePlace(ctx: MutationCtx, input: { companyId: Id<"com
   const verdict = await eligibility(ctx, input.companyId, input.env, input.account, input.now);
   if (!verdict.eligible) return false;
   const row = await offerFor(ctx, input.companyId, input.env);
-  const fields = { state: "reserved" as const, intentId: input.intentId, reservedAt: input.now, reservedUntil: input.now + RESERVE_MS, releasedAt: undefined, releaseReason: undefined, releasedBy: undefined, updatedAt: input.now };
+  const fields = { state: "reserved" as const, intentId: input.intentId, reservedAt: input.now, reservedUntil: input.now + RESERVE_MS, releasedAt: undefined, releaseReason: undefined, releasedBy: undefined, offerVersion: FOUNDING_OFFER.version, updatedAt: input.now };
   if (row) await ctx.db.patch(row._id, fields);
   else await ctx.db.insert("earlyOffers", { companyId: input.companyId, env: input.env, ...fields });
   return true;
@@ -164,7 +188,8 @@ export async function onAccountSynced(ctx: MutationCtx, input: { companyId: Id<"
       // the start of the first paid period.
       const started = projection.subscription.startedAt;
       const startedAt = started !== null && started <= now && started > now - 40 * DAY ? started : now;
-      const fields = { state: "claimed" as const, claimedAt: now, startedAt, offerEndsAt: addMonthsUTC(startedAt, EARLY_OFFER.months), updatedAt: now };
+      // The version the company reserved under is kept; a payment with no reservation takes the current one.
+      const fields = { state: "claimed" as const, claimedAt: now, startedAt, offerEndsAt: addMonthsUTC(startedAt, EARLY_OFFER.months), offerVersion: row?.offerVersion ?? FOUNDING_OFFER.version, updatedAt: now };
       if (row) await ctx.db.patch(row._id, fields);
       else await ctx.db.insert("earlyOffers", { companyId: input.companyId, env: input.env, reservedAt: now, reservedUntil: now, ...fields });
       await grantEarlyBonus(ctx, input.companyId, now);

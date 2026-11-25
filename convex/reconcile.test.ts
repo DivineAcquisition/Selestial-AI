@@ -217,7 +217,7 @@ describe("Every company function is bound to the support session", () => {
       }
     }
     // Staff console functions that name a company, and joining before any membership exists. None runs inside a workspace.
-    const outsideWorkspace = new Set(["./members.ts:join", "./compliance.ts:setRegistration", "./compliance.ts:setSuspended", "./requests.ts:route", "./messagingFunds.ts:supportCredit", "./support.ts:start", "./operations.ts:list"]);
+    const outsideWorkspace = new Set(["./members.ts:join", "./compliance.ts:setRegistration", "./compliance.ts:setSuspended", "./requests.ts:route", "./messagingFunds.ts:supportCredit", "./support.ts:start", "./operations.ts:list", "./founding.ts:setExcludedFromCounts"]);
     expect(missing.filter((name) => !outsideWorkspace.has(name))).toEqual([]);
   });
 });
