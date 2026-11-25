@@ -8,7 +8,7 @@ import type { AgentState } from "../../../convex/overview";
 
 export type AgentId = "sales" | "recruiter" | "dispatch" | "retention" | "quality" | "customer-care";
 
-export const AGENT_NAME: Record<AgentId, string> = { sales: "Sales", recruiter: "Recruiter", dispatch: "Dispatch", retention: "Retention", quality: "Quality", "customer-care": "Client Care" };
+export const AGENT_NAME: Record<AgentId, string> = { sales: "Sales", recruiter: "Recruiter", dispatch: "Dispatch", retention: "Retention", quality: "Quality", "customer-care": "Care" };
 
 /** How an agent's state is said and shown. "Active" is never one of them: the state says what is actually happening. */
 export const STATE: Record<AgentState, { label: string; dot: string; pulse: boolean; icon: LucideIcon | null }> = {

@@ -16,5 +16,5 @@ export function agentOf(id: AgentId) {
 
 /** The name a plan's agent is written with everywhere. */
 export function agentName(id: PlanAgentId): string {
-  return id === "customer-care" ? "Client Care" : agentOf(id).name;
+  return id === "customer-care" ? "Care" : agentOf(id).name;
 }

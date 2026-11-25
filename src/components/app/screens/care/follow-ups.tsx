@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * What Client Care is waiting on, and what it will do about it: who or what each request waits for, the time
+ * What Care is waiting on, and what it will do about it: who or what each request waits for, the time
  * promised to the client, the next thing Care will do, and whether that will happen on its own, waits for an
  * approval, or needs a person. Follow-ups come from pending work only; nothing is sent to look busy.
  */
@@ -25,7 +25,7 @@ export function CareFollowUpsScreen() {
   const rows = useStableQuery(api.clientCare.followUps, now ? { companyId, asOf: now } : "skip");
   return (
     <>
-      <PageHeader title="Follow-ups" lead="Who each open request is waiting on, what was promised to the client, and what Client Care does next. A reply, a resolution, a takeover or a pause stops the follow-up." />
+      <PageHeader title="Follow-ups" lead="Who each open request is waiting on, what was promised to the client, and what Care does next. A reply, a resolution, a takeover or a pause stops the follow-up." />
       {rows === undefined ? (
         <div className="grid gap-3" aria-busy="true" aria-label="Loading follow-ups">
           <Skeleton className="h-20 rounded-2xl" />
@@ -65,7 +65,7 @@ export function CareFollowUpsScreen() {
           ))}
         </ul>
       ) : (
-        <Empty title="Nothing is waiting" body="When Client Care asks a client something, hands work to the team, or promises an update, it appears here with what happens next." />
+        <Empty title="Nothing is waiting" body="When Care asks a client something, hands work to the team, or promises an update, it appears here with what happens next." />
       )}
       <RequestWorkspace id={openId} onClose={close} />
     </>

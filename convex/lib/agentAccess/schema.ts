@@ -3,7 +3,7 @@ import { v } from "convex/values";
 
 /**
  * The agents a company can ask for before they are released. Team Coordinator was retired (its work is Recruiter's
- * and Dispatch's). Quality was released on November 22, 2026 and Client Care on November 25, 2026; earlier requests for them stay readable
+ * and Dispatch's). Quality was released on November 22, 2026 and Care on November 25, 2026; earlier requests for them stay readable
  * (`agent` is a string).
  */
 export const PLANNED_AGENT_IDS = ["marketing"] as const;

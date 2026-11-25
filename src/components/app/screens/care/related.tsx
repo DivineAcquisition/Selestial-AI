@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * A record's Client Care requests, where people already look: the client profile, an Inbox conversation and a
- * visit's panel. Each opens the request in Client Care. Read from the same requests as the workspace.
+ * A record's Care requests, where people already look: the client profile, an Inbox conversation and a
+ * visit's panel. Each opens the request in Care. Read from the same requests as the workspace.
  */
 import { useQuery } from "convex/react";
 import Link from "next/link";
@@ -26,11 +26,11 @@ export function CareOnRecord({ target, quietWhenEmpty = false, className }: { ta
   if (data === undefined) return null;
   if (data.rows.length === 0 && quietWhenEmpty) return null;
   return (
-    <section aria-label="Client Care" className={cn("grid content-start gap-2.5 rounded-2xl border border-border bg-card p-4", className)}>
+    <section aria-label="Care" className={cn("grid content-start gap-2.5 rounded-2xl border border-border bg-card p-4", className)}>
       <div className="flex items-center justify-between gap-2">
         <h3 className="flex items-center gap-2 text-sm font-semibold text-strong">
           <AgentAvatar agent="customer-care" size="xs" />
-          Client Care
+          Care
         </h3>
         <span className="text-xs text-muted-foreground">{data.open ? `${data.open} open` : "Nothing open"}{data.paused ? " · paused" : ""}</span>
       </div>
@@ -54,7 +54,7 @@ export function CareOnRecord({ target, quietWhenEmpty = false, className }: { ta
           ))}
         </ul>
       ) : (
-        <p className="text-sm text-muted-foreground">No client requests yet. When this client texts or emails the company, Client Care&rsquo;s requests appear here.</p>
+        <p className="text-sm text-muted-foreground">No client requests yet. When this client texts or emails the company, Care&rsquo;s requests appear here.</p>
       )}
     </section>
   );

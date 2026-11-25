@@ -152,7 +152,7 @@ export async function onCustomerText(ctx: MutationCtx, company: Doc<"companies">
 
 /**
  * A customer's stated wish to cancel or to have less service, recorded for Retention as what they said, never
- * as a guess about why. Client Care calls this when it carries out such a request: Retention learns of it, and
+ * as a guess about why. Care calls this when it carries out such a request: Retention learns of it, and
  * nothing here delays or argues with the request.
  */
 export async function noteStatedWish(ctx: MutationCtx, company: Doc<"companies">, customer: Doc<"customers">, text: string, at: number, via: "text" | "email", kind: "cancel_request" | "reduce_request"): Promise<{ did: string }> {

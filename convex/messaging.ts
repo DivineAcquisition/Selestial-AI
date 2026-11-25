@@ -224,7 +224,7 @@ export const claim = internalMutation({
       fromName = statement.fromName;
     }
     if (message.careRequestId) {
-      // A Client Care message: the request still open and Care's to write in, the draft not overtaken by a newer word from the client.
+      // A Care message: the request still open and Care's to write in, the draft not overtaken by a newer word from the client.
       const care = await careReplyClaim(ctx, message);
       if ("problem" in care) {
         if (message.reconcile) return backToUnconfirmed(ctx, message, `Not checked with the provider: ${care.problem}`);
@@ -756,7 +756,7 @@ async function applyOutcome(ctx: MutationCtx, message: Doc<"messages">, outcome:
     if (args.outcome === "delivered") {
       await ctx.db.patch(message._id, { status: "delivered", deliveredAt: now, deliveryUnconfirmedAt: undefined });
       await logStep(ctx, message, { type: "message.delivered", data: { purpose: message.purpose } });
-      // Client Care keeps accepted and delivered apart on its step.
+      // Care keeps accepted and delivered apart on its step.
       if (message.careRequestId) await afterCareReply(ctx, (await ctx.db.get(message._id))!);
       return "delivered" as const;
     }

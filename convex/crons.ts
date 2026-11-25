@@ -106,9 +106,9 @@ crons.interval("quality keeps its work moving", { minutes: 10 }, internal.qualit
 crons.interval("quality reads the connected phone platform", { minutes: 10 }, internal.qualityComms.sweep, {});
 crons.interval("retention reconciles and follows through", { minutes: 10 }, internal.retentionWork.sweep, {});
 // Only inboxes connected for Care & Retention, and only where the Owner turned reading on.
-// The Care & Retention inbox is read for Client Care since November 25, 2026 (docs/care/00-architecture.md).
+// The Care & Retention inbox is read for Care since November 25, 2026 (docs/care/00-architecture.md).
 crons.interval("client care reads customer replies in care inboxes", { minutes: 10 }, internal.retentionInbox.sweep, {});
-// Client Care: runs whose worker died, requests due a follow-up or a promised update.
+// Care: runs whose worker died, requests due a follow-up or a promised update.
 crons.interval("client care keeps its requests moving", { minutes: 5 }, internal.clientCareWork.sweep, {});
 
 // Activation: steps whose worker never reported back are retried or failed, running batches get their next

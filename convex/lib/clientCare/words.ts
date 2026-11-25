@@ -1,5 +1,5 @@
 /**
- * How Client Care writes, in code. Every fact in a message comes from the record it was given; the tone is the
+ * How Care writes, in code. Every fact in a message comes from the record it was given; the tone is the
  * company's (Care Setup). Care says it is the company's assistant the first time it writes on a request, and
  * never signs as a person.
  */

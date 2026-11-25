@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * The pieces every Client Care screen is built from. A status is words with a mark, never a colour alone; who a
+ * The pieces every Care screen is built from. A status is words with a mark, never a colour alone; who a
  * request waits on is always said; what a line rests on (a record, the client's words, a policy, a calculation)
  * is shown beside it. Nothing animates unless work is really under way.
  */
@@ -22,7 +22,7 @@ export type CareFollowUp = FunctionReturnType<typeof api.clientCare.followUps>[n
 export type CareSetupView = FunctionReturnType<typeof api.clientCare.setup>;
 
 export const CARE_PATH = "/app/agents/customer-care";
-export const CARE_NAME = "Client Care";
+export const CARE_NAME = "Care";
 export const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
 
 type Status = CareCard["status"];
@@ -74,7 +74,7 @@ const MODE_LOOK: Record<CareFollowUp["mode"], { label: string; tone: string; ico
     approval: { label: "Waiting for approval", tone: "border-warning/40 bg-warning/10 text-warning-foreground", icon: Hand },
     blocked: { label: "Needs a person", tone: "border-warning/40 bg-warning/10 text-warning-foreground", icon: AlertTriangle },
     held: { label: "With a person", tone: "border-border bg-muted text-strong", icon: Hand },
-    paused: { label: "Client Care paused", tone: "border-border bg-muted text-muted-foreground", icon: PauseCircleIcon },
+    paused: { label: "Care paused", tone: "border-border bg-muted text-muted-foreground", icon: PauseCircleIcon },
 };
 
 export function ModeTag({ mode }: { mode: CareFollowUp["mode"] }) {
@@ -139,7 +139,7 @@ export function RequestCard({ card, now, timezone, onOpen }: { card: CareCard; n
       <span className="grid gap-1 text-xs text-muted-foreground sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-3">
         <span className="min-w-0 [overflow-wrap:anywhere]">
           <span className="font-semibold text-strong">{card.held ? "With " : "Next: "}</span>
-          {card.held ? card.owner : (card.blocker ?? card.waiting ?? card.nextAction ?? "Client Care is working it.")}
+          {card.held ? card.owner : (card.blocker ?? card.waiting ?? card.nextAction ?? "Care is working it.")}
         </span>
         <span className="whitespace-nowrap">
           {card.promisedBy ? `Update promised ${now ? whenLabel(card.promisedBy, now, timezone) : ""}` : card.lastUpdateAt && now ? `Client told ${whenLabel(card.lastUpdateAt, now, timezone)}` : now ? `Client wrote ${whenLabel(card.lastClientAt, now, timezone)}` : ""}

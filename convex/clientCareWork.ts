@@ -1,5 +1,5 @@
 /**
- * Client Care's background work, in separate steps so a crash between any two is recoverable and nothing
+ * Care's background work, in separate steps so a crash between any two is recoverable and nothing
  * is done twice (docs/care/00-architecture.md):
  *
  *   begin   (a mutation) takes a queued run under a lease, checks the company, the pause and the plan, and,
@@ -44,13 +44,13 @@ function stopped(company: Doc<"companies"> | null): string | null {
 }
 
 /**
- * Why Care only records requests for this company, if it does: its plan doesn't include Client Care. Like every
+ * Why Care only records requests for this company, if it does: its plan doesn't include Care. Like every
  * agent's rules-based work, Care's runs before a plan is chosen; its AI reading is the plan's (openExecution).
  */
 function recordOnly(company: Doc<"companies">): string | null {
   if (!company.plan) return null;
   const verdict = agentVerdict(company, "customer-care");
-  return verdict.ok ? null : `${verdict.message} Client Care recorded the request; a person answers it.`;
+  return verdict.ok ? null : `${verdict.message} Care recorded the request; a person answers it.`;
 }
 
 async function finish(ctx: MutationCtx, run: Doc<"careRuns">, status: "done" | "skipped" | "failed", result: string) {
@@ -81,7 +81,7 @@ export const begin = internalMutation({
     let billingNote: string | null = null;
     // An AI reading is one billable unit, opened here and held in the action. A retry of the same run reuses it.
     if (careModel().name !== "rules" && !recordOnly(company!)) {
-      const opened = await openExecution(ctx, { company: company!, key: `care-read:${run._id}`, agent: "customer-care", task: "care_message_reading", units: 1, autonomous: true, origin: "automatic", source: { table: "careMessages", id: message._id }, link: { label: "Client Care", path: "/app/agents/customer-care/requests" } });
+      const opened = await openExecution(ctx, { company: company!, key: `care-read:${run._id}`, agent: "customer-care", task: "care_message_reading", units: 1, autonomous: true, origin: "automatic", source: { table: "careMessages", id: message._id }, link: { label: "Care", path: "/app/agents/customer-care/requests" } });
       if (opened.ok) executionId = opened.executionId;
       else billingNote = opened.message;
       if (executionId) await ctx.db.patch(run._id, { executionId });
@@ -121,11 +121,11 @@ export const failed = internalMutation({
     if (!run || run.status === "done" || run.status === "skipped") return null;
     if (run.executionId) await finishExecution(ctx, run.executionId, { ended: "failed" });
     if (run.attempts < MAX_ATTEMPTS) {
-      await ctx.db.patch(run._id, { status: "queued", leaseUntil: undefined, executionId: undefined, result: "This attempt did not finish. Client Care tries again." });
+      await ctx.db.patch(run._id, { status: "queued", leaseUntil: undefined, executionId: undefined, result: "This attempt did not finish. Care tries again." });
       await ctx.scheduler.runAfter(run.attempts * 30_000, internal.clientCareWork.read, { runId: run._id });
       return null;
     }
-    await finish(ctx, run, "failed", "Client Care could not read this message after three tries. Nothing was sent.");
+    await finish(ctx, run, "failed", "Care could not read this message after three tries. Nothing was sent.");
     await giveUp(ctx, run);
     return null;
   },
@@ -135,7 +135,7 @@ async function giveUp(ctx: MutationCtx, run: Doc<"careRuns">) {
   const message = run.messageId ? await ctx.db.get(run.messageId) : null;
   const key = `care.run_failed:${run._id}`;
   if (await liveTaskByKey(ctx, run.companyId, key)) return;
-  await openTask(ctx, { companyId: run.companyId, agent: "customer-care", title: "Client Care could not read a client's message", nextAction: "Open the client's conversation and answer the message yourself.", dueAt: Date.now() + 60 * MINUTE, completionCondition: "A person read the message and dealt with it", about: message ? { table: "customers", id: message.customerId } : undefined, key, actor: SYSTEM });
+  await openTask(ctx, { companyId: run.companyId, agent: "customer-care", title: "Care could not read a client's message", nextAction: "Open the client's conversation and answer the message yourself.", dueAt: Date.now() + 60 * MINUTE, completionCondition: "A person read the message and dealt with it", about: message ? { table: "customers", id: message.customerId } : undefined, key, actor: SYSTEM });
 }
 
 export const read = internalAction({
@@ -210,7 +210,7 @@ export const sweep = internalMutation({
       if (!company || company.pausedAgents.includes("customer-care")) continue;
       if (run.attempts >= MAX_ATTEMPTS) {
         if (run.executionId) await finishExecution(ctx, run.executionId, { ended: "failed" });
-        await finish(ctx, run, "failed", "Client Care could not finish reading this message after three tries. Nothing was sent.");
+        await finish(ctx, run, "failed", "Care could not finish reading this message after three tries. Nothing was sent.");
         await giveUp(ctx, run);
         continue;
       }

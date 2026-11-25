@@ -1,5 +1,5 @@
 /**
- * Client Care's screens rendered over what the real queries returned for a sample company
+ * Care's screens rendered over what the real queries returned for a sample company
  * (tests/fixtures/careScreens.json, written by convex/careScreens.test.ts with CARE_SCREENS_OUT). Each screen
  * must say who a request waits on and what happens next, keep a change apart from the message about it, show
  * delivery as the provider reported it, and claim no savings or productivity.
@@ -53,12 +53,12 @@ function honest(page: string) {
   expect(text(page)).not.toMatch(/hours? saved|time saved|saved you|\d+% (?:faster|fewer)|confidence/i);
 }
 
-describe("Client Care screens", () => {
+describe("Care screens", () => {
   it("briefs from the record: what came in, what is with you, what is due and what Care did", () => {
     const page = html(<CareOverviewScreen />);
     keep("01-overview", page);
     const words = text(page);
-    for (const line of ["Client Care", "Waiting on you", "Urgent", "Lee Chen", "Promised updates due", "Steps that didn't go through", "What Client Care has been doing", "Pause Client Care"]) expect(words, line).toContain(line);
+    for (const line of ["Care", "Waiting on you", "Urgent", "Lee Chen", "Promised updates due", "Steps that didn't go through", "What Care has been doing", "Pause Care"]) expect(words, line).toContain(line);
     expect(words).toContain("Your company's rules read each message. No AI credits are used.");
     honest(page);
   });
@@ -77,7 +77,7 @@ describe("Client Care screens", () => {
     keep("03-request-partial", partial);
     const words = text(partial);
     expect(words).toContain("Conversation");
-    expect(words).toContain("What Client Care found");
+    expect(words).toContain("What Care found");
     expect(words).toContain("Change: Done");
     expect(words).toContain("Client message: Didn't happen");
     expect(words).toContain("Retry the message");
@@ -105,7 +105,7 @@ describe("Client Care screens", () => {
     const owner = html(<CareSetupScreen />);
     keep("06-care-setup", owner);
     const words = text(owner);
-    for (const line of ["Channels", "Request types", "Change policy", "What Client Care may do", "Act automatically", "Ask me first", "Escalation contacts", "Operating hours", "Save Care Setup"]) expect(words, line).toContain(line);
+    for (const line of ["Channels", "Request types", "Change policy", "What Care may do", "Act automatically", "Ask me first", "Escalation contacts", "Operating hours", "Save Care Setup"]) expect(words, line).toContain(line);
     expect(words).toContain("Care doesn't change a visit's price yet");
     honest(owner);
   });

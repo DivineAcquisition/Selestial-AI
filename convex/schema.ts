@@ -163,7 +163,7 @@ export const proposalValidator = v.union(
   v.object({ kind: v.literal("quality_request"), requestId: v.id("qualityRequests"), stamp: v.string() }),
   /** Adopt one improvement Quality proposed: the change named, carried out by the record's owner. */
   v.object({ kind: v.literal("quality_improvement"), improvementId: v.id("qualityImprovements") }),
-  // Client Care (convex/lib/clientCare/approvals.ts carries it out).
+  // Care (convex/lib/clientCare/approvals.ts carries it out).
   /** Carry out one step Care prepared on a request, exactly as prepared, if the request and its records have not moved on since. */
   v.object({ kind: v.literal("care_action"), stepId: v.id("careSteps"), stamp: v.string() }),
 );
@@ -327,7 +327,7 @@ export default defineSchema({
     retention: v.optional(retentionSettingsValidator),
     /** How Quality works for this company: request timing and limits, link length, what it may read (convex/lib/quality/settings.ts). */
     quality: v.optional(qualitySettingsValidator),
-    /** How Client Care works for this company: request types, policy, tone, escalation and response times (convex/lib/clientCare/settings.ts). */
+    /** How Care works for this company: request types, policy, tone, escalation and response times (convex/lib/clientCare/settings.ts). */
     clientCare: v.optional(careSettingsValidator),
     /** The Sales Playbook: voice, what the agent handles, approved answers, follow-up timing, deposits and quote terms (convex/lib/sales/settings.ts). */
     sales: v.optional(salesSettingsValidator),
@@ -841,7 +841,7 @@ export default defineSchema({
       v.literal("quality_reminder"),
       // Selestial, to a member of the company: a notification (convex/lib/notify).
       v.literal("member_notice"),
-      // Client Care, to a client: an answer, a question, a confirmation or an update about their request (convex/lib/clientCare/outbox.ts).
+      // Care, to a client: an answer, a question, a confirmation or an update about their request (convex/lib/clientCare/outbox.ts).
       v.literal("client_care_reply"),
     ),
     /** Absent means a text. */
@@ -868,7 +868,7 @@ export default defineSchema({
     retentionActionId: v.optional(v.id("retentionActions")),
     /** Quality messages: the request the message carries. Its link is made at the moment of sending. */
     qualityRequestId: v.optional(v.id("qualityRequests")),
-    /** Client Care messages: the request and the step the message carries out, checked again at the moment of sending. */
+    /** Care messages: the request and the step the message carries out, checked again at the moment of sending. */
     careRequestId: v.optional(v.id("careRequests")),
     careStepId: v.optional(v.id("careSteps")),
     /** A message in a Sales conversation: the opportunity it belongs to. */
@@ -1192,7 +1192,7 @@ export default defineSchema({
   ...retentionTables,
   // ── Quality: standards, reviews, cases, findings, requests, corrections, improvements, runs, communications (convex/lib/quality/schema.ts) ─
   ...qualityTables,
-  // ── Client Care: requests, the messages it read, their history, its steps and its runs (convex/lib/clientCare/schema.ts) ─
+  // ── Care: requests, the messages it read, their history, its steps and its runs (convex/lib/clientCare/schema.ts) ─
   ...clientCareTables,
   // ── Migration: tutorials for moving in, and records brought from another system (convex/lib/tutorials, lib/migration) ─
   ...tutorialTables,

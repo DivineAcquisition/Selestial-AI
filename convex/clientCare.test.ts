@@ -20,7 +20,7 @@ beforeEach(() => {
 });
 afterEach(() => undo());
 
-describe("Client Care: answers from the record", () => {
+describe("Care: answers from the record", () => {
   it("asks which visit when a client with several bookings asks something only one can answer, then answers that one", async () => {
     const s = await careSetup();
     const first = await s.visit(TUESDAY_10, { accepted: true });
@@ -61,7 +61,7 @@ describe("Client Care: answers from the record", () => {
   });
 });
 
-describe("Client Care: preferences and access", () => {
+describe("Care: preferences and access", () => {
   it("puts a one-visit preference on that visit only, after the Owner approves, and leaves the series alone", async () => {
     const s = await careSetup();
     const { jobs } = await s.weeklyPlan([TUESDAY_10, TUESDAY_10 + WEEK]);
@@ -89,7 +89,7 @@ describe("Client Care: preferences and access", () => {
   });
 });
 
-describe("Client Care: durable, once", () => {
+describe("Care: durable, once", () => {
   it("handles one delivery once, however often the webhook or the worker repeats it", async () => {
     const s = await careSetup();
     await s.visit(TUESDAY_10);
@@ -116,7 +116,7 @@ describe("Client Care: durable, once", () => {
     expect(s.replies()).toHaveLength(0);
   });
 
-  it("keeps everything while Client Care is paused, does nothing on its own, and works it when resumed", async () => {
+  it("keeps everything while Care is paused, does nothing on its own, and works it when resumed", async () => {
     const s = await careSetup();
     await s.visit(TUESDAY_10);
     await s.as.mutation(api.companies.pauseAgent, { companyId: s.companyId, agent: "customer-care" });
@@ -135,7 +135,7 @@ describe("Client Care: durable, once", () => {
   });
 });
 
-describe("Client Care: rescheduling", () => {
+describe("Care: rescheduling", () => {
   it("offers only times capacity allows, and re-checks the chosen one when it is carried out", async () => {
     const s = await careSetup();
     await s.policy(24);
@@ -204,7 +204,7 @@ describe("Client Care: rescheduling", () => {
   });
 });
 
-describe("Client Care: skips and cancellations", () => {
+describe("Care: skips and cancellations", () => {
   it("skips one visit of a recurring plan and leaves the rest of the series as it is", async () => {
     const s = await careSetup();
     await s.policy(24);
@@ -249,7 +249,7 @@ describe("Client Care: skips and cancellations", () => {
   });
 });
 
-describe("Client Care: complaints", () => {
+describe("Care: complaints", () => {
   it("acknowledges without findings, opens one linked recovery case, and keeps one case when the client writes again", async () => {
     const s = await careSetup();
     const jobId = await s.completed({ scope: "A full clean." });
@@ -285,7 +285,7 @@ describe("Client Care: complaints", () => {
     }
     await flush(s.t);
     await flush(s.t);
-    // One voice: the words went through Client Care, in the request's thread, exactly as Retention wrote them.
+    // One voice: the words went through Care, in the request's thread, exactly as Retention wrote them.
     const relayed = (await s.outbound()).filter((m) => m.body.includes("redo the bathroom"));
     expect(relayed).toHaveLength(1);
     const [step] = (await s.steps()).filter((x) => x.kind === "relay");
@@ -325,7 +325,7 @@ describe("Client Care: complaints", () => {
   });
 });
 
-describe("Client Care: invoices", () => {
+describe("Care: invoices", () => {
   it("sends the existing invoice's record and link, and creates, charges or marks nothing", async () => {
     const s = await careSetup();
     const invoiceId = await s.invoice(12000, { paidCents: 4000, depositCents: 4000 });
@@ -341,7 +341,7 @@ describe("Client Care: invoices", () => {
   });
 });
 
-describe("Client Care: extras", () => {
+describe("Care: extras", () => {
   const OVEN = { id: "oven", label: "Inside the oven", priceCents: 4500, per: "visit" as const, laborMinutes: 30, maxQuantity: 1 };
   async function pricedVisit(s: Awaited<ReturnType<typeof careSetup>>) {
     const key = await publish(s.as, s.companyId, homeSpec({ excluded: [], addOns: [OVEN] }));
@@ -406,7 +406,7 @@ describe("Client Care: extras", () => {
     const [step] = (await s.steps()).filter((x) => x.kind === "extra");
     expect(["failed", "blocked", "cancelled"]).toContain(step.status);
     expect(s.replies().join(" ")).not.toContain("Done:");
-    // Client Care works the request again on what the record says now: an invoiced visit is the office's.
+    // Care works the request again on what the record says now: an invoiced visit is the office's.
     await s.sweep();
     const [request] = await s.requests();
     expect(request.status).toBe("waiting_owner");
@@ -415,7 +415,7 @@ describe("Client Care: extras", () => {
   });
 });
 
-describe("Client Care: who holds the conversation", () => {
+describe("Care: who holds the conversation", () => {
   it("stops a queued reply when a person takes the request over", async () => {
     const s = await careSetup();
     await s.visit(TUESDAY_10);
@@ -468,7 +468,7 @@ describe("Client Care: who holds the conversation", () => {
   });
 });
 
-describe("Client Care: when the message doesn't go", () => {
+describe("Care: when the message doesn't go", () => {
   it("keeps a change that was made, retries only the message, and never makes the change twice", async () => {
     const s = await careSetup();
     await s.as.mutation(api.customers.update, { companyId: s.companyId, customerId: s.place.customerId, phone: "+15550100001" });
@@ -506,7 +506,7 @@ describe("Client Care: when the message doesn't go", () => {
       expect(s.replies(phone)).toHaveLength(0);
       let [request] = await s.requests();
       expect(request.status).toBe("waiting_owner");
-      expect(request.blocker).toMatch(/^Client Care's message is ready but held: .*It goes as soon as that is fixed\.$/);
+      expect(request.blocker).toMatch(/^Care's message is ready but held: .*It goes as soon as that is fixed\.$/);
       expect(request.nextAction).toMatch(/messaging funds/);
       // Nothing is lost and nothing goes twice: the same reply goes once funds arrive.
       billing.seed(s.companyId, { messaging: { purchased: 250_000, promo: 0, promoExpiresAt: null, used: 0 } });
@@ -557,7 +557,7 @@ describe("Client Care: when the message doesn't go", () => {
   });
 });
 
-describe("Client Care: what the Owner is told", () => {
+describe("Care: what the Owner is told", () => {
   beforeEach(() => {
     process.env.EMAIL_PROVIDER = "mock";
   });
@@ -597,7 +597,7 @@ describe("Client Care: what the Owner is told", () => {
   });
 });
 
-describe("Client Care: tenants", () => {
+describe("Care: tenants", () => {
   it("never lets another company read or act on a request", async () => {
     const s = await careSetup();
     await s.visit(TUESDAY_10);

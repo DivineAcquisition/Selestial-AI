@@ -1,7 +1,7 @@
 /**
  * @vitest-environment edge-runtime
  *
- * A sample company for Client Care's screens, built through the real backend (convex-test) with the mock text
+ * A sample company for Care's screens, built through the real backend (convex-test) with the mock text
  * provider: a question answered from the visit, a reschedule waiting for approval, a complaint with the team, a
  * change made whose message didn't go, a question waiting on the client, and an urgent concern. The test checks
  * what the screens' queries return; with CARE_SCREENS_OUT set it also writes those answers to that file, which
@@ -22,7 +22,7 @@ beforeEach(() => {
 });
 afterEach(() => undo());
 
-describe("Client Care's screens", () => {
+describe("Care's screens", () => {
   it("say what is true on the record, and claim nothing else", async () => {
     const s = await careSetup();
     const { as, companyId, t } = s;

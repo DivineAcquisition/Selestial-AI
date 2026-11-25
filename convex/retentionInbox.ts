@@ -1,6 +1,6 @@
 /**
  * Reading customers' replies in an inbox the Owner connected for Care & Retention. Since November 25, 2026 the
- * words go to Client Care (convex/lib/clientCare/intake.ts), which works the request and tells Retention of a
+ * words go to Care (convex/lib/clientCare/intake.ts), which works the request and tells Retention of a
  * stated wish to cancel; the file keeps its name so the cursor and lease on each connection carry on.
  *
  * Off until the Owner turns it on in Care Setup (Retention's earlier switch carries over), and narrow on purpose:
@@ -85,7 +85,7 @@ export const triage = internalQuery({
 });
 
 /**
- * Hands one customer's own words to Client Care (the Owner's decision of November 25, 2026), which keeps them
+ * Hands one customer's own words to Care (the Owner's decision of November 25, 2026), which keeps them
  * once by Gmail's message id and works the request, and tells Retention of a stated wish to cancel. When Care
  * cannot take it (the address is no longer one client's alone), Retention's reader reads it as before.
  * Asked twice for the same message, it files once.

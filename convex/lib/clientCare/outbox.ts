@@ -1,5 +1,5 @@
 /**
- * Client Care's messages to a client: an answer, a question, a confirmation, an update, or a step Retention
+ * Care's messages to a client: an answer, a question, a confirmation, an update, or a step Retention
  * prepared on a case linked to the request. Planned as `messages` rows and sent through the one door
  * (convex/messaging.ts), so the shared sending policy decides suspension, pause, sender readiness, consent,
  * the do-not-contact list, quiet hours and funds, when planned and again when sent.
@@ -28,13 +28,13 @@ type Ctx = QueryCtx | MutationCtx;
 
 /** Who holds the conversation now, if not Care. Null: Care may write. */
 export async function heldBy(ctx: Ctx, request: Request, customer: Doc<"customers">): Promise<{ code: string; words: string } | null> {
-  if (request.owner.kind === "member") return { code: "request_held", words: "A person took this request over, so Client Care sends nothing until it is handed back." };
-  if (customer.conversationHeld) return { code: "conversation_held", words: "A person is handling this client's conversation, so Client Care sends nothing until it is handed back." };
+  if (request.owner.kind === "member") return { code: "request_held", words: "A person took this request over, so Care sends nothing until it is handed back." };
+  if (customer.conversationHeld) return { code: "conversation_held", words: "A person is handling this client's conversation, so Care sends nothing until it is handed back." };
   if (request.conversation.channel === "sms") {
     const thread = await conversationAt(ctx, request.companyId, request.conversation.address);
     if (thread?.agentsPausedAt !== undefined) return { code: "agents_paused_here", words: "Agent replies are paused in this conversation. A person can still send." };
-    if (thread?.owner.kind === "member") return { code: "conversation_held", words: "A person took over this conversation, so Client Care sends nothing until it is returned to the agents." };
-    if (thread?.owner.kind === "external") return { code: "conversation_external", words: "Someone answered this conversation from Quo, so Client Care stepped back until a person returns it." };
+    if (thread?.owner.kind === "member") return { code: "conversation_held", words: "A person took over this conversation, so Care sends nothing until it is returned to the agents." };
+    if (thread?.owner.kind === "external") return { code: "conversation_external", words: "Someone answered this conversation from Quo, so Care stepped back until a person returns it." };
     if (thread?.owner.kind === "review") return { code: "conversation_review", words: "This conversation is in the review queue for a person." };
   }
   const opportunities = await ctx.db
@@ -42,7 +42,7 @@ export async function heldBy(ctx: Ctx, request: Request, customer: Doc<"customer
     .withIndex("by_company_customer", (q) => q.eq("companyId", request.companyId).eq("customerId", customer._id))
     .take(20);
   if (opportunities.some((row) => row.stage !== "won" && row.stage !== "lost" && row.followUps === "on" && row._id !== request.opportunityId)) {
-    return { code: "conversation_with_sales", words: "Sales is in conversation with this client about an open inquiry, so Client Care does not write to them at the same time." };
+    return { code: "conversation_with_sales", words: "Sales is in conversation with this client about an open inquiry, so Care does not write to them at the same time." };
   }
   return null;
 }
@@ -166,7 +166,7 @@ export async function careReplyClaim(ctx: MutationCtx, message: Doc<"messages">)
     const held = await heldBy(ctx, request, customer);
     if (held) return { problem: held.words };
     // An answer written before the client's newest message may no longer answer them. A confirmation of a change already made is still true.
-    if (!confirming && (await lastClientMessageAt(ctx, request)) > step.createdAt) return { problem: "The client wrote again before this went out, so Client Care is reading the new message instead of sending an answer that may be out of date." };
+    if (!confirming && (await lastClientMessageAt(ctx, request)) > step.createdAt) return { problem: "The client wrote again before this went out, so Care is reading the new message instead of sending an answer that may be out of date." };
   }
   let body = message.body;
   if (step.kind === "relay" && body.includes("{link}")) {

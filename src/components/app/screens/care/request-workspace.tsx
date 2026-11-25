@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * One client request, given room: the conversation it came from beside what Client Care found, what it did,
+ * One client request, given room: the conversation it came from beside what Care found, what it did,
  * what is pending and what a person can do. The change and the message about it are shown apart, and a
  * message's state is the provider's: queued, accepted, delivered, or not known.
  *
@@ -68,7 +68,7 @@ function Thread({ items, now, timezone }: { items: CareDetail["thread"]; now: nu
 }
 
 function Steps({ steps, onRetry, busy }: { steps: CareDetail["steps"]; onRetry: (id: string) => void; busy: boolean }) {
-  if (!steps.length) return <p className="text-sm text-muted-foreground">Client Care hasn’t prepared anything on this request yet.</p>;
+  if (!steps.length) return <p className="text-sm text-muted-foreground">Care hasn’t prepared anything on this request yet.</p>;
   return (
     <ol className="grid gap-2.5">
       {steps.map((s) => (
@@ -199,7 +199,7 @@ export function RequestWorkspaceBody({ requestId }: { requestId: Id<"careRequest
           ) : null}
           {detail.can.handBack ? (
             <Button size="sm" variant="outline" loading={busy} onClick={() => run(() => handBack({ companyId, requestId }))}>
-              Hand back to Client Care
+              Hand back to Care
             </Button>
           ) : null}
           {detail.can.runAgain ? (
@@ -289,7 +289,7 @@ export function RequestWorkspaceBody({ requestId }: { requestId: Id<"careRequest
               <span className="font-semibold">Promised update:</span> {now ? whenLabel(r.promisedBy, now, timezone) : ""}
             </p>
           ) : null}
-          <Section title="What Client Care found">
+          <Section title="What Care found">
             <ul className="grid gap-2">
               {detail.visit ? (
                 <li className="flex flex-wrap items-center gap-2 text-sm">

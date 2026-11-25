@@ -18,7 +18,7 @@ describe("sidebar badges", () => {
   it("never gives an unbuilt agent a badge", () => {
     const busy = facts({ withYou: 3, unfilled: 2, unfilledWithinDay: 2, inProgress: 4 }, 5);
     for (const agent of ["marketing", "quality", "customer-care", "recruiter"] as const) {
-      // Quality and Client Care report their own facts; without them (as here) they show nothing.
+      // Quality and Care report their own facts; without them (as here) they show nothing.
       expect(agentBadges(agent, busy)).toEqual([]);
       expect(tabBadge(agent, "playbook", busy)).toBeNull();
     }
@@ -79,7 +79,7 @@ describe("sidebar badges", () => {
     expect(tabBadge("quality", "cases", q({ serious: 1 }))).toEqual({ kind: "urgent", label: "1 serious", count: 1 });
     expect(tabBadge("quality", "standards", q({ serious: 1 }))).toBeNull();
   });
-  it("badges Client Care with an urgent request first, then a person's decision, then a late promised update", () => {
+  it("badges Care with an urgent request first, then a person's decision, then a late promised update", () => {
     const care = (values: Partial<NonNullable<SidebarFacts["care"]>>): SidebarFacts => ({ ...quiet, care: { paused: false, urgent: 0, withYou: 0, overdue: 0, underway: 0, waiting: 0, ...values } });
     expect(agentBadge("customer-care", care({}))).toBeNull();
     expect(agentBadge("customer-care", care({ waiting: 2 }))).toEqual({ kind: "working", label: "Waiting on replies" });

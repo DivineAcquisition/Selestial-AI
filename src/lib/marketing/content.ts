@@ -43,7 +43,7 @@ export const HERO = {
 } as const;
 
 export type AgentId = "sales" | "recruiter" | "dispatch" | "retention";
-/** An agent a plan lists: the homepage's four, and Client Care (released November 25, 2026), which has no homepage story yet. */
+/** An agent a plan lists: the homepage's four, and Care (released November 25, 2026), which has no homepage story yet. */
 export type PlanAgentId = AgentId | "customer-care";
 
 /** Whether an agent is working in the product today. Matches `AGENT_PROFILES[agent].built` in convex/lib/departments.ts. */
@@ -246,7 +246,7 @@ export const PRICING = {
   allowanceNote: "The plan includes a monthly allowance of Selestial Credits. Your Usage page shows your allowance, what each piece of AI work costs, and what used it.",
   services: "Bespoke implementation, migration and custom development are scoped separately.",
   faqs: [
-    { q: "Which agents are included?", a: "Sales, Retention, Recruiter, Dispatch and Client Care, all working today. Early users on the $199 price also get Quality, the Quality Control AI agent, at no extra cost. Onboarding new cleaners through to readiness is part of Recruiter, and coordinating their visits is part of Dispatch. Marketing is not released, and no plan or purchase makes it available sooner." },
+    { q: "Which agents are included?", a: "Sales, Retention, Recruiter, Dispatch and Care, all working today. Early users on the $199 price also get Quality, the Quality Control AI agent, at no extra cost. Onboarding new cleaners through to readiness is part of Recruiter, and coordinating their visits is part of Dispatch. Marketing is not released, and no plan or purchase makes it available sooner." },
     { q: "What uses credits?", a: "Selestial Credits pay for defined AI work, such as one Company Chat answer, one hiring email read by AI, or one generated image. Each is charged once when it is completed. Viewing records, opening or answering a cleaner’s link, accepting a job, status changes and scheduled reminders use no credits." },
     { q: "What happens when credits run out?", a: "New AI work pauses and the Owner is told. Schedules, records, cleaner links, active jobs and everything that does not use AI keep working. Nothing is bought automatically; you can buy a top-up or wait for the monthly reset." },
     { q: "Do top-ups unlock agents?", a: "No. A top-up adds credits only. Agents and features come with the plan, and only once they are released." },

@@ -1,5 +1,5 @@
 /**
- * What Client Care does with one request, step by step. Each workflow reads the record, asks only for what
+ * What Care does with one request, step by step. Each workflow reads the record, asks only for what
  * is missing or ambiguous, prepares the step the owner of the work carries out, and words the message from
  * the facts it read. Every step is routed by the Owner's authority (steps.ts); nothing here sends or changes
  * anything directly.
@@ -127,7 +127,7 @@ export async function advance(ctx: Ctx, company: Doc<"companies">, requestId: Id
     case "new_service":
       return newService(ctx, w);
     case "general":
-      return handOff(ctx, w, "owner", "A message Client Care doesn't have a workflow for.", compose(w.voice, "Thanks for your message. I've passed it to the team, who'll get back to you."), true);
+      return handOff(ctx, w, "owner", "A message Care doesn't have a workflow for.", compose(w.voice, "Thanks for your message. I've passed it to the team, who'll get back to you."), true);
   }
 }
 
@@ -262,7 +262,7 @@ async function preference(ctx: Ctx, w: W) {
     message: { channel: request.conversation.channel, body: compose(w.voice, `Done: I've noted that for every visit at ${where}.${supplies ? " I've also asked the team to confirm they can use the products you asked for, and I'll let you know." : ""}`) },
   });
   // Products are supplies: the team confirms the crew can do it, and the client hears back.
-  if (supplies) await handOff(ctx, { ...w, request: (await ctx.db.get(request._id))! }, "dispatch", `Check the crew can follow "${detail.slice(0, 160)}" at ${where} (supplies), and tell Client Care.`, null, false);
+  if (supplies) await handOff(ctx, { ...w, request: (await ctx.db.get(request._id))! }, "dispatch", `Check the crew can follow "${detail.slice(0, 160)}" at ${where} (supplies), and tell Care.`, null, false);
 }
 
 // ── C. Access instructions ──────────────────────────────────────────────────────────────────────
@@ -287,7 +287,7 @@ async function access(ctx: Ctx, w: W) {
   const plain = source?.sealed ? await unseal(source.sealed, source._id) : null;
   const sealed = plain ? await seal(plain, request._id) : null;
   const fresh = await moveRequest(ctx, request, { propertyId: property._id });
-  if (!sealed) return handOff(ctx, { ...w, request: fresh }, "owner", `New access details for ${placeName(property)} arrived in the conversation. Read them there and enter them on the property: Client Care cannot store them securely here.`, compose(w.voice, "Thanks. I've passed the new access details to the office to update on your property."), true);
+  if (!sealed) return handOff(ctx, { ...w, request: fresh }, "owner", `New access details for ${placeName(property)} arrived in the conversation. Read them there and enter them on the property: Care cannot store them securely here.`, compose(w.voice, "Thanks. I've passed the new access details to the office to update on your property."), true);
   return step(ctx, { ...w, request: fresh }, { kind: "access", key: "access", permission: "care.update_access", summary: `Replace the access instructions for ${placeName(property)} with what ${request.authority.name} sent (shown only on the property)`, payload: { propertyId: property._id, sealed, staleSafe: true, resolves: "Access instructions updated on the property, and the client was told." }, message: { channel: request.conversation.channel, body: compose(w.voice, `Thanks, I've updated the access details for ${placeName(property)}. Only the crew on your visits will see them.`) } });
 }
 
@@ -460,7 +460,7 @@ async function complaint(ctx: Ctx, w: W) {
   if (request.retentionCaseId) {
     const row = await ctx.db.get(request.retentionCaseId);
     if (row && row.status !== "closed") {
-      await addCaseEntry(ctx, row, { kind: "evidence", basis: "customer_stated", text: "The client wrote again about this concern (through Client Care).", quote: w.text.slice(0, 600), actor: CARE });
+      await addCaseEntry(ctx, row, { kind: "evidence", basis: "customer_stated", text: "The client wrote again about this concern (through Care).", quote: w.text.slice(0, 600), actor: CARE });
       const fresh = await moveRequest(ctx, request, { status: "waiting_team", waiting: request.waiting ?? { on: "team", reason: "Quality is reviewing the visit; Retention prepares any remedy.", who: "Quality and Retention", since: w.now } });
       return say(ctx, { ...w, request: fresh }, `complaint-more:${w.now}`, "care.complaint_intake", compose(w.voice, `Thanks, I've added that to the review.${fresh.promised ? ` I'll update you by ${clock(fresh.promised.by, tz)} ${localParts(fresh.promised.by, tz).day === localParts(w.now, tz).day ? "today" : dayName(fresh.promised.by, tz)}.` : ""}`), {}, `Tell ${request.authority.name} their words were added to the review`);
     }
@@ -487,7 +487,7 @@ async function complaint(ctx: Ctx, w: W) {
     promised: { words: "An update on the review", by: promise, madeAt: w.now },
     nextCheckAt: promise,
   });
-  if (serious) await ctx.db.insert("careEntries", { companyId: company._id, requestId: request._id, kind: "found", text: "A serious concern (safety, damage, theft, injury or conduct). It goes to the Owner now; Client Care states nothing about fault.", actor: CARE, at: w.now });
+  if (serious) await ctx.db.insert("careEntries", { companyId: company._id, requestId: request._id, kind: "found", text: "A serious concern (safety, damage, theft, injury or conduct). It goes to the Owner now; Care states nothing about fault.", actor: CARE, at: w.now });
   const when = job ? ` after your visit on ${visitLabel(job, null, tz, false)}` : "";
   // Acknowledged without findings, fault, refunds or a re-clean time: Quality and Retention own those.
   const body = serious
@@ -638,12 +638,12 @@ export async function followThrough(ctx: Ctx, company: Doc<"companies">, request
       await say(ctx, { ...w, request }, `remind:${request.pending!.askedAt}`, "care.send_update", compose({ ...w.voice, first: false }, `Just checking in: ${request.pending!.question} ${request.pending!.options.length ? numbered(request.pending!.options) : ""}`), { awaitsClient: true }, `Remind ${request.authority.name} of the open question`);
       return "Reminded the client of the open question once.";
     }
-    await moveRequest(ctx, request, { status: "waiting_owner", clear: ["pending"], waiting: { on: "owner", reason: "The client hasn't answered Client Care's question, even after one reminder.", since: now }, blocker: "The client hasn't answered. Call them, or close the request.", nextAction: "Reach the client another way, or close the request." });
+    await moveRequest(ctx, request, { status: "waiting_owner", clear: ["pending"], waiting: { on: "owner", reason: "The client hasn't answered Care's question, even after one reminder.", since: now }, blocker: "The client hasn't answered. Call them, or close the request.", nextAction: "Reach the client another way, or close the request." });
     return "The client didn't answer after one reminder; a person has it.";
   }
   if (request.promised && request.promised.by <= now && request.status === "waiting_team") {
     if (request.updatesSent >= 4) {
-      await moveRequest(ctx, request, { status: "waiting_owner", waiting: { on: "owner", reason: "The team hasn't finished, and Client Care has already updated the client several times.", since: now }, blocker: "The team's part is taking longer than promised. Decide what to tell the client." });
+      await moveRequest(ctx, request, { status: "waiting_owner", waiting: { on: "owner", reason: "The team hasn't finished, and Care has already updated the client several times.", since: now }, blocker: "The team's part is taking longer than promised. Decide what to tell the client." });
       return "Taking longer than promised; a person decides what to tell the client.";
     }
     const next = now + settings.updateEveryHours * HOUR;

@@ -89,7 +89,7 @@ describe("Client conversations", () => {
     const out = after.items.find((i) => i.type === "out")!;
     expect(out).toMatchObject({ status: "not_sent", problem: "The client replied before it was due, so it was not sent." });
     const reply = after.items.find((i) => i.type === "in")!;
-    // Kept as an excerpt, links taken out, as for every inbound text; and Client Care has it as a request with its own task.
+    // Kept as an excerpt, links taken out, as for every inbound text; and Care has it as a request with its own task.
     expect(reply).toMatchObject({ kind: "message", fromName: "Dana Whitfield", body: "All good, thanks! See [link]" });
     await flush(s.t);
     const requests = await s.t.run(async (ctx) => (await ctx.db.query("careRequests").collect()).filter((r) => r.customerId === customerId));
@@ -109,7 +109,7 @@ describe("Client conversations", () => {
     const after = await thread(s, customerId);
     expect(after.items.find((i) => i.type === "in")).toMatchObject({ fromName: "Sam (site)" });
     expect(after.scheduled).toHaveLength(0);
-    // Client Care has it, as a request from Sam with Sam's own contact authority, never the client's.
+    // Care has it, as a request from Sam with Sam's own contact authority, never the client's.
     await flush(s.t);
     const requests = await s.t.run(async (ctx) => (await ctx.db.query("careRequests").collect()).filter((r) => r.customerId === customerId));
     expect(requests.map((r) => [r.category, r.authority.as, r.authority.name, r.authority.roles])).toEqual([["access", "contact", "Sam (site)", ["site"]]]);

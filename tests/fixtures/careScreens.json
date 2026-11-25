@@ -105,7 +105,7 @@
     "urgency": "high",
     "urgencyReason": "It is about a visit in the next two days.",
     "visit": "Wed, Mar 3 at 10:00 AM",
-    "waiting": "Your approval is needed before Client Care goes ahead.",
+    "waiting": "Your approval is needed before Care goes ahead.",
     "writer": null
    },
    {
@@ -296,7 +296,7 @@
     "lastClientAt": 1804014000042,
     "lastUpdateAt": 1804014000045,
     "nextAction": "Waiting for Sam Okafor to answer: What would you like to cancel?",
-    "owner": "Client Care",
+    "owner": "Care",
     "promisedBy": null,
     "property": null,
     "status": "waiting_customer",
@@ -390,7 +390,7 @@
     "urgency": "high",
     "urgencyReason": "It is about a visit in the next two days.",
     "visit": "Wed, Mar 3 at 10:00 AM",
-    "waiting": "Your approval is needed before Client Care goes ahead.",
+    "waiting": "Your approval is needed before Care goes ahead.",
     "writer": null
    }
   ],
@@ -449,7 +449,7 @@
    "planned": "Wait for your decision",
    "promisedBy": null,
    "property": "Reed House, 4 Oak Ave",
-   "reason": "Your approval is needed before Client Care goes ahead.",
+   "reason": "Your approval is needed before Care goes ahead.",
    "status": "waiting_owner",
    "statusWords": "Waiting for you",
    "summary": "Asked to move a visit: \"Please reschedule Wednesday's cleaning to Thursday at 11am\"",
@@ -457,7 +457,7 @@
    "urgency": "high",
    "urgencyReason": "It is about a visit in the next two days.",
    "visit": "Wed, Mar 3 at 10:00 AM",
-   "waiting": "Your approval is needed before Client Care goes ahead.",
+   "waiting": "Your approval is needed before Care goes ahead.",
    "waitingFor": "You",
    "writer": null
   },
@@ -585,7 +585,7 @@
    "nextAction": "Waiting for Sam Okafor to answer: What would you like to cancel?",
    "nextCheckAt": 1804100400044,
    "overdue": false,
-   "owner": "Client Care",
+   "owner": "Care",
    "planned": "One reminder to the client",
    "promisedBy": null,
    "property": null,
@@ -817,7 +817,7 @@
     "state": "level"
    }
   ],
-  "readerNote": "Client Care's AI reading has no approved credit price yet, so your rules read every message and nothing is charged.",
+  "readerNote": "Care's AI reading has no approved credit price yet, so your rules read every message and nothing is charged.",
   "settings": {
    "escalationMemberIds": [],
    "policy": {
@@ -869,7 +869,7 @@
    "entries": [
     {
      "at": 1803902400026,
-     "by": "Client Care",
+     "by": "Care",
      "id": "000000000000000010121careEntries",
      "kind": "waiting",
      "source": {
@@ -881,7 +881,7 @@
     },
     {
      "at": 1803902400024,
-     "by": "Client Care",
+     "by": "Care",
      "id": "000000000000000010115careEntries",
      "kind": "received",
      "source": {
@@ -954,7 +954,7 @@
     "urgencyReason": "It is about a visit in the next two days.",
     "version": 1,
     "visit": "Wed, Mar 3 at 10:00 AM",
-    "waiting": "Your approval is needed before Client Care goes ahead.",
+    "waiting": "Your approval is needed before Care goes ahead.",
     "writer": null
    },
    "steps": [
@@ -1017,7 +1017,7 @@
    "entries": [
     {
      "at": 1804014000009,
-     "by": "Client Care",
+     "by": "Care",
      "id": "000000000000000010204careEntries",
      "kind": "update",
      "source": {
@@ -1029,7 +1029,7 @@
     },
     {
      "at": 1804014000008,
-     "by": "Client Care",
+     "by": "Care",
      "id": "000000000000000010196careEntries",
      "kind": "did",
      "source": {
@@ -1037,11 +1037,11 @@
       "label": "Recovery case",
       "table": "retentionCases"
      },
-     "text": "Opened a recovery case for the visit; Quality investigates it and Retention prepares any remedy. Client Care keeps the client informed."
+     "text": "Opened a recovery case for the visit; Quality investigates it and Retention prepares any remedy. Care keeps the client informed."
     },
     {
      "at": 1804014000006,
-     "by": "Client Care",
+     "by": "Care",
      "id": "000000000000000010176careEntries",
      "kind": "received",
      "source": {
@@ -1126,7 +1126,7 @@
      "parts": [
       {
        "at": 1804014000008,
-       "detail": "Opened a recovery case for the visit; Quality investigates it and Retention prepares any remedy. Client Care keeps the client informed.",
+       "detail": "Opened a recovery case for the visit; Quality investigates it and Retention prepares any remedy. Care keeps the client informed.",
        "name": "Change",
        "state": "done"
       },
@@ -1160,7 +1160,7 @@
     {
      "at": 1804014000008,
      "body": "Hi Priya, this is Alpha Cleaning's assistant. I'm sorry it wasn't right after your visit on Tue, Mar 2 at 10:00 AM. I've passed it to our team to review, and I'll update you by 1:00 PM Wed, Mar 3.",
-     "by": "Client Care",
+     "by": "Care",
      "channel": "sms",
      "direction": "out",
      "id": "000000000000000000010198messages",
@@ -1200,7 +1200,7 @@
    "entries": [
     {
      "at": 1804014000027,
-     "by": "Client Care",
+     "by": "Care",
      "id": "000000000000000010248careEntries",
      "kind": "problem",
      "source": {
@@ -1212,7 +1212,7 @@
     },
     {
      "at": 1804014000026,
-     "by": "Client Care",
+     "by": "Care",
      "id": "000000000000000010241careEntries",
      "kind": "did",
      "source": {
@@ -1224,7 +1224,7 @@
     },
     {
      "at": 1804014000024,
-     "by": "Client Care",
+     "by": "Care",
      "id": "000000000000000010238careEntries",
      "kind": "received",
      "source": {
@@ -1336,7 +1336,7 @@
     {
      "at": 1804014000026,
      "body": "Hi Jo, this is Alpha Cleaning's assistant. Done: I've added that to your visit on Tue, Mar 9 at 10:00 AM only. Your other visits are unchanged.",
-     "by": "Client Care",
+     "by": "Care",
      "channel": "sms",
      "direction": "out",
      "id": "000000000000000000010243messages",
@@ -1376,7 +1376,7 @@
    "entries": [
     {
      "at": 1803902400009,
-     "by": "Client Care",
+     "by": "Care",
      "id": "000000000000000010082careEntries",
      "kind": "resolved",
      "source": {
@@ -1388,7 +1388,7 @@
     },
     {
      "at": 1803902400009,
-     "by": "Client Care",
+     "by": "Care",
      "id": "000000000000000010081careEntries",
      "kind": "update",
      "source": {
@@ -1400,7 +1400,7 @@
     },
     {
      "at": 1803902400006,
-     "by": "Client Care",
+     "by": "Care",
      "id": "000000000000000010071careEntries",
      "kind": "received",
      "source": {
@@ -1462,7 +1462,7 @@
     "lastClientAt": 1803902400006,
     "lastUpdateAt": 1803902400009,
     "nextAction": null,
-    "owner": "Client Care",
+    "owner": "Care",
     "pending": null,
     "promisedBy": null,
     "property": "12 Elm St",
@@ -1528,7 +1528,7 @@
     {
      "at": 1803902400008,
      "body": "Hi Dana, this is Alpha Cleaning's assistant. Lena is confirmed for Tue, Mar 2 at 10:00 AM.",
-     "by": "Client Care",
+     "by": "Care",
      "channel": "sms",
      "direction": "out",
      "id": "000000000000000000010073messages",

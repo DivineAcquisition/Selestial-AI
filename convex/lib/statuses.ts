@@ -11,7 +11,7 @@ export function literals<const T extends readonly [string, string, ...string[]]>
   return v.union(...values.map((value) => v.literal(value))) as unknown as Validator<T[number]>;
 }
 
-/** "customer-care" is Client Care (docs/care/00-architecture.md). The id is the one the navigation and billing already used. */
+/** "customer-care" is Care (docs/care/00-architecture.md). The id is the one the navigation and billing already used. */
 export const AGENTS = ["sales", "recruiter", "dispatch", "retention", "quality", "customer-care"] as const;
 export type Agent = (typeof AGENTS)[number];
 export const agentValidator = literals(AGENTS);

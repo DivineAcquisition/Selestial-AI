@@ -1,5 +1,5 @@
 /**
- * Client Care's records (docs/care/00-architecture.md). A request is the durable unit of work: one thing a
+ * Care's records (docs/care/00-architecture.md). A request is the durable unit of work: one thing a
  * client needs, linked to the records it is about and to the conversation it came from. It is not a copy of
  * the conversation: the messages stay in the shared Inbox records (`inboundMessages`, `messages`).
  *

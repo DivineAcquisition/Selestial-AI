@@ -1,4 +1,4 @@
-/** Shared by the Client Care scenario tests: a company that can text, a client with a phone and consent, visits, plans and invoices. */
+/** Shared by the Care scenario tests: a company that can text, a client with a phone and consent, visits, plans and invoices. */
 import { api, internal } from "../convex/_generated/api";
 import type { Doc, Id } from "../convex/_generated/dataModel";
 import { mockOutbox } from "../convex/lib/messaging/provider";

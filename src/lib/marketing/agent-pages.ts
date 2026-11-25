@@ -174,7 +174,7 @@ const LIVE: AgentPage[] = [
   },
   {
     id: "customer-care",
-    name: "Client Care",
+    name: "Care",
     department: "Operations",
     status: "live",
     headline: "A reply sent is not a request resolved.",

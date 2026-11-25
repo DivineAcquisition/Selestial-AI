@@ -269,7 +269,7 @@ describe("billing", () => {
       await sync(s.t, s.companyId);
       const company = await s.t.run(async (ctx) => (await ctx.db.get(s.companyId))!);
       expect(agentVerdict(company, "marketing")).toMatchObject({ ok: false, block: "not_released" });
-      // Client Care is released with its workflows, on every plan (the Owner's decision of November 25, 2026).
+      // Care is released with its workflows, on every plan (the Owner's decision of November 25, 2026).
       expect(agentVerdict(company, "customer-care")).toEqual({ ok: true });
       // Quality is released with its workflows, and is part of Expand only: its plan access did not change.
       expect(agentVerdict(company, "quality")).toEqual({ ok: true });
@@ -347,7 +347,7 @@ describe("billing", () => {
       await settle(s.t);
       const preview = (await s.as.query(api.billing.intent, { companyId: s.companyId, intentId }))!.preview!;
       // Nothing Recruiter or Dispatch does is lost on Operate: onboarding and visit coordination are theirs.
-      // Client Care is on Operate too, so moving down loses nothing of it.
+      // Care is on Operate too, so moving down loses nothing of it.
       expect(preview.lostAgents).toEqual(["Marketing", "Quality"]);
       expect(preview.lostFeatures).toContain("Creative Studio");
       expect(preview.effectiveAt).toBe(billing.customerFor(`company_${s.companyId}`).periodEnd);

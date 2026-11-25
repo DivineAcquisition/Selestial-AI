@@ -55,6 +55,6 @@ export async function relayToCare(ctx: MutationCtx, company: Doc<"companies">, r
   }
   const message = await queueCareReply(ctx, { company, request, step, body: action.message.body, subject: action.message.subject, dedupeKey: `care:${step._id}:1`, actor: { kind: "agent", agent: "customer-care" } });
   await ctx.db.patch(step._id, { messageId: message._id, parts: [{ name: "notify", state: message.status === "not_sent" ? "failed" : "pending", detail: message.problem ?? "Queued", at: Date.now() }], updatedAt: Date.now() });
-  await addEntry(ctx, request, { kind: "handoff", text: `Retention prepared a step for the client (${action.summary}). Client Care is sending it in this conversation.`, source: { table: "retentionCases", id: row._id, label: "Recovery case" } });
+  await addEntry(ctx, request, { kind: "handoff", text: `Retention prepared a step for the client (${action.summary}). Care is sending it in this conversation.`, source: { table: "retentionCases", id: row._id, label: "Recovery case" } });
   return message;
 }

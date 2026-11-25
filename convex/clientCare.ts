@@ -1,5 +1,5 @@
 /**
- * Client Care's screens and the things a person does on a request (docs/care/00-architecture.md). Every line
+ * Care's screens and the things a person does on a request (docs/care/00-architecture.md). Every line
  * is read from the records: requests, their history and steps, the messages that actually went, and the
  * records each request links to. No count is an estimate and no saving is claimed.
  *
@@ -59,7 +59,7 @@ function ownerWords(row: Request, names: Map<string, string>): string {
   if (row.owner.kind === "member") return names.get(row.owner.memberId) ?? "A team member";
   if (row.owner.kind === "specialist") return row.owner.agent;
   if (row.status === "waiting_owner") return "You";
-  return row.waiting?.who ?? "Client Care";
+  return row.waiting?.who ?? "Care";
 }
 
 async function memberNames(ctx: Ctx) {
@@ -101,17 +101,17 @@ async function card(ctx: Ctx, row: Request, names: Map<string, string>, tz: stri
   };
 }
 
-/** Client Care's state as an agent: running, paused, not in the plan, and how it reads. */
+/** Care's state as an agent: running, paused, not in the plan, and how it reads. */
 function agentState(company: Doc<"companies">) {
   // The same rule as the worker (clientCareWork.ts recordOnly): before a plan is chosen Care's rules work runs;
-  // a plan that doesn't include Client Care records requests for people only.
+  // a plan that doesn't include Care records requests for people only.
   const verdict = company.plan ? agentVerdict(company, "customer-care") : ({ ok: true } as const);
   const paused = company.pausedAgents.includes("customer-care");
   const model = careModel();
   return {
     paused,
     available: verdict.ok,
-    reason: paused ? "Client Care is paused. Messages are kept and shown here; nothing new is worked until it is resumed." : verdict.ok ? null : `${verdict.message} Requests are still recorded for your team.`,
+    reason: paused ? "Care is paused. Messages are kept and shown here; nothing new is worked until it is resumed." : verdict.ok ? null : `${verdict.message} Requests are still recorded for your team.`,
     reader: model.name === "rules" ? "Your company's rules read each message. No AI credits are used." : "An AI reader reads each message when its credits are held; otherwise your rules do.",
   };
 }
@@ -251,7 +251,7 @@ export const detail = companyQuery({
       ...inbound.map((m) => ({ id: m._id, direction: "in" as const, at: m.receivedAt, channel: m.channel, body: m.text, withheld: m.withheld, by: row.authority.name, status: null as null | string, statusWords: null as null | string })),
       ...outbound.map((m) => {
         const d = deliveryWords(m);
-        return { id: m._id, direction: "out" as const, at: m.queuedAt, channel: m.channel ?? "sms", body: billing && m.invoiceId ? "A message about an invoice. Billing details are the Owner's." : m.body.replace(/\{link\}/g, "[secure link]"), withheld: false, by: m.draftedBy === "agent" ? "Client Care" : m.authorId ? (names.get(m.authorId) ?? "A team member") : "Client Care", status: d.state, statusWords: d.words };
+        return { id: m._id, direction: "out" as const, at: m.queuedAt, channel: m.channel ?? "sms", body: billing && m.invoiceId ? "A message about an invoice. Billing details are the Owner's." : m.body.replace(/\{link\}/g, "[secure link]"), withheld: false, by: m.draftedBy === "agent" ? "Care" : m.authorId ? (names.get(m.authorId) ?? "A team member") : "Care", status: d.state, statusWords: d.words };
       }),
     ].sort((a, b) => a.at - b.at);
     const held = customer ? await heldBy(ctx, row, customer) : null;
@@ -281,7 +281,7 @@ export const detail = companyQuery({
       facts: row.facts.filter((f) => !(billing && f.key === "invoice")).map((f) => ({ key: f.key, value: f.value, basis: f.basis, source: f.source ?? null, at: f.at })),
       policy: { noticeHours: rules.noticeHours, source: rules.source },
       steps: steps.map((s) => ({ id: s._id, kind: s.kind, summary: s.summary, status: s.status, statusWords: STEP_WORDS[s.status], permission: actionDef(s.permission)?.label ?? s.permission, result: s.result ?? null, message: s.message ? (billing && s.kind === "invoice_link" ? "A message with the invoice and its payment link. Billing details are the Owner's." : s.message.body.replace(/\{link\}/g, "[secure link]")) : null, parts: s.parts.map((p) => ({ name: PART_WORDS[p.name] ?? p.name, state: p.state, detail: p.detail ?? null, at: p.at })), approvalId: s.approvalId ?? null, at: s.createdAt, retry: (s.status === "partial" || s.status === "failed") && s.parts.find((p) => p.name === "notify")?.state === "failed" && s.parts.find((p) => p.name === "change")?.state !== "failed" })),
-      entries: entries.map((e) => ({ id: e._id, kind: e.kind, text: e.text, at: e.at, by: e.actor.kind === "member" ? (names.get(e.actor.memberId) ?? "A team member") : e.actor.kind === "agent" ? (e.actor.agent === "customer-care" ? "Client Care" : e.actor.agent) : "Selestial", source: e.source ?? null })),
+      entries: entries.map((e) => ({ id: e._id, kind: e.kind, text: e.text, at: e.at, by: e.actor.kind === "member" ? (names.get(e.actor.memberId) ?? "A team member") : e.actor.kind === "agent" ? (e.actor.agent === "customer-care" ? "Care" : e.actor.agent) : "Selestial", source: e.source ?? null })),
       thread,
       linked,
       conversation: { channel: row.conversation.channel, held: held?.words ?? null, inboxHref: row.conversation.smsConversationId ? `/app/inbox?conversation=${row.conversation.smsConversationId}` : null, clientHref: `/app/clients/${row.customerId}/conversations` },
@@ -309,7 +309,7 @@ export const followUps = companyQuery({
         const blockedStep = steps.find((s) => s.status === "blocked" || s.status === "partial" || s.status === "uncertain" || s.status === "failed");
         const mode = row.owner.kind === "member" ? "held" : ctx.company.pausedAgents.includes("customer-care") ? "paused" : waitingApproval ? "approval" : row.status === "waiting_owner" || blockedStep ? "blocked" : "automatic";
         const next = row.pending ? (row.pending.reminded ? "Hand to you if there's still no answer" : "One reminder to the client") : row.promised ? "Send the promised update" : row.status === "waiting_owner" ? "Wait for your decision" : row.status === "waiting_team" ? `Check on ${row.waiting?.who ?? "the team"}` : (row.nextAction ?? "Work the request");
-        out.push({ ...(await card(ctx, row, names, tz)), waitingFor: row.status === "waiting_customer" ? row.authority.name : row.status === "waiting_owner" ? "You" : row.status === "waiting_team" ? (row.waiting?.who ?? "The team") : "Client Care", reason: row.waiting?.reason ?? row.blocker ?? row.nextAction ?? null, nextCheckAt: row.nextCheckAt ?? null, planned: next, mode, approvalId: waitingApproval?.approvalId ?? null, overdue: (row.promised?.by ?? Infinity) < args.asOf || (row.pending?.expiresAt ?? Infinity) < args.asOf });
+        out.push({ ...(await card(ctx, row, names, tz)), waitingFor: row.status === "waiting_customer" ? row.authority.name : row.status === "waiting_owner" ? "You" : row.status === "waiting_team" ? (row.waiting?.who ?? "The team") : "Care", reason: row.waiting?.reason ?? row.blocker ?? row.nextAction ?? null, nextCheckAt: row.nextCheckAt ?? null, planned: next, mode, approvalId: waitingApproval?.approvalId ?? null, overdue: (row.promised?.by ?? Infinity) < args.asOf || (row.pending?.expiresAt ?? Infinity) < args.asOf });
       }
     }
     return out.sort((a, b) => Number(b.overdue) - Number(a.overdue) || (a.nextCheckAt ?? Infinity) - (b.nextCheckAt ?? Infinity));
@@ -348,14 +348,14 @@ export const setup = companyQuery({
       permissions,
       channels: {
         sms: !texting ? { ready: false, words: "Texting isn't connected for Selestial yet." } : smsGaps.length ? { ready: false, words: smsGaps.join(" ") } : { ready: true, words: `Texting is ready from ${profile.messaging.smsNumber ?? "your number"}.` },
-        email: inboxes.find((i) => i.status === "connected") ? { ready: true, words: `Replies go from ${inboxes.find((i) => i.status === "connected")!.address}.${settings.readInbox ? " Client Care reads clients' emails there." : " Reading clients' emails there is off."}` } : inboxes.length ? { ready: false, words: `${inboxes[0].address} needs reconnecting. Care email waits until it is.` } : emailProvider() ? { ready: true, words: `No Care & Retention inbox is connected: email goes as "${profile.messaging.senderName ?? ctx.company.name} via Selestial", and clients' replies go to your own mailbox, which Selestial doesn't see.` } : { ready: false, words: "Email isn't connected for Selestial yet." },
+        email: inboxes.find((i) => i.status === "connected") ? { ready: true, words: `Replies go from ${inboxes.find((i) => i.status === "connected")!.address}.${settings.readInbox ? " Care reads clients' emails there." : " Reading clients' emails there is off."}` } : inboxes.length ? { ready: false, words: `${inboxes[0].address} needs reconnecting. Care email waits until it is.` } : emailProvider() ? { ready: true, words: `No Care & Retention inbox is connected: email goes as "${profile.messaging.senderName ?? ctx.company.name} via Selestial", and clients' replies go to your own mailbox, which Selestial doesn't see.` } : { ready: false, words: "Email isn't connected for Selestial yet." },
         sender: profile.messaging.senderName ?? ctx.company.name,
       },
       hours: hours.map((h) => ({ weekday: h.weekday, from: h.startMinute, to: h.endMinute })),
       escalation: members.filter((m) => m.status === "active" && (m.role === "owner" || m.role === "manager")).map((m) => ({ id: m._id, name: m.name, role: m.role, chosen: settings.escalationMemberIds.includes(m._id) })),
       agent: agentState(ctx.company),
       canEdit: ctx.role === "owner",
-      readerNote: "Client Care's AI reading has no approved credit price yet, so your rules read every message and nothing is charged.",
+      readerNote: "Care's AI reading has no approved credit price yet, so your rules read every message and nothing is charged.",
     };
   },
 });
@@ -404,7 +404,7 @@ export const takeOver = companyMutation({
     if (customer && !customer.conversationHeld) await ctx.db.patch(customer._id, { conversationHeld: { by: ctx.member._id, since: Date.now() } });
     if (row.conversation.smsConversationId) {
       const thread = await ctx.db.get(row.conversation.smsConversationId);
-      if (thread && thread.companyId === ctx.companyId) await ctx.db.patch(thread._id, { owner: { kind: "member", memberId: ctx.member._id }, ownerReason: `${ctx.member.name} took over a Client Care request.`, ownerChangedAt: Date.now(), ownerChangedBy: ctx.member._id });
+      if (thread && thread.companyId === ctx.companyId) await ctx.db.patch(thread._id, { owner: { kind: "member", memberId: ctx.member._id }, ownerReason: `${ctx.member.name} took over a Care request.`, ownerChangedAt: Date.now(), ownerChangedBy: ctx.member._id });
     }
     // Anything an agent queued for this client that hasn't gone yet stops now.
     const stopped = customer ? await stopFollowUps(ctx, ctx.companyId, customer._id, "taken_over", byMember(ctx)) : 0;
@@ -436,10 +436,10 @@ export const handBack = companyMutation({
     if (customer?.conversationHeld) await ctx.db.patch(customer._id, { conversationHeld: undefined });
     if (row.conversation.smsConversationId) {
       const thread = await ctx.db.get(row.conversation.smsConversationId);
-      if (thread && thread.owner.kind === "member") await ctx.db.patch(thread._id, { owner: { kind: "agents" }, ownerReason: `${ctx.member.name} handed the request back to Client Care.`, ownerChangedAt: Date.now(), ownerChangedBy: ctx.member._id });
+      if (thread && thread.owner.kind === "member") await ctx.db.patch(thread._id, { owner: { kind: "agents" }, ownerReason: `${ctx.member.name} handed the request back to Care.`, ownerChangedAt: Date.now(), ownerChangedBy: ctx.member._id });
     }
     const fresh = await moveRequest(ctx, row, { owner: { kind: "care" }, status: "in_progress", nextCheckAt: Date.now(), material: true }, byMember(ctx));
-    await addEntry(ctx, fresh, { kind: "decision", text: `${ctx.member.name} handed the request back to Client Care.`, actor: byMember(ctx) });
+    await addEntry(ctx, fresh, { kind: "decision", text: `${ctx.member.name} handed the request back to Care.`, actor: byMember(ctx) });
     if (isOpen(fresh) && !ctx.company.pausedAgents.includes("customer-care")) await advance(ctx, ctx.company, fresh._id);
     return null;
   },
@@ -482,16 +482,16 @@ export const note = companyMutation({
   },
 });
 
-/** Client Care works the request again on what the record says now. */
+/** Care works the request again on what the record says now. */
 export const runAgain = companyMutation({
   args: { requestId: v.id("careRequests") },
   handler: async (ctx, args) => {
     const row = await owned(ctx, args.requestId);
     if (!isOpen(row)) throw userError("This request is closed.");
-    if (row.owner.kind !== "care") throw userError("Hand the request back to Client Care first.");
-    if (ctx.company.pausedAgents.includes("customer-care")) throw userError("Client Care is paused. Resume it first.");
+    if (row.owner.kind !== "care") throw userError("Hand the request back to Care first.");
+    if (ctx.company.pausedAgents.includes("customer-care")) throw userError("Care is paused. Resume it first.");
     const fresh = await moveRequest(ctx, row, { status: "in_progress", material: true, clear: ["blocker", "pending"] }, byMember(ctx));
-    await addEntry(ctx, fresh, { kind: "decision", text: `${ctx.member.name} asked Client Care to work the request again.`, actor: byMember(ctx) });
+    await addEntry(ctx, fresh, { kind: "decision", text: `${ctx.member.name} asked Care to work the request again.`, actor: byMember(ctx) });
     await advance(ctx, ctx.company, fresh._id);
     return null;
   },
@@ -550,7 +550,7 @@ export const forRecord = companyQuery({
         categoryWords: CATEGORY_WORDS[r.category],
         urgency: r.urgency,
         held: r.owner.kind === "member",
-        line: (isOpen(r) ? (r.blocker ?? r.waiting?.reason ?? r.nextAction ?? "Client Care is working it.") : (r.resolution?.words ?? STATUS_WORDS[r.status])).slice(0, 220),
+        line: (isOpen(r) ? (r.blocker ?? r.waiting?.reason ?? r.nextAction ?? "Care is working it.") : (r.resolution?.words ?? STATUS_WORDS[r.status])).slice(0, 220),
         visit: job ? `${dayName(job.startsAt, tz)} at ${clock(job.startsAt, tz)}` : null,
         updatedAt: r.updatedAt,
       });

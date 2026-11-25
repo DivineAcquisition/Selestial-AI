@@ -94,8 +94,8 @@ export const TASKS: Record<Task, { label: string; unit: string; available: boole
     available: true,
   },
   care_message_reading: {
-    label: "Client Care message read by AI",
-    unit: "One client message read by the AI reader for Client Care. Messages read by the company's rules are not charged, and a reading that fails is not charged.",
+    label: "Care message read by AI",
+    unit: "One client message read by the AI reader for Care. Messages read by the company's rules are not charged, and a reading that fails is not charged.",
     available: true,
   },
   hiring_reply_draft: {
@@ -173,7 +173,7 @@ export const RATE_CARDS: readonly RateCard[] = [
       sales_message_reading: null,
       /** Drafted hiring replies did not exist when this card was approved: no rate, so a person writes the reply. */
       hiring_reply_draft: null,
-      /** Client Care did not exist when this card was approved: its AI reading has no rate, so the company's rules read instead. */
+      /** Care did not exist when this card was approved: its AI reading has no rate, so the company's rules read instead. */
       care_message_reading: null,
     },
     specs: {
@@ -206,7 +206,7 @@ export const RATE_CARDS: readonly RateCard[] = [
       sales_message_reading: null,
       /** Drafted hiring replies did not exist when this card was approved: no rate, so a person writes the reply. */
       hiring_reply_draft: null,
-      /** Client Care did not exist when this card was approved: its AI reading has no rate, so the company's rules read instead. */
+      /** Care did not exist when this card was approved: its AI reading has no rate, so the company's rules read instead. */
       care_message_reading: null,
     },
     specs: {
@@ -239,7 +239,7 @@ export const RATE_CARDS: readonly RateCard[] = [
       sales_message_reading: 1,
       /** Not on this card: a person writes each reply to an applicant's question. */
       hiring_reply_draft: null,
-      /** Client Care did not exist when this card was approved: its AI reading has no rate, so the company's rules read instead. */
+      /** Care did not exist when this card was approved: its AI reading has no rate, so the company's rules read instead. */
       care_message_reading: null,
     },
     specs: {
@@ -271,7 +271,7 @@ export const RATE_CARDS: readonly RateCard[] = [
       sales_message_reading: 1,
       /** One reply to an applicant's question, drafted from approved information. A draft it declines to write is not charged. */
       hiring_reply_draft: 1,
-      /** Client Care did not exist when this card was approved: its AI reading has no rate, so the company's rules read instead. */
+      /** Care did not exist when this card was approved: its AI reading has no rate, so the company's rules read instead. */
       care_message_reading: null,
     },
     specs: {

@@ -20,7 +20,7 @@ export function AgentMark({ id, size = "md", live = false }: { id: PlanAgentId; 
   );
 }
 
-/** The agent's role name, as it is written everywhere: Sales, Recruiter, Dispatch, Retention, Client Care. */
+/** The agent's role name, as it is written everywhere: Sales, Recruiter, Dispatch, Retention, Care. */
 export function AgentName({ id, className }: { id: PlanAgentId; className?: string }) {
   return <span className={cn("font-medium text-strong", className)}>{agentName(id)}</span>;
 }

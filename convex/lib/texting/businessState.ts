@@ -54,7 +54,7 @@ export function blockersOf(input: StateInput): Blocker[] {
   return out;
 }
 
-export const AGENT_NAMES: Record<Agent, string> = { sales: "Sales", recruiter: "Recruiter", dispatch: "Dispatch", retention: "Retention", quality: "Quality", "customer-care": "Client Care" };
+export const AGENT_NAMES: Record<Agent, string> = { sales: "Sales", recruiter: "Recruiter", dispatch: "Dispatch", retention: "Retention", quality: "Quality", "customer-care": "Care" };
 
 export function stateOf(input: StateInput): BusinessState {
   const sendable = nativeReady(input) || quoReady(input);

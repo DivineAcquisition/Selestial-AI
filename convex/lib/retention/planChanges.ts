@@ -268,7 +268,7 @@ export async function applyPlanChange(ctx: MutationCtx, company: Doc<"companies"
 export type PlanChangeSpec = NonNullable<Doc<"retentionActions">["planChange"]>;
 
 /**
- * Carries out one previewed change for exactly the visits that were shown. Retention's cases and Client Care's
+ * Carries out one previewed change for exactly the visits that were shown. Retention's cases and Care's
  * requests both call this, so a skip, a pause or an end is the same change whoever asked for it. `via` is
  * recorded on the events.
  */
@@ -281,7 +281,7 @@ export async function carryOutPlanChange(ctx: MutationCtx, company: Doc<"compani
   if (!same(preview.shown, change.shown)) return { ok: false, retry: true, detail: "The plan's booked visits changed after this was previewed. Review the visits again before changing the plan." };
   const tz = company.timezone;
   const today = localParts(Date.now(), tz).day;
-  const reason = change.reason?.trim() || (change.requestedBy === "customer" ? "The customer asked." : via === "client_care" ? "Changed through Client Care." : "Changed in Retention.");
+  const reason = change.reason?.trim() || (change.requestedBy === "customer" ? "The customer asked." : via === "client_care" ? "Changed through Care." : "Changed in Retention.");
   const who = change.requestedBy === "customer" ? "at the customer's request" : "by the office";
   const subject = change.plan.kind === "service" ? ({ table: "servicePlans", id: change.plan.id } as const) : ({ table: "recurringPlans", id: change.plan.id } as const);
   const visits = await upcomingVisits(ctx, plan, preview.from ?? today, preview.until ?? undefined);

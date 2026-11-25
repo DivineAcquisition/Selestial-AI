@@ -38,7 +38,7 @@ export const NOTICE_EVENT_TYPES = new Set([
   "retention.reported",
   "recruiter.reported",
   "customer-care.reported",
-  // Client Care requests (docs/care/00-architecture.md).
+  // Care requests (docs/care/00-architecture.md).
   "care_request.opened",
   "care_request.waiting_owner",
   "care_request.needs_attention",

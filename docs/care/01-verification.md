@@ -1,4 +1,4 @@
-# Client Care: verification, capabilities and rollout
+# Care: verification, capabilities and rollout
 
 Checked on November 25, 2026 against branch `claude/modest-cray-dah54f`. What follows says plainly what was
 verified against simulated providers, what was not run live, and what must happen before Care acts on its own
@@ -8,7 +8,7 @@ for a real company.
 
 | Check | Result |
 | --- | --- |
-| Client Care scenarios (`convex/clientCare.test.ts`) | 33 passing, through the real backend (convex-test), the real inbound webhook mutation and the mock text provider |
+| Care scenarios (`convex/clientCare.test.ts`) | 33 passing, through the real backend (convex-test), the real inbound webhook mutation and the mock text provider |
 | Screens' answers from the real queries (`convex/careScreens.test.ts`) | Passing; writes `tests/fixtures/careScreens.json` with `CARE_SCREENS_OUT` |
 | Screens rendered over those answers (`src/components/app/screens/care/care.test.tsx`) | 6 passing |
 | Rules reader (`convex/lib/clientCare/read.test.ts`) | 9 passing |
@@ -52,7 +52,7 @@ and picks up by itself once the message goes).
 | 17 | Imports and migration-held records start nothing | "keeps a replayed or imported message for the record and starts nothing", the migration-held visit test | Verified |
 | 18 | A resolved request reopens | "reopens a resolved request when the client says it isn't done" | Verified |
 | 19 | Another tenant cannot read or act | "never lets another company read or act on a request" | Verified |
-| 20 | Pause stops new autonomous work, hides nothing | "keeps everything while Client Care is paused…" | Verified |
+| 20 | Pause stops new autonomous work, hides nothing | "keeps everything while Care is paused…" | Verified |
 
 Email intake through the Care & Retention inbox is exercised by Retention's existing inbox tests, which now
 pass through Care (a known customer's mail is opened, only their own lines are read, a described problem
@@ -83,7 +83,7 @@ becomes a recovery case, a stated wish to cancel becomes Retention's signal).
 | Follow-through | Implemented, verified | One reminder per open question, promised updates at most four times, linked work that finishes. |
 | Workspace: Overview, Requests, Follow-ups, Care Setup | Implemented, verified (rendered) | Not exercised in a signed-in browser against a deployment. |
 | Care on related records | Implemented, verified (query) | The client's profile, the visit panel and the Inbox thread list the client's Care requests and where each stands (`clientCare.forRecord`); never the client's words or access details; another company gets nothing. |
-| Owner notices | Implemented, verified | Urgent request (critical), request needs a person, message failed, and "Client Care did this" at Act and notify me. |
+| Owner notices | Implemented, verified | Urgent request (critical), request needs a person, message failed, and "Care did this" at Act and notify me. |
 | AI reading | Implemented, not live | `CARE_MODEL=claude`; the `care_message_reading` task has no approved price, so the rules read and nothing is charged. |
 | AI calling | Not included | Excluded from this release. |
 
@@ -131,7 +131,7 @@ review-first rule. Refunds, credits, contract changes and anything legal stay on
 ## Deployment and live-provider requirements
 
 1. **Deploy the backend with the site** (the normal production build). The schema changes are additive.
-2. **Texting**: an approved registration and number (or a ready Quo connection with Client Care allowed in its
+2. **Texting**: an approved registration and number (or a ready Quo connection with Care allowed in its
    agent list). Clients need recorded operational permission; a contact with none is refused by the send policy,
    which the request shows.
 3. **Email** (optional): a Gmail inbox connected for Care & Retention, allowed to send, and reading turned on in
@@ -147,7 +147,7 @@ review-first rule. Refunds, credits, contract changes and anything legal stay on
 
 ## Launch: every company
 
-The Owner chose on November 25, 2026 to launch Client Care for every company on Operate and Expand at once,
+The Owner chose on November 25, 2026 to launch Care for every company on Operate and Expand at once,
 instead of a pilot first. What keeps that safe is the starting authority above, not a slower rollout:
 
 1. **On by default, cautious by default.** Every company starts with verified answers, invoice look-ups and
@@ -157,7 +157,7 @@ instead of a pilot first. What keeps that safe is the starting authority above, 
 3. **The Owner's first week.** Set the change notice in Care Setup; review each request daily; raise an action
    to Act and notify me only after a week with no wrong visit or wrong scope.
 4. **Stop rules.** Any message about the wrong visit, a disclosed access code, or two agents writing the same
-   client about the same thing: pause Client Care (one button), fix, and restart at Ask me first.
+   client about the same thing: pause Care (one button), fix, and restart at Ask me first.
 5. **Measures, from the record only**: requests resolved with outcome on record, time to first answer, changes
    carried out without a later correction, approvals changed or skipped, promised updates sent late.
 
@@ -174,6 +174,6 @@ instead of a pilot first. What keeps that safe is the starting authority above, 
 4. **Week 3.** Raise rescheduling inside the notice window to Act and notify me. Keep plan pauses and ends at
    Ask me first.
 5. **Stop rules.** Any message about the wrong visit, a disclosed access code, or two agents writing the same
-   client about the same thing: pause Client Care (one button), fix, and restart at Ask me first.
+   client about the same thing: pause Care (one button), fix, and restart at Ask me first.
 6. **Measures, from the record only**: requests resolved with outcome on record, time to first answer, changes
    carried out without a later correction, approvals changed or skipped, promised updates sent late.

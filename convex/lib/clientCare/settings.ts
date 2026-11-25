@@ -1,5 +1,5 @@
 /**
- * Care Setup: what a company tells Client Care, with a default in code for each value. Settings that already
+ * Care Setup: what a company tells Care, with a default in code for each value. Settings that already
  * live somewhere else are read from there and never copied: the sender name and quiet hours (the compliance
  * profile), operating hours (business settings), authority (Agent Controls), pause (the company's agent list),
  * and each person's notifications (their own notice settings).

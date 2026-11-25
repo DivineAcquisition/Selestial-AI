@@ -65,7 +65,7 @@ export const AGENT_CATALOG: Record<AgentId, { name: string; department: "growth"
   marketing: { name: "Marketing", department: "growth", plans: ["expand"] },
   quality: { name: "Quality", department: "operations", plans: ["expand"] },
   // Every plan, by the Owner's decision of November 25, 2026 (docs/care/00-architecture.md): it is the front door for clients' requests.
-  "customer-care": { name: "Client Care", department: "operations", plans: ["operate", "expand"] },
+  "customer-care": { name: "Care", department: "operations", plans: ["operate", "expand"] },
 };
 
 /**

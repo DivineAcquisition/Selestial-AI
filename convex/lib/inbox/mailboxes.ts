@@ -76,7 +76,7 @@ export const WAITING_FOR_INBOX = "inbox_disconnected";
  * notification is not the applicant's thread, so it's never joined.
  */
 export async function threadFor(ctx: Ctx, message: Doc<"messages">, connectionId: Id<"mailboxConnections">): Promise<string | null> {
-  // A Client Care reply joins the client's own thread in the inbox it came from.
+  // A Care reply joins the client's own thread in the inbox it came from.
   if (message.careRequestId) {
     const request = await ctx.db.get(message.careRequestId);
     return request && request.conversation.mailboxConnectionId === connectionId ? (request.conversation.threadId ?? null) : null;

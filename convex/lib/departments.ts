@@ -50,7 +50,7 @@ export const AGENT_PROFILES: Record<Agent, { name: string; responsibility: strin
     built: true,
   },
   "customer-care": {
-    name: "Client Care",
+    name: "Care",
     responsibility: "Customer requests by text and email: understanding them, coordinating the action with the agent or system that owns it, and keeping the customer informed until it is resolved.",
     completion: "A customer request resolved with its outcome verified on the record and the customer told, or closed without action for a stated reason.",
     built: true,

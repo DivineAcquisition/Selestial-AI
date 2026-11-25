@@ -36,7 +36,7 @@ working name.
   the next cleaner on a decline or no answer, and hands the visit to a person
   when it cannot be covered. It is code only; no model is called.
 
-- **Client Care** (`customer-care`): reads clients' texts and Care-inbox email
+- **Care** (`customer-care`): reads clients' texts and Care-inbox email
   against their visits, plans and invoices, coordinates changes through the
   agent that owns each one, and keeps the client informed until the request is
   resolved. See [`docs/care/00-architecture.md`](docs/care/00-architecture.md)

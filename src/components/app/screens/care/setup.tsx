@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Care Setup: how Client Care works for this company. Settings that live elsewhere are shown and linked, never
+ * Care Setup: how Care works for this company. Settings that live elsewhere are shown and linked, never
  * copied: authority (Agent Controls' one policy), operating hours (Business & hours), the sender and quiet hours
  * (texting), each person's notifications (their own settings) and the pause (the company's agent list). Only the
  * Owner changes anything here; everyone else reads it.
@@ -67,9 +67,9 @@ function Authority({ view }: { view: CareSetupView }) {
   const set = useMutation(api.permissions.set);
   const { busy, error, run } = useRun();
   return (
-    <Panel title="What Client Care may do" action={<Link href="/app/settings/agents" className="inline-flex items-center gap-1 text-sm font-medium text-brand-300 hover:underline">Agent Controls <ArrowUpRight className="size-3.5" aria-hidden /></Link>}>
+    <Panel title="What Care may do" action={<Link href="/app/settings/agents" className="inline-flex items-center gap-1 text-sm font-medium text-brand-300 hover:underline">Agent Controls <ArrowUpRight className="size-3.5" aria-hidden /></Link>}>
       <div className="grid gap-3 p-4">
-        <p className="text-sm text-muted-foreground">One setting per kind of action, the same policy Agent Controls shows. Refunds, credits, contract changes and anything a policy doesn’t allow are never Client Care’s: they stay on their existing decision path.</p>
+        <p className="text-sm text-muted-foreground">One setting per kind of action, the same policy Agent Controls shows. Refunds, credits, contract changes and anything a policy doesn’t allow are never Care’s: they stay on their existing decision path.</p>
         <FormError message={error} />
         <ul className="divide-y divide-border rounded-xl border border-border">
           {view.permissions.map((p) => (
@@ -150,12 +150,12 @@ export function CareSetupScreen() {
     <>
       <PageHeader
         title="Care Setup"
-        lead="How Client Care works for your clients. Your client's own agreement comes first for change notice and fees; what you set here applies when it doesn't say."
+        lead="How Care works for your clients. Your client's own agreement comes first for change notice and fees; what you set here applies when it doesn't say."
         actions={
           edit ? (
             <Button variant="outline" size="sm" loading={busy} onClick={() => run(() => (view.agent.paused ? resume({ companyId, agent: "customer-care" }) : pause({ companyId, agent: "customer-care" })))}>
               {view.agent.paused ? <Play className="size-4" aria-hidden /> : <PauseCircleIcon className="size-4" aria-hidden />}
-              {view.agent.paused ? "Resume Client Care" : "Pause Client Care"}
+              {view.agent.paused ? "Resume Care" : "Pause Care"}
             </Button>
           ) : null
         }
@@ -168,7 +168,7 @@ export function CareSetupScreen() {
             <Readiness ready={view.channels.sms.ready} words={view.channels.sms.words} />
             <Readiness ready={view.channels.email.ready} words={view.channels.email.words} />
             <p className="text-xs text-muted-foreground">
-              Messages go as {view.channels.sender}, and Client Care says it is the company’s assistant. Sending hours, opt-outs and texting registration are checked for every message.{" "}
+              Messages go as {view.channels.sender}, and Care says it is the company’s assistant. Sending hours, opt-outs and texting registration are checked for every message.{" "}
               <Link href="/app/texting" className="font-medium text-brand-300 hover:underline">
                 Business texting
               </Link>{" "}
@@ -184,7 +184,7 @@ export function CareSetupScreen() {
         <Panel title="Request types">
           <div className="grid gap-2 p-4 sm:grid-cols-2">
             {view.categories.map((c) => (
-              <CheckboxRow key={c.id} checked={draft.requestTypes.includes(c.id)} onCheckedChange={(checked) => patch({ requestTypes: checked ? [...draft.requestTypes, c.id] : draft.requestTypes.filter((id) => id !== c.id) })} title={c.words} description={draft.requestTypes.includes(c.id) ? "Client Care works these." : "Recorded and handed to a person."} disabled={!edit} bordered />
+              <CheckboxRow key={c.id} checked={draft.requestTypes.includes(c.id)} onCheckedChange={(checked) => patch({ requestTypes: checked ? [...draft.requestTypes, c.id] : draft.requestTypes.filter((id) => id !== c.id) })} title={c.words} description={draft.requestTypes.includes(c.id) ? "Care works these." : "Recorded and handed to a person."} disabled={!edit} bordered />
             ))}
           </div>
         </Panel>
@@ -194,7 +194,7 @@ export function CareSetupScreen() {
             <Field label="Change notice (hours)" hint="Moves, skips and cancellations inside this window come to you. Empty: every change comes to you.">
               <TextInput inputMode="numeric" value={draft.notice} onChange={(event) => patch({ notice: event.target.value })} disabled={!edit} />
             </Field>
-            <Field label="Late-change fee ($)" hint="Shown to you on a late change. Client Care never applies or quotes it.">
+            <Field label="Late-change fee ($)" hint="Shown to you on a late change. Care never applies or quotes it.">
               <TextInput inputMode="decimal" value={draft.fee} onChange={(event) => patch({ fee: event.target.value })} disabled={!edit} />
             </Field>
             <Field label="Where this rule comes from" hint="For example, Service terms section 4.">
@@ -243,7 +243,7 @@ export function CareSetupScreen() {
                 ))}
               </ul>
             ) : (
-              <p className="text-muted-foreground">No operating hours are set, so Client Care offers times from the team’s availability alone.</p>
+              <p className="text-muted-foreground">No operating hours are set, so Care offers times from the team’s availability alone.</p>
             )}
           </div>
         </Panel>

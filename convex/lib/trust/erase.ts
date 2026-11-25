@@ -184,7 +184,7 @@ export async function eraseCustomerRecords(ctx: Ctx, customer: Doc<"customers">)
     .withIndex("by_company_customer", (q) => q.eq("companyId", ctx.companyId).eq("customerId", customer._id))
     .take(MAX_ROWS);
   for (const signal of signals) await ctx.db.patch(signal._id, { what: "(erased)", status: signal.status === "open" || signal.status === "in_case" ? "cleared" : signal.status });
-  // Client Care: the client's words are blanked, steps not yet carried out stop, and requests keep only that they existed.
+  // Care: the client's words are blanked, steps not yet carried out stop, and requests keep only that they existed.
   const careRequests = await ctx.db
     .query("careRequests")
     .withIndex("by_company_customer", (q) => q.eq("companyId", ctx.companyId).eq("customerId", customer._id))
@@ -203,7 +203,7 @@ export async function eraseCustomerRecords(ctx: Ctx, customer: Doc<"customers">)
     .withIndex("by_company_customer", (q) => q.eq("companyId", ctx.companyId).eq("customerId", customer._id))
     .take(MAX_ROWS);
   for (const message of careMessages) await ctx.db.patch(message._id, { text: "(erased)", from: "erased", sealed: undefined, status: message.status === "queued" ? "skipped" : message.status, mailbox: undefined });
-  steps.push({ step: "Client Care requests", state: "done", detail: `${careRequests.length} request${careRequests.length === 1 ? "" : "s"} and ${careMessages.length} message${careMessages.length === 1 ? "" : "s"} blanked; anything not yet sent was stopped.` });
+  steps.push({ step: "Care requests", state: "done", detail: `${careRequests.length} request${careRequests.length === 1 ? "" : "s"} and ${careMessages.length} message${careMessages.length === 1 ? "" : "s"} blanked; anything not yet sent was stopped.` });
   steps.push({ step: "Retention cases and feedback", state: "done", detail: `${cases.length} case${cases.length === 1 ? "" : "s"} and ${feedback.length} feedback record${feedback.length === 1 ? "" : "s"} blanked; ${careLinks.length} customer link${careLinks.length === 1 ? "" : "s"} closed.` });
 
   const properties = await ctx.db

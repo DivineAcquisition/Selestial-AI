@@ -27,7 +27,7 @@ work inside them.
 | Department | Agents, in order |
 |---|---|
 | **Growth** | Marketing, Sales, Retention |
-| **Operations** | Dispatch, Quality, Client Care |
+| **Operations** | Dispatch, Quality, Care |
 | **Team** | Recruiter (with the shared Cleaners workspace) |
 
 | Agent | Owns |
@@ -37,7 +37,7 @@ work inside them.
 | Retention | Notices when a customer relationship needs attention, coordinates the response, and verifies what happened afterward. |
 | Dispatch | Visit eligibility, assignments, coverage, and service coordination. |
 | Quality | Reviews service evidence, investigates issues, coordinates corrective work. |
-| Client Care | Understands each client request, coordinates the action with the agent that owns it, and keeps the client informed until it is resolved. Shown as Client Care from November 25, 2026; its id stays `customer-care`. |
+| Care | Understands each client request, coordinates the action with the agent that owns it, and keeps the client informed until it is resolved. Shown as Care from November 25, 2026; its id stays `customer-care`. |
 | Recruiter | Applications, hiring, onboarding, and readiness. |
 
 **Team Coordinator was retired on November 22, 2026**, before it was ever released. It never ran: it was a
@@ -46,7 +46,7 @@ that already run, so nothing is duplicated or lost (section 9).
 
 Two pairs of names are close and stay with their owners:
 
-- **Care Setup** is Client Care's and is about how Care treats clients. **Hiring
+- **Care Setup** is Care's and is about how Care treats clients. **Hiring
   setup** is Recruiter's and is about cleaners.
 - **Offers & Agreements** is Recruiter's and is about hiring. **Offers &
   Coverage** is Dispatch's and is about job assignments.
@@ -100,7 +100,7 @@ Names and order are the owner's. Playbook is always last. Chat is never a tab: i
 | Retention | Needs Attention · Recovery · Continuity & Renewals · Re-engagement · Playbook (changed November 18, 2026, when Retention was built: see `docs/retention/00-architecture.md`) |
 | Dispatch | Dispatch Board · Schedule · Offers & Coverage · Live Jobs · Action Links · Playbook |
 | Quality | Reviews · Cases · Corrections · Standards · Insights · Playbook (changed November 22, 2026, when Quality was built: see `docs/quality/00-architecture.md`) |
-| Client Care | Overview (the agent page) · Requests · Follow-ups · Care Setup (decided November 25, 2026; docs/care/00-architecture.md) |
+| Care | Overview (the agent page) · Requests · Follow-ups · Care Setup (decided November 25, 2026; docs/care/00-architecture.md) |
 | Recruiter | Hiring Needs · Applicants · Screening · Interviews · Offers & Agreements · Onboarding & Readiness · Playbook |
 
 ### Sales: Internal Booking, Quotes & Proposals and Booking Forms

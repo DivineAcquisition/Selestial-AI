@@ -129,14 +129,14 @@ export async function routeStep(ctx: MutationCtx, company: Doc<"companies">, req
   const toPerson = async (words: string): Promise<Routed> => {
     await patchStep(ctx, step, { status: "blocked", result: words });
     await addEntry(ctx, request, { kind: "waiting", text: `Prepared for a person: ${step.summary}. ${words}` });
-    await moveRequest(ctx, (await ctx.db.get(request._id))!, { status: "waiting_owner", waiting: { on: "owner", reason: words, since: Date.now() }, blocker: `${step.summary}. ${words}`, nextAction: "Decide and do this yourself, or change Client Care's permission for it." });
+    await moveRequest(ctx, (await ctx.db.get(request._id))!, { status: "waiting_owner", waiting: { on: "owner", reason: words, since: Date.now() }, blocker: `${step.summary}. ${words}`, nextAction: "Decide and do this yourself, or change Care's permission for it." });
     return { status: "blocked", detail: words };
   };
   if (authority.kind === "person_only") return toPerson("This always needs a person.");
-  if (authority.kind === "unknown") return toPerson("This isn't an action Client Care can take.");
+  if (authority.kind === "unknown") return toPerson("This isn't an action Care can take.");
   if (authority.kind === "unavailable") return toPerson(authority.why);
-  if (authority.kind === "paused") return { status: "blocked", detail: "Client Care is paused." };
-  if (authority.level === "off") return toPerson(`Client Care is set to Off for "${label}", so a person handles it.`);
+  if (authority.kind === "paused") return { status: "blocked", detail: "Care is paused." };
+  if (authority.level === "off") return toPerson(`Care is set to Off for "${label}", so a person handles it.`);
   if (authority.level === "propose") return askFirst(ctx, company, request, step, authority.expired === true);
   return carryOut(ctx, company, step._id, CARE, `${step.permission}: ${authority.level === "execute" ? "Act automatically" : "Act and notify me"}`, authority.level);
 }
@@ -158,7 +158,7 @@ async function askFirst(ctx: MutationCtx, company: Doc<"companies">, request: Re
   await patchStep(ctx, step, { status: "awaiting_approval", approvalId, stamp, result: expired ? "Waiting for approval: the temporary permission ran out." : "Waiting for approval." });
   await addEntry(ctx, request, { kind: "waiting", text: `Waiting for your approval: ${step.summary}`, source: { table: "approvals", id: approvalId, label: "Approval" } });
   const fresh = (await ctx.db.get(request._id))!;
-  if (isOpen(fresh)) await moveRequest(ctx, fresh, { status: "waiting_owner", waiting: { on: "owner", reason: "Your approval is needed before Client Care goes ahead.", since: Date.now() }, nextAction: "Approve, change or skip it in Approvals." });
+  if (isOpen(fresh)) await moveRequest(ctx, fresh, { status: "waiting_owner", waiting: { on: "owner", reason: "Your approval is needed before Care goes ahead.", since: Date.now() }, nextAction: "Approve, change or skip it in Approvals." });
   return { status: "awaiting_approval", detail: "Waiting for approval." };
 }
 
@@ -171,13 +171,13 @@ export async function carryOut(ctx: MutationCtx, company: Doc<"companies">, step
     await patchStep(ctx, step, { status: "cancelled", result: "The request was closed first." });
     return { status: "failed", detail: "The request was closed first." };
   }
-  if (company.pausedAgents.includes("customer-care") && by.kind === "agent") return { status: "blocked", detail: "Client Care is paused." };
+  if (company.pausedAgents.includes("customer-care") && by.kind === "agent") return { status: "blocked", detail: "Care is paused." };
   // A retry never redoes a part that already happened.
   const changeDone = partState(step, "change") === "done";
   if (!changeDone && (await stampOf(ctx, request, step)) !== step.stamp) {
-    step = await patchStep(ctx, step, { status: "cancelled", result: "What this was prepared on changed (the client's request, the visit, the plan, the invoice or the policy). It was not carried out; Client Care works the request again." });
+    step = await patchStep(ctx, step, { status: "cancelled", result: "What this was prepared on changed (the client's request, the visit, the plan, the invoice or the policy). It was not carried out; Care works the request again." });
     await addEntry(ctx, request, { kind: "problem", text: `Not carried out: ${step.summary}. What it was prepared on has changed since.` });
-    await moveRequest(ctx, request, { status: "in_progress", nextAction: "Client Care is working the request again on what the record says now.", nextCheckAt: Date.now() });
+    await moveRequest(ctx, request, { status: "in_progress", nextAction: "Care is working the request again on what the record says now.", nextCheckAt: Date.now() });
     return { status: "failed", detail: "What this was prepared on has changed, so it was not carried out." };
   }
   step = await patchStep(ctx, step, { status: "ready", attempts: step.attempts + 1, result: authorization.slice(0, 300) });
@@ -193,7 +193,7 @@ export async function carryOut(ctx: MutationCtx, company: Doc<"companies">, step
     step = await patchStep(ctx, step, { status: "failed", parts: setPart(step.parts, "change", "failed", result.detail), result: result.detail });
     await addEntry(ctx, request, { kind: "problem", text: `Could not ${step.summary.charAt(0).toLowerCase()}${step.summary.slice(1)}: ${result.detail}` });
     const fresh = (await ctx.db.get(request._id))!;
-    if (isOpen(fresh)) await moveRequest(ctx, fresh, { status: "in_progress", blocker: result.detail, nextAction: "Client Care is offering what can be done instead.", nextCheckAt: Date.now() });
+    if (isOpen(fresh)) await moveRequest(ctx, fresh, { status: "in_progress", blocker: result.detail, nextAction: "Care is offering what can be done instead.", nextCheckAt: Date.now() });
     await recordEvent(ctx, { companyId: company._id, type: "care_step.failed", actor: by, subject: { table: "careSteps", id: step._id }, data: { kind: step.kind } });
     return { status: "failed", detail: result.detail };
   }
@@ -303,7 +303,7 @@ async function doChange(ctx: MutationCtx, company: Doc<"companies">, request: Re
       const property = job ? await ctx.db.get(job.propertyId) : p.propertyId ? await ctx.db.get(p.propertyId) : null;
       const opened = await openRecovery(ctx, company, { customer, property, job, words: p.text ?? request.summary, origin: "conversation", actor: by });
       await ctx.db.patch(request._id, { retentionCaseId: opened.row._id });
-      return { ok: true, detail: opened.created ? "Opened a recovery case for the visit; Quality investigates it and Retention prepares any remedy. Client Care keeps the client informed." : "Added this to the recovery case already open for the visit.", evidence: { table: "retentionCases", id: opened.row._id, label: "Recovery case" } };
+      return { ok: true, detail: opened.created ? "Opened a recovery case for the visit; Quality investigates it and Retention prepares any remedy. Care keeps the client informed." : "Added this to the recovery case already open for the visit.", evidence: { table: "retentionCases", id: opened.row._id, label: "Recovery case" } };
     }
     case "extra": {
       const job = p.jobId ? await ctx.db.get(p.jobId) : null;
@@ -316,7 +316,7 @@ async function doChange(ctx: MutationCtx, company: Doc<"companies">, request: Re
       if (p.taskId) return { ok: true, detail: "Already handed over." };
       const to = p.handoffTo ?? "owner";
       const agent = to === "sales" ? "sales" : to === "dispatch" ? "dispatch" : to === "quality" ? "quality" : to === "retention" ? "retention" : "customer-care";
-      const taskId = await openTask(ctx, { companyId: company._id, agent, title: step.summary.slice(0, 200), nextAction: (request.nextAction ?? "Take this request and tell Client Care what happens next").slice(0, 500), dueAt: Date.now() + DAY, completionCondition: "The team member decided or did what the client asked, and the request shows it", about: { table: "careRequests", id: request._id }, key: `care.handoff:${step._id}`, actor: by });
+      const taskId = await openTask(ctx, { companyId: company._id, agent, title: step.summary.slice(0, 200), nextAction: (request.nextAction ?? "Take this request and tell Care what happens next").slice(0, 500), dueAt: Date.now() + DAY, completionCondition: "The team member decided or did what the client asked, and the request shows it", about: { table: "careRequests", id: request._id }, key: `care.handoff:${step._id}`, actor: by });
       if (to === "finance") await ctx.db.patch(taskId, { handoffTo: "finance" });
       await ctx.db.patch(step._id, { payload: { ...p, taskId } });
       return { ok: true, detail: `Handed to ${to === "owner" ? "the office" : to.charAt(0).toUpperCase() + to.slice(1)}.`, evidence: { table: "tasks", id: taskId, label: "Task" } };
@@ -364,7 +364,7 @@ export async function afterCareReply(ctx: MutationCtx, message: Doc<"messages">)
   await settled(ctx, fresh, message);
 }
 
-const HELD = "Client Care's message is ready but held: ";
+const HELD = "Care's message is ready but held: ";
 const BEFORE = " Before that: ";
 
 /** What a finished (or stuck) step means for its request. */
@@ -396,8 +396,8 @@ async function settled(ctx: MutationCtx, step: Step, message?: Doc<"messages">) 
       ? `${(partsDetail(step, "change") ?? "The change was made").replace(/\.$/, "")}. It is not known whether the message telling the client went; it was not sent again. Check with the client before sending another.`
       : `${(partsDetail(step, "change") ?? "The change was made").replace(/\.$/, "")}. The message telling the client did not go: ${(partsDetail(step, "notify") ?? "it could not be sent").replace(/\.$/, "")}. Retry it or reach them another way.`
     : notify === "uncertain"
-      ? "It is not known whether Client Care's message went. It was not sent again. Check with the client before sending another."
-      : `Client Care's message did not go: ${(partsDetail(step, "notify") ?? "it could not be sent").replace(/\.$/, "")}.`;
+      ? "It is not known whether Care's message went. It was not sent again. Check with the client before sending another."
+      : `Care's message did not go: ${(partsDetail(step, "notify") ?? "it could not be sent").replace(/\.$/, "")}.`;
   await addEntry(ctx, request, { kind: "problem", text: problem, ...(message ? { source: { table: "messages", id: message._id, label: "Message" } } : {}) });
   // What the request already needed a person for stays in view beside the message problem.
   const blocker = request.blocker && !request.blocker.includes(problem) ? `${problem} Before that: ${request.blocker}` : problem;
@@ -412,7 +412,7 @@ export async function retryMessage(ctx: MutationCtx, company: Doc<"companies">, 
   if (partState(step, "change") === "failed") return { ok: false, detail: "The change itself did not happen, so there is nothing to tell the client." };
   if (!step.message) return { ok: false, detail: "This step has no message." };
   const request = (await ctx.db.get(step.requestId))!;
-  if (!(await careReplyClaimable(ctx, request))) return { ok: false, detail: "Client Care can't write in this conversation right now." };
+  if (!(await careReplyClaimable(ctx, request))) return { ok: false, detail: "Care can't write in this conversation right now." };
   const routed = await carryOut(ctx, company, step._id, by, "Retried by a person");
   return { ok: routed.status === "carried_out", detail: routed.detail };
 }

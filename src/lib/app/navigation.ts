@@ -381,7 +381,7 @@ function agent(spec: { id: AgentId; label: string; department: DepartmentId; res
  * Cleaners workspace holds the shared record. Its old pages lead to Recruiter and Dispatch.
  *
  * Two pairs of names are close on purpose and must stay distinct:
- * - Care Setup (Client Care) is how Care works for clients. Hiring setup (Recruiter) is about cleaners.
+ * - Care Setup (Care) is how Care works for clients. Hiring setup (Recruiter) is about cleaners.
  * - Offers & Agreements (Recruiter) is about hiring. Offers & Coverage (Dispatch) is about job assignments.
  */
 export const AGENTS: readonly AgentNav[] = [
@@ -478,8 +478,8 @@ export const AGENTS: readonly AgentNav[] = [
   }),
   agent({
     id: "customer-care",
-    // Shown as Client Care from November 25, 2026 (docs/care/00-architecture.md). The id is unchanged.
-    label: "Client Care",
+    // Shown as Care from November 25, 2026 (docs/care/00-architecture.md). The id is unchanged.
+    label: "Care",
     department: "operations",
     responsibility: "Understands each client request, coordinates the action needed with the agent that owns it, and keeps the client informed until it is resolved.",
     backendAgent: "customer-care",

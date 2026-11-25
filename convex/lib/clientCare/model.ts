@@ -1,5 +1,5 @@
 /**
- * Where a model may help Client Care, and only here: reading one client message into the same Reading the
+ * Where a model may help Care, and only here: reading one client message into the same Reading the
  * rules produce. It has no tools and writes nothing; it never chooses a time, a price, a scope or what Care
  * does. Its reading is checked against the message and against the rules (read.ts `checkedReading`): dates
  * and times always come from the rules.

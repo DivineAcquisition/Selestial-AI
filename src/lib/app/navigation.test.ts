@@ -61,8 +61,8 @@ const SPEC: Record<string, Record<string, string[]>> = {
   Operations: {
     Dispatch: ["Dispatch Board", "Schedule", "Offers & Coverage", "Live Jobs", "Action Links", "Playbook"],
     Quality: ["Reviews", "Cases", "Corrections", "Standards", "Insights", "Playbook"],
-    // Client Care, live from November 25, 2026: its Overview is the agent's page, and Care Setup is its playbook.
-    "Client Care": ["Requests", "Follow-ups", "Care Setup"],
+    // Care, live from November 25, 2026: its Overview is the agent's page, and Care Setup is its playbook.
+    "Care": ["Requests", "Follow-ups", "Care Setup"],
   },
   Team: {
     Recruiter: ["Applicants", "Interviews", "Hiring setup"],

@@ -88,7 +88,7 @@ export const ACTIONS: readonly ActionDef[] = [
   action("quality.verify_correction", "quality", "Verify a correction visit's record against the acceptance criteria", "execute", { outsider: false }),
   action("quality.propose_improvement", "quality", "Propose a change to a checklist, booking question, scope wording, training or inspection frequency (a person decides)", "execute", { ceiling: "execute", outsider: false }),
 
-  // Client Care (convex/lib/clientCare). Every change it makes is carried out by the function that owns it
+  // Care (convex/lib/clientCare). Every change it makes is carried out by the function that owns it
   // (Dispatch's move, Retention's plan change, the visit's cancellation), checked again when it runs.
   action("care.answer_question", "customer-care", "Answer a client's question from the visit, plan and invoice records", "execute", { initial: "execute" }),
   action("care.acknowledge", "customer-care", "Acknowledge a client's request and ask only for what is missing or unclear", "execute", { initial: "execute" }),

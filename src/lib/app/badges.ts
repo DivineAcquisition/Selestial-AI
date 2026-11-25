@@ -56,7 +56,7 @@ function qualityBadges(q: NonNullable<SidebarFacts["quality"]>): Badge[] {
   return badges;
 }
 
-/** Client Care: an urgent request first, then requests waiting on a person, then promised updates that are late. */
+/** Care: an urgent request first, then requests waiting on a person, then promised updates that are late. */
 function careBadges(c: NonNullable<SidebarFacts["care"]>): Badge[] {
   const badges: Badge[] = [];
   if (c.urgent > 0) badges.push({ kind: "urgent", label: count(c.urgent, "urgent"), count: c.urgent });

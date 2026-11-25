@@ -16,7 +16,7 @@ describe("permissions per action", () => {
     expect(actions.length).toBe(ACTIONS.length);
     for (const def of ACTIONS.filter((entry) => entry.outsider)) {
       const level = actions.find((row) => row.key === def.key)!.level;
-      // The Owner's decision of November 25, 2026: Client Care's verified answers, invoice look-ups and
+      // The Owner's decision of November 25, 2026: Care's verified answers, invoice look-ups and
       // acknowledgments start automatic. Nothing else may start above Ask me first.
       if (def.initial) {
         expect(def.agent, def.key).toBe("customer-care");

@@ -1,13 +1,13 @@
-# Client Care: what it is built on
+# Care: what it is built on
 
 **Responsibility.** Understand the customer's request, coordinate the action needed to resolve it, and keep
 the customer informed until it is actually resolved. A reply sent is not a resolved request.
 
-Display name **Client Care**, in Operations. The stored identifier stays `customer-care` everywhere it was
+Display name **Care** (the Owner's decision of November 25, 2026, the day it launched as "Client Care"), in Operations. The stored identifier stays `customer-care` everywhere it was
 already used (navigation, billing catalog, chat specialists); the backend agent id is the same string. The
 workspace is `/app/agents/customer-care` with four tabs: Overview, Requests, Follow-ups, Care Setup.
 
-Client Care is a view over the shared Inbox and the records, not a second inbox. Every customer message stays
+Care is a view over the shared Inbox and the records, not a second inbox. Every customer message stays
 in the client's conversation (`inboundMessages`, `messages`, `smsConversations`); a Care request points at it.
 
 Code: `convex/clientCare.ts` (screens), `convex/clientCareWork.ts` (the worker), `convex/lib/clientCare/`.
@@ -61,7 +61,7 @@ Code: `convex/clientCare.ts` (screens), `convex/clientCareWork.ts` (the worker),
 | `convex/messaging.ts`, `schema.ts` `messages` | `client_care_reply`, `careRequestId`, `careStepId`; claim and settle hooks. |
 | `convex/approvals.ts`, `proposalValidator` | `care_action`. |
 | `convex/crons.ts` | Care's sweep. |
-| Frontend navigation | Client Care is live with Overview · Requests · Follow-ups · Care Setup. |
+| Frontend navigation | Care is live with Overview · Requests · Follow-ups · Care Setup. |
 
 ### Added
 
@@ -78,7 +78,7 @@ Company settings gain `clientCare`.
 
 | Owns | In a customer request |
 | --- | --- |
-| **Client Care** | Intake, clarification, routine answers from the record, coordinating approved actions through the owners' functions, every customer-facing update, follow-through and closure. |
+| **Care** | Intake, clarification, routine answers from the record, coordinating approved actions through the owners' functions, every customer-facing update, follow-through and closure. |
 | **Sales** | New service, another property, a custom scope, quotes and proposals. Care routes and keeps the customer informed. |
 | **Dispatch** | Whether a time can be covered, crew assignment and re-offers after a move. |
 | **Quality** | Investigation, evidence review, corrective scope and verification. Care never states a finding. |

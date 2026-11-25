@@ -78,7 +78,7 @@ export async function receive(ctx: MutationCtx, input: Incoming): Promise<Receiv
     receivedAt: input.receivedAt,
     status: stale ? "skipped" : "queued",
     requestIds: [],
-    ...(stale ? { note: "Received more than two days after it was sent (a replay or an import). Kept for the record; Client Care started nothing." } : {}),
+    ...(stale ? { note: "Received more than two days after it was sent (a replay or an import). Kept for the record; Care started nothing." } : {}),
     conversationId: input.conversationId,
     mailbox: input.mailbox,
   });

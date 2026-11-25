@@ -167,7 +167,7 @@ async function handleSms(ctx: MutationCtx, args: ReceiveSms): Promise<InboundRes
         if (clients.length > 0) await fileClientText(ctx, { companyId, from, excerpt: excerpt(args.body) ?? "", kind: "message", at: args.receivedAt }, clients);
         return { kind: "ignored", replied: false };
       }
-      // A known client's text, or one of its contacts', is Client Care's: it reads it against their visits, plans and
+      // A known client's text, or one of its contacts', is Care's: it reads it against their visits, plans and
       // invoices and works the request (convex/lib/clientCare/intake.ts). It is kept in the client's conversation too.
       // Care also tells Retention of a stated wish to cancel, so Retention's own reading of the text is not queued.
       if (clients.length > 0) {

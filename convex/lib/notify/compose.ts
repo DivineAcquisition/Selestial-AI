@@ -280,7 +280,7 @@ async function qualityCase(ctx: MutationCtx, company: Doc<"companies">, event: "
 }
 
 /**
- * A Client Care request that needs a person. Read now: a request someone already took, decided or closed sends
+ * A Care request that needs a person. Read now: a request someone already took, decided or closed sends
  * nothing. The client's words and any access details never go in the email: the request holds them.
  */
 async function careRequest(ctx: MutationCtx, company: Doc<"companies">, event: "care_urgent" | "care_attention", ref: string | undefined, facts: NoticeFacts | undefined, c: Context): Promise<Built> {
@@ -294,10 +294,10 @@ async function careRequest(ctx: MutationCtx, company: Doc<"companies">, event: "
   if (event === "care_urgent") {
     return alertEmail({
       ...c,
-      eyebrow: "Client Care",
+      eyebrow: "Care",
       subject: "A client's request is urgent",
       heading: "An urgent client request",
-      body: `${customer?.name ?? "A client"} wrote to the company about something that may be serious. Client Care acknowledged it without admitting anything or promising anything, and passed it to you.`,
+      body: `${customer?.name ?? "A client"} wrote to the company about something that may be serious. Care acknowledged it without admitting anything or promising anything, and passed it to you.`,
       tone: "danger",
       note: "Open the request to read what they wrote and decide what happens next.",
       facts: [{ label: "Client", value: customer?.name ?? "A client" }],
@@ -308,7 +308,7 @@ async function careRequest(ctx: MutationCtx, company: Doc<"companies">, event: "
   if (row.status !== "waiting_owner" && str(facts, "kind") !== "message_failed") return { problem: "The request no longer needs a person." };
   return alertEmail({
     ...c,
-    eyebrow: "Client Care",
+    eyebrow: "Care",
     subject: str(facts, "kind") === "message_failed" ? "A message to a client didn't go" : "A client's request needs you",
     heading: str(facts, "kind") === "message_failed" ? "A client wasn't told" : "A client request needs a person",
     // Anything the client wrote is quoted on the request; the email says only that it exists.

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Client Care's overview: a short brief read from the record. What came in, what Care finished, what is blocked,
+ * Care's overview: a short brief read from the record. What came in, what Care finished, what is blocked,
  * which promised updates are due, and what is waiting on you. Every number is a count of records; no time saved
  * or productivity is claimed.
  */
@@ -33,7 +33,7 @@ function header(o: CareOverview): { state: string; tone: "warning" | "success" |
   const lines = [
     o.agent.reason,
     c.open ? `${plural(c.open, "open request")}: ${c.waitingClient} waiting on clients, ${c.waitingTeam} with the team, ${c.decisions} with you.` : "No client request is open. That is what the record shows, not a claim that every client is happy.",
-    `${c.resolvedWeek} resolved and ${plural(c.stepsDoneWeek, "step")} carried out by Client Care in the last 7 days.`,
+    `${c.resolvedWeek} resolved and ${plural(c.stepsDoneWeek, "step")} carried out by Care in the last 7 days.`,
     o.agent.reader,
   ].filter((line): line is string => Boolean(line));
   const first = o.urgent[0] ?? o.decisions[0];
@@ -54,7 +54,7 @@ export function CareOverviewScreen() {
     return (
       <>
         <PageHeader title={CARE_NAME} lead={CARE_LEAD} />
-        <div className="grid gap-5" aria-busy="true" aria-label="Loading Client Care">
+        <div className="grid gap-5" aria-busy="true" aria-label="Loading Care">
           <Skeleton className="h-44 rounded-2xl" />
           <Skeleton className="h-24 rounded-2xl" />
           <Skeleton className="h-64 rounded-2xl" />
@@ -73,7 +73,7 @@ export function CareOverviewScreen() {
           role === "owner" ? (
             <Button variant="outline" size="sm" loading={busy} onClick={() => run(() => (overview.agent.paused ? resume({ companyId, agent: "customer-care" }) : pause({ companyId, agent: "customer-care" })))}>
               {overview.agent.paused ? <Play className="size-4" aria-hidden /> : <PauseCircleIcon className="size-4" aria-hidden />}
-              {overview.agent.paused ? "Resume Client Care" : "Pause Client Care"}
+              {overview.agent.paused ? "Resume Care" : "Pause Care"}
             </Button>
           ) : null
         }
@@ -109,7 +109,7 @@ export function CareOverviewScreen() {
         {overview.unread ? (
           <p className="flex items-start gap-2 rounded-xl border border-warning/40 bg-warning/5 px-3.5 py-3 text-sm text-strong">
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning-foreground" aria-hidden />
-            {plural(overview.unread.count, "client message")} {overview.unread.count === 1 ? "is" : "are"} kept and not yet read{overview.agent.paused ? " because Client Care is paused" : ""}. The oldest arrived {now ? whenLabel(overview.unread.oldest, now, timezone) : ""}; each is in the client’s conversation.
+            {plural(overview.unread.count, "client message")} {overview.unread.count === 1 ? "is" : "are"} kept and not yet read{overview.agent.paused ? " because Care is paused" : ""}. The oldest arrived {now ? whenLabel(overview.unread.oldest, now, timezone) : ""}; each is in the client’s conversation.
           </p>
         ) : null}
 
@@ -133,7 +133,7 @@ export function CareOverviewScreen() {
 
         <Panel title="Waiting on you" action={<OpenLink href={`${CARE_PATH}/requests`}>All requests</OpenLink>}>
           <div className="grid gap-3 p-4">
-            {overview.decisions.length ? overview.decisions.map((card) => <RequestCard key={card.id} card={card} now={now} timezone={timezone} onOpen={open} />) : <Empty title="Nothing needs you" body="When a request needs a decision, an approval or a person to step in, it appears here with what Client Care found and what is missing." />}
+            {overview.decisions.length ? overview.decisions.map((card) => <RequestCard key={card.id} card={card} now={now} timezone={timezone} onOpen={open} />) : <Empty title="Nothing needs you" body="When a request needs a decision, an approval or a person to step in, it appears here with what Care found and what is missing." />}
           </div>
         </Panel>
 
@@ -177,7 +177,7 @@ export function CareOverviewScreen() {
           </Panel>
         </div>
 
-        <Panel title="What Client Care has been doing">
+        <Panel title="What Care has been doing">
           <div className="grid gap-3 p-4">
             {overview.activity.length ? (
               <ol className="grid gap-2.5">
@@ -194,7 +194,7 @@ export function CareOverviewScreen() {
                 ))}
               </ol>
             ) : (
-              <Empty title="No work yet" body="Client Care starts when a client texts the company's number, or emails the Care & Retention inbox once reading is on in Care Setup." />
+              <Empty title="No work yet" body="Care starts when a client texts the company's number, or emails the Care & Retention inbox once reading is on in Care Setup." />
             )}
           </div>
         </Panel>
