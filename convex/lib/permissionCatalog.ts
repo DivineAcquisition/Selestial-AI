@@ -100,7 +100,8 @@ export const ACTIONS: readonly ActionDef[] = [
   action("care.reschedule_visit", "customer-care", "Move one visit to a time Dispatch can cover, inside the change notice", "execute_and_report"),
   action("care.skip_visit", "customer-care", "Skip a recurring visit, or cancel a one-time visit, inside the change notice", "execute_and_report"),
   action("care.change_plan", "customer-care", "Pause or end a recurring service at the client's request", "execute_and_report"),
-  action("care.add_extra", "customer-care", "Add a published extra to an upcoming visit at its current price, once the client accepts it", "execute_and_report"),
+  // It raises what the client pays, so the Owner always hears about it.
+  action("care.add_extra", "customer-care", "Add a published extra to an upcoming visit at its current price, once the client accepts it", "execute_and_report", { ceiling: "execute_and_report" }),
   action("care.apply_fee", "customer-care", "Apply a late-change fee the client's agreement or Care Setup sets", "propose", { ceiling: "propose", money: true }),
   action("care.hand_off", "customer-care", "Hand a request to Sales, Dispatch, Quality, Retention or Finance", "execute", { outsider: false }),
 

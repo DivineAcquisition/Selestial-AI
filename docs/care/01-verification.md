@@ -8,7 +8,7 @@ for a real company.
 
 | Check | Result |
 | --- | --- |
-| Client Care scenarios (`convex/clientCare.test.ts`) | 27 passing, through the real backend (convex-test), the real inbound webhook mutation and the mock text provider |
+| Client Care scenarios (`convex/clientCare.test.ts`) | 33 passing, through the real backend (convex-test), the real inbound webhook mutation and the mock text provider |
 | Screens' answers from the real queries (`convex/careScreens.test.ts`) | Passing; writes `tests/fixtures/careScreens.json` with `CARE_SCREENS_OUT` |
 | Screens rendered over those answers (`src/components/app/screens/care/care.test.tsx`) | 6 passing |
 | Rules reader (`convex/lib/clientCare/read.test.ts`) | 9 passing |
@@ -23,7 +23,9 @@ Problems the scenarios and screenshots found, and this work fixed: a contact's r
 new request instead of reopening the resolved one; "weren't wiped" not read as a complaint; a stale approval
 that could have been carried out after the client changed the request; a second acknowledgment on a complaint
 the client wrote about again; the overview calling Care "recording only" before a plan is chosen while the
-worker did run; doubled full stops and a repeated provider phrase; the request panel's columns stretching.
+worker did run; doubled full stops and a repeated provider phrase; the request panel's columns stretching; a
+reply held for messaging funds that showed only on the message (the request now waits on the Owner and says why,
+and picks up by itself once the message goes).
 
 **Not run live.** No Telnyx, Quo, Gmail, Resend or Anthropic call was made. No message went to a real person.
 
@@ -46,7 +48,7 @@ worker did run; doubled full stops and a repeated provider phrase; the request p
 | 13 | Client changes the request while approval is pending | "never carries out an approval for a request the client has since changed" | Verified |
 | 14 | Change succeeds, notification fails | "keeps a change that was made, retries only the message, and never makes the change twice" | Verified |
 | 15 | Provider timeout leaves delivery uncertain | "leaves an uncertain send uncertain and never sends it again by itself" | Verified |
-| 16 | Spending limit or disconnected channel blocks visibly | "shows a channel that can't send on the request…" covers the disconnected channel. A spending limit holds the message through the shared messaging billing (verified by its own tests); Care shows the hold on the message, with no Care-specific test | Partly verified |
+| 16 | Spending limit or disconnected channel blocks visibly | "shows a reply held for messaging funds on the request, and picks up once funds arrive", "shows a channel that can't send on the request…" | Verified |
 | 17 | Imports and migration-held records start nothing | "keeps a replayed or imported message for the record and starts nothing", the migration-held visit test | Verified |
 | 18 | A resolved request reopens | "reopens a resolved request when the client says it isn't done" | Verified |
 | 19 | Another tenant cannot read or act | "never lets another company read or act on a request" | Verified |
@@ -71,15 +73,16 @@ becomes a recovery case, a stated wish to cancel becomes Retention's signal).
 | Pause or end a plan | Implemented, verified | Retention's signal raised; never delayed. |
 | Late-change fees | Not included | `care.apply_fee` is unavailable; a late change goes to the Owner. |
 | Complaint intake | Implemented, verified | Opens or joins Retention's recovery case, which starts Quality. Serious words go urgent to the Owner. |
-| Retention's remedy steps through Care | Implemented, not exercised end to end | A Retention customer step on a Care-linked case is relayed by Care in the client's thread. |
+| Retention's remedy steps through Care | Implemented, verified | A Retention customer step on a Care-linked case is sent by Care in the client's thread, once; Retention's step settles from the provider's answer ("sends Retention's case message in the client's own Care thread…"). |
 | Invoice and payment questions | Implemented, verified | The invoice's own link; a "paid" claim goes to Finance; refunds go to the Owner. |
-| Extras (published add-ons) | Blocked | No function changes a visit's price yet: prepared for a person. |
+| Extras (published add-ons) | Implemented, verified | Only an add-on the visit's own published service lists. The price is the pricing engine's difference for that visit; the client says yes to that exact price; the Owner approves (Ask me first); it is priced again when carried out and stops on any change, an issued invoice or a crew that can't cover the longer visit. A custom scope goes to Sales. |
 | New service | Implemented, verified via Sales intake | Filed as a Sales opportunity; Sales owns the quote. |
 | Authority per action, approvals bound to facts | Implemented, verified | Thirteen `care.*` actions; `care_action` proposals carry a stamp of the facts. |
 | Conversation ownership and takeover | Implemented, verified | Holds the client's conversation and the text thread; queued agent messages stop. |
 | Durable runs, leases, retries, recovery | Implemented, verified | Sweep every 5 minutes; three tries, then a task for a person. |
 | Follow-through | Implemented, verified | One reminder per open question, promised updates at most four times, linked work that finishes. |
 | Workspace: Overview, Requests, Follow-ups, Care Setup | Implemented, verified (rendered) | Not exercised in a signed-in browser against a deployment. |
+| Care on related records | Implemented, verified (query) | The client's profile, the visit panel and the Inbox thread list the client's Care requests and where each stands (`clientCare.forRecord`); never the client's words or access details; another company gets nothing. |
 | Owner notices | Implemented, verified | Urgent request (critical), request needs a person, message failed, and "Client Care did this" at Act and notify me. |
 | AI reading | Implemented, not live | `CARE_MODEL=claude`; the `care_message_reading` task has no approved price, so the rules read and nothing is charged. |
 | AI calling | Not included | Excluded from this release. |
@@ -97,7 +100,8 @@ becomes a recovery case, a stated wish to cancel becomes Retention's signal).
 | `retentionCases`, `retentionSignals`, `retentionActions` | `openRecovery`, `noteStatedWish`, the relay |
 | `qualityCases` | Linked through the recovery case |
 | `salesOpportunities` | `fileInquiry`; Sales precedence |
-| `invoices` | Read only; Finance's own link at send |
+| `invoices` | Read only; Finance's own link at send; an issued invoice stops an extra |
+| `services`, `serviceVersions`, `serviceQuotes` | `quote` (the engine) and `saveQuote` for an accepted extra |
 | `approvals`, `permissions`, `tasks` | `care_action`, `authorityFor`, one task per request |
 | `lib/notify` | `care_urgent`, `care_attention`, `customer-care.reported` |
 | `lib/billing` | Catalog (Operate and Expand), `care_message_reading` |
@@ -117,7 +121,7 @@ becomes a recovery case, a stated wish to cancel becomes Retention's signal).
 | Move one visit | Ask me first | Act and notify me | Act automatically |
 | Skip or cancel one visit | Ask me first | Act and notify me | Act automatically |
 | Pause or end a plan | Ask me first | Act and notify me | Act automatically |
-| Add a published extra | Unavailable | Act and notify me | — |
+| Add a published extra | Ask me first | Act and notify me | Act and notify me |
 | Apply a late-change fee | Unavailable | Ask me first | Ask me first |
 | Hand a request to another agent | Act automatically | Act automatically | Act automatically |
 
@@ -141,7 +145,24 @@ review-first rule. Refunds, credits, contract changes and anything legal stay on
 7. **Live verification still owed**: one text and one email to the Owner's own phone and address, a delivery
    receipt back, a reply that opens a request, and a Gmail reply joining its thread.
 
-## Pilot plan: Novara Cleaning
+## Launch: every company
+
+The Owner chose on November 25, 2026 to launch Client Care for every company on Operate and Expand at once,
+instead of a pilot first. What keeps that safe is the starting authority above, not a slower rollout:
+
+1. **On by default, cautious by default.** Every company starts with verified answers, invoice look-ups and
+   acknowledgments on their own, and every change waiting in Approvals. Nothing a company had before changes.
+2. **Nothing new is sent without what it needs.** A company with no texting registration, no client permission
+   or no messaging funds gets requests recorded and shown, with the reason, and no message.
+3. **The Owner's first week.** Set the change notice in Care Setup; review each request daily; raise an action
+   to Act and notify me only after a week with no wrong visit or wrong scope.
+4. **Stop rules.** Any message about the wrong visit, a disclosed access code, or two agents writing the same
+   client about the same thing: pause Client Care (one button), fix, and restart at Ask me first.
+5. **Measures, from the record only**: requests resolved with outcome on record, time to first answer, changes
+   carried out without a later correction, approvals changed or skipped, promised updates sent late.
+
+## Earlier pilot plan (superseded): Novara Cleaning
+
 
 1. **Week 0.** Enable texting checks; set the change notice in Care Setup; leave every change at Ask me first;
    choose escalation contacts. Send test texts from the Owner's own phone only.

@@ -8,7 +8,7 @@
  */
 import { v } from "convex/values";
 
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { owned } from "./lib/access";
 import { authorityFor } from "./lib/authority";
@@ -503,6 +503,59 @@ export const retry = companyMutation({
   handler: async (ctx, args) => {
     const step = await owned(ctx, args.stepId);
     return retryMessage(ctx, ctx.company, step, byMember(ctx));
+  },
+});
+
+/**
+ * The Care requests on one record, for the client profile, an Inbox conversation and a visit's panel: open ones
+ * first, then the few most recently closed. Read from the same requests as the workspace; nothing is copied.
+ */
+export const forRecord = companyQuery({
+  args: { customerId: v.optional(v.id("customers")), jobId: v.optional(v.id("jobs")), conversationId: v.optional(v.id("smsConversations")) },
+  handler: async (ctx, args) => {
+    const tz = ctx.company.timezone;
+    let customerIds: Id<"customers">[] = [];
+    let address: string | null = null;
+    if (args.customerId) customerIds = [(await owned(ctx, args.customerId))._id];
+    if (args.jobId) customerIds = [(await owned(ctx, args.jobId)).customerId];
+    if (args.conversationId) {
+      const thread = await owned(ctx, args.conversationId);
+      address = thread.address;
+      const rows = await ctx.db
+        .query("careRequests")
+        .withIndex("by_company_updated", (q) => q.eq("companyId", ctx.companyId))
+        .order("desc")
+        .take(400);
+      customerIds = [...new Set(rows.filter((r) => r.conversation.address === address).map((r) => r.customerId))];
+    }
+    const out: Request[] = [];
+    for (const customerId of customerIds) {
+      const rows = await ctx.db
+        .query("careRequests")
+        .withIndex("by_company_customer", (q) => q.eq("companyId", ctx.companyId).eq("customerId", customerId))
+        .order("desc")
+        .take(60);
+      out.push(...rows.filter((r) => (!args.jobId || r.jobId === args.jobId) && (!address || r.conversation.address === address)));
+    }
+    const open = out.filter(isOpen).sort((a, b) => b.updatedAt - a.updatedAt);
+    const closed = out.filter((r) => !isOpen(r)).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 3);
+    const rows = [];
+    for (const r of [...open, ...closed]) {
+      const job = r.jobId ? await ctx.db.get(r.jobId) : null;
+      rows.push({
+        id: r._id,
+        open: isOpen(r),
+        status: r.status,
+        statusWords: STATUS_WORDS[r.status],
+        categoryWords: CATEGORY_WORDS[r.category],
+        urgency: r.urgency,
+        held: r.owner.kind === "member",
+        line: (isOpen(r) ? (r.blocker ?? r.waiting?.reason ?? r.nextAction ?? "Client Care is working it.") : (r.resolution?.words ?? STATUS_WORDS[r.status])).slice(0, 220),
+        visit: job ? `${dayName(job.startsAt, tz)} at ${clock(job.startsAt, tz)}` : null,
+        updatedAt: r.updatedAt,
+      });
+    }
+    return { rows, open: open.length, paused: ctx.company.pausedAgents.includes("customer-care") };
   },
 });
 

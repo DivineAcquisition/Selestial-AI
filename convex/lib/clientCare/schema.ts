@@ -75,6 +75,8 @@ export const askValidator = v.object({
   /** The preference or extra in the client's words (access details withheld). */
   detail: v.optional(v.string()),
   serious: v.optional(v.string()),
+  /** The client said yes to the price Care quoted for an extra, at this time, for this many cents. */
+  accepted: v.optional(v.object({ at: v.number(), cents: v.number(), addOnId: v.string() })),
 });
 export type Ask = typeof askValidator.type;
 
@@ -112,7 +114,7 @@ export const waitingValidator = v.object({
 
 export const ownerValidator = v.union(v.object({ kind: v.literal("care") }), v.object({ kind: v.literal("member"), memberId: v.id("members"), since: v.number() }), v.object({ kind: v.literal("specialist"), agent: agentValidator, since: v.number() }));
 
-export const STEP_KINDS = ["reply", "reschedule", "skip_visit", "cancel_visit", "plan_change", "preference", "access", "invoice_link", "complaint", "hand_off", "relay", "update"] as const;
+export const STEP_KINDS = ["reply", "reschedule", "skip_visit", "cancel_visit", "plan_change", "preference", "access", "invoice_link", "complaint", "hand_off", "relay", "update", "extra"] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
 /**
@@ -156,6 +158,10 @@ export const stepPayloadValidator = v.object({
   retentionCaseId: v.optional(v.id("retentionCases")),
   /** The message is true whatever the client wrote since (it confirms a change already made). */
   staleSafe: v.optional(v.boolean()),
+  /** A published extra: the add-on, and the price and time the client accepted. */
+  addOnId: v.optional(v.string()),
+  extraCents: v.optional(v.number()),
+  extraMinutes: v.optional(v.number()),
   /** When this step is done, the request is resolved, in these words. */
   resolves: v.optional(v.string()),
   /** When its message goes, the request waits on the client's answer. */

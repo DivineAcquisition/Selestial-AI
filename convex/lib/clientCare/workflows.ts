@@ -29,6 +29,7 @@ import { addLocalDays, clock, dayName, startOfLocalDay } from "../time";
 import { dayStartOf } from "../booking/capacity";
 import { localParts } from "../availability";
 import { mayDo, openBookings, PERMIT_WORDS, pickVisit, plansInScope, propertiesInScope, visitLabel, visitState, visitsInScope, type Permit } from "./context";
+import { priceExtra } from "./extras";
 import { changeRules, timing } from "./policy";
 import type { Answer } from "./read";
 import { addEntry, CARE, closeRequest, isOpen, moveRequest, nextCheck, resolveRequest, type Request } from "./requests";
@@ -122,7 +123,7 @@ export async function advance(ctx: Ctx, company: Doc<"companies">, requestId: Id
     case "billing":
       return billing(ctx, w);
     case "extra":
-      return handOff(ctx, w, "owner", `${request.authority.name} asked for an extra: "${request.ask.detail ?? request.summary}". Client Care doesn't change a visit's price yet: check it's a published extra, confirm the price with the client and add it to the visit.`, compose(w.voice, "Thanks! I've asked the team to check that and confirm the price with you before anything changes."), true);
+      return extra(ctx, w);
     case "new_service":
       return newService(ctx, w);
     case "general":
@@ -142,7 +143,9 @@ async function answered(ctx: Ctx, w: W, answer: Answer): Promise<boolean> {
     return true;
   };
   if (pending.kind === "confirm") {
-    if (answer.yes) return done({ ask: { ...w.request.ask } });
+    // The yes is to exactly the price that was quoted; it is checked again before anything changes.
+    const quoted = pending.options[0];
+    if (answer.yes) return done({ ask: { ...w.request.ask, ...(quoted?.key.startsWith("extra:") ? { accepted: { at: w.now, cents: Number(quoted.key.split(":")[2]), addOnId: quoted.key.split(":")[1] } } : {}) } });
     if (answer.no) {
       await closeRequest(ctx, w.request, `${w.request.authority.name} said no when asked to confirm.`);
       return true;
@@ -525,6 +528,51 @@ async function billing(ctx: Ctx, w: W) {
   const rest = others.length ? ` You also have ${others.length} other open ${others.length === 1 ? "invoice" : "invoices"} (${others.map((o) => `${o.number ?? "unnumbered"} ${money(o.totals.balanceCents)}`).join(", ")}).` : "";
   const fresh = await moveRequest(ctx, request, { invoiceId: inv._id, facts: [{ key: "invoice", value: `${inv.number ?? inv._id}: balance ${money(inv.totals.balanceCents)}`, basis: "record", source: { table: "invoices", id: inv._id, label: "Invoice" }, at: w.now }] });
   return step(ctx, { ...w, request: fresh }, { kind: "invoice_link", key: `invoice:${inv._id}`, permission: "care.send_invoice_link", summary: `Send ${request.authority.name} invoice ${inv.number ?? ""} (balance ${money(inv.totals.balanceCents)}) and its own payment link`, payload: { invoiceId: inv._id, resolves: "Sent the invoice's record and its own payment link." }, message: { channel: request.conversation.channel, body: compose(w.voice, `${line}${rest} You can view and pay it here: {link}`) } });
+}
+
+// ── Extras: a published add-on, at the engine's price, once the client says yes ─────────────────
+
+async function extra(ctx: Ctx, w: W) {
+  const { request, company } = w;
+  const tz = company.timezone;
+  const detail = request.ask.detail ?? request.summary;
+  const visits = await visitsInScope(ctx, w.customer, request.authority, w.now);
+  const job = request.jobId ? visits.find((v) => v._id === request.jobId) : null;
+  const picked = job ? { kind: "one" as const, job } : visits.length === 1 && !request.ask.target ? { kind: "one" as const, job: visits[0] } : pickVisit(visits, request.ask.target, tz, request.propertyId);
+  if (picked.kind === "none") return handOff(ctx, w, "owner", `${request.authority.name} asked for an extra ("${detail}") and no matching visit is booked.`, compose(w.voice, "Thanks! I don't see that visit on our schedule, so I've asked the team to check and confirm with you."), false);
+  if (picked.kind === "several") {
+    const options = picked.jobs.map((j, i) => ({ key: String(i + 1), label: visitLabel(j, null, tz, false), jobId: j._id, propertyId: j.propertyId }));
+    return ask(ctx, w, "which_visit", "Which visit is the extra for?", options, compose(w.voice, `Which visit should I add that to? ${numbered(options)}.`));
+  }
+  const target = picked.job;
+  if (!mayDo(request.authority, "extra", target.propertyId)) return notAllowed(ctx, w, "extra");
+  const priced = await priceExtra(ctx, target, detail);
+  let fresh = await moveRequest(ctx, request, { jobId: target._id, propertyId: target.propertyId });
+  w = { ...w, request: fresh };
+  if (!priced.ok) {
+    if (priced.route === "sales") return newService(ctx, w);
+    return handOff(ctx, w, "owner", `${request.authority.name} asked for an extra ("${detail}") on the visit on ${visitLabel(target, null, tz, false)}. ${priced.why}`, compose(w.voice, "Thanks! I've asked the team to confirm the price with you before anything changes."), true);
+  }
+  const offer = priced.offer;
+  const label = visitLabel(target, null, tz, false);
+  fresh = await moveRequest(ctx, fresh, { facts: [{ key: "extra", value: `${offer.label}: ${money(offer.extraCents)}${offer.extraMinutes ? `, about ${offer.extraMinutes} more minutes` : ""} (the published price for this visit)`, basis: "derived", source: { table: "jobs", id: target._id, label: "The visit" }, at: w.now }] });
+  w = { ...w, request: fresh };
+  if (offer.included || offer.extraCents === 0) return say(ctx, w, `extra-included:${offer.addOnId}`, "care.answer_question", compose(w.voice, `Good news: ${offer.label.toLowerCase()} is already included in your visit on ${label}.`), { jobId: target._id, resolves: "Told the client the extra is already included." });
+  const accepted = request.ask.accepted;
+  if (!accepted || accepted.addOnId !== offer.addOnId || accepted.cents !== offer.extraCents) {
+    const changed = accepted && accepted.addOnId === offer.addOnId && accepted.cents !== offer.extraCents;
+    const question = `Add ${offer.label.toLowerCase()} for ${money(offer.extraCents)} to the visit on ${label}?`;
+    return ask(ctx, w, "confirm", question, [{ key: `extra:${offer.addOnId}:${offer.extraCents}`, label: `${offer.label}, ${money(offer.extraCents)}`, jobId: target._id }], compose(w.voice, `${changed ? "The price has changed since I last said. " : ""}${offer.label} is ${money(offer.extraCents)}${offer.extraMinutes ? ` and adds about ${offer.extraMinutes} minutes` : ""}. Reply YES to add it to your visit on ${label}, or NO to leave it.`));
+  }
+  fresh = await moveRequest(ctx, fresh, { clear: ["pending"], nextAction: `Add ${offer.label} to the visit on ${label}.` });
+  return step(ctx, { ...w, request: fresh }, {
+    kind: "extra",
+    key: `extra:${offer.addOnId}:${offer.extraCents}`,
+    permission: "care.add_extra",
+    summary: `Add ${offer.label} to the visit on ${label} for ${money(offer.extraCents)} (accepted by the client)${offer.extraMinutes ? `, ${offer.extraMinutes} minutes longer` : ""}`,
+    payload: { jobId: target._id, text: detail, addOnId: offer.addOnId, extraCents: offer.extraCents, extraMinutes: offer.extraMinutes, staleSafe: true, resolves: `Added ${offer.label} at its published price, and told the client.` },
+    message: { channel: request.conversation.channel, body: compose(w.voice, `Done: ${offer.label.toLowerCase()} is added to your visit on ${label} for ${money(offer.extraCents)}.${offer.extraMinutes ? " We're confirming the crew for the longer visit." : ""}`) },
+  });
 }
 
 // ── New service: Sales ─────────────────────────────────────────────────────────────────────────

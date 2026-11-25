@@ -3,9 +3,11 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { homeSpec, publish } from "../tests/salesHarness";
 import { careSetup, CUSTOMER_PHONE, DAY, HOUR, TUESDAY_10, WEDNESDAY_10, WEEK } from "../tests/careHarness";
 import { dispatchTestEnv, flush } from "../tests/dispatchHarness";
 import { company, refusal } from "../tests/harness";
+import { billing } from "../tests/setupBilling";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { NOT_FOUND } from "./lib/errors";
@@ -267,6 +269,39 @@ describe("Client Care: complaints", () => {
     expect(request.retentionCaseId).toBe(cases[0]._id);
   });
 
+  it("sends Retention's case message in the client's own Care thread, once, and settles Retention's step from the provider's answer", async () => {
+    const s = await careSetup();
+    await s.completed({ scope: "A full clean." });
+    await s.text("The bathroom still looks dirty");
+    const [request] = await s.requests();
+    const caseId = request.retentionCaseId!;
+    expect(caseId).toBeTruthy();
+    const sentBefore = s.replies().length;
+    const body = "We'd like to come back and redo the bathroom at no charge. Does Thursday morning work?";
+    await s.as.mutation(api.retentionAgent.proposeRemedy, { companyId: s.companyId, caseId, kind: "message", reason: "Offer to come back.", body });
+    // Retention's own approval, when its authority asks for one.
+    for (const row of (await s.as.query(api.approvals.list, { companyId: s.companyId })).filter((r) => r.agent === "retention")) {
+      await s.as.mutation(api.approvals.decide, { companyId: s.companyId, approvalId: row._id, decision: "approved" });
+    }
+    await flush(s.t);
+    await flush(s.t);
+    // One voice: the words went through Client Care, in the request's thread, exactly as Retention wrote them.
+    const relayed = (await s.outbound()).filter((m) => m.body.includes("redo the bathroom"));
+    expect(relayed).toHaveLength(1);
+    const [step] = (await s.steps()).filter((x) => x.kind === "relay");
+    expect(step).toMatchObject({ messageId: relayed[0]._id, status: "done", payload: { retentionCaseId: caseId } });
+    expect(relayed[0].careRequestId).toBe(request._id);
+    const direct = await s.t.run(async (ctx) => (await ctx.db.query("messages").collect()).filter((m) => m.companyId === s.companyId && m.purpose !== "client_care_reply" && m.customerId === s.place.customerId && m.body.includes("redo the bathroom")));
+    expect(direct).toHaveLength(0);
+    expect(s.replies().slice(sentBefore).filter((b) => b.includes("redo the bathroom"))).toHaveLength(1);
+    // Retention's step reads what the provider said, not "sent" on hope.
+    const action = await s.t.run(async (ctx) => ctx.db.get(step.payload.retentionActionId!));
+    expect(action?.messageId).toBe(relayed[0]._id);
+    expect(action?.status).not.toBe("underway");
+    const fresh = (await s.requests())[0];
+    expect(fresh.status).toBe("waiting_customer");
+  });
+
   it("escalates a serious concern as urgent and promises nothing", async () => {
     const s = await careSetup();
     await s.completed({ scope: "A full clean." });
@@ -303,6 +338,80 @@ describe("Client Care: invoices", () => {
     const invoices = await s.t.run(async (ctx) => (await ctx.db.query("invoices").collect()).filter((i) => i.companyId === s.companyId));
     expect(invoices).toHaveLength(1);
     expect(invoices[0]).toMatchObject({ _id: invoiceId, status: "open", totals: expect.objectContaining({ balanceCents: 12000, paidCents: 4000 }) });
+  });
+});
+
+describe("Client Care: extras", () => {
+  const OVEN = { id: "oven", label: "Inside the oven", priceCents: 4500, per: "visit" as const, laborMinutes: 30, maxQuantity: 1 };
+  async function pricedVisit(s: Awaited<ReturnType<typeof careSetup>>) {
+    const key = await publish(s.as, s.companyId, homeSpec({ excluded: [], addOns: [OVEN] }));
+    const jobId = await s.as.mutation(api.jobs.create, { companyId: s.companyId, ...s.place, serviceId: key, quoteInput: { bedrooms: 2, bathrooms: 1 }, startsAt: WEDNESDAY_10, endsAt: WEDNESDAY_10 + 2 * HOUR });
+    await flush(s.t);
+    return jobId;
+  }
+
+  it("quotes a published extra at the engine's price, adds it only after the client says yes and the Owner approves", async () => {
+    const s = await careSetup();
+    const jobId = await pricedVisit(s);
+    const before = await s.job(jobId);
+    await s.text("Can you add inside the oven on Wednesday?");
+    expect(s.replies().at(-1)).toMatch(/Inside the oven is \$45(?:\.00)? and adds about 30 minutes\. Reply YES to add it/);
+    // Nothing changes on a quote.
+    expect((await s.job(jobId)).priceCents).toBe(before.priceCents);
+    expect(await s.pending()).toHaveLength(0);
+    await s.text("Yes");
+    const [approval] = await s.pending();
+    expect(approval).toBeTruthy();
+    const [step] = (await s.steps()).filter((x) => x.kind === "extra");
+    expect(step).toMatchObject({ status: "awaiting_approval", payload: { addOnId: "oven", extraCents: 4500 } });
+    expect((await s.job(jobId)).priceCents).toBe(before.priceCents);
+    await s.approveAll();
+    const after = await s.job(jobId);
+    expect(after.priceCents).toBe(before.priceCents! + 4500);
+    expect(after.scope).toContain("Extra: Inside the oven");
+    expect(after.endsAt).toBe(before.endsAt + (step.payload.extraMinutes ?? 0) * 60_000);
+    expect(after.serviceSnapshot?.quoteId).not.toBe(before.serviceSnapshot?.quoteId);
+    expect(s.replies().at(-1)).toMatch(/Done: inside the oven is added to your visit on .* for \$45/);
+    const [request] = await s.requests();
+    expect(request.status).toBe("resolved");
+    // Approving again (a replayed decision) never adds it twice.
+    await s.sweep();
+    expect((await s.job(jobId)).priceCents).toBe(before.priceCents! + 4500);
+  });
+
+  it("sends an extra the service doesn't publish to Sales, and prices nothing itself", async () => {
+    const s = await careSetup();
+    const jobId = await pricedVisit(s);
+    const before = await s.job(jobId);
+    await s.text("Can you add cleaning the garage on Wednesday?");
+    expect((await s.job(jobId)).priceCents).toBe(before.priceCents);
+    expect((await s.steps()).filter((x) => x.kind === "extra")).toHaveLength(0);
+    const inquiries = await s.t.run(async (ctx) => (await ctx.db.query("salesOpportunities").collect()).filter((o) => o.companyId === s.companyId));
+    expect(inquiries).toHaveLength(1);
+    expect((await s.requests())[0]).toMatchObject({ category: "extra", status: "waiting_team" });
+    expect(s.replies().at(-1)).toContain("passed that to our sales team");
+    expect(s.replies().at(-1) ?? "").not.toMatch(/\$\d/);
+  });
+
+  it("adds nothing when the visit is invoiced between the client's yes and the approval, and tells the client nothing was done", async () => {
+    const s = await careSetup();
+    const jobId = await pricedVisit(s);
+    const before = await s.job(jobId);
+    await s.text("Can you add inside the oven on Wednesday?");
+    await s.text("Yes");
+    // The visit is invoiced in the meantime: Finance adjusts it first.
+    await s.invoice(before.priceCents!, { jobId });
+    await s.approveAll();
+    expect((await s.job(jobId)).priceCents).toBe(before.priceCents);
+    const [step] = (await s.steps()).filter((x) => x.kind === "extra");
+    expect(["failed", "blocked", "cancelled"]).toContain(step.status);
+    expect(s.replies().join(" ")).not.toContain("Done:");
+    // Client Care works the request again on what the record says now: an invoiced visit is the office's.
+    await s.sweep();
+    const [request] = await s.requests();
+    expect(request.status).toBe("waiting_owner");
+    expect(request.blocker ?? "").toContain("invoice is already issued");
+    expect((await s.job(jobId)).priceCents).toBe(before.priceCents);
   });
 });
 
@@ -378,6 +487,42 @@ describe("Client Care: when the message doesn't go", () => {
     [step] = (await s.steps()).filter((x) => x.kind === "preference");
     expect((await s.job(jobId)).instructions!.match(/guest bedroom/g)).toHaveLength(1);
     expect((await s.outbound()).filter((m) => m.careStepId === step._id)).toHaveLength(2);
+  });
+
+  it("shows a reply held for messaging funds on the request, and picks up once funds arrive", async () => {
+    process.env.MESSAGING_BILLING = "on";
+    try {
+      const s = await careSetup();
+      // A real-looking US number has a rate; the harness's 555-01xx numbers do not.
+      const phone = "+15125553030";
+      await s.t.run(async (ctx) => ctx.db.patch(s.place.customerId, { phone }));
+      await s.visit(TUESDAY_10);
+      await s.t.action(internal.billing.syncCompany, { companyId: s.companyId });
+      billing.seed(s.companyId, { messaging: { purchased: 0, promo: 0, promoExpiresAt: null, used: 0 } });
+      await s.t.action(internal.billing.syncCompany, { companyId: s.companyId });
+      await s.text("What time are you coming on Tuesday?", phone);
+      const [held] = await s.outbound();
+      expect(held).toMatchObject({ status: "held", holdReason: "messaging_balance" });
+      expect(s.replies(phone)).toHaveLength(0);
+      let [request] = await s.requests();
+      expect(request.status).toBe("waiting_owner");
+      expect(request.blocker).toMatch(/^Client Care's message is ready but held: .*It goes as soon as that is fixed\.$/);
+      expect(request.nextAction).toMatch(/messaging funds/);
+      // Nothing is lost and nothing goes twice: the same reply goes once funds arrive.
+      billing.seed(s.companyId, { messaging: { purchased: 250_000, promo: 0, promoExpiresAt: null, used: 0 } });
+      await s.t.action(internal.billing.syncCompany, { companyId: s.companyId });
+      await s.t.mutation(internal.messagingBilling.releaseHeld, { companyId: s.companyId });
+      vi.advanceTimersByTime(1_000);
+      await flush(s.t);
+      await flush(s.t);
+      expect(s.replies(phone)).toHaveLength(1);
+      expect(await s.outbound()).toHaveLength(1);
+      [request] = await s.requests();
+      expect(request.blocker).toBeUndefined();
+      expect(request.status).not.toBe("waiting_owner");
+    } finally {
+      delete process.env.MESSAGING_BILLING;
+    }
   });
 
   it("leaves an uncertain send uncertain and never sends it again by itself", async () => {
@@ -463,6 +608,29 @@ describe("Client Care: tenants", () => {
     expect(await refusal(other.as.mutation(api.clientCare.takeOver, { companyId: other.companyId, requestId: request._id }))).toBe(NOT_FOUND);
     expect(await refusal(other.as.mutation(api.clientCare.close, { companyId: other.companyId, requestId: request._id, reason: "x" }))).toBe(NOT_FOUND);
     expect((await other.as.query(api.clientCare.list, { companyId: other.companyId })).rows).toEqual([]);
+  });
+
+  it("shows a client's requests on their profile, the visit and the Inbox thread, and nowhere in another company", async () => {
+    const s = await careSetup();
+    const jobId = await s.visit(TUESDAY_10);
+    await s.text("What time are you coming on Tuesday?");
+    const [request] = await s.requests();
+    expect(request.jobId).toBe(jobId);
+    const conversationId = await s.t.run(async (ctx) => (await ctx.db.query("smsConversations").collect()).find((c) => c.companyId === s.companyId)!._id);
+    const byClient = await s.as.query(api.clientCare.forRecord, { companyId: s.companyId, customerId: s.place.customerId });
+    const byVisit = await s.as.query(api.clientCare.forRecord, { companyId: s.companyId, jobId });
+    const byThread = await s.as.query(api.clientCare.forRecord, { companyId: s.companyId, conversationId });
+    for (const view of [byClient, byVisit, byThread]) expect(view.rows.map((r) => r.id)).toEqual([request._id]);
+    expect(byVisit.rows[0]).toMatchObject({ categoryWords: expect.any(String), statusWords: expect.any(String), visit: expect.stringMatching(/Tue/) });
+    // Never the client's words, never an access detail: only Care's own line about where it stands.
+    expect(JSON.stringify(byClient)).not.toContain("What time are you coming");
+    // Another visit of the same client shows nothing of this request.
+    const otherVisit = await s.visit(WEDNESDAY_10);
+    expect((await s.as.query(api.clientCare.forRecord, { companyId: s.companyId, jobId: otherVisit })).rows).toEqual([]);
+    const other = await company(s.t, "owner-b", "Beta Cleaning");
+    for (const target of [{ customerId: s.place.customerId }, { jobId }, { conversationId }]) {
+      expect(await refusal(other.as.query(api.clientCare.forRecord, { companyId: other.companyId, ...target }))).toBe(NOT_FOUND);
+    }
   });
 });
 

@@ -108,6 +108,7 @@ export const claim = internalMutation({
         await ctx.db.patch(message._id, { status: "held", problem: answer.words, refusal: answer.code, ...(answer.code === "messaging_paused" ? { holdReason: "messaging_paused" as const, heldAt: message.heldAt ?? Date.now() } : {}) });
         await ctx.scheduler.runAt(answer.retryAt, internal.messaging.deliver, { messageId: message._id });
         await logStep(ctx, message, { type: "message.held", data: { purpose: message.purpose, policy: answer.code, retryAt: answer.retryAt } });
+        if (message.careRequestId && answer.code === "messaging_paused") await afterCareReply(ctx, (await ctx.db.get(message._id))!);
         return null;
       }
       // Refused while checking with the provider: still not known whether the first attempt went, so it stays unconfirmed.
@@ -339,6 +340,7 @@ export const claim = internalMutation({
       await logStep(ctx, message, { type: "message.held", data: { purpose: message.purpose, policy: billed.reason } });
       if (billed.reason === "billing_unavailable") await ctx.scheduler.runAfter(10 * 60_000, internal.messaging.deliver, { messageId: message._id });
       else await heldNotice(ctx, message.companyId, billed.reason);
+      if (message.careRequestId) await afterCareReply(ctx, (await ctx.db.get(message._id))!);
       return null;
     }
     if (billed.kind === "reserve") body = billed.body;

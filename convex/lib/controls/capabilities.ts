@@ -111,7 +111,7 @@ Object.assign(CAPABILITIES, {
   "care.reschedule_visit": ready(["outreach"], { note: "Only times Dispatch's capacity check offers. Moving re-checks the time and the visit, then asks the crew again." }),
   "care.skip_visit": ready(["outreach"], { note: "One visit only. The rest of a recurring series is unchanged." }),
   "care.change_plan": ready(["outreach"], { note: "Through Retention's plan-change code, for exactly the visits the client was shown. Retention is told; it never delays a cancellation." }),
-  "care.add_extra": missing("Care doesn't change a visit's price yet. It prepares the extra with its published price, and a person adds it to the visit."),
+  "care.add_extra": ready(["outreach"], { note: "Only an extra the visit's service publishes, at the engine's price for that visit, after the client says yes. An extra that adds time lengthens the visit through Dispatch. Custom work goes to Sales." }),
   "care.apply_fee": missing("Care never applies a fee. When your policy sets one, the request comes to you; Finance adds it if you decide to."),
   "care.hand_off": ready([]),
 } satisfies Record<string, Capability>);

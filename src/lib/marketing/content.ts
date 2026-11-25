@@ -8,7 +8,7 @@
 export const TAGLINE = "The AI operating platform for cleaning companies.";
 
 export const SITE_DESCRIPTION =
-  "Selestial is the AI operating platform for cleaning companies. Four coordinated agents for sales, recruiting, dispatch and retention move the daily work forward within the standards you set.";
+  "Selestial is the AI operating platform for cleaning companies. Coordinated agents for sales, recruiting, dispatch, retention and client care move the daily work forward within the standards you set.";
 
 /** Where "Book a call" lives. Every "Get early access" button goes here. */
 export const BOOK_CALL_PATH = "/book-a-call";
@@ -39,10 +39,12 @@ export const HERO = {
     "Meet your AI team for sales, recruiting, dispatch, and retention. Selestial moves the daily work forward—from answering a new inquiry to covering tomorrow’s schedule—within the standards you set. Sales, Recruiter, Dispatch and Retention are working today.",
   primaryCta: "Get early access",
   secondaryCta: "Meet your AI team",
-  trust: "Four coordinated agents. Clear responsibilities. You stay in control.",
+  trust: "Coordinated agents. Clear responsibilities. You stay in control.",
 } as const;
 
 export type AgentId = "sales" | "recruiter" | "dispatch" | "retention";
+/** An agent a plan lists: the homepage's four, and Client Care (released November 25, 2026), which has no homepage story yet. */
+export type PlanAgentId = AgentId | "customer-care";
 
 /** Whether an agent is working in the product today. Matches `AGENT_PROFILES[agent].built` in convex/lib/departments.ts. */
 export const AGENT_STATUS: Record<AgentId, { live: boolean; label: string }> = {
@@ -206,7 +208,7 @@ export const PRICING = {
   id: "pricing",
   eyebrow: "Pricing",
   headline: "The right AI workforce for your cleaning company.",
-  lead: "One plan for early companies: four agents that work today, plus Quality free for early users.",
+  lead: "One plan for early companies: five agents that work today, plus Quality free for early users.",
   plans: [
     {
       id: "operate",
@@ -222,12 +224,13 @@ export const PRICING = {
       tagline: "Early-user plan",
       /** The early-user bonus agent: included at no extra cost for companies on the early-user price. */
       bonus: { id: "quality", name: "Quality", title: "Quality Control AI agent", does: "Reviews every finished visit's photos and checklist, flags what was missed, and asks the cleaner first." },
-      /** The four agents that work today, each with what it does in one line. */
+      /** The five agents that work today, each with what it does in one line. */
       agents: [
         { id: "sales", does: "Inquiries by text and email, quotes customers accept online, follow-ups and bookings" },
         { id: "dispatch", does: "Offers, coverage, live jobs and cleaner text-message links" },
         { id: "retention", does: "Concerns followed through to an outcome, plan changes, renewals and re-engagement" },
         { id: "recruiter", does: "Your hiring inbox, invitations, applications, interviews and offers" },
+        { id: "customer-care", does: "Client texts and emails answered from the record, changes done by the agent that owns them, the client kept informed until it is done" },
       ] as const,
       /** Everything else in the plan. */
       platform: [
@@ -236,14 +239,14 @@ export const PRICING = {
         "Company Chat, approvals, and agreements with AI-guided drafting",
         "A monthly allowance of Selestial Credits for AI work",
       ],
-      summary: "Keep sales, hiring, dispatch, and retention moving from one workspace.",
-      later: ["Marketing and Care. They are not part of this plan today, and no plan or purchase makes one available sooner.", "Customer portal, your own domain for booking pages, and Creative Studio for images and video."],
+      summary: "Keep sales, hiring, dispatch, retention and client care moving from one workspace.",
+      later: ["Marketing. It is not part of this plan today, and no plan or purchase makes it available sooner.", "Customer portal, your own domain for booking pages, and Creative Studio for images and video."],
     },
   ],
   allowanceNote: "The plan includes a monthly allowance of Selestial Credits. Your Usage page shows your allowance, what each piece of AI work costs, and what used it.",
   services: "Bespoke implementation, migration and custom development are scoped separately.",
   faqs: [
-    { q: "Which agents are included?", a: "Sales, Retention, Recruiter and Dispatch, all working today. Early users on the $199 price also get Quality, the Quality Control AI agent, at no extra cost. Onboarding new cleaners through to readiness is part of Recruiter, and coordinating their visits is part of Dispatch. Marketing and Care are not released, and no plan or purchase makes one available sooner." },
+    { q: "Which agents are included?", a: "Sales, Retention, Recruiter, Dispatch and Client Care, all working today. Early users on the $199 price also get Quality, the Quality Control AI agent, at no extra cost. Onboarding new cleaners through to readiness is part of Recruiter, and coordinating their visits is part of Dispatch. Marketing is not released, and no plan or purchase makes it available sooner." },
     { q: "What uses credits?", a: "Selestial Credits pay for defined AI work, such as one Company Chat answer, one hiring email read by AI, or one generated image. Each is charged once when it is completed. Viewing records, opening or answering a cleaner’s link, accepting a job, status changes and scheduled reminders use no credits." },
     { q: "What happens when credits run out?", a: "New AI work pauses and the Owner is told. Schedules, records, cleaner links, active jobs and everything that does not use AI keep working. Nothing is bought automatically; you can buy a top-up or wait for the monthly reset." },
     { q: "Do top-ups unlock agents?", a: "No. A top-up adds credits only. Agents and features come with the plan, and only once they are released." },

@@ -27,6 +27,7 @@ import { checkCapacity } from "../sales/capacity";
 import { businessSettingsOf, checkArea, checkHours } from "../settings/business";
 import { openTask } from "../taskState";
 import { careReplyClaimable, queueCareReply } from "./outbox";
+import { addExtra } from "./extras";
 import { changeRules } from "./policy";
 import { addEntry, CARE, isOpen, moveRequest, resolveRequest, type Request } from "./requests";
 import type { Part, StepKind, StepPayload } from "./schema";
@@ -304,6 +305,13 @@ async function doChange(ctx: MutationCtx, company: Doc<"companies">, request: Re
       await ctx.db.patch(request._id, { retentionCaseId: opened.row._id });
       return { ok: true, detail: opened.created ? "Opened a recovery case for the visit; Quality investigates it and Retention prepares any remedy. Client Care keeps the client informed." : "Added this to the recovery case already open for the visit.", evidence: { table: "retentionCases", id: opened.row._id, label: "Recovery case" } };
     }
+    case "extra": {
+      const job = p.jobId ? await ctx.db.get(p.jobId) : null;
+      if (!job || job.companyId !== company._id || job.customerId !== request.customerId) return { ok: false, detail: "The visit is no longer on record." };
+      if (!p.addOnId || p.extraCents === undefined || p.extraMinutes === undefined) return { ok: false, detail: "There is no extra to add." };
+      const outcome = await addExtra(ctx, company, job, p.text ?? "", { addOnId: p.addOnId, extraCents: p.extraCents, extraMinutes: p.extraMinutes }, by);
+      return { ...outcome, evidence: { table: "jobs", id: job._id, label: "The visit" } };
+    }
     case "hand_off": {
       if (p.taskId) return { ok: true, detail: "Already handed over." };
       const to = p.handoffTo ?? "owner";
@@ -335,6 +343,18 @@ export async function afterCareReply(ctx: MutationCtx, message: Doc<"messages">)
   const words = message.status === "delivered" ? "Delivery confirmed" : message.status === "sent" ? "Accepted by the provider" : message.status === "unconfirmed" ? "Not known whether it went" : (message.problem ?? message.status.replace(/_/g, " "));
   let fresh = await patchStep(ctx, step, { parts: setPart(step.parts, "notify", state, words) });
   if (step.kind === "relay" && step.payload.retentionActionId && state !== "pending") await afterCareMessage(ctx, { ...message, retentionActionId: step.payload.retentionActionId });
+  // Held for the company's messaging funds, its spending limit, billing being unreachable, or the Owner's pause:
+  // nothing is lost, and the request says so where a person will see it. Quiet hours are not a person's problem.
+  if (message.status === "held" && message.holdReason && message.holdReason !== "quiet_hours") {
+    const request = await ctx.db.get(step.requestId);
+    const words = `${HELD}${(message.problem ?? "it can't go yet").replace(/\.$/, "")}. It goes as soon as that is fixed.`;
+    if (request && isOpen(request) && !request.blocker?.startsWith(words)) {
+      await addEntry(ctx, request, { kind: "problem", text: words, source: { table: "messages", id: message._id, label: "Message" } });
+      const blocker = request.blocker && !request.blocker.startsWith(HELD) ? `${words}${BEFORE}${request.blocker}` : words;
+      await moveRequest(ctx, request, { status: "waiting_owner", waiting: { on: "owner", reason: words, since: Date.now() }, blocker: blocker.slice(0, 900), nextAction: message.holdReason === "messaging_paused" ? "Resume texting when ready." : "Add messaging funds or raise the limit in Plan & usage." });
+    }
+    return;
+  }
   if (state === "pending") return;
   const changed = partState(fresh, "change");
   if (state === "done") fresh = await patchStep(ctx, fresh, { status: "done" });
@@ -344,6 +364,9 @@ export async function afterCareReply(ctx: MutationCtx, message: Doc<"messages">)
   await settled(ctx, fresh, message);
 }
 
+const HELD = "Client Care's message is ready but held: ";
+const BEFORE = " Before that: ";
+
 /** What a finished (or stuck) step means for its request. */
 async function settled(ctx: MutationCtx, step: Step, message?: Doc<"messages">) {
   const request = await ctx.db.get(step.requestId);
@@ -352,7 +375,14 @@ async function settled(ctx: MutationCtx, step: Step, message?: Doc<"messages">) 
   if (step.status === "done") {
     if (message) await addEntry(ctx, request, { kind: "update", text: `${message.status === "delivered" ? "Delivered" : "Sent (accepted by the provider)"}: "${message.body.slice(0, 300)}"`, source: { table: "messages", id: message._id, label: "Message" } });
     await ctx.db.patch(request._id, { lastUpdateAt: Date.now(), updatesSent: request.updatesSent + (message ? 1 : 0) });
-    const now = (await ctx.db.get(request._id))!;
+    let now = (await ctx.db.get(request._id))!;
+    // A message that was held went once the funds, limit or pause were fixed: what it was waiting on is over.
+    if (isOpen(now) && now.blocker?.startsWith(HELD)) {
+      const earlier = now.blocker.includes(BEFORE) ? now.blocker.slice(now.blocker.indexOf(BEFORE) + BEFORE.length) : null;
+      now = earlier
+        ? await moveRequest(ctx, now, { blocker: earlier, waiting: { on: "owner", reason: earlier, since: Date.now() } })
+        : await moveRequest(ctx, now, { status: "in_progress", clear: ["blocker", "nextAction"] });
+    }
     if (step.payload.resolves && isOpen(now)) {
       await resolveRequest(ctx, now, step.payload.resolves, [{ table: "careSteps", id: step._id, label: step.summary.slice(0, 80) }]);
       return;

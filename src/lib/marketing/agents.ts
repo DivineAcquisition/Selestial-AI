@@ -1,5 +1,5 @@
 import { MapPin, MessagesSquare, RefreshCw, Users, type LucideIcon } from "@/components/icons";
-import { AGENTS, type AgentId } from "@/lib/marketing/content";
+import { AGENTS, type AgentId, type PlanAgentId } from "@/lib/marketing/content";
 
 export const AGENT_ICON: Record<AgentId, LucideIcon> = {
   sales: MessagesSquare,
@@ -12,4 +12,9 @@ const BY_ID = Object.fromEntries(AGENTS.map((agent) => [agent.id, agent])) as Re
 
 export function agentOf(id: AgentId) {
   return BY_ID[id];
+}
+
+/** The name a plan's agent is written with everywhere. */
+export function agentName(id: PlanAgentId): string {
+  return id === "customer-care" ? "Client Care" : agentOf(id).name;
 }
