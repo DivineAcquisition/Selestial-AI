@@ -68,7 +68,7 @@ function Thread({ items, now, timezone }: { items: CareDetail["thread"]; now: nu
 }
 
 function Steps({ steps, onRetry, busy }: { steps: CareDetail["steps"]; onRetry: (id: string) => void; busy: boolean }) {
-  if (!steps.length) return <p className="text-sm text-muted-foreground">Client Care hasn't prepared anything on this request yet.</p>;
+  if (!steps.length) return <p className="text-sm text-muted-foreground">Client Care hasn’t prepared anything on this request yet.</p>;
   return (
     <ol className="grid gap-2.5">
       {steps.map((s) => (
@@ -257,7 +257,7 @@ function RequestBody({ requestId }: { requestId: Id<"careRequests"> }) {
                 </Link>
               ) : null}
               <Link href={detail.conversation.clientHref} className="font-medium text-brand-300 hover:underline">
-                Client's conversations
+                Client’s conversations
               </Link>
             </span>
           }

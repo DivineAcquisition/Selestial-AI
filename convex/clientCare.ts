@@ -8,7 +8,7 @@
  */
 import { v } from "convex/values";
 
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Doc } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { owned } from "./lib/access";
 import { authorityFor } from "./lib/authority";
@@ -54,11 +54,6 @@ const STEP_WORDS: Record<Doc<"careSteps">["status"], string> = {
 };
 
 const PART_WORDS: Record<string, string> = { change: "Change", notify: "Client message", record: "Record", handoff: "Hand-off" };
-
-async function nameOf(ctx: Ctx, id: Id<"members">): Promise<string> {
-  const m = await ctx.db.get(id);
-  return m && m.companyId === ctx.companyId ? m.name : "A former team member";
-}
 
 function ownerWords(row: Request, names: Map<string, string>): string {
   if (row.owner.kind === "member") return names.get(row.owner.memberId) ?? "A team member";

@@ -109,7 +109,7 @@ export function CareOverviewScreen() {
         {overview.unread ? (
           <p className="flex items-start gap-2 rounded-xl border border-warning/40 bg-warning/5 px-3.5 py-3 text-sm text-strong">
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning-foreground" aria-hidden />
-            {plural(overview.unread.count, "client message")} {overview.unread.count === 1 ? "is" : "are"} kept and not yet read{overview.agent.paused ? " because Client Care is paused" : ""}. The oldest arrived {now ? whenLabel(overview.unread.oldest, now, timezone) : ""}; each is in the client's conversation.
+            {plural(overview.unread.count, "client message")} {overview.unread.count === 1 ? "is" : "are"} kept and not yet read{overview.agent.paused ? " because Client Care is paused" : ""}. The oldest arrived {now ? whenLabel(overview.unread.oldest, now, timezone) : ""}; each is in the client’s conversation.
           </p>
         ) : null}
 

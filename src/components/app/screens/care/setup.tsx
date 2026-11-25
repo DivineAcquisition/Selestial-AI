@@ -8,7 +8,7 @@
  */
 import { useMutation } from "convex/react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { useCompany } from "@/components/app/company";
 import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/form";
@@ -69,7 +69,7 @@ function Authority({ view }: { view: CareSetupView }) {
   return (
     <Panel title="What Client Care may do" action={<Link href="/app/settings/agents" className="inline-flex items-center gap-1 text-sm font-medium text-brand-300 hover:underline">Agent Controls <ArrowUpRight className="size-3.5" aria-hidden /></Link>}>
       <div className="grid gap-3 p-4">
-        <p className="text-sm text-muted-foreground">One setting per kind of action, the same policy Agent Controls shows. Refunds, credits, contract changes and anything a policy doesn't allow are never Client Care's: they stay on their existing decision path.</p>
+        <p className="text-sm text-muted-foreground">One setting per kind of action, the same policy Agent Controls shows. Refunds, credits, contract changes and anything a policy doesn’t allow are never Client Care’s: they stay on their existing decision path.</p>
         <FormError message={error} />
         <ul className="divide-y divide-border rounded-xl border border-border">
           {view.permissions.map((p) => (
@@ -105,11 +105,10 @@ export function CareSetupScreen() {
   const pause = useMutation(api.companies.pauseAgent);
   const resume = useMutation(api.companies.resumeAgent);
   const { busy, error, run } = useRun();
-  const [draft, setDraft] = useState<Draft | null>(null);
+  // Edits are kept apart from what is saved: until someone changes a field, the form shows the saved settings.
+  const [edited, setDraft] = useState<Draft | null>(null);
   const [saved, setSaved] = useState(false);
-  useEffect(() => {
-    if (view && draft === null) setDraft(draftOf(view));
-  }, [view, draft]);
+  const draft = edited ?? (view ? draftOf(view) : null);
 
   if (!view || !draft) {
     return (
@@ -169,7 +168,7 @@ export function CareSetupScreen() {
             <Readiness ready={view.channels.sms.ready} words={view.channels.sms.words} />
             <Readiness ready={view.channels.email.ready} words={view.channels.email.words} />
             <p className="text-xs text-muted-foreground">
-              Messages go as {view.channels.sender}, and Client Care says it is the company's assistant. Sending hours, opt-outs and texting registration are checked for every message.{" "}
+              Messages go as {view.channels.sender}, and Client Care says it is the company’s assistant. Sending hours, opt-outs and texting registration are checked for every message.{" "}
               <Link href="/app/texting" className="font-medium text-brand-300 hover:underline">
                 Business texting
               </Link>{" "}
@@ -244,7 +243,7 @@ export function CareSetupScreen() {
                 ))}
               </ul>
             ) : (
-              <p className="text-muted-foreground">No operating hours are set, so Client Care offers times from the team's availability alone.</p>
+              <p className="text-muted-foreground">No operating hours are set, so Client Care offers times from the team’s availability alone.</p>
             )}
           </div>
         </Panel>

@@ -134,8 +134,6 @@ export function readText(text: string): TextReading {
  */
 export async function onCustomerText(ctx: MutationCtx, company: Doc<"companies">, customer: Doc<"customers">, text: string, at: number, via: "text" | "email" = "text"): Promise<{ did: string }> {
   const reading = readText(text);
-  const tz = company.timezone;
-  const day = localParts(at, tz).day;
   const recent = (
     await ctx.db
       .query("jobs")
