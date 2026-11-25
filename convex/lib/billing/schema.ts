@@ -305,6 +305,8 @@ export const billingTables = {
     releasedAt: v.optional(v.number()),
     releaseReason: v.optional(v.string()),
     releasedBy: v.optional(v.union(v.id("staff"), v.literal("system"))),
+    /** The Founding Access offer version (convex/lib/founding/offer.ts) in force when the place was reserved or claimed. */
+    offerVersion: v.optional(v.string()),
     updatedAt: v.number(),
   })
     .index("by_company_env", ["companyId", "env"])
