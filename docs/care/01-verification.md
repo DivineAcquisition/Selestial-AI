@@ -12,7 +12,7 @@ for a real company.
 | Screens' answers from the real queries (`convex/careScreens.test.ts`) | Passing; writes `tests/fixtures/careScreens.json` with `CARE_SCREENS_OUT` |
 | Screens rendered over those answers (`src/components/app/screens/care/care.test.tsx`) | 6 passing |
 | Rules reader (`convex/lib/clientCare/read.test.ts`) | 9 passing |
-| Whole suite (`npm test`) | 1,997 passing and 21 skipped, of 2,018 in 180 files (the skipped tests were skipped before this work) |
+| Whole suite (`npm test`) | 2,028 passing and 21 skipped, of 2,049 in 182 files (the skipped tests were skipped before this work) |
 | Types (`npm run typecheck`) | Clean |
 | Lint (`npx eslint`) | No errors; the remaining warnings are in files this work did not change |
 | Production build (`npm run build`, local, no deploy) | Passes; `/app/agents/customer-care`, `/requests`, `/follow-ups` and `/care-setup` are built |
