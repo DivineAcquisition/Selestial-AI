@@ -7,6 +7,7 @@ import { DecisionCard, NoDecisions } from "@/components/app/overview/decision-ca
 import { IndicatorRow, type Indicators } from "@/components/app/overview/indicators";
 import { ScheduleTable, type ScheduleView, ViewSwitch } from "@/components/app/overview/schedule-table";
 import { presenceLine, TeamAtWork, type TeamDepartment } from "@/components/app/overview/team-at-work";
+import type { PickedReason } from "@/components/app/reason-picker";
 import { WeekMeasures } from "@/components/app/overview/week-measures";
 import { Panel } from "@/components/app/shell";
 import { ArrowRight } from "@/components/icons";
@@ -42,6 +43,7 @@ export function OverviewView({
   onOpen,
   onLink,
   onApprove,
+  onSkip,
   approving,
   approveError,
   checklist,
@@ -55,6 +57,7 @@ export function OverviewView({
   onOpen: (ref: EventRef) => void;
   onLink: (link: RecordLink) => void;
   onApprove: (decision: Decision) => void;
+  onSkip?: (decision: Decision, picked: PickedReason) => Promise<unknown>;
   approving?: string | null;
   approveError?: { id: string; message: string } | null;
   /** Shown under the briefing: for an Owner fresh from setup, what is left (components/app/setup/checklist.tsx). */
@@ -121,6 +124,7 @@ export function OverviewView({
                     busy={approving === decision.ref.id}
                     error={approveError?.id === decision.ref.id ? approveError.message : null}
                     onApprove={onApprove}
+                    onSkip={onSkip}
                     onOpen={onOpen}
                   />
                 ))

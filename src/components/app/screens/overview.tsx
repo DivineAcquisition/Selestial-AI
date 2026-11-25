@@ -13,6 +13,7 @@ import { useDetail } from "@/components/app/detail-panel";
 import { messageOf } from "@/components/app/form";
 import { AgentsWorking } from "@/components/app/activation/home";
 import { OverviewView } from "@/components/app/overview/overview-view";
+import type { PickedReason } from "@/components/app/reason-picker";
 import type { ScheduleView } from "@/components/app/overview/schedule-table";
 import { useNow } from "@/components/app/use-now";
 import { linkTo } from "@/lib/app/navigation-helpers";
@@ -38,7 +39,12 @@ export function useApprove() {
       setApproving(null);
     }
   }
-  return { approve, approving, error };
+  /** Skipping from a card: the reason picker shows any refusal itself. */
+  async function skip(decision: Decision, picked: PickedReason) {
+    if (decision.ref.kind !== "approval") return;
+    await decide({ companyId, approvalId: decision.ref.id, decision: "skipped", ...picked });
+  }
+  return { approve, skip, approving, error };
 }
 
 export function OverviewScreen() {
@@ -55,7 +61,7 @@ export function OverviewScreen() {
   const team = useQuery(api.overview.team, { companyId });
   const activity = useQuery(api.details.activity, now ? { companyId, asOf: now, limit: 12 } : "skip");
   const week = useQuery(api.overview.week, at);
-  const { approve, approving, error } = useApprove();
+  const { approve, skip, approving, error } = useApprove();
 
   function follow(link: Link) {
     if (link.kind !== "view") return open(link);
@@ -77,6 +83,7 @@ export function OverviewScreen() {
       onOpen={open}
       onLink={follow}
       onApprove={(decision) => void approve(decision)}
+      onSkip={skip}
       approving={approving}
       approveError={error}
       checklist={

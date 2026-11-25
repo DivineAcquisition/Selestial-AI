@@ -2,6 +2,7 @@
 
 import { AgentAvatar } from "@/components/app/agent";
 import { HoldButton } from "@/components/app/hold-button";
+import { ReasonPicker, type PickedReason } from "@/components/app/reason-picker";
 import { RunTrace } from "@/components/app/run-trace";
 import { BorderBeam } from "@/components/ui/border-beam";
 import { Clock, LightningIcon, ShieldCheck } from "@/components/icons";
@@ -31,6 +32,7 @@ export function DecisionCard({
   busy,
   error,
   onApprove,
+  onSkip,
   onOpen,
 }: {
   decision: Decision;
@@ -39,6 +41,7 @@ export function DecisionCard({
   busy?: boolean;
   error?: string | null;
   onApprove: (decision: Decision) => void;
+  onSkip?: (decision: Decision, picked: PickedReason) => Promise<unknown>;
   onOpen: (ref: RecordRef) => void;
 }) {
   const due = until(decision.deadline, now);
@@ -133,11 +136,19 @@ export function DecisionCard({
         {proposal ? (
           <>
             <HoldButton label="Hold to approve" holdingLabel="Keep holding" busy={busy} onConfirm={() => onApprove(decision)} />
-            <Button variant="outline" size="sm" onClick={() => onOpen(decision.ref)}>
-              View alternatives
-            </Button>
+            {onSkip && decision.reasons ? (
+              <ReasonPicker
+                label="Skip"
+                question="Why skip it? Optional, but it tells the agent what to avoid."
+                reasons={decision.reasons.skip}
+                confirm="Skip"
+                required={false}
+                variant="outline"
+                onSubmit={(picked) => onSkip(decision, picked)}
+              />
+            ) : null}
             <Button variant="ghost" size="sm" onClick={() => onOpen(decision.ref)}>
-              Handle myself
+              Alternatives or handle myself
             </Button>
           </>
         ) : (

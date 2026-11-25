@@ -10,6 +10,7 @@ import { cleanerOption, SearchableSelect } from "@/components/ui/selection";
 import { HoldButton } from "@/components/app/hold-button";
 import { useNow } from "@/components/app/use-now";
 import { Modal } from "@/components/app/modal";
+import { ReasonPicker } from "@/components/app/reason-picker";
 import { EditVisitForm, MoveVisitForm } from "@/components/app/screens/visit-forms";
 import { Button } from "@/components/ui/button";
 import { centsFrom, clock, zonedInstant } from "@/lib/app/format";
@@ -376,14 +377,22 @@ function ApprovalActions({ detail, now }: { detail: Detail; now: number }) {
       <FormError message={error} />
       <div className="flex flex-wrap items-start gap-2">
         <HoldButton label="Hold to approve" holdingLabel="Keep holding" busy={busy} onConfirm={() => void run(() => decide({ companyId, approvalId, decision: "approved" }))} />
-        <WithWords label="Handle myself" placeholder="What will you do instead?" confirm="I will handle it" onSubmit={(note) => decide({ companyId, approvalId, decision: "changed", note })} />
-        <WithWords
+        <ReasonPicker
+          label="Handle myself"
+          question="What will you do instead?"
+          reasons={approval.reasons.change}
+          confirm="I will handle it"
+          otherPlaceholder="What will you do instead?"
+          onSubmit={(picked) => decide({ companyId, approvalId, decision: "changed", ...picked })}
+        />
+        <ReasonPicker
           label={approval.jobId ? "Skip this cleaner, try the next" : "Skip this proposal"}
-          placeholder="Why skip it? (optional)"
+          question="Why skip it? Optional, but it tells the agent what to avoid."
+          reasons={approval.reasons.skip}
           confirm="Skip"
           required={false}
           variant="ghost"
-          onSubmit={(note) => decide({ companyId, approvalId, decision: "skipped", note: note || undefined })}
+          onSubmit={(picked) => decide({ companyId, approvalId, decision: "skipped", ...picked })}
         />
       </div>
       <p className="text-xs leading-relaxed text-muted-foreground">Handling it yourself keeps the visit with you until you hand it back. Skipping tells the agent not to ask this cleaner for this visit and to try the next one.</p>
