@@ -30,7 +30,7 @@ import { BasisTag, StatusPill, UrgencyFlag, type CareDetail } from "./shared";
 
 function Section({ title, children, aside }: { title: string; children: React.ReactNode; aside?: React.ReactNode }) {
   return (
-    <section className="grid gap-2.5">
+    <section className="grid content-start gap-2.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-strong">{title}</h3>
         {aside}
@@ -52,7 +52,7 @@ const PART_WORDS: Record<string, string> = { done: "Done", pending: "Pending", f
 function Thread({ items, now, timezone }: { items: CareDetail["thread"]; now: number | null; timezone: string }) {
   if (!items.length) return <p className="text-sm text-muted-foreground">No messages on this request yet.</p>;
   return (
-    <ol className="grid gap-2.5" aria-label="Conversation">
+    <ol className="grid content-start gap-2.5" aria-label="Conversation">
       {items.map((m) => (
         <li key={m.id} className={cn("grid max-w-[88%] gap-1", m.direction === "out" ? "justify-self-end" : "justify-self-start")}>
           <div className={cn("rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]", m.direction === "out" ? "rounded-br-md bg-brand-500/12 text-strong" : "rounded-bl-md border border-border bg-card text-foreground")}>{m.body}</div>
@@ -89,7 +89,7 @@ function Steps({ steps, onRetry, busy }: { steps: CareDetail["steps"]; onRetry: 
               ))}
             </ul>
           ) : null}
-          {s.result && s.status !== "done" ? <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{s.result}</p> : null}
+          {s.result && s.status !== "done" && !s.parts.length ? <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{s.result}</p> : null}
           <div className="flex flex-wrap gap-2">
             {s.approvalId ? (
               <Link href="/app/approvals" className="inline-flex items-center gap-1 text-xs font-medium text-brand-300 hover:underline">
@@ -246,7 +246,7 @@ export function RequestWorkspaceBody({ requestId }: { requestId: Id<"careRequest
         <FormError message={error} />
       </header>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         <Section
           title="Conversation"
           aside={

@@ -339,7 +339,7 @@ export async function afterCareReply(ctx: MutationCtx, message: Doc<"messages">)
   const changed = partState(fresh, "change");
   if (state === "done") fresh = await patchStep(ctx, fresh, { status: "done" });
   else if (state === "uncertain") fresh = await patchStep(ctx, fresh, { status: changed === "done" ? "partial" : "uncertain", result: "It is not known whether the message went. It was not sent again." });
-  else fresh = await patchStep(ctx, fresh, { status: changed === "done" ? "partial" : "failed", result: `The message did not go: ${words}` });
+  else fresh = await patchStep(ctx, fresh, { status: changed === "done" ? "partial" : "failed", result: changed === "done" ? words : `The message did not go: ${words}` });
   if (message.status === "delivered" && step.parts.find((p) => p.name === "notify")?.state === "done") return;
   await settled(ctx, fresh, message);
 }
@@ -364,10 +364,10 @@ async function settled(ctx: MutationCtx, step: Step, message?: Doc<"messages">) 
   const problem = step.status === "partial"
     ? notify === "uncertain"
       ? `${(partsDetail(step, "change") ?? "The change was made").replace(/\.$/, "")}. It is not known whether the message telling the client went; it was not sent again. Check with the client before sending another.`
-      : `${(partsDetail(step, "change") ?? "The change was made").replace(/\.$/, "")}. The message telling the client did not go: ${partsDetail(step, "notify") ?? "it could not be sent"}. Retry it or reach them another way.`
+      : `${(partsDetail(step, "change") ?? "The change was made").replace(/\.$/, "")}. The message telling the client did not go: ${(partsDetail(step, "notify") ?? "it could not be sent").replace(/\.$/, "")}. Retry it or reach them another way.`
     : notify === "uncertain"
       ? "It is not known whether Client Care's message went. It was not sent again. Check with the client before sending another."
-      : `Client Care's message did not go: ${partsDetail(step, "notify") ?? "it could not be sent"}.`;
+      : `Client Care's message did not go: ${(partsDetail(step, "notify") ?? "it could not be sent").replace(/\.$/, "")}.`;
   await addEntry(ctx, request, { kind: "problem", text: problem, ...(message ? { source: { table: "messages", id: message._id, label: "Message" } } : {}) });
   // What the request already needed a person for stays in view beside the message problem.
   const blocker = request.blocker && !request.blocker.includes(problem) ? `${problem} Before that: ${request.blocker}` : problem;

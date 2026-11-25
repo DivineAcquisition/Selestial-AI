@@ -103,7 +103,9 @@ async function card(ctx: Ctx, row: Request, names: Map<string, string>, tz: stri
 
 /** Client Care's state as an agent: running, paused, not in the plan, and how it reads. */
 function agentState(company: Doc<"companies">) {
-  const verdict = agentVerdict(company, "customer-care");
+  // The same rule as the worker (clientCareWork.ts recordOnly): before a plan is chosen Care's rules work runs;
+  // a plan that doesn't include Client Care records requests for people only.
+  const verdict = company.plan ? agentVerdict(company, "customer-care") : ({ ok: true } as const);
   const paused = company.pausedAgents.includes("customer-care");
   const model = careModel();
   return {

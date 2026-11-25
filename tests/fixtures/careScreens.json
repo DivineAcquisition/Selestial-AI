@@ -21,7 +21,7 @@
     "customer": "Jo Alvarez",
     "kind": "problem",
     "requestId": "00000000000000010234careRequests",
-    "text": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts.. Retry it or reach them another way."
+    "text": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts. Retry it or reach them another way."
    },
    {
     "at": 1804014000009,
@@ -39,10 +39,10 @@
    }
   ],
   "agent": {
-   "available": false,
+   "available": true,
    "paused": false,
    "reader": "Your company's rules read each message. No AI credits are used.",
-   "reason": "Client Care needs an active plan. Requests are still recorded for your team."
+   "reason": null
   },
   "blocked": [],
   "byCategory": [
@@ -109,7 +109,7 @@
     "writer": null
    },
    {
-    "blocker": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts.. Retry it or reach them another way.",
+    "blocker": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts. Retry it or reach them another way.",
     "category": "preference",
     "categoryWords": "Preferences",
     "channel": "sms",
@@ -133,7 +133,7 @@
     "urgency": "normal",
     "urgencyReason": null,
     "visit": "Tue, Mar 9 at 10:00 AM",
-    "waiting": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts.. Retry it or reach them another way.",
+    "waiting": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts. Retry it or reach them another way.",
     "writer": null
    }
   ],
@@ -170,7 +170,7 @@
   "troubled": [
    {
     "requestId": "00000000000000010234careRequests",
-    "result": "The message did not go: The carrier says this number cannot receive texts.",
+    "result": "The carrier says this number cannot receive texts.",
     "status": "partial",
     "stepId": "00000000000000000010240careSteps",
     "summary": "Add \"Please don't clean the guest bedroom next Tuesday only\" to the visit on Tue, Mar 9 at 10:00 AM only",
@@ -310,7 +310,7 @@
     "writer": null
    },
    {
-    "blocker": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts.. Retry it or reach them another way.",
+    "blocker": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts. Retry it or reach them another way.",
     "category": "preference",
     "categoryWords": "Preferences",
     "channel": "sms",
@@ -334,7 +334,7 @@
     "urgency": "normal",
     "urgencyReason": null,
     "visit": "Tue, Mar 9 at 10:00 AM",
-    "waiting": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts.. Retry it or reach them another way.",
+    "waiting": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts. Retry it or reach them another way.",
     "writer": null
    },
    {
@@ -463,7 +463,7 @@
   },
   {
    "approvalId": null,
-   "blocker": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts.. Retry it or reach them another way.",
+   "blocker": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts. Retry it or reach them another way.",
    "category": "preference",
    "categoryWords": "Preferences",
    "channel": "sms",
@@ -484,7 +484,7 @@
    "planned": "Wait for your decision",
    "promisedBy": null,
    "property": "Alvarez House, 4 Oak Ave",
-   "reason": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts.. Retry it or reach them another way.",
+   "reason": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts. Retry it or reach them another way.",
    "status": "waiting_owner",
    "statusWords": "Waiting for you",
    "summary": "Gave a preference: \"Please don't clean the guest bedroom next Tuesday only\"",
@@ -492,7 +492,7 @@
    "urgency": "normal",
    "urgencyReason": null,
    "visit": "Tue, Mar 9 at 10:00 AM",
-   "waiting": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts.. Retry it or reach them another way.",
+   "waiting": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts. Retry it or reach them another way.",
    "waitingFor": "You",
    "writer": null
   },
@@ -604,10 +604,10 @@
  ],
  "setup": {
   "agent": {
-   "available": false,
+   "available": true,
    "paused": false,
    "reader": "Your company's rules read each message. No AI credits are used.",
-   "reason": "Client Care needs an active plan. Requests are still recorded for your team."
+   "reason": null
   },
   "canEdit": true,
   "categories": [
@@ -1208,7 +1208,7 @@
       "label": "Message",
       "table": "messages"
      },
-     "text": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts.. Retry it or reach them another way."
+     "text": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts. Retry it or reach them another way."
     },
     {
      "at": 1804014000026,
@@ -1259,7 +1259,7 @@
       "site"
      ]
     },
-    "blocker": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts.. Retry it or reach them another way.",
+    "blocker": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts. Retry it or reach them another way.",
     "category": "preference",
     "categoryWords": "Preferences",
     "channel": "sms",
@@ -1289,7 +1289,7 @@
     "urgencyReason": null,
     "version": 1,
     "visit": "Tue, Mar 9 at 10:00 AM",
-    "waiting": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts.. Retry it or reach them another way.",
+    "waiting": "Added to the visit on Tue, Mar 9, 10:00 AM only. The rest of the schedule is unchanged. The message telling the client did not go: The carrier says this number cannot receive texts. Retry it or reach them another way.",
     "writer": null
    },
    "steps": [
@@ -1314,7 +1314,7 @@
       }
      ],
      "permission": "Record a client's preference for one visit, a property or every future visit",
-     "result": "The message did not go: The carrier says this number cannot receive texts.",
+     "result": "The carrier says this number cannot receive texts.",
      "retry": true,
      "status": "partial",
      "statusWords": "Done; the message didn't go",

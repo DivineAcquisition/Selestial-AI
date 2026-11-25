@@ -37,7 +37,7 @@ function header(o: CareOverview): { state: string; tone: "warning" | "success" |
     o.agent.reader,
   ].filter((line): line is string => Boolean(line));
   const first = o.urgent[0] ?? o.decisions[0];
-  const next = o.urgent[0] ? `Urgent: ${o.urgent[0].customer.name}, ${o.urgent[0].categoryWords.toLowerCase()}.` : first ? `${first.customer.name}: ${first.blocker ?? first.waiting ?? first.summary}` : o.dueUpdates[0] ? `A promised update to ${o.dueUpdates[0].customer.name} is due.` : "Nothing is waiting on you.";
+  const next = o.urgent[0] ? `Urgent: ${o.urgent[0].customer.name}. ${o.urgent[0].blocker ?? o.urgent[0].waiting ?? o.urgent[0].summary}` : first ? `${first.customer.name}: ${first.blocker ?? first.waiting ?? first.summary}` : o.dueUpdates[0] ? `A promised update to ${o.dueUpdates[0].customer.name} is due.` : "Nothing is waiting on you.";
   return { state, tone: state === "Waiting on you" || state === "Paused" || state === "Recording only" ? "warning" : state === "Nothing open" ? "outline" : "success", lines, next };
 }
 
