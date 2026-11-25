@@ -172,17 +172,44 @@ const LIVE: AgentPage[] = [
     ],
     plan: "Free for early users on the $199 price, and theirs to keep after the 12 months. Included in Expand.",
   },
+  {
+    id: "customer-care",
+    name: "Client Care",
+    department: "Operations",
+    status: "live",
+    headline: "A reply sent is not a request resolved.",
+    pitch: "Reads each client's text or email against their real visits, plans and invoices, asks only what is missing, has the work done by the agent that owns it, and keeps the client informed until it is actually done.",
+    scene: {
+      trigger: { title: "Text from Dana", detail: "“Can we move Friday to Monday?”" },
+      work: ["Finds Friday's visit and the change notice that applies", "Asks Dispatch's capacity for Monday times", "Offers only times the team can cover"],
+      outcomes: [
+        { title: "Dana picks 10:00", detail: "The time is checked again before it moves" },
+        { title: "Visit moved, price unchanged", detail: "The crew is asked again for the new time" },
+        { title: "Dana is told it's done", detail: "Delivery is shown as the provider reports it" },
+      ],
+    },
+    capabilities: [
+      { title: "Answers from the record", detail: "When you're coming, who's assigned, what's included and what an invoice shows, read from the visit and invoice themselves, never guessed.", mock: "chat" },
+      { title: "Changes done by their owner", detail: "Moves go through Dispatch's checks, skips and pauses through the plan's own rules, complaints to Quality and Retention.", mock: "calendar" },
+      { title: "Follow-through, not follow-ups", detail: "Waits on what is actually pending, tells the client what is true when something is late, and stops when a person steps in.", mock: "list" },
+      { title: "Authority per action", detail: "Answers can go on their own; every change waits for you until you decide otherwise. Refunds and contract changes are never its call.", mock: "checklist" },
+    ],
+    bringsToYou: ["Anything urgent, unsafe or serious", "Changes inside your notice window", "Anything outside the permissions you set"],
+    handoffs: [
+      { agent: "dispatch", what: "Moves and coverage" },
+      { agent: "quality", what: "Investigating a complaint" },
+      { agent: "retention", what: "Remedies and the relationship" },
+      { agent: "sales", what: "New service and quotes" },
+    ],
+    plan: "Included in Operate and Expand.",
+  },
 ];
 
-const HANDOFFS: Record<"marketing" | "customer-care", AgentPage["handoffs"]> = {
+const HANDOFFS: Record<"marketing", AgentPage["handoffs"]> = {
   marketing: [{ agent: "sales", what: "New inquiries its campaigns bring in" }],
-  "customer-care": [
-    { agent: "dispatch", what: "Schedule changes to staff" },
-    { agent: "retention", what: "Concerns that need a follow-through" },
-  ],
 };
 
-const SOON: AgentPage[] = (["marketing", "customer-care"] as const).map((id) => {
+const SOON: AgentPage[] = (["marketing"] as const).map((id) => {
   const soon = COMING_SOON[id];
   return {
     id,

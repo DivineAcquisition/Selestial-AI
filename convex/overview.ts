@@ -404,6 +404,9 @@ export const sidebar = companyQuery({
     const [qDecision, qContext, qInvestigating, qUnderway, qVerifying] = await Promise.all([qualityStage("needs_decision"), qualityStage("needs_context"), qualityStage("investigating"), qualityStage("action_underway"), qualityStage("verifying")]);
     const qReviews = await ctx.db.query("qualityReviews").withIndex("by_company_status", (q) => q.eq("companyId", ctx.companyId).eq("status", "needs_decision")).take(200);
     const qOpen = [...qDecision, ...qContext, ...qInvestigating, ...qUnderway, ...qVerifying];
+    const careStatus = async (status: "new" | "in_progress" | "waiting_customer" | "waiting_team" | "waiting_owner") => ctx.db.query("careRequests").withIndex("by_company_status", (q) => q.eq("companyId", ctx.companyId).eq("status", status)).take(200);
+    const [cNew, cProgress, cClient, cTeam, cOwner] = await Promise.all([careStatus("new"), careStatus("in_progress"), careStatus("waiting_customer"), careStatus("waiting_team"), careStatus("waiting_owner")]);
+    const cOpen = [...cNew, ...cProgress, ...cClient, ...cTeam, ...cOwner];
     return {
       /** Approvals and handed-over tasks waiting on this person. */
       decisions: approvals.length + tasks.length,
@@ -453,6 +456,17 @@ export const sidebar = companyQuery({
         underway: qInvestigating.length + qUnderway.length + qVerifying.length,
         /** Cases waiting on evidence or an account. */
         waiting: qContext.length,
+      },
+      care: {
+        paused: ctx.company.pausedAgents.includes("customer-care"),
+        /** Urgent requests nobody has taken. */
+        urgent: cOpen.filter((row) => row.urgency === "urgent" && row.owner.kind !== "member").length,
+        /** Requests waiting on a person. */
+        withYou: cOwner.length,
+        /** Requests whose promised update time has passed. */
+        overdue: cOpen.filter((row) => row.promised && row.promised.by < args.asOf).length,
+        underway: cNew.length + cProgress.length,
+        waiting: cClient.length + cTeam.length,
       },
     };
   },

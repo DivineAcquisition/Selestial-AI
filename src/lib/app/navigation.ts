@@ -22,8 +22,8 @@ export type DepartmentId = (typeof DEPARTMENT_IDS)[number];
 export const AGENT_IDS = ["marketing", "sales", "retention", "dispatch", "quality", "customer-care", "recruiter"] as const;
 export type AgentId = (typeof AGENT_IDS)[number];
 
-/** The agents the Convex backend knows today (convex/lib/statuses.ts). The other four have no record yet. */
-export type BackendAgent = "sales" | "recruiter" | "dispatch" | "retention" | "quality";
+/** The agents the Convex backend knows today (convex/lib/statuses.ts). Marketing has no record yet. */
+export type BackendAgent = "sales" | "recruiter" | "dispatch" | "retention" | "quality" | "customer-care";
 
 export type Role = "owner" | "manager" | "office";
 
@@ -351,7 +351,7 @@ export type AgentNav = {
   workflow: "built" | "planned";
   /** The page the agent's name opens. */
   overview: Destination;
-  /** The nested work tabs, in order. Playbook is always last. Chat is never a tab. */
+  /** The nested work tabs, in order. The agent's setup (Playbook, Hiring setup, Care Setup) is always last. Chat is never a tab. */
   tabs: readonly WorkTab[];
 };
 
@@ -380,7 +380,7 @@ function agent(spec: { id: AgentId; label: string; department: DepartmentId; res
  * Cleaners workspace holds the shared record. Its old pages lead to Recruiter and Dispatch.
  *
  * Two pairs of names are close on purpose and must stay distinct:
- * - Customer Setup (Care) is about customers. Onboarding & Readiness (Recruiter) is about cleaners.
+ * - Care Setup (Client Care) is how Care works for clients. Hiring setup (Recruiter) is about cleaners.
  * - Offers & Agreements (Recruiter) is about hiring. Offers & Coverage (Dispatch) is about job assignments.
  */
 export const AGENTS: readonly AgentNav[] = [
@@ -477,16 +477,19 @@ export const AGENTS: readonly AgentNav[] = [
   }),
   agent({
     id: "customer-care",
-    label: "Care",
+    // Shown as Client Care from November 25, 2026 (docs/care/00-architecture.md). The id is unchanged.
+    label: "Client Care",
     department: "operations",
-    responsibility: "Handles customer communications, setup, requests, and scheduling changes.",
-    backendAgent: null,
+    responsibility: "Understands each client request, coordinates the action needed with the agent that owns it, and keeps the client informed until it is resolved.",
+    backendAgent: "customer-care",
+    workflow: "built",
+    overview: LIVE,
+    // The owner's structure of November 25, 2026: Overview (the agent's page), then its work. The shared Inbox stays the
+    // conversations' home; Requests is a view over them and their records, never a second inbox.
     tabs: [
-      ["conversations", "Conversations"],
-      ["customer-setup", "Customer Setup"],
-      ["service-requests", "Service Requests"],
-      ["rescheduling-cancellations", "Rescheduling & Cancellations"],
-      ["playbook", "Playbook"],
+      ["requests", "Requests", LIVE],
+      ["follow-ups", "Follow-ups", LIVE],
+      ["care-setup", "Care Setup", LIVE],
     ],
   }),
 
