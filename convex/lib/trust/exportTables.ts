@@ -81,6 +81,7 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   { table: "aiExecutions", index: "by_company_created", omit: ["lockId"], why: "Autumn's internal reference for a credit hold." },
   { table: "messagingCharges", index: "by_company_created", omit: ["lockId"], why: "Autumn's internal reference for a messaging hold." },
   { table: "earlyOffers", index: "by_company_env" },
+  { table: "foundingClaims", index: "by_company", omit: ["claimKey", "userId"], why: "A random link key and the sign-in service's internal id." },
   { table: "billingIntents", index: "by_company_created", omit: ["url"], why: "A short-lived payment or portal address." },
   { table: "agentAccessRequests", index: "by_company_last" },
   { table: "messagingAttention", index: "by_company_at", omit: ["resolvedBy"], why: "Which Selestial staff member resolved it." },

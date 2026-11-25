@@ -24,6 +24,7 @@ import { companyQuery, ownerMutation, ownerQuery } from "./lib/builders";
 import { userError } from "./lib/errors";
 import { byMember, recordEvent } from "./lib/events";
 import { appOrigin } from "./lib/invitations";
+import { notifyMembers } from "./lib/notify/route";
 import { allow } from "./lib/rateLimit";
 import { openPlanCancelledWork } from "./lib/texting/offboarding";
 
@@ -253,6 +254,12 @@ export const storeAccount = internalMutation({
     if (billingState().connected) {
       const offer = await onAccountSynced(ctx, { companyId: args.companyId, env: args.env, projection, now });
       if (offer) await recordEvent(ctx, { companyId: args.companyId, type: `billing.early_offer_${offer}`, actor: { kind: "system" }, subject: { table: "companies", id: args.companyId }, data: { source: "autumn" } });
+      // Founding Access: the Owner hears once that the claim is verified. The notice is kept once by its key,
+      // so a duplicate or out-of-order webhook that re-runs this sends nothing twice.
+      if (offer === "claimed") {
+        const row = await offerFor(ctx, args.companyId, args.env);
+        if (row) await notifyMembers(ctx, { companyId: args.companyId, event: "founding_claimed", ref: row._id, key: "claimed", now });
+      }
     }
     // Funds arrived (a purchase paid on Stripe's page, an automatic top-up): messages that waited are checked again and sent.
     if (projection.messaging && projection.messaging.remaining > 0) await ctx.scheduler.runAfter(0, internal.messagingBilling.releaseHeld, { companyId: args.companyId });

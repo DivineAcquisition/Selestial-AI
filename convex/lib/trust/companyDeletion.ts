@@ -148,6 +148,7 @@ export const DELETION_PLAN: readonly TablePlan[] = [
   keep("messagingCharges", "What each message cost and how it was settled: Selestial's billing ledger.", { personal: ["reason", "settleProblem"] }),
   keep("messagingAttention", "Selestial staff's review of the company's messaging balance.", { personal: ["detail", "note"] }),
   keep("aiUsage", "AI usage counted against the plan, kept for billing reconciliation with the AI providers.", { personal: ["raw"] }),
+  del("foundingClaims", "Business answers from a Founding Access claim (booking tool, team size, first priority), used to start setup. Billing keeps its own record of the founding price in earlyOffers."),
   keep("earlyOffers", "The introductory $199 plan price: when it was reserved, claimed and ended. Selestial's own billing record, and what stops a returning company getting the introductory price again. No personal data.", { personal: ["switchProblem"] }),
   keep("chatUsage", "Monthly AI chat usage counted against the plan. Numbers only."),
   keep("mediaAllowances", "Monthly image and video usage counted against the plan. Numbers only."),

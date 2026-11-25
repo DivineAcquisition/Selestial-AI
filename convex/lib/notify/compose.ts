@@ -612,6 +612,8 @@ async function build(ctx: MutationCtx, message: Doc<"messages">, company: Doc<"c
       return textingNotice(ctx, company, notice.ref, facts, c);
     case "plan_price_change":
       return planPriceChange(ctx, company, notice.ref, c);
+    case "founding_claimed":
+      return foundingClaimed(ctx, company, notice.ref, c);
     case "plan_access":
       return planAccess(ctx, company, notice.ref, facts, c);
     case "activation_result":
@@ -855,6 +857,31 @@ async function planPriceChange(ctx: MutationCtx, company: Doc<"companies">, ref:
       { label: "Price from then", value: `${full} a month` },
     ],
     button: { label: "Open Plan & Usage", path: "/app/settings/billing" },
+  });
+}
+
+/** Founding Access: the first payment at the founding price went through (convex/lib/billing/earlyOffer.ts, onAccountSynced). */
+async function foundingClaimed(ctx: MutationCtx, company: Doc<"companies">, ref: string | undefined, c: Context): Promise<Built> {
+  const id = ref ? ctx.db.normalizeId("earlyOffers", ref) : null;
+  const row = id ? await ctx.db.get(id) : null;
+  if (!row || row.companyId !== company._id || row.state !== "claimed" || !row.offerEndsAt) return { problem: "The founding price is no longer on this plan." };
+  const date = dateOnly(row.offerEndsAt, c.timezone);
+  return alertEmail({
+    ...c,
+    eyebrow: "Founding Access",
+    tone: "info",
+    essential: true,
+    because: "you're the Owner, and the plan price is part of your account",
+    subject: "Your Selestial founding access is confirmed",
+    heading: "Welcome, founding customer",
+    body: `Your first payment went through, so your founding price of ${money(EARLY_OFFER_CENTS)} a month applies until ${date}. From then Operate is ${money(EARLY_OFFER_FULL_CENTS)} a month. Sales, Recruiter, Dispatch and Retention are on your plan, and Quality is included for as long as you keep a plan.`,
+    note: "Next: setup. Tell Selestial about your services, prices and how you book, and bring over your customer records when you're ready. Nothing goes live until you release it.",
+    facts: [
+      { label: "Founding price", value: `${money(EARLY_OFFER_CENTS)} a month` },
+      { label: "Until", value: date },
+      { label: "Then", value: `${money(EARLY_OFFER_FULL_CENTS)} a month` },
+    ],
+    button: { label: "Start setup", path: "/app/founding" },
   });
 }
 

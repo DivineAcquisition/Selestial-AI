@@ -464,7 +464,7 @@ function Comparison({ catalog, current, canBuy }: { catalog: Data["catalog"]; cu
 }
 
 /** A purchase or change in progress: Autumn's price and date, the Owner's confirmation, then the payment page if one is needed. */
-function IntentDialog({ intentId, onClose }: { intentId: Id<"billingIntents">; onClose: () => void }) {
+export function IntentDialog({ intentId, onClose }: { intentId: Id<"billingIntents">; onClose: () => void }) {
   const { companyId } = useCompany();
   const intent = useQuery(api.billing.intent, { companyId, intentId });
   const confirm = useMutation(api.billing.confirmIntent);

@@ -265,6 +265,48 @@ export default defineSchema({
     lastRequestedAt: v.number(),
   }).index("by_email", ["email"]),
 
+  /**
+   * Selestial Founding Access (convex/founding.ts, convex/lib/founding/offer.ts). One row per offer id: the
+   * shared enrollment window, set once by staff when the campaign is activated and never by a visitor.
+   */
+  foundingCampaigns: defineTable({
+    offerId: v.string(),
+    offerVersion: v.string(),
+    status: v.union(v.literal("draft"), v.literal("open"), v.literal("closed")),
+    enrollmentStartsAt: v.optional(v.number()),
+    enrollmentEndsAt: v.optional(v.number()),
+    displayTimezone: v.string(),
+    activatedBy: v.optional(v.id("staff")),
+    closedAt: v.optional(v.number()),
+    closedBy: v.optional(v.id("staff")),
+    closeReason: v.optional(v.string()),
+    updatedAt: v.number(),
+  }).index("by_offer", ["offerId"]),
+
+  /**
+   * One founding claim started from the Founding Access page: the business answers, carried into the
+   * workspace so the Owner never types them twice. A claim is NOT a founding customer: that is decided by
+   * billing alone (earlyOffers claimed, from Autumn's record). `claimKey` is random, carries no personal
+   * data, and binds to the first signed-in person who opens it.
+   */
+  foundingClaims: defineTable({
+    claimKey: v.string(),
+    offerId: v.string(),
+    offerVersion: v.string(),
+    companyName: v.string(),
+    currentSoftware: v.string(),
+    teamSize: v.string(),
+    priority: v.string(),
+    attribution: v.optional(v.object({ source: v.optional(v.string()), medium: v.optional(v.string()), campaign: v.optional(v.string()) })),
+    userId: v.optional(v.string()),
+    companyId: v.optional(v.id("companies")),
+    attachedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_key", ["claimKey"])
+    .index("by_company", ["companyId"])
+    .index("by_user", ["userId"]),
+
   rateLimits: defineTable({ key: v.string(), windowStart: v.number(), count: v.number() }).index("by_key", ["key"]),
 
   // ── Companies and the people in them ───────────────────────────────────────────────────────────
@@ -334,6 +376,13 @@ export default defineSchema({
      * 2026). It still needs an active plan; written only by billing sync (lib/billing/earlyOffer.ts).
      */
     agentBonuses: v.optional(v.array(v.object({ agent: v.literal("quality"), reason: v.literal("early_user"), since: v.number() }))),
+    /**
+     * Set only by Selestial staff for a test, demo or staff company. It is left out of every public count
+     * (the Founding Access "companies have joined" figure) whatever its billing record says.
+     */
+    excludeFromCounts: v.optional(v.boolean()),
+    /** The business answers from a Founding Access claim (foundingClaims), kept for setup to start from. */
+    foundingProfile: v.optional(v.object({ currentSoftware: v.string(), teamSize: v.string(), priority: v.string(), offerVersion: v.string() })),
     /** The Owner's named pay tiers (Finance › Team Pay). A job keeps the share that applied when it was worked. */
     payTiers: v.optional(v.array(payTierValidator)),
     /** AI features the Owner switched off. Absent means on, within the plan's allowances. */
