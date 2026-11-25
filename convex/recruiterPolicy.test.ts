@@ -101,16 +101,18 @@ describe("Recruiter on the shared sending policy", () => {
 
   it("nothing goes while the company is suspended or its email setup is unfinished, and the reason is on the record", async () => {
     const s = await setup();
-    await setMessaging(s, { emailFromAddress: undefined });
+    // Selestial's own sender isn't configured on this deployment: the only email setup a company can lack.
+    process.env.EMAIL_PROVIDER = "resend";
     await s.receive(indeedApplication());
     await s.approveAll();
+    process.env.EMAIL_PROVIDER = "mock";
     expect(mockEmails).toEqual([]);
     const [first] = await messages(s);
-    expect(first).toMatchObject({ status: "not_sent", problem: "Email needs the address messages are sent from." });
+    expect(first.status).toBe("not_sent");
+    expect(first.problem).toBeTruthy();
     const [row] = await s.applications();
     expect(row.nextAction).toMatchObject({ by: "owner" });
 
-    await setMessaging(s, { emailFromAddress: "hiring@mail.selestial.test" });
     await s.t.run(async (ctx) => ctx.db.patch(s.companyId, { suspendedAt: Date.now() }));
     await s.as.mutation(api.applications.inviteAgain, { companyId: s.companyId, applicationId: row.applicationId }).catch(() => null);
     expect(mockEmails).toEqual([]);

@@ -432,7 +432,8 @@ describe("Messaging consent and the sending policy", () => {
   it("stops email of one kind after an unsubscribe", async () => {
     const s = await setup(["Lena"]);
     await s.as.mutation(api.cleaners.update, { companyId: s.companyId, cleanerId: s.cleaners.Lena, email: "lena@example.com" });
-    await s.as.mutation(api.compliance.updateMessaging, { companyId: s.companyId, emailFromAddress: "team@alpha.example", quietHours: null });
+    // Company email is ready once Selestial's own sender is configured (docs/email/06-branding.md).
+    process.env.EMAIL_PROVIDER = "mock";
     for (const category of ["operational", "recruiting"] as const) {
       await s.as.mutation(api.consent.record, { companyId: s.companyId, recipient: lena(s), channel: "email", category, status: "granted", source: "onboarding" });
     }
@@ -440,6 +441,7 @@ describe("Messaging consent and the sending policy", () => {
     const email = (category: "operational" | "recruiting") => s.as.query(api.consent.check, { companyId: s.companyId, channel: "email", to: "lena@example.com", category, origin: "manual" });
     expect(await email("recruiting")).toMatchObject({ ok: false, code: "suppressed" });
     expect(await email("operational")).toEqual({ ok: true });
+    delete process.env.EMAIL_PROVIDER;
   });
 });
 

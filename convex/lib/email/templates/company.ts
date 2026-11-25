@@ -6,7 +6,8 @@
  * When the same message goes from the company's connected Gmail instead, it isn't templated at all:
  * `conversationEmail` writes it as a person would, in the existing thread.
  */
-import { action, amounts, checklist, escapeHtml, facts, FONT, lead, oneLine, paragraph, renderEmail, signature, textLink, title, TOKENS, type Block, type Identity } from "../kit";
+import { action, alert, amounts, checklist, escapeHtml, facts, FONT, lead, oneLine, paragraph, renderEmail, signature, textLink, title, TOKENS, webAddress, type Block, type Identity } from "../kit";
+import type { ResolvedBranding } from "../branding";
 import { dayOf, firstName, money, timeOf, when, type Email } from "./shared";
 
 /** The company as its customers know it. Everything here comes from the company's own settings. */
@@ -192,30 +193,66 @@ export function conversationEmail(input: { paragraphs: string[]; link?: { label:
 
 const URL_IN_TEXT = /https?:\/\/[^\s<>"']+[^\s<>"'.,;:!?)\]]/g;
 
-/** One paragraph of a person's text: escaped, line breaks kept, and web addresses made into links. */
-function letterParagraph(text: string): Block {
+/** One paragraph of a person's text: escaped, line breaks kept, and web addresses made into links in the company's colour. */
+function letterParagraph(text: string, link: string = TOKENS.violetDeep): Block {
   let html = "";
   let last = 0;
   for (const match of text.matchAll(URL_IN_TEXT)) {
     const url = match[0];
     html += escapeHtml(text.slice(last, match.index));
-    html += `<a href="${escapeHtml(url)}" target="_blank" style="color:${TOKENS.violetDeep};text-decoration:underline;word-break:break-all;" class="sx-link">${escapeHtml(url)}</a>`;
+    html += `<a href="${escapeHtml(url)}" target="_blank" style="color:${link};text-decoration:underline;word-break:break-all;" class="sx-link">${escapeHtml(url)}</a>`;
     last = (match.index ?? 0) + url.length;
   }
   html += escapeHtml(text.slice(last));
   return { html: `<p style="margin:0;font-family:${FONT};font-size:15px;line-height:24px;color:${TOKENS.text};" class="sx-text">${html.replace(/\n/g, "<br>")}</p>`, text };
 }
 
+/** The signature under a message: an optional closing line, then who it's from and how to reach them. */
+function brandSignature(branding: ResolvedBranding): Block[] {
+  const sig = branding.signature;
+  if (!sig.include) return [];
+  const closing = sig.closing ? paragraph(sig.closing) : { html: "", text: "" };
+  const block = signature({ name: sig.name ?? branding.companyName, company: sig.name ? branding.companyName : "", phone: sig.phone, email: sig.supportEmail, website: webAddress(sig.website) });
+  return [closing, block];
+}
+
+/** A note at the top of a test email, so nobody mistakes it for a real message. */
+function testNote(): Block {
+  return alert({ tone: "info", title: "This is a test of your email branding", body: "The message below is sample content, not a real booking, quote or invoice. Customers see the same design, with their own details." });
+}
+
 /**
- * A message a company's team or agent wrote (an invoice, a reminder, a reply), set in the company's own
- * frame: its name or logo on top, the words as written, and a footer saying it was sent via Selestial.
- * Nothing is added to what they wrote.
+ * A message a company's team or agent wrote (an invoice, a reminder, a reply), set in the company's
+ * branding (convex/lib/email/branding.ts): its logo and colours, its layout, the words exactly as written,
+ * its signature, and a footer saying why the person got it and that it was sent via Selestial. Branding
+ * never adds to or changes the words, and can't remove the footer.
+ *
+ * This is the one renderer for company email through Selestial: real sends, test emails and the settings
+ * preview all call it.
+ */
+export function brandedLetter(input: { branding: ResolvedBranding; text: string; reason: string; preheader?: string; test?: boolean; unsubscribeUrl?: string | null }): { html: string; text: string } {
+  const b = input.branding;
+  const paragraphs = input.text.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  const first = paragraphs.find((p) => !/https?:\/\//.test(p)) ?? paragraphs[0] ?? "";
+  const identity: Identity = { kind: "company", name: b.companyName, logoUrl: b.logoUrl, accent: b.accent, viaSelestial: true, address: b.address, look: { layout: b.layout, header: b.header, logoAlign: b.logoAlign } };
+  const signed = brandSignature(b);
+  const blocks = [...(input.test ? [testNote()] : []), ...paragraphs.map((p) => letterParagraph(p, b.accent)), ...signed];
+  const { html } = renderEmail({ identity, preheader: input.preheader ?? first.slice(0, 140), blocks, footer: { reason: input.reason, unsubscribeUrl: input.unsubscribeUrl } });
+  // The plain-text version is exactly what they wrote, then the signature and the footer.
+  const footer = `${oneLine(input.reason)}\n${b.companyName} · sent via Selestial${b.address ? ` · ${b.address}` : ""}`;
+  const sigText = signed.map((x) => x.text).filter(Boolean).join("\n\n");
+  const testText = input.test ? `TEST EMAIL: sample content only.\n\n` : "";
+  return { html, text: `${testText}${paragraphs.join("\n\n")}${sigText ? `\n\n${sigText}` : ""}\n\n—\n\n${footer}\n` };
+}
+
+/**
+ * The same frame from a company's basic brand, with no signature: what company mail looked like before
+ * a company set its email branding. Kept for callers that have only a CompanyBrand.
  */
 export function companyLetter(input: { brand: CompanyBrand; text: string; reason: string; preheader?: string }): { html: string; text: string } {
   const paragraphs = input.text.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
   const first = paragraphs.find((p) => !/https?:\/\//.test(p)) ?? paragraphs[0] ?? "";
-  const { html } = renderEmail({ identity: identity(input.brand), preheader: input.preheader ?? first.slice(0, 140), blocks: paragraphs.map(letterParagraph), footer: { reason: input.reason } });
-  // The plain-text version is exactly what they wrote, with the footer.
+  const { html } = renderEmail({ identity: identity(input.brand), preheader: input.preheader ?? first.slice(0, 140), blocks: paragraphs.map((p) => letterParagraph(p)), footer: { reason: input.reason } });
   const footer = `${oneLine(input.reason)}\n${oneLine(input.brand.name)} · sent via Selestial${input.brand.address ? ` · ${oneLine(input.brand.address)}` : ""}`;
   return { html, text: `${paragraphs.join("\n\n")}\n\n—\n\n${footer}\n` };
 }

@@ -7,6 +7,7 @@ import { defineSchema, defineTable } from "convex/server";
 import { agentAccessTables } from "./lib/agentAccess/schema";
 import { agreementTables } from "./lib/agreements/schema";
 import { calendarTables } from "./lib/calendar/schema";
+import { emailBrandingTables } from "./lib/email/brandingSchema";
 import { cleanersSettingsValidator, cleanersTables, engagementValidator } from "./lib/cleaners/schema";
 import { googleTables } from "./lib/google/schema";
 import { aiTables } from "./lib/ai/schema";
@@ -757,6 +758,8 @@ export default defineSchema({
       v.literal("verification_code"),
       /** The Owner's own test text from Business texting, to their own confirmed phone (convex/businessTexting.ts). */
       v.literal("texting_test"),
+      /** The Owner's own test of their email branding, to their own verified address (convex/emailBranding.ts). */
+      v.literal("email_branding_test"),
       /** A person on the team writing in a conversation from the Inbox (convex/smsConversations.ts reply). */
       v.literal("conversation_reply"),
       // Clients & Properties, to a client: a message a person wrote, now or scheduled (convex/clientConversations.ts).
@@ -790,6 +793,11 @@ export default defineSchema({
     channel: v.optional(v.union(v.literal("sms"), v.literal("email"))),
     subject: v.optional(v.string()),
     replyTo: v.optional(v.string()),
+    /**
+     * Email through Selestial's shared sender: the branding version its first attempt used
+     * (convex/lib/email/brandingStore.ts). Every retry renders with the same one.
+     */
+    brandingVersionId: v.optional(v.id("emailBrandingVersions")),
     applicationId: v.optional(v.id("applications")),
     applicantId: v.optional(v.id("applicants")),
     applicantLinkId: v.optional(v.id("applicantLinks")),
@@ -1123,6 +1131,7 @@ export default defineSchema({
   // ── Sales: the booking and proposal workspace and what it commits the company to (convex/lib/sales) ─
   ...salesTables,
   ...notifyTables,
+  ...emailBrandingTables,
   ...setupTables,
   // ── Activation: the first batch of agent work an Owner starts, and the in-app notification inbox ──
   ...activationTables,

@@ -375,7 +375,7 @@ describe("the overview and navigation", () => {
   const listed = SETTINGS_SECTIONS.filter((row) => !row.oldAddress);
 
   it("reaches every page the Owner may open, from the menu or from the page above it, and each one is a real page", () => {
-    expect(listed).toHaveLength(13);
+    expect(listed).toHaveLength(14);
     const menu = renderToStaticMarkup(<SettingsNavList sections={menuSections(sectionsFor("owner"))} activeId={undefined} />);
     for (const section of listed) {
       const html = section.parent ? renderToStaticMarkup(<ChildLinksList rows={childLinksFor(section.parent, "owner")} />) : menu;

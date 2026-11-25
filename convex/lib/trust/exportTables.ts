@@ -270,6 +270,10 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   { table: "bookingEvents", index: "by_company_experience_at" },
   // Notifications to members (convex/lib/notify/schema.ts): each person's choices. The notices themselves are messages.
   { table: "notificationPreferences", index: "by_company_member" },
+  // Email branding (convex/lib/email/brandingSchema.ts): the saved branding, the company's sending address, and what each send used.
+  { table: "emailBranding", index: "by_company", omit: ["pendingReply"], why: "A reply address waiting for its code, with the code's hash." },
+  { table: "emailSenderAddresses", index: "by_company" },
+  { table: "emailBrandingVersions", index: "by_company_hash" },
   // Migration (convex/lib/migration/schema.ts): the saved migration, its files and runs, and what each source record became.
   { table: "migrations", index: "by_company" },
   { table: "migrationLinks", index: "by_company_source_kind_external" },

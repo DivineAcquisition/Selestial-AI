@@ -96,7 +96,7 @@ export const claim = internalMutation({
     // after the message was planned stops it here. A refusal is final; only "not yet" holds it again.
     // Messages to applicants are asked this too, and then also pass the Recruiter's own gate below.
     // A verification code is only ever queued from the person's own link, at their request (lib/cleaners/outbox.ts).
-    const answer = await checkSend(ctx, { companyId: message.companyId, channel: message.channel ?? "sms", to: message.to, now: Date.now(), messageId: message._id, ...(await intentOf(ctx, message)), requestedCode: (message.purpose === "verification_code" && message.cleanerId !== undefined) || message.purpose === "texting_test" });
+    const answer = await checkSend(ctx, { companyId: message.companyId, channel: message.channel ?? "sms", to: message.to, now: Date.now(), messageId: message._id, ...(await intentOf(ctx, message)), requestedCode: (message.purpose === "verification_code" && message.cleanerId !== undefined) || message.purpose === "texting_test" || message.purpose === "email_branding_test" });
     if (!answer.ok) {
       // A sign-in code is only useful now, and its code travels only in this call: it is never held for later.
       // A check with the provider is never held for later (the replay window would pass): a person decides again.
@@ -327,7 +327,7 @@ export const claim = internalMutation({
     }
     if (billed.kind === "reserve") body = billed.body;
     // Email through Selestial's shared sender goes as "{Company} via Selestial", in the company's frame.
-    let email: { from: string; html: string; text: string; headers: Record<string, string> } | null = null;
+    let email: { from: string; html: string; text: string; headers: Record<string, string>; replyTo?: string } | null = null;
     if (channel === "email" && !via) {
       const framed = await companyEmail(ctx, message, { fromName, text: body });
       if (!framed.ok) {
@@ -339,7 +339,7 @@ export const claim = internalMutation({
         if (billed.kind === "reserve") await releaseCharge(ctx, billed.chargeId, "The email could not be prepared, so it was not sent.");
         return null;
       }
-      email = { from: framed.from, html: framed.html, text: framed.text, headers: {} };
+      email = { from: framed.from, html: framed.html, text: framed.text, headers: {}, ...(framed.replyTo ? { replyTo: framed.replyTo } : {}) };
     }
     // A check with the provider replays the first attempt under the same key. Telnyx answers a different body
     // under that key with 422, so a text that would now read differently (a link reissued, a name changed) is
@@ -360,7 +360,7 @@ export const claim = internalMutation({
     // The conversation's route is fixed by its first text, so a later change of default doesn't move it.
     if (channel === "sms" && message.to && from) await ensureConversation(ctx, message.companyId, message.to, quo ? { provider: "quo", sender: quo.sender, connectionId: quo.connectionId, senderId: quo.senderId } : { provider: "native", sender: from });
     const agentWritten = sendIntent.agent !== undefined && sendIntent.origin !== "integration" && sendIntent.origin !== "manual";
-    return { to: message.to, from, messagingProfileId, body, attempt, channel, subject: message.subject ?? "", replyTo: message.replyTo ?? "", fromName, via, email, threadId, notice: false, billing: billed.kind === "reserve" ? { chargeId: billed.chargeId, needsLock: billed.needsLock } : null, quo: quo ? { connectionId: quo.connectionId, senderId: quo.senderId, queuedAt: message.queuedAt, agentWritten, operational: sendIntent.category === "operational" } : null };
+    return { to: message.to, from, messagingProfileId, body, attempt, channel, subject: message.subject ?? "", replyTo: email?.replyTo ?? message.replyTo ?? "", fromName, via, email: email ? { from: email.from, html: email.html, text: email.text, headers: email.headers } : null, threadId, notice: false, billing: billed.kind === "reserve" ? { chargeId: billed.chargeId, needsLock: billed.needsLock } : null, quo: quo ? { connectionId: quo.connectionId, senderId: quo.senderId, queuedAt: message.queuedAt, agentWritten, operational: sendIntent.category === "operational" } : null };
   },
 });
 

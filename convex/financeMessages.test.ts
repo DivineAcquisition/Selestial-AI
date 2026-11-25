@@ -118,7 +118,8 @@ describe("Selestial prepares, the Owner approves", () => {
     expect(mockEmails[0].text).toMatch(/https:\/\/link\.selestial\.test\/c\/pay\/[\w-]+\.[\w-]+/);
     expect(mockEmails[0].text).not.toContain("{link}");
     // Sent through Selestial's shared sender: the company's name "via Selestial", in the company's own frame.
-    expect(mockEmails[0].from).toBe('"Alpha Cleaning via Selestial" <messages@mail.selestial.test>');
+    // From the company's own address on the shared domain, under its own name (docs/email/06-branding.md).
+    expect(mockEmails[0].from).toBe('"Alpha Cleaning" <alpha-cleaning@mail.selestial.test>');
     expect(mockEmails[0].html).toContain("Alpha Cleaning · sent via Selestial");
     expect(mockEmails[0].html).toContain("You&#39;re getting this because you&#39;re a customer of Alpha Cleaning.");
     expect(mockEmails[0].html).toMatch(/<a href="https:\/\/link\.selestial\.test\/c\/pay\//);
@@ -134,10 +135,8 @@ describe("Selestial prepares, the Owner approves", () => {
   it("says plainly why a message can't go, before and after approving, and never sends without permission", async () => {
     const s = await setup();
     const { draftId } = await s.as.mutation(api.financeMessages.prepare, { companyId: s.companyId, invoiceId: s.invoiceId, kind: "reminder" });
-    let item = (await s.as.query(api.financeMessages.queue, { companyId: s.companyId })).waiting[0];
-    expect(item.canSend).toMatchObject({ ok: false, code: "sender_not_ready" });
-    await s.as.mutation(api.compliance.updateMessaging, { companyId: s.companyId, emailFromAddress: "billing@alpha.example", quietHours: null });
-    item = (await s.as.query(api.financeMessages.queue, { companyId: s.companyId })).waiting[0];
+    // Selestial's sender is configured (the mock), so nothing for the company to set up: only permission is missing.
+    const item = (await s.as.query(api.financeMessages.queue, { companyId: s.companyId })).waiting[0];
     expect(item.canSend).toMatchObject({ ok: false, code: "no_permission" });
     // Approved anyway: the sending policy refuses it, and it shows as needing attention with the same words.
     const result = await s.as.mutation(api.financeMessages.approve, { companyId: s.companyId, draftId, bindsTo: item.bindsTo! });

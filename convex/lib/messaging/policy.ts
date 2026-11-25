@@ -13,6 +13,7 @@ import { CATEGORIES, CHANNELS, type Category, type Channel, type Origin, type Re
 import { localParts } from "../availability";
 import { AGENT_PROFILES } from "../departments";
 import { covers } from "../texting/plan";
+import { sharedSendingDomain } from "../email/senders";
 import type { Agent } from "../statuses";
 import { clock } from "../time";
 import { conversationAt, ownerBlocks, quoGaps, smsRouteFor } from "../quo/route";
@@ -100,8 +101,10 @@ export function senderGaps(messaging: Awaited<ReturnType<typeof readProfile>>["m
               : "Texting needs carrier registration approval. It has not been submitted.",
       });
     }
-  } else if (!messaging.emailFromAddress) {
-    gaps.push({ key: "email_from", words: "Email needs the address messages are sent from." });
+  } else if (!sharedSendingDomain()) {
+    // Selestial sends company email from each company's own address on its shared, verified domain
+    // (docs/email/06-branding.md). Nothing for the company to set: only Selestial's sender must be configured.
+    gaps.push({ key: "email_from", words: "Selestial's sending address for company email isn't set up on this account yet." });
   }
   return gaps;
 }

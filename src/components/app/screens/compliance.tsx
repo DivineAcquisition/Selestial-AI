@@ -278,7 +278,6 @@ function MessagingForm({ profile }: { profile: Profile }) {
   const [form, setForm] = useState({
     senderName: m.senderName ?? "",
     smsNumber: m.smsNumber ?? "",
-    emailFromAddress: m.emailFromAddress ?? "",
     quiet: m.quietHours !== null,
     start: m.quietHours?.start ?? "21:00",
     end: m.quietHours?.end ?? "08:00",
@@ -301,7 +300,6 @@ function MessagingForm({ profile }: { profile: Profile }) {
             companyId: company.companyId,
             senderName: form.senderName,
             smsNumber: form.smsNumber,
-            emailFromAddress: form.emailFromAddress,
             quietHours: form.quiet ? { start: form.start, end: form.end, appliesToOperational: form.operational } : null,
             frequency: { marketingPerWeek: Number(form.marketing), recruitingPerWeek: Number(form.recruiting) },
           });
@@ -315,9 +313,12 @@ function MessagingForm({ profile }: { profile: Profile }) {
       <Field label="Texting number" hint="Your number with the texting provider. Changing it means registering again.">
         <TextInput type="tel" value={form.smsNumber} onChange={set("smsNumber")} disabled={!owner} placeholder="+15125550100" />
       </Field>
-      <Field label="Emails are sent from" className="@lg:col-span-2">
-        <EmailInput value={form.emailFromAddress} onChange={(text) => set("emailFromAddress")({ target: { type: "text", value: text } } as unknown as React.ChangeEvent<HTMLInputElement>)} disabled={!owner} />
-      </Field>
+      <p className="text-sm text-muted-foreground @lg:col-span-2">
+        Emails go from your own address on Selestial&apos;s sending domain, so there&apos;s nothing to set up here.{" "}
+        <Link href="/app/settings/email-branding" className="font-medium text-brand-700 underline underline-offset-2">
+          See your sender, replies and email branding
+        </Link>
+      </p>
       <fieldset className="grid gap-3 rounded-xl border border-border p-3.5 @lg:col-span-2 @lg:grid-cols-2">
         <legend className="px-1 text-sm font-medium text-strong">Quiet hours</legend>
         <label className="flex items-center gap-2 text-sm @lg:col-span-2">

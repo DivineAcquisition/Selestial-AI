@@ -89,3 +89,36 @@ export function companySender(name: string | null | undefined): Sender {
   if (!clean) return { ok: false, words: "The company's name isn't set, so email can't say who it's from. Add it in Business details." };
   return { ok: true, from: header(/via selestial$/i.test(clean) ? clean : `${clean} via Selestial`, address) };
 }
+
+/**
+ * The shared sending domain company mail goes from: the domain of the configured company sender
+ * (COMPANY_EMAIL_FROM, then RECRUITER_EMAIL_FROM, then EMAIL_FROM). Null when none is configured, which
+ * means company email through Selestial isn't ready on this deployment.
+ */
+export function sharedSendingDomain(): string | null {
+  const address = addressOf(env("COMPANY_EMAIL_FROM")) ?? addressOf(env("RECRUITER_EMAIL_FROM")) ?? addressOf(env("EMAIL_FROM")) ?? (mock() ? MOCK_ADDRESS : null);
+  return address ? domainOf(address) : null;
+}
+
+const LOCAL_SHAPE = /^[a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])$/;
+
+/** A company's own address on the shared domain, from its assigned local part. Null when it can't be built. */
+export function companyAddress(local: string): string | null {
+  const domain = sharedSendingDomain();
+  if (!domain || !LOCAL_SHAPE.test(local) || local.includes("--")) return null;
+  return `${local}@${domain}`;
+}
+
+/**
+ * A company writing through Selestial from its own address on the shared domain
+ * (docs/email/06-branding.md): "Bay Area Cleaning Pros" <bay-area-cleaning-pros@mail.selestial.io>.
+ * The local part was assigned to this company alone (convex/lib/email/brandingStore.ts); the name is only
+ * ever the display name, cleaned so it can't break the header.
+ */
+export function brandedCompanySender(name: string | null | undefined, local: string): Sender {
+  const address = companyAddress(local);
+  if (!address) return { ok: false, words: NOT_SET };
+  const clean = displayName(name ?? "");
+  if (!clean) return { ok: false, words: "The company's name isn't set, so email can't say who it's from. Add it in Business details." };
+  return { ok: true, from: header(clean, address) };
+}

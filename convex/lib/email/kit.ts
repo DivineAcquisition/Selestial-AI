@@ -61,16 +61,27 @@ export function webAddress(url: string | null | undefined): string | null {
   return /^https?:\/\/[^\s"'<>]+$/i.test(trimmed) ? trimmed : null;
 }
 
-/** A hex colour a company chose, kept only if white text on it is readable (contrast ≥ 4.5:1). */
-export function safeAccent(color: string | null | undefined): string {
-  const hex = (color ?? "").trim();
-  if (!/^#[0-9a-f]{6}$/i.test(hex)) return TOKENS.violet;
+/** Relative luminance of a #RRGGBB colour (WCAG 2). */
+function luminanceOf(hex: string): number {
   const channel = (i: number) => {
     const c = parseInt(hex.slice(i, i + 2), 16) / 255;
     return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
   };
-  const luminance = 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
-  return 1.05 / (luminance + 0.05) >= 4.5 ? hex.toUpperCase() : TOKENS.violet;
+  return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
+}
+
+/** The WCAG contrast ratio of two #RRGGBB colours, 1 to 21. Anything that isn't such a colour reads 1. */
+export function contrastRatio(a: string, b: string): number {
+  if (!/^#[0-9a-f]{6}$/i.test(a) || !/^#[0-9a-f]{6}$/i.test(b)) return 1;
+  const [hi, lo] = [luminanceOf(a), luminanceOf(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/** A hex colour a company chose, kept only if white text on it is readable (contrast ≥ 4.5:1). */
+export function safeAccent(color: string | null | undefined): string {
+  const hex = (color ?? "").trim();
+  if (!/^#[0-9a-f]{6}$/i.test(hex)) return TOKENS.violet;
+  return contrastRatio(hex, "#FFFFFF") >= 4.5 ? hex.toUpperCase() : TOKENS.violet;
 }
 
 // ── Blocks ───────────────────────────────────────────────────────────────────────────────────────
@@ -276,7 +287,15 @@ export type Identity =
    */
   | { kind: "platform"; markUrl?: string | null }
   /** A cleaning company writing to its customers, applicants or cleaners. */
-  | { kind: "company"; name: string; logoUrl?: string | null; accent?: string | null; viaSelestial: boolean; address?: string | null };
+  | { kind: "company"; name: string; logoUrl?: string | null; accent?: string | null; viaSelestial: boolean; address?: string | null; look?: Look };
+
+/**
+ * A company's chosen presentation (convex/lib/email/branding.ts). Absent means the classic frame exactly
+ * as it has always been. Every value is one of a few fixed choices; nothing here is free-form.
+ */
+export type Look = { layout: "classic" | "banner" | "letter"; header: "light" | "dark"; logoAlign: "left" | "center" };
+
+const DARK_HEADER = "#1B1830";
 
 export type Footer = {
   /** Why this person got it: "You're getting this because you're the Owner of Sparkle Cleaning." */
@@ -299,12 +318,16 @@ function header(identity: Identity): Block {
   }
   const logo = webAddress(identity.logoUrl);
   const name = escapeHtml(oneLine(identity.name));
-  return {
-    html: logo
-      ? `<img src="${escapeHtml(logo)}" height="40" alt="${name}" style="display:block;height:40px;max-width:200px;border:0;font-family:${FONT};font-size:18px;font-weight:700;color:${TOKENS.text};">`
-      : `<span style="font-family:${FONT};font-size:18px;line-height:24px;font-weight:700;color:${safeAccent(identity.accent) === TOKENS.violet ? TOKENS.text : safeAccent(identity.accent)};" class="sx-text">${name}</span>`,
-    text: oneLine(identity.name),
-  };
+  const dark = identity.look?.header === "dark";
+  const center = identity.look?.logoAlign === "center";
+  // With images off, the alt text is the company's name, in the header's own colour.
+  const img = logo
+    ? `<img src="${escapeHtml(logo)}" height="40" alt="${name}" style="display:${center ? "inline-block" : "block"};height:40px;max-width:200px;border:0;font-family:${FONT};font-size:18px;font-weight:700;color:${dark ? "#FFFFFF" : TOKENS.text};">`
+    : null;
+  const word = `<span style="font-family:${FONT};font-size:18px;line-height:24px;font-weight:700;color:${dark ? "#FFFFFF" : safeAccent(identity.accent) === TOKENS.violet ? TOKENS.text : safeAccent(identity.accent)};"${dark ? "" : ' class="sx-text"'}>${name}</span>`;
+  // A logo on a dark header sits on a small white plate, so a dark logo never disappears into it.
+  const mark = img && dark ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0"${center ? ' align="center"' : ""}><tr><td bgcolor="#FFFFFF" style="background-color:#FFFFFF;border-radius:8px;padding:6px 10px;">${img}</td></tr></table>` : (img ?? word);
+  return { html: mark, text: oneLine(identity.name) };
 }
 
 function footer(identity: Identity, f: Footer): Block {
@@ -349,8 +372,42 @@ const DARK_CSS = `
 [data-ogsb] .sx-card{background-color:${TOKENS.dark.card}!important;}
 @media only screen and (max-width:620px){
   .sx-pad{padding:24px 20px!important;}
+  .sx-band{padding:16px 20px!important;}
   .sx-outer{padding:16px 10px!important;}
 }`;
+
+/**
+ * The header and the card, in the company's chosen layout. Without a look (and for Selestial's own mail)
+ * it is the classic frame: the header above a white card.
+ */
+function frame(identity: Identity, head: string, content: string): string {
+  const look = identity.kind === "company" ? identity.look : undefined;
+  const dark = look?.header === "dark";
+  const align = look?.logoAlign === "center" ? "center" : "left";
+  const card = `bgcolor="${TOKENS.card}" style="background-color:${TOKENS.card};border:1px solid ${TOKENS.border};border-radius:14px;`;
+  if (look?.layout === "banner") {
+    const band = dark ? `bgcolor="${DARK_HEADER}" style="background-color:${DARK_HEADER};border-radius:13px 13px 0 0;padding:20px 36px;" class="sx-band"` : `style="border-bottom:1px solid ${TOKENS.border};padding:20px 36px;" class="sx-rule sx-band"`;
+    return `<tr><td ${card}padding:0;" class="sx-card">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr><td align="${align}" ${band}>${head}</td></tr>
+          <tr><td style="padding:28px 36px 32px 36px;" class="sx-pad">${content}</td></tr>
+        </table>
+      </td></tr>`;
+  }
+  if (look?.layout === "letter") {
+    const top = dark ? `<tr><td align="${align}" bgcolor="${DARK_HEADER}" style="background-color:${DARK_HEADER};border-radius:10px;padding:14px 18px;">${head}</td></tr><tr><td style="height:22px;line-height:22px;font-size:0;">&nbsp;</td></tr>` : `<tr><td align="${align}" style="padding:0 0 18px 0;border-bottom:1px solid ${TOKENS.border};" class="sx-rule">${head}</td></tr><tr><td style="height:22px;line-height:22px;font-size:0;">&nbsp;</td></tr>`;
+    return `<tr><td bgcolor="${TOKENS.card}" style="background-color:${TOKENS.card};padding:8px 12px;" class="sx-card">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${top}<tr><td>${content}</td></tr></table>
+      </td></tr>`;
+  }
+  const top = dark
+    ? `<tr><td align="${align}" bgcolor="${DARK_HEADER}" style="background-color:${DARK_HEADER};border-radius:14px;padding:16px 20px;">${head}</td></tr><tr><td style="height:14px;line-height:14px;font-size:0;">&nbsp;</td></tr>`
+    : `<tr><td align="${align}" style="padding:0 4px 18px 4px;">${head}</td></tr>`;
+  return `${top}
+      <tr><td ${card}padding:32px 36px;" class="sx-card sx-pad">
+        ${content}
+      </td></tr>`;
+}
 
 /**
  * A whole email. `blocks` is the card's content in order; empty blocks are skipped. The plain-text
@@ -362,6 +419,7 @@ export function renderEmail(input: { identity: Identity; preheader: string; bloc
   const blocks = input.blocks.filter((b) => b.html);
   const body = blocks.map((b, i) => `${i ? spacer(20) : ""}<tr><td>${b.html}</td></tr>`).join("");
   const preheader = escapeHtml(oneLine(input.preheader));
+  const page = input.identity.kind === "company" && input.identity.look?.layout === "letter" ? TOKENS.card : TOKENS.page;
   const html = `<!doctype html>
 <html lang="${input.lang ?? "en"}" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
@@ -374,16 +432,13 @@ export function renderEmail(input: { identity: Identity; preheader: string; bloc
 <!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
 <style>${DARK_CSS}</style>
 </head>
-<body style="margin:0;padding:0;background-color:${TOKENS.page};" class="sx-page">
-<div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;mso-hide:all;font-size:1px;line-height:1px;color:${TOKENS.page};">${preheader}${"&#8199;&#65279;&#847; ".repeat(40)}</div>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${TOKENS.page}" style="background-color:${TOKENS.page};" class="sx-page">
+<body style="margin:0;padding:0;background-color:${page};" class="sx-page">
+<div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;mso-hide:all;font-size:1px;line-height:1px;color:${page};">${preheader}${"&#8199;&#65279;&#847; ".repeat(40)}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${page}" style="background-color:${page};" class="sx-page">
   <tr><td align="center" style="padding:32px 16px;" class="sx-outer">
     <!--[if mso]><table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;">
-      <tr><td style="padding:0 4px 18px 4px;">${head.html}</td></tr>
-      <tr><td bgcolor="${TOKENS.card}" style="background-color:${TOKENS.card};border:1px solid ${TOKENS.border};border-radius:14px;padding:32px 36px;" class="sx-card sx-pad">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${body}</table>
-      </td></tr>
+      ${frame(input.identity, head.html, `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${body}</table>`)}
       <tr><td style="padding:20px 8px 0 8px;">${foot.html}</td></tr>
     </table>
     <!--[if mso]></td></tr></table><![endif]-->

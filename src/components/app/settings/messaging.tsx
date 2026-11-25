@@ -12,6 +12,7 @@ import { ChevronRight } from "@/components/icons";
 function Related() {
   const { role } = useCompany();
   const rows = [
+    { href: "/app/settings/email-branding", label: "Email branding", detail: "Your logo, colours, sender name, reply address and signature on emails sent through Selestial." },
     { href: "/app/settings/integrations", label: "Connected apps", detail: "Your texting number's provider, Gmail and other connections." },
     ...(role === "owner" ? [{ href: "/app/settings/billing?tab=messaging", label: "Messaging charges", detail: "Your messaging balance, top-ups and what texts cost, in Plan & usage." }] : []),
     { href: "/app/settings/business#identity", label: "Legal details", detail: "The legal name, address and representative your registration uses, in Company profile." },
