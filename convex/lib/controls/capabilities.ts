@@ -100,6 +100,22 @@ export const CAPABILITIES: Record<string, Capability> = {
   "quality.propose_improvement": ready([], { note: "A proposal only. You decide whether anything changes." }),
 };
 
+Object.assign(CAPABILITIES, {
+  "care.answer_question": ready(["outreach"], { routine: true, ai: true, note: "Only what the visit, plan and invoice records say. It never gives an arrival estimate the record doesn't have." }),
+  "care.acknowledge": ready(["outreach"], { routine: true, ai: true }),
+  "care.send_invoice_link": ready(["outreach"], { routine: true, note: "The existing invoice's own link. Care never creates an invoice, marks one paid, refunds or charges." }),
+  "care.complaint_intake": ready(["outreach"], { note: "Opens or joins Retention's recovery case for the visit, which starts Quality's investigation. Care states no finding, refund or re-clean time." }),
+  "care.send_update": ready(["outreach"], { routine: true }),
+  "care.update_preferences": ready([], { note: "A preference for one visit goes on that visit only. A standing one goes on the property or the client." }),
+  "care.update_access": ready([], { note: "Written to the property's restricted access field. The code never appears in notices, summaries or the activity." }),
+  "care.reschedule_visit": ready(["outreach"], { note: "Only times Dispatch's capacity check offers. Moving re-checks the time and the visit, then asks the crew again." }),
+  "care.skip_visit": ready(["outreach"], { note: "One visit only. The rest of a recurring series is unchanged." }),
+  "care.change_plan": ready(["outreach"], { note: "Through Retention's plan-change code, for exactly the visits the client was shown. Retention is told; it never delays a cancellation." }),
+  "care.add_extra": missing("Care doesn't change a visit's price yet. It prepares the extra with its published price, and a person adds it to the visit."),
+  "care.apply_fee": missing("Care never applies a fee. When your policy sets one, the request comes to you; Finance adds it if you decide to."),
+  "care.hand_off": ready([]),
+} satisfies Record<string, Capability>);
+
 export function capabilityOf(action: string): Capability {
   return CAPABILITIES[action] ?? missing("This isn't something an agent can do.");
 }
@@ -110,4 +126,5 @@ export const AGENT_PLAYBOOK: Record<Agent, string> = {
   recruiter: "/app/agents/recruiter/hiring-setup",
   retention: "/app/agents/retention/playbook",
   quality: "/app/agents/quality/playbook",
+  "customer-care": "/app/agents/customer-care/care-setup",
 };

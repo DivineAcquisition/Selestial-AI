@@ -153,6 +153,9 @@ export const subjectValidator = v.union(
   v.object({ table: v.literal("serviceSetups"), id: v.id("serviceSetups") }),
   // Retention (convex/lib/retention/schema.ts).
   v.object({ table: v.literal("retentionCases"), id: v.id("retentionCases") }),
+  // Client Care (convex/lib/clientCare/schema.ts).
+  v.object({ table: v.literal("careRequests"), id: v.id("careRequests") }),
+  v.object({ table: v.literal("careSteps"), id: v.id("careSteps") }),
   v.object({ table: v.literal("retentionSignals"), id: v.id("retentionSignals") }),
   v.object({ table: v.literal("retentionActions"), id: v.id("retentionActions") }),
   v.object({ table: v.literal("retentionFeedback"), id: v.id("retentionFeedback") }),

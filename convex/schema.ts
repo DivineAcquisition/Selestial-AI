@@ -42,6 +42,7 @@ import { quickbooksTables } from "./lib/quickbooks/schema";
 import { migrationMarkValidator, migrationTables } from "./lib/migration/schema";
 import { retentionSettingsValidator, retentionTables } from "./lib/retention/schema";
 import { qualitySettingsValidator, qualityTables } from "./lib/quality/schema";
+import { careSettingsValidator, clientCareTables } from "./lib/clientCare/schema";
 import { servicesTables } from "./lib/services/schema";
 import { tutorialTables } from "./lib/tutorials/schema";
 import { noticeEventValidator, noticeFactsValidator } from "./lib/notify/catalog";
@@ -110,6 +111,7 @@ export const aboutValidator = v.union(
   v.object({ table: v.literal("retentionCases"), id: v.id("retentionCases") }),
   v.object({ table: v.literal("qualityCases"), id: v.id("qualityCases") }),
   v.object({ table: v.literal("qualityReviews"), id: v.id("qualityReviews") }),
+  v.object({ table: v.literal("careRequests"), id: v.id("careRequests") }),
 );
 
 /**
@@ -161,6 +163,9 @@ export const proposalValidator = v.union(
   v.object({ kind: v.literal("quality_request"), requestId: v.id("qualityRequests"), stamp: v.string() }),
   /** Adopt one improvement Quality proposed: the change named, carried out by the record's owner. */
   v.object({ kind: v.literal("quality_improvement"), improvementId: v.id("qualityImprovements") }),
+  // Client Care (convex/lib/clientCare/approvals.ts carries it out).
+  /** Carry out one step Care prepared on a request, exactly as prepared, if the request and its records have not moved on since. */
+  v.object({ kind: v.literal("care_action"), stepId: v.id("careSteps"), stamp: v.string() }),
 );
 
 /** How Dispatch works for this company. Every value is the owner's, with a default in code. */
@@ -280,6 +285,8 @@ export default defineSchema({
     retention: v.optional(retentionSettingsValidator),
     /** How Quality works for this company: request timing and limits, link length, what it may read (convex/lib/quality/settings.ts). */
     quality: v.optional(qualitySettingsValidator),
+    /** How Client Care works for this company: request types, policy, tone, escalation and response times (convex/lib/clientCare/settings.ts). */
+    clientCare: v.optional(careSettingsValidator),
     /** The Sales Playbook: voice, what the agent handles, approved answers, follow-up timing, deposits and quote terms (convex/lib/sales/settings.ts). */
     sales: v.optional(salesSettingsValidator),
     /** Where the company works, when appointments may be, and its services (convex/lib/settings/business.ts). */
@@ -785,6 +792,8 @@ export default defineSchema({
       v.literal("quality_reminder"),
       // Selestial, to a member of the company: a notification (convex/lib/notify).
       v.literal("member_notice"),
+      // Client Care, to a client: an answer, a question, a confirmation or an update about their request (convex/lib/clientCare/outbox.ts).
+      v.literal("client_care_reply"),
     ),
     /** Absent means a text. */
     channel: v.optional(v.union(v.literal("sms"), v.literal("email"))),
@@ -810,6 +819,9 @@ export default defineSchema({
     retentionActionId: v.optional(v.id("retentionActions")),
     /** Quality messages: the request the message carries. Its link is made at the moment of sending. */
     qualityRequestId: v.optional(v.id("qualityRequests")),
+    /** Client Care messages: the request and the step the message carries out, checked again at the moment of sending. */
+    careRequestId: v.optional(v.id("careRequests")),
+    careStepId: v.optional(v.id("careSteps")),
     /** A message in a Sales conversation: the opportunity it belongs to. */
     opportunityId: v.optional(v.id("salesOpportunities")),
     /** Finance messages: the customer and the invoice whose pay link the message carries as "{link}". */
@@ -897,6 +909,7 @@ export default defineSchema({
     .index("by_company_invoice", ["companyId", "invoiceId"])
     .index("by_company_cleaner", ["companyId", "cleanerId", "queuedAt"])
     .index("by_company_customer", ["companyId", "customerId", "queuedAt"])
+    .index("by_company_care_request", ["companyId", "careRequestId", "queuedAt"])
     .index("by_company_opportunity", ["companyId", "opportunityId", "queuedAt"])
     .index("by_company_member", ["companyId", "memberId", "queuedAt"])
     .index("by_provider_message", ["provider", "providerMessageId"])
@@ -1130,6 +1143,8 @@ export default defineSchema({
   ...retentionTables,
   // ── Quality: standards, reviews, cases, findings, requests, corrections, improvements, runs, communications (convex/lib/quality/schema.ts) ─
   ...qualityTables,
+  // ── Client Care: requests, the messages it read, their history, its steps and its runs (convex/lib/clientCare/schema.ts) ─
+  ...clientCareTables,
   // ── Migration: tutorials for moving in, and records brought from another system (convex/lib/tutorials, lib/migration) ─
   ...tutorialTables,
   // ── Operations: incidents, their history, and when each monitoring check last ran (convex/lib/operations) ─

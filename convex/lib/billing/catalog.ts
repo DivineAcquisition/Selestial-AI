@@ -64,7 +64,8 @@ export const AGENT_CATALOG: Record<AgentId, { name: string; department: "growth"
   dispatch: { name: "Dispatch", department: "operations", plans: ["operate", "expand"] },
   marketing: { name: "Marketing", department: "growth", plans: ["expand"] },
   quality: { name: "Quality", department: "operations", plans: ["expand"] },
-  "customer-care": { name: "Care", department: "operations", plans: ["expand"] },
+  // Every plan, by the Owner's decision of November 25, 2026 (docs/care/00-architecture.md): it is the front door for clients' requests.
+  "customer-care": { name: "Client Care", department: "operations", plans: ["operate", "expand"] },
 };
 
 /**
@@ -74,7 +75,8 @@ export const AGENT_CATALOG: Record<AgentId, { name: string; department: "growth"
  *   recruiter   released: the hiring inbox, invitations, applicant pages, screening, interviews, offers
  *               and onboarding through readiness approval run end to end, with its own screens under Team › Recruiter.
  *   sales, retention   released: each follows its own built flag in lib/departments.
- *   marketing, quality, customer-care   not released: no workflow.
+ *   quality, customer-care   released: each follows its own built flag in lib/departments.
+ *   marketing   not released: no workflow.
  *
  * Quality's photo and video review and Marketing's creative requests run in Chat today, but those agents
  * are not released, so (the owner's decision of November 16, 2026) nobody gets them until they are.
@@ -87,7 +89,8 @@ const RELEASED: Record<AgentId, boolean> = {
   marketing: false,
   // Released with its workflows. Plan access is unchanged: the catalog above still puts Quality on Expand only.
   quality: AGENT_PROFILES.quality.built,
-  "customer-care": false,
+  // Released with its workflows on November 25, 2026 (docs/care/00-architecture.md).
+  "customer-care": AGENT_PROFILES["customer-care"].built,
 };
 
 export function agentReleased(agent: AgentId): boolean {

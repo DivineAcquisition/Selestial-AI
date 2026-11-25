@@ -42,6 +42,7 @@ const RESPONSIBILITY: Record<Agent, string> = {
   recruiter: "Answers applicants, collects what's missing, invites and schedules interviews.",
   retention: "Handles concerns after a visit, offers remedies inside your limits and asks for feedback.",
   quality: "Reviews completed visits against your standard, investigates concerns and verifies corrections.",
+  "customer-care": "Answers clients' requests from the record, coordinates changes with the agent that owns them and keeps the client informed until done.",
 };
 
 const snapshot = (policy: PolicySnapshot, key: string): PermissionSnapshot => policy.permissions.find((row) => row.action === key)!;
