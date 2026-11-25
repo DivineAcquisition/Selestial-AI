@@ -19,6 +19,8 @@ import { customerClaim } from "./lib/finance/outbox";
 import { afterCareMessage } from "./lib/retention/actions";
 import { careClaim } from "./lib/retention/outbox";
 import { afterQualityMessage, qualityClaim } from "./lib/quality/outbox";
+import { careReplyClaim } from "./lib/clientCare/outbox";
+import { afterCareReply } from "./lib/clientCare/steps";
 import { bookingClaim } from "./lib/booking/messages";
 import { statementClaim } from "./lib/finance/cleanerOutbox";
 import { linkOrigin, linkPath, linkState, NO_LINK_ADDRESS, tokenFor } from "./lib/dispatch/links";
@@ -118,6 +120,7 @@ export const claim = internalMutation({
       }
       if (message.retentionActionId) await afterCareMessage(ctx, { ...message, status: "not_sent", problem: answer.words });
       if (message.qualityRequestId) await afterQualityMessage(ctx, { ...message, status: "not_sent", problem: answer.words });
+      if (message.careRequestId) await afterCareReply(ctx, { ...message, status: "not_sent", problem: answer.words });
       return null;
     }
     // Lanes and throughput (lib/messaging/throughput.ts): over the company's or the number's share, the text stays
@@ -218,6 +221,19 @@ export const claim = internalMutation({
       }
       body = statement.body;
       fromName = statement.fromName;
+    }
+    if (message.careRequestId) {
+      // A Client Care message: the request still open and Care's to write in, the draft not overtaken by a newer word from the client.
+      const care = await careReplyClaim(ctx, message);
+      if ("problem" in care) {
+        if (message.reconcile) return backToUnconfirmed(ctx, message, `Not checked with the provider: ${care.problem}`);
+        await ctx.db.patch(message._id, { status: "not_sent", problem: care.problem });
+        await logStep(ctx, message, { type: "message.not_sent", data: { purpose: message.purpose } });
+        await afterCareReply(ctx, { ...message, status: "not_sent", problem: care.problem });
+        return null;
+      }
+      body = care.body;
+      fromName = care.fromName;
     }
     if (message.invoiceId) {
       // A message to a customer about an invoice: still true now, and its pay link made only now.
@@ -448,6 +464,7 @@ export const settle = internalMutation({
       }
       if (message.retentionActionId) await afterCareMessage(ctx, (await ctx.db.get(message._id))!);
       if (message.qualityRequestId) await afterQualityMessage(ctx, (await ctx.db.get(message._id))!);
+      if (message.careRequestId) await afterCareReply(ctx, (await ctx.db.get(message._id))!);
       return null;
     }
     // The company's inbox stopped letting Selestial send as it tried: nothing went, so the message waits
@@ -498,6 +515,7 @@ export const settle = internalMutation({
     if (message.applicationId) await afterApplicantMessage(ctx, (await ctx.db.get(message._id))!, "failed");
     else if (message.retentionActionId) await afterCareMessage(ctx, { ...message, status: "failed", problem: result.problem });
     else if (message.qualityRequestId) await afterQualityMessage(ctx, { ...message, status: "failed", problem: result.problem });
+    else if (message.careRequestId) await afterCareReply(ctx, { ...message, status: "failed", problem: result.problem });
     else if (!message.invoiceId && !message.bookingSessionId && !message.salesLinks && message.purpose !== "earnings_statement") await afterMessageFailed(ctx, { ...message, status: "failed", problem: result.problem });
     else if (message.opportunityId) await afterSalesMessage(ctx, { ...message, status: "failed", problem: result.problem });
     return null;
@@ -700,6 +718,7 @@ async function afterNotSent(ctx: MutationCtx, message: Doc<"messages">, problem:
   }
   if (message.retentionActionId) await afterCareMessage(ctx, { ...message, status: "not_sent", problem });
   if (message.qualityRequestId) await afterQualityMessage(ctx, { ...message, status: "not_sent", problem });
+  if (message.careRequestId) await afterCareReply(ctx, { ...message, status: "not_sent", problem });
   if (message.applicationId) await afterApplicantMessage(ctx, { ...message, status: "not_sent", problem }, "failed");
   if (message.opportunityId) await afterSalesMessage(ctx, { ...message, status: "not_sent", problem });
 }
@@ -735,6 +754,8 @@ async function applyOutcome(ctx: MutationCtx, message: Doc<"messages">, outcome:
     if (args.outcome === "delivered") {
       await ctx.db.patch(message._id, { status: "delivered", deliveredAt: now, deliveryUnconfirmedAt: undefined });
       await logStep(ctx, message, { type: "message.delivered", data: { purpose: message.purpose } });
+      // Client Care keeps accepted and delivered apart on its step.
+      if (message.careRequestId) await afterCareReply(ctx, (await ctx.db.get(message._id))!);
       return "delivered" as const;
     }
     const bounced = args.outcome === "bounced";
@@ -756,6 +777,7 @@ async function applyOutcome(ctx: MutationCtx, message: Doc<"messages">, outcome:
     if (message.applicationId) await afterApplicantMessage(ctx, (await ctx.db.get(message._id))!, "failed");
     else if (message.retentionActionId) await afterCareMessage(ctx, { ...message, status: "failed", problem });
     else if (message.qualityRequestId) await afterQualityMessage(ctx, { ...message, status: "failed", problem });
+    else if (message.careRequestId) await afterCareReply(ctx, { ...message, status: "failed", problem });
     else if (!message.invoiceId && !message.bookingSessionId && !message.salesLinks && message.purpose !== "earnings_statement") await afterMessageFailed(ctx, { ...message, status: "failed", problem });
     else if (message.opportunityId) await afterSalesMessage(ctx, { ...message, status: "failed", problem });
     return bounced ? ("bounced" as const) : ("failed" as const);
@@ -793,6 +815,7 @@ export const sweepStuck = internalMutation({
       if (message.applicationId) await afterApplicantMessage(ctx, (await ctx.db.get(message._id))!, "failed");
       else if (message.retentionActionId) await afterCareMessage(ctx, { ...message, status: "unconfirmed", problem });
       else if (message.qualityRequestId) await afterQualityMessage(ctx, { ...message, status: "unconfirmed", problem });
+      else if (message.careRequestId) await afterCareReply(ctx, { ...message, status: "unconfirmed", problem });
       else if (!message.invoiceId && !message.bookingSessionId && !message.salesLinks && message.purpose !== "earnings_statement") await afterMessageFailed(ctx, { ...message, status: "unconfirmed", problem });
     else if (message.opportunityId) await afterSalesMessage(ctx, { ...message, status: "unconfirmed", problem });
     }

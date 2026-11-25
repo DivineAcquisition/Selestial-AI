@@ -39,11 +39,11 @@ export function agentsOf(purposes: readonly InboxPurpose[]): Agent[] {
 }
 
 /** Which purpose a message would go out under, or null for mail that always uses Selestial's shared sender. */
-export function inboxPurposeOf(message: Pick<Doc<"messages">, "purpose" | "applicationId" | "salesLinks" | "opportunityId" | "invoiceId" | "bookingSessionId" | "channel">): InboxPurpose | null {
+export function inboxPurposeOf(message: Pick<Doc<"messages">, "purpose" | "applicationId" | "salesLinks" | "opportunityId" | "invoiceId" | "bookingSessionId" | "channel" | "careRequestId">): InboxPurpose | null {
   if ((message.channel ?? "sms") !== "email") return null;
   if (message.applicationId) return "hiring";
   if (message.salesLinks || message.opportunityId) return "sales";
-  if (message.invoiceId || message.bookingSessionId) return "care";
+  if (message.invoiceId || message.bookingSessionId || message.careRequestId) return "care";
   return null;
 }
 
@@ -76,6 +76,11 @@ export const WAITING_FOR_INBOX = "inbox_disconnected";
  * notification is not the applicant's thread, so it's never joined.
  */
 export async function threadFor(ctx: Ctx, message: Doc<"messages">, connectionId: Id<"mailboxConnections">): Promise<string | null> {
+  // A Client Care reply joins the client's own thread in the inbox it came from.
+  if (message.careRequestId) {
+    const request = await ctx.db.get(message.careRequestId);
+    return request && request.conversation.mailboxConnectionId === connectionId ? (request.conversation.threadId ?? null) : null;
+  }
   if (!message.applicationId || !message.to) return null;
   const to = message.to.trim().toLowerCase();
   const rows = await ctx.db

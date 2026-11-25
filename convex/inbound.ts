@@ -30,6 +30,7 @@ import { liveTaskByKey, openTask, setTaskState } from "./lib/taskState";
 import { ensureConversation } from "./lib/quo/route";
 import { platformNumbers } from "./lib/platform/senders";
 import { answerNoReply } from "./platformSms";
+import { receive as careReceive } from "./lib/clientCare/intake";
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -165,6 +166,16 @@ async function handleSms(ctx: MutationCtx, args: ReceiveSms): Promise<InboundRes
       if (!contactOnly && (await salesInboundSms(ctx, { companyId, from, body: args.body, receivedAt: args.receivedAt, known, providerId: args.providerId }))) {
         if (clients.length > 0) await fileClientText(ctx, { companyId, from, excerpt: excerpt(args.body) ?? "", kind: "message", at: args.receivedAt }, clients);
         return { kind: "ignored", replied: false };
+      }
+      // A known client's text, or one of its contacts', is Client Care's: it reads it against their visits, plans and
+      // invoices and works the request (convex/lib/clientCare/intake.ts). It is kept in the client's conversation too.
+      // Care also tells Retention of a stated wish to cancel, so Retention's own reading of the text is not queued.
+      if (clients.length > 0) {
+        const care = await careReceive(ctx, { companyId, channel: "sms", from, text: args.body, receivedAt: args.receivedAt, providerKey: args.providerId ?? `sms:${from}:${args.receivedAt}`, conversationId: conversation._id });
+        if (care.taken) {
+          if (!care.repeated) await fileClientText(ctx, { companyId, from, excerpt: excerpt(args.body) ?? "", kind: "message", at: args.receivedAt }, clients);
+          return { kind: "ignored", replied: false };
+        }
       }
       // A client's contact is on no record the sending policy reads, so their text is filed under the client.
       const people: RecipientRecord[] = known.length > 0 ? known : await contactSenders(ctx, clients, from);

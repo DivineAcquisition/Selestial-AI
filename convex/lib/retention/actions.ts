@@ -29,6 +29,7 @@ import { addLocalDays, clock, dayName, startOfLocalDay } from "../time";
 import { addEntry, closeCase, DAY, HOUR, moveCase, permitFor, propertyName, RETENTION, SYSTEM } from "./cases";
 import { issueCareLink } from "./links";
 import { careChannel, queueCareMessage, type CarePurpose } from "./outbox";
+import { relayToCare } from "../clientCare/relay";
 import { applyPlanChange, CHANGE_OUTCOME, NEEDS_PERSON } from "./planChanges";
 import { retentionSettings } from "./settings";
 import { enqueueQualityRun } from "../quality/runs";
@@ -340,7 +341,8 @@ export async function carryOut(ctx: MutationCtx, company: Doc<"companies">, acti
       linkId = link._id;
     }
     const sending = await setAction(ctx, action, { status: "underway", linkId });
-    const message = await queueCareMessage(ctx, { company, customer, action: sending, purpose, channel: action.message.channel, subject: action.message.subject, body: action.message.body, jobId: row.jobId, dedupeKey: `retention:${action._id}`, actor: decidedBy.kind === "agent" || action.createdBy.kind === "agent" ? RETENTION : decidedBy });
+    // One voice: when Client Care holds this case's conversation, Care sends the step in the client's own thread (lib/clientCare/relay.ts).
+    const message = (await relayToCare(ctx, company, row, sending)) ?? (await queueCareMessage(ctx, { company, customer, action: sending, purpose, channel: action.message.channel, subject: action.message.subject, body: action.message.body, jobId: row.jobId, dedupeKey: `retention:${action._id}`, actor: decidedBy.kind === "agent" || action.createdBy.kind === "agent" ? RETENTION : decidedBy }));
     await ctx.db.patch(action._id, { messageId: message._id });
     if (message.status === "not_sent") {
       // Nothing went out. The case says so plainly instead of reading as "sent".

@@ -14,7 +14,7 @@
  * happen in production.
  */
 
-export const TASK_IDS = ["chat_response_standard", "chat_response_advanced", "hiring_message_reading", "image_generation", "image_edit", "video_generation", "applicant_evaluation", "follow_up_draft", "dispatch_exception_analysis", "retention_assessment", "quality_review", "agreement_draft", "campaign_generation", "research_brief", "sales_message_reading", "hiring_reply_draft"] as const;
+export const TASK_IDS = ["chat_response_standard", "chat_response_advanced", "hiring_message_reading", "image_generation", "image_edit", "video_generation", "applicant_evaluation", "follow_up_draft", "dispatch_exception_analysis", "retention_assessment", "quality_review", "agreement_draft", "campaign_generation", "research_brief", "sales_message_reading", "hiring_reply_draft", "care_message_reading"] as const;
 export type Task = (typeof TASK_IDS)[number];
 
 export const TASKS: Record<Task, { label: string; unit: string; available: boolean }> = {
@@ -93,6 +93,11 @@ export const TASKS: Record<Task, { label: string; unit: string; available: boole
     unit: "One customer message read, and one reply worded, by the AI reader for the Sales agent. Messages read by the company's rules are not charged.",
     available: true,
   },
+  care_message_reading: {
+    label: "Client Care message read by AI",
+    unit: "One client message read by the AI reader for Client Care. Messages read by the company's rules are not charged, and a reading that fails is not charged.",
+    available: true,
+  },
   hiring_reply_draft: {
     label: "Hiring reply drafted by AI",
     unit: "One reply to an applicant's question drafted by AI from the role's approved details and the company's Hiring FAQ. Template messages (application links, reminders, replies with approved pay) are not charged, and a draft the AI declines to write is not charged.",
@@ -141,6 +146,7 @@ export const RATE_CARDS: readonly RateCard[] = [
       research_brief: 5,
       sales_message_reading: 1,
       hiring_reply_draft: 1,
+      care_message_reading: 1,
     },
   },
   {
@@ -167,6 +173,8 @@ export const RATE_CARDS: readonly RateCard[] = [
       sales_message_reading: null,
       /** Drafted hiring replies did not exist when this card was approved: no rate, so a person writes the reply. */
       hiring_reply_draft: null,
+      /** Client Care did not exist when this card was approved: its AI reading has no rate, so the company's rules read instead. */
+      care_message_reading: null,
     },
     specs: {
       image_generation: { sizes: ["1024x1024"], fastAllowed: false, describe: "Standard quality, 1024 × 1024, one image per charge." },
@@ -198,6 +206,8 @@ export const RATE_CARDS: readonly RateCard[] = [
       sales_message_reading: null,
       /** Drafted hiring replies did not exist when this card was approved: no rate, so a person writes the reply. */
       hiring_reply_draft: null,
+      /** Client Care did not exist when this card was approved: its AI reading has no rate, so the company's rules read instead. */
+      care_message_reading: null,
     },
     specs: {
       image_generation: { sizes: ["1024x1024"], fastAllowed: false, describe: "Standard quality, 1024 × 1024, one image per charge." },
@@ -229,6 +239,8 @@ export const RATE_CARDS: readonly RateCard[] = [
       sales_message_reading: 1,
       /** Not on this card: a person writes each reply to an applicant's question. */
       hiring_reply_draft: null,
+      /** Client Care did not exist when this card was approved: its AI reading has no rate, so the company's rules read instead. */
+      care_message_reading: null,
     },
     specs: {
       image_generation: { sizes: ["1024x1024"], fastAllowed: false, describe: "Standard quality, 1024 × 1024, one image per charge." },
@@ -259,6 +271,8 @@ export const RATE_CARDS: readonly RateCard[] = [
       sales_message_reading: 1,
       /** One reply to an applicant's question, drafted from approved information. A draft it declines to write is not charged. */
       hiring_reply_draft: 1,
+      /** Client Care did not exist when this card was approved: its AI reading has no rate, so the company's rules read instead. */
+      care_message_reading: null,
     },
     specs: {
       image_generation: { sizes: ["1024x1024"], fastAllowed: false, describe: "Standard quality, 1024 × 1024, one image per charge." },

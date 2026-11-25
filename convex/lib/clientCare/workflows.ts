@@ -19,7 +19,7 @@ import { readProfile } from "../compliance/profile";
 import { money } from "../dispatch/pay";
 import { planMove } from "../dispatch/reschedule";
 import { invoiceState, STATE_WORDS } from "../finance/invoiceState";
-import { seal } from "../recruiter/secrets";
+import { seal, unseal } from "../recruiter/secrets";
 import { noteStatedWish } from "../retention/continuity";
 import { loadPlan, previewPlanChange } from "../retention/planChanges";
 import { checkCapacity } from "../sales/capacity";
@@ -281,7 +281,8 @@ async function access(ctx: Ctx, w: W) {
     .order("desc")
     .take(10);
   const source = original.find((m) => m.requestIds.includes(request._id) && m.sealed);
-  const sealed = source?.sealed ? await seal(source.sealed, request._id) : null;
+  const plain = source?.sealed ? await unseal(source.sealed, source._id) : null;
+  const sealed = plain ? await seal(plain, request._id) : null;
   const fresh = await moveRequest(ctx, request, { propertyId: property._id });
   if (!sealed) return handOff(ctx, { ...w, request: fresh }, "owner", `New access details for ${placeName(property)} arrived in the conversation. Read them there and enter them on the property: Client Care cannot store them securely here.`, compose(w.voice, "Thanks. I've passed the new access details to the office to update on your property."), true);
   return step(ctx, { ...w, request: fresh }, { kind: "access", key: "access", permission: "care.update_access", summary: `Replace the access instructions for ${placeName(property)} with what ${request.authority.name} sent (shown only on the property)`, payload: { propertyId: property._id, sealed, staleSafe: true, resolves: "Access instructions updated on the property, and the client was told." }, message: { channel: request.conversation.channel, body: compose(w.voice, `Thanks, I've updated the access details for ${placeName(property)}. Only the crew on your visits will see them.`) } });
