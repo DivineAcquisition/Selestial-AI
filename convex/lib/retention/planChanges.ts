@@ -262,15 +262,26 @@ const same = (a: Id<"jobs">[], b: Id<"jobs">[]) => [...a].map(String).sort().joi
 export async function applyPlanChange(ctx: MutationCtx, company: Doc<"companies">, row: Doc<"retentionCases">, action: Doc<"retentionActions">, actor: Actor): Promise<{ ok: boolean; detail: string; retry?: boolean }> {
   const change = action.planChange;
   if (!change) return { ok: false, detail: "There is no plan change to carry out." };
+  return carryOutPlanChange(ctx, company, row.customerId, change, actor, "retention");
+}
+
+export type PlanChangeSpec = NonNullable<Doc<"retentionActions">["planChange"]>;
+
+/**
+ * Carries out one previewed change for exactly the visits that were shown. Retention's cases and Client Care's
+ * requests both call this, so a skip, a pause or an end is the same change whoever asked for it. `via` is
+ * recorded on the events.
+ */
+export async function carryOutPlanChange(ctx: MutationCtx, company: Doc<"companies">, customerId: Id<"customers">, change: PlanChangeSpec, actor: Actor, via | "client_care"): Promise<{ ok: boolean; detail: string; retry?: boolean }> {
   const plan = await loadPlan(ctx, company._id, change.plan);
   if (!plan) return { ok: false, detail: "The plan no longer exists." };
-  if (plan.customerId !== row.customerId) return { ok: false, detail: "That plan belongs to a different customer." };
+  if (plan.customerId !== customerId) return { ok: false, detail: "That plan belongs to a different customer." };
   const preview = await previewPlanChange(ctx, company, plan, { change: change.change, from: change.from, until: change.until, jobId: change.jobId, cadence: change.cadence });
   if (preview.blocked) return { ok: false, detail: preview.blocked };
   if (!same(preview.shown, change.shown)) return { ok: false, retry: true, detail: "The plan's booked visits changed after this was previewed. Review the visits again before changing the plan." };
   const tz = company.timezone;
   const today = localParts(Date.now(), tz).day;
-  const reason = change.reason?.trim() || (change.requestedBy === "customer" ? "The customer asked." : "Changed in Retention.");
+  const reason = change.reason?.trim() || (change.requestedBy === "customer" ? "The customer asked." : via === "client_care" ? "Changed through Client Care." : "Changed in Retention.");
   const who = change.requestedBy === "customer" ? "at the customer's request" : "by the office";
   const subject = change.plan.kind === "service" ? ({ table: "servicePlans", id: change.plan.id } as const) : ({ table: "recurringPlans", id: change.plan.id } as const);
   const visits = await upcomingVisits(ctx, plan, preview.from ?? today, preview.until ?? undefined);
@@ -284,26 +295,26 @@ export async function applyPlanChange(ctx: MutationCtx, company: Doc<"companies"
       if (!job || job.status !== "scheduled" || !job.planDate) return { ok: false, retry: true, detail: "That visit has started or is no longer booked, so it cannot be skipped." };
       await cancelVisit(scoped, job, `Skipped ${who}: ${reason}`.slice(0, 500), actor, true);
       await ctx.db.patch(record._id, { skipped: [...new Set([...record.skipped, job.planDate])].sort(), ...bump });
-      await recordEvent(ctx, { companyId: company._id, type: "plan.visit_skipped", actor, subject, data: { day: job.planDate, via: "retention" } });
+      await recordEvent(ctx, { companyId: company._id, type: "plan.visit_skipped", actor, subject, data: { day: job.planDate, via } });
       return { ok: true, detail: `Skipped the visit on ${job.planDate}. That day is not booked again. Billing is unchanged.` };
     }
     if (change.change === "pause_service") {
       for (const job of visits) await cancelVisit(scoped, job, `Service paused ${who}: ${reason}`.slice(0, 500), actor, true);
       await ctx.db.patch(record._id, { state: preview.until ? "active" : "paused", pausedFrom: preview.from!, pausedUntil: preview.until ?? undefined, ...bump });
-      await recordEvent(ctx, { companyId: company._id, type: "plan.paused", actor, subject, data: { from: preview.from!, until: preview.until ?? "until resumed", cancelled: visits.length, via: "retention" } });
+      await recordEvent(ctx, { companyId: company._id, type: "plan.paused", actor, subject, data: { from: preview.from!, until: preview.until ?? "until resumed", cancelled: visits.length, via } });
       await refreshClient(ctx, record.customerId);
       return { ok: true, detail: `Service paused from ${preview.from}${preview.until ? ` until ${preview.until}` : " until it is resumed"}. ${visits.length} ${visits.length === 1 ? "visit was" : "visits were"} cancelled. Billing was not paused: invoices already issued stay due.` };
     }
     if (change.change === "resume") {
       await ctx.db.patch(record._id, { state: "active", pausedFrom: undefined, pausedUntil: undefined, bookedThrough: undefined, ...bump });
-      await recordEvent(ctx, { companyId: company._id, type: "plan.resumed", actor, subject, data: { via: "retention" } });
+      await recordEvent(ctx, { companyId: company._id, type: "plan.resumed", actor, subject, data: { via } });
       const booked = await bookAhead(ctx, (await ctx.db.get(record._id))!, actor);
       await refreshClient(ctx, record.customerId);
       return { ok: true, detail: `Service resumed. ${booked.booked} ${booked.booked === 1 ? "visit was" : "visits were"} booked ahead.${booked.problems.length ? ` ${booked.problems.length} could not be booked; Dispatch has a task.` : ""}` };
     }
     for (const job of visits) await cancelVisit(scoped, job, `Service ended ${who}: ${reason}`.slice(0, 500), actor, false);
     await ctx.db.patch(record._id, { state: "ended", endsOn: preview.from!, ...bump });
-    await recordEvent(ctx, { companyId: company._id, type: "plan.ended", actor, subject, data: { from: preview.from!, cancelled: visits.length, via: "retention" } });
+    await recordEvent(ctx, { companyId: company._id, type: "plan.ended", actor, subject, data: { from: preview.from!, cancelled: visits.length, via } });
     await refreshClient(ctx, record.customerId);
     return { ok: true, detail: `Service ended on ${preview.from}. ${visits.length} ${visits.length === 1 ? "visit was" : "visits were"} cancelled. Completed visits and issued invoices are unchanged.` };
   }
@@ -316,7 +327,7 @@ export async function applyPlanChange(ctx: MutationCtx, company: Doc<"companies"
     if (!found) return { ok: false, retry: true, detail: "That visit has started or is no longer booked, so it cannot be skipped." };
     await cancelVisitJob(ctx, found.job, `Skipped ${who}: ${reason}`, actor);
     await ctx.db.patch(found.visit._id, { state: "skipped", exception: reason.slice(0, 300), updatedAt: Date.now() });
-    await recordEvent(ctx, { companyId: company._id, type: "recurring_plan.visit_skipped", actor, subject, data: { date: found.visit.date, via: "retention" } });
+    await recordEvent(ctx, { companyId: company._id, type: "recurring_plan.visit_skipped", actor, subject, data: { date: found.visit.date, via } });
     return { ok: true, detail: `Skipped the visit on ${found.visit.date}. ${record.billing === "per_visit" ? "Nothing is billed for a skipped visit." : "A skipped visit is left out of the month's invoice."}` };
   }
   if (change.change === "pause_service") {
@@ -329,14 +340,14 @@ export async function applyPlanChange(ctx: MutationCtx, company: Doc<"companies"
       cancelled += 1;
     }
     await ctx.db.patch(record._id, { status: preview.until ? "active" : "paused", pause: { from: preview.from!, ...(preview.until ? { until: addDays(preview.until, -1) } : {}), reason: reason.slice(0, 300) }, updatedAt: Date.now() });
-    await recordEvent(ctx, { companyId: company._id, type: "recurring_plan.paused", actor, subject, data: { from: preview.from!, until: preview.until ?? null, cancelled, via: "retention" } });
+    await recordEvent(ctx, { companyId: company._id, type: "recurring_plan.paused", actor, subject, data: { from: preview.from!, until: preview.until ?? null, cancelled, via } });
     return { ok: true, detail: `Service paused from ${preview.from}${preview.until ? ` until ${preview.until}` : " until it is resumed"}. ${cancelled} ${cancelled === 1 ? "visit was" : "visits were"} cancelled. Billing was not paused: invoices already issued stay due.` };
   }
   if (change.change === "resume") {
     await ctx.db.patch(record._id, { status: "active", pause: undefined, updatedAt: Date.now() });
     await replaceFrom(ctx, (await ctx.db.get(record._id))!, today, "Plan resumed", actor);
     const made = await generateVisits(ctx, (await ctx.db.get(record._id))!, actor);
-    await recordEvent(ctx, { companyId: company._id, type: "recurring_plan.resumed", actor, subject, data: { from: today, made, via: "retention" } });
+    await recordEvent(ctx, { companyId: company._id, type: "recurring_plan.resumed", actor, subject, data: { from: today, made, via } });
     return { ok: true, detail: `Service resumed. ${made} ${made === 1 ? "visit was" : "visits were"} booked ahead.` };
   }
   let cancelled = 0;
@@ -346,7 +357,7 @@ export async function applyPlanChange(ctx: MutationCtx, company: Doc<"companies"
     cancelled += 1;
   }
   await ctx.db.patch(record._id, { endDate: preview.from!, status: "ended", endedReason: reason.slice(0, 300), updatedAt: Date.now() });
-  await recordEvent(ctx, { companyId: company._id, type: "recurring_plan.ended", actor, subject, data: { lastDate: preview.from!, cancelled, via: "retention" } });
+  await recordEvent(ctx, { companyId: company._id, type: "recurring_plan.ended", actor, subject, data: { lastDate: preview.from!, cancelled, via } });
   await refreshClient(ctx, record.customerId);
   return { ok: true, detail: `Service ended on ${preview.from}. ${cancelled} ${cancelled === 1 ? "visit was" : "visits were"} cancelled. Completed visits and issued invoices are unchanged.` };
 }

@@ -156,6 +156,10 @@ export const stepPayloadValidator = v.object({
   retentionCaseId: v.optional(v.id("retentionCases")),
   /** The message is true whatever the client wrote since (it confirms a change already made). */
   staleSafe: v.optional(v.boolean()),
+  /** When this step is done, the request is resolved, in these words. */
+  resolves: v.optional(v.string()),
+  /** When its message goes, the request waits on the client's answer. */
+  awaitsClient: v.optional(v.boolean()),
 });
 export type StepPayload = typeof stepPayloadValidator.type;
 
