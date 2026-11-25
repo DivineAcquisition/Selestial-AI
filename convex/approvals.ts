@@ -8,6 +8,7 @@ import { v } from "convex/values";
 import { internalMutation } from "./_generated/server";
 import { owned } from "./lib/access";
 import { requestApproval } from "./lib/approvalQueue";
+import { decisionNote, reasonsFor, type DecisionReason } from "./lib/approvalReasons";
 import { managerMutation, managerQuery } from "./lib/builders";
 import { afterDecision, afterExpiry, type CarriedOut } from "./lib/dispatch/workflow";
 import { isOwner } from "./lib/roles";
@@ -68,6 +69,8 @@ export const decide = managerMutation({
   args: {
     approvalId: v.id("approvals"),
     decision: v.union(v.literal("approved"), v.literal("changed"), v.literal("skipped")),
+    /** One of the reasons offered for this proposal (reasonsFor). The note then adds to it. */
+    reasonCode: v.optional(v.string()),
     note: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<{ carriedOut: CarriedOut | null }> => {
@@ -80,11 +83,19 @@ export const decide = managerMutation({
     const kind = approval.proposal?.kind;
     if ((kind === "sales_price_override" || kind === "plan_change" || kind === "proposal_rates") && !isOwner(ctx.role)) throw userError("Only the Owner decides price changes.");
     if (kind === "retention_action" && ownerOnly(approval) && args.decision === "approved" && !isOwner(ctx.role)) throw userError("Only the Owner approves refunds and compensation above the limit.");
-    const note = optionalText(args.note, "The note", 2000);
+    const words = optionalText(args.note, "The note", 2000);
+    let reason: DecisionReason | null = null;
+    if (args.reasonCode !== undefined) {
+      if (args.decision === "approved") throw userError("Approving takes no reason.");
+      const offered = reasonsFor(approval)[args.decision === "changed" ? "change" : "skip"];
+      reason = offered.find((row) => row.code === args.reasonCode) ?? null;
+      if (!reason) throw userError("Choose one of the reasons offered, or write your own.");
+    }
+    const note = decisionNote(reason, words);
     if (args.decision === "changed" && !note) throw userError("Say what to change.");
-    const decided = { status: args.decision, decidedBy: ctx.member._id, decidedAt: Date.now(), note };
+    const decided = { status: args.decision, decidedBy: ctx.member._id, decidedAt: Date.now(), note, ...(reason ? { reasonCode: reason.code } : {}) };
     await ctx.db.patch(approval._id, decided);
-    await recordEvent(ctx, { companyId: ctx.companyId, type: `approval.${args.decision}`, actor: byMember(ctx), subject: { table: "approvals", id: approval._id }, data: { action: approval.action } });
+    await recordEvent(ctx, { companyId: ctx.companyId, type: `approval.${args.decision}`, actor: byMember(ctx), subject: { table: "approvals", id: approval._id }, data: { action: approval.action, ...(reason ? { reasonCode: reason.code } : {}) } });
     const decidedApproval = { ...approval, ...decided };
     // Each agent carries out its own proposals. Whichever it is, every check runs again at this moment.
     if (approval.proposal?.kind === "send_cleaner_follow_up") {

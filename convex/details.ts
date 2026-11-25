@@ -7,6 +7,7 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { owned } from "./lib/access";
+import { reasonsFor, type DecisionReasons } from "./lib/approvalReasons";
 import { companyQuery, type MemberAccess } from "./lib/builders";
 import { AGENT_PROFILES, departmentOf } from "./lib/departments";
 import { notAllowed } from "./lib/errors";
@@ -77,7 +78,7 @@ export type Detail = {
       reports: { reportId: Id<"jobReports">; kind: Doc<"jobReports">["kind"]; text: string; status: Doc<"jobReports">["status"]; by: string }[];
     };
   };
-  approval: null | { status: Doc<"approvals">["status"]; canDecide: boolean; carriesOut: boolean; note: string | null; authorizes: string | null; ifWaiting: string | null; jobId: Id<"jobs"> | null };
+  approval: null | { status: Doc<"approvals">["status"]; canDecide: boolean; carriesOut: boolean; note: string | null; authorizes: string | null; ifWaiting: string | null; jobId: Id<"jobs"> | null; reasons: DecisionReasons };
   task: null | {
     status: Doc<"tasks">["status"];
     agent: Agent;
@@ -318,7 +319,7 @@ async function approvalDetail(ctx: Ctx, approvalId: Id<"approvals">, asOf: numbe
       : { action: "Nothing further on this proposal.", when: null, ifFails: null },
     history: await history(ctx, [approval._id], asOf),
     job: null,
-    approval: { status: approval.status, canDecide: pending, carriesOut: Boolean(approval.proposal), note: approval.note ?? null, authorizes: approval.authorizes ?? null, ifWaiting: approval.ifWaiting ?? null, jobId },
+    approval: { status: approval.status, canDecide: pending, carriesOut: Boolean(approval.proposal), note: approval.note ?? null, authorizes: approval.authorizes ?? null, ifWaiting: approval.ifWaiting ?? null, jobId, reasons: reasonsFor(approval) },
     task: null,
   };
 }

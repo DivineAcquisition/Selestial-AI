@@ -320,6 +320,33 @@ describe("Dispatch", () => {
     expect(await s.tasks("open", "recruiter")).toEqual([]);
   });
 
+  it("takes a picked reason in place of typed words, and only the reasons offered for that proposal", async () => {
+    const s = await setup();
+    const jobId = await dispatchJob(s.as, s.companyId, s.place);
+    const [forLena] = await s.pending();
+    const get = (approvalId: Id<"approvals">) => s.as.query(api.approvals.get, { companyId: s.companyId, approvalId });
+
+    // The card and the panel are told which reasons fit an offer to a cleaner.
+    const [card] = await s.as.query(api.overview.decisions, { companyId: s.companyId, asOf: NOW });
+    expect(card.reasons?.skip.map((row) => row.code)).toContain("client_request");
+    expect(card.reasons?.change.map((row) => row.code)).toContain("contact_myself");
+
+    await expect(s.as.mutation(api.approvals.decide, { companyId: s.companyId, approvalId: forLena._id, decision: "skipped", reasonCode: "too_generous" })).rejects.toThrow("Choose one of the reasons offered");
+    await expect(s.as.mutation(api.approvals.decide, { companyId: s.companyId, approvalId: forLena._id, decision: "approved", reasonCode: "client_request" })).rejects.toThrow("Approving takes no reason.");
+
+    // A reason alone is enough, and the note keeps its words for everything that reads it.
+    await s.as.mutation(api.approvals.decide, { companyId: s.companyId, approvalId: forLena._id, decision: "skipped", reasonCode: "client_request" });
+    expect(await get(forLena._id)).toMatchObject({ status: "skipped", reasonCode: "client_request", note: "The customer asked for someone else" });
+    const events = await s.as.query(api.events.forSubject, { companyId: s.companyId, subject: { table: "approvals", id: forLena._id } });
+    expect(events.find((event) => event.type === "approval.skipped")).toMatchObject({ data: { reasonCode: "client_request" } });
+
+    // Taking over needs no typing either; a detail is added after the reason.
+    const [forRosa] = await s.pending();
+    await s.as.mutation(api.approvals.decide, { companyId: s.companyId, approvalId: forRosa._id, decision: "changed", reasonCode: "contact_myself", note: "Calling her tonight." });
+    expect(await get(forRosa._id)).toMatchObject({ status: "changed", reasonCode: "contact_myself", note: "I'll contact the cleaner myself: Calling her tonight." });
+    expect((await s.as.query(api.dispatch.candidates, { companyId: s.companyId, jobId })).withPerson).toBe(true);
+  });
+
   it("lets a person take a visit over, and keeps approvals with Owners and Managers", async () => {
     const s = await setup();
     const office = await addMember(s.t, s.as, s.companyId, "office-a", "office");

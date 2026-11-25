@@ -8,6 +8,7 @@ import { v } from "convex/values";
 
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
+import { reasonsFor, type DecisionReasons } from "./lib/approvalReasons";
 import { companyQuery, type MemberAccess } from "./lib/builders";
 import { agentVerdict } from "./lib/billing/access";
 import { AGENT_PROFILES, departmentOf, DEPARTMENTS } from "./lib/departments";
@@ -306,6 +307,8 @@ export type Decision = {
   carriesOut: boolean;
   /** The agent's work so far on the visit this is about, step by step. Empty when it is not about a visit. */
   run: RunStep[];
+  /** The reasons offered for skipping or taking over a proposal. Null for a task a person must decide. */
+  reasons: DecisionReasons | null;
 };
 
 async function runFor(ctx: Ctx, agent: Agent, about: Doc<"tasks">["about"], asOf: number): Promise<RunStep[]> {
@@ -340,6 +343,7 @@ export const decisions = companyQuery({
         canDecide: true,
         carriesOut: Boolean(approval.proposal),
         run: await runFor(ctx, approval.agent, approval.about, args.asOf),
+        reasons: reasonsFor(approval),
       });
     }
     for (const task of tasks) {
@@ -358,6 +362,7 @@ export const decisions = companyQuery({
         canDecide: true,
         carriesOut: false,
         run: await runFor(ctx, task.agent, task.about, args.asOf),
+        reasons: null,
       });
     }
     return items.sort((a, b) => a.deadline - b.deadline);

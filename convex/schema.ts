@@ -754,6 +754,8 @@ export default defineSchema({
     decidedAt: v.optional(v.number()),
     /** What the person changed, or why they skipped it. */
     note: v.optional(v.string()),
+    /** The reason the person picked from the list offered for this proposal (convex/lib/approvalReasons.ts). */
+    reasonCode: v.optional(v.string()),
     /** Whether an approved proposal was carried out, checked again at that moment, and why not if not. */
     carriedOut: v.optional(v.object({ ok: v.boolean(), detail: v.string(), at: v.number() })),
     createdAt: v.number(),
