@@ -280,6 +280,47 @@ async function qualityCase(ctx: MutationCtx, company: Doc<"companies">, event: "
 }
 
 /**
+ * A Client Care request that needs a person. Read now: a request someone already took, decided or closed sends
+ * nothing. The client's words and any access details never go in the email: the request holds them.
+ */
+async function careRequest(ctx: MutationCtx, company: Doc<"companies">, event: "care_urgent" | "care_attention", ref: string | undefined, facts: NoticeFacts | undefined, c: Context): Promise<Built> {
+  const id = ref ? ctx.db.normalizeId("careRequests", ref) : null;
+  const row = id ? await ctx.db.get(id) : null;
+  if (!row || row.companyId !== company._id) return { problem: "The request no longer exists." };
+  if (row.status === "resolved" || row.status === "closed_no_action") return { problem: "The request was closed before this notice went." };
+  if (row.owner.kind === "member") return { problem: "A person took the request before this notice went." };
+  const customer = await ctx.db.get(row.customerId);
+  const path = `/app/agents/customer-care/requests?request=${encodeURIComponent(row._id)}`;
+  if (event === "care_urgent") {
+    return alertEmail({
+      ...c,
+      eyebrow: "Client Care",
+      subject: "A client's request is urgent",
+      heading: "An urgent client request",
+      body: `${customer?.name ?? "A client"} wrote to the company about something that may be serious. Client Care acknowledged it without admitting anything or promising anything, and passed it to you.`,
+      tone: "danger",
+      note: "Open the request to read what they wrote and decide what happens next.",
+      facts: [{ label: "Client", value: customer?.name ?? "A client" }],
+      button: { label: "Open the request", path },
+      because: "urgent operations alerts are on",
+    });
+  }
+  if (row.status !== "waiting_owner" && str(facts, "kind") !== "message_failed") return { problem: "The request no longer needs a person." };
+  return alertEmail({
+    ...c,
+    eyebrow: "Client Care",
+    subject: str(facts, "kind") === "message_failed" ? "A message to a client didn't go" : "A client's request needs you",
+    heading: str(facts, "kind") === "message_failed" ? "A client wasn't told" : "A client request needs a person",
+    // Anything the client wrote is quoted on the request; the email says only that it exists.
+    body: `${customer?.name ?? "A client"}: ${(row.blocker ?? row.waiting?.reason ?? row.summary).replace(/"[^"]*"/g, "(see the request)").slice(0, 400)}`,
+    tone: "warning",
+    facts: [{ label: "Request", value: row.summary.replace(/:\s*".*$/, "").slice(0, 120) }],
+    button: { label: "Open the request", path },
+    because: "urgent operations alerts are on",
+  });
+}
+
+/**
  * A customer case that needs a person, or how one ended. Read now: a case someone already dealt with
  * sends nothing. The customer's own words are never put in the email; the case holds them.
  */
@@ -563,6 +604,9 @@ async function build(ctx: MutationCtx, message: Doc<"messages">, company: Doc<"c
     case "quality_serious":
     case "quality_attention":
       return qualityCase(ctx, company, notice.event, notice.ref, facts, c);
+    case "care_urgent":
+    case "care_attention":
+      return careRequest(ctx, company, notice.event, notice.ref, facts, c);
     case "texting_progress":
     case "texting_attention":
       return textingNotice(ctx, company, notice.ref, facts, c);

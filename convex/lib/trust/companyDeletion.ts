@@ -381,6 +381,12 @@ export const DELETION_PLAN: readonly TablePlan[] = [
   del("qualityComms", "Calls, texts and transcripts read from a phone platform."),
   del("qualityExtracts", "Readings of those conversations."),
   del("qualityAssociations", "Which visit each conversation was linked to."),
+  // Client Care (convex/lib/clientCare/schema.ts).
+  del("careRequests", "Client Care requests."),
+  del("careMessages", "Clients' messages as Client Care read them."),
+  del("careEntries", "Client Care request history."),
+  del("careSteps", "Client Care's prepared and carried-out steps."),
+  del("careRuns", "Client Care runs."),
   del("migrationRecords", "Records brought from another system."),
   del("migrationImportRuns", "Migration imports."),
 

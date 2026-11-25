@@ -272,7 +272,7 @@ export type PlanChangeSpec = NonNullable<Doc<"retentionActions">["planChange"]>;
  * requests both call this, so a skip, a pause or an end is the same change whoever asked for it. `via` is
  * recorded on the events.
  */
-export async function carryOutPlanChange(ctx: MutationCtx, company: Doc<"companies">, customerId: Id<"customers">, change: PlanChangeSpec, actor: Actor, via | "client_care"): Promise<{ ok: boolean; detail: string; retry?: boolean }> {
+export async function carryOutPlanChange(ctx: MutationCtx, company: Doc<"companies">, customerId: Id<"customers">, change: PlanChangeSpec, actor: Actor, via: "retention" | "client_care"): Promise<{ ok: boolean; detail: string; retry?: boolean }> {
   const plan = await loadPlan(ctx, company._id, change.plan);
   if (!plan) return { ok: false, detail: "The plan no longer exists." };
   if (plan.customerId !== customerId) return { ok: false, detail: "That plan belongs to a different customer." };

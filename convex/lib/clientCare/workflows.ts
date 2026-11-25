@@ -89,7 +89,7 @@ async function notAllowed(ctx: Ctx, w: W, permit: Permit) {
 }
 
 /** Works one request forward from what the record says now. Safe to run again: steps are keyed. */
-export async function advance(ctx: Ctx, company: Doc<"companies">, requestId: Id<"careRequests">, input: { text?: string; answer?: Answer | null } = {}): Promise<void> {
+export async function advance(ctx: Ctx, company: Doc<"companies">, requestId: Id<"careRequests">, input: { text?: string; answer?: Answer | null } = {}): Promise<unknown> {
   let request = (await ctx.db.get(requestId))!;
   if (!isOpen(request) || request.owner.kind !== "care") return;
   // A step already waiting for approval, or a message already on its way, is not prepared again.
@@ -248,7 +248,7 @@ async function preference(ctx: Ctx, w: W) {
   }
   if (!mayDo(request.authority, "standing_note", property?._id ?? null) || (scope === "customer" && request.authority.propertyIds.length > 0)) return notAllowed(ctx, w, "standing_note");
   const supplies = SUPPLIES.test(detail);
-  const where = scope === "customer" ? "all your properties" : placeName(property);
+  const where = scope === "customer" ? "all your properties" : placeName(property ?? null);
   const fresh = await moveRequest(ctx, request, { propertyId: property?._id, nextAction: "Record the standing instructions." });
   await step(ctx, { ...w, request: fresh }, {
     kind: "preference",
@@ -416,7 +416,7 @@ async function cancellation(ctx: Ctx, w: W) {
   const plan = plans.length === 1 ? plans[0] : request.plan ? plans.find((p) => p.ref.id === request.plan!.id) : null;
   if (!plan) {
     if (!plans.length) return handOff(ctx, w, "owner", `${request.authority.name} asked to ${kind === "end_plan" ? "end" : "pause"} their service, and no recurring plan is on record for them.`, compose(w.voice, "I've passed this to the office, who'll confirm with you."), true);
-    const options = await Promise.all(plans.map(async (p, i) => ({ key: String(i + 1), label: `${p.label} at ${placeName(await ctx.db.get(p.propertyId))}`, propertyId: p.propertyId, cancel: kind })));
+    const options = await Promise.all(plans.map(async (p, i) => ({ key: String(i + 1), label: `${p.label} at ${placeName((await ctx.db.get(p.propertyId)) ?? null)}`, propertyId: p.propertyId, cancel: kind })));
     return ask(ctx, w, "which_scope", "Which service do you mean?", options, compose(w.voice, `Which service do you mean? ${numbered(options)}.`));
   }
   if (!mayDo(request.authority, "change_plan", plan.propertyId)) return notAllowed(ctx, w, "change_plan");

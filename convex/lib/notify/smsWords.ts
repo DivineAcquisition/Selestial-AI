@@ -22,4 +22,6 @@ export const SMS_WORDS: Partial<Record<NoticeEvent, string>> = {
   quo_attention: "the connected Quo account stopped working.",
   service_attention: "something needs you to act.",
   recruiter_attention: "an applicant needs a reply.",
+  care_urgent: "a client's request is urgent.",
+  care_attention: "a client's request needs you.",
 };

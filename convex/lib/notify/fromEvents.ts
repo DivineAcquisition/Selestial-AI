@@ -37,6 +37,11 @@ export const NOTICE_EVENT_TYPES = new Set([
   "sales.reported",
   "retention.reported",
   "recruiter.reported",
+  "customer-care.reported",
+  // Client Care requests (docs/care/00-architecture.md).
+  "care_request.opened",
+  "care_request.waiting_owner",
+  "care_request.needs_attention",
   // Customer cases (docs/retention/00-architecture.md §9).
   "retention_case.opened",
   "retention_case.needs_attention",
@@ -195,8 +200,32 @@ export async function noticesForEvent(ctx: MutationCtx, event: Recorded): Promis
     }
     case "dispatch.reported":
     case "sales.reported":
+    case "care_request.opened":
+    case "care_request.waiting_owner":
+    case "care_request.needs_attention": {
+      const row = await ctx.db.get(event.subject.id as Id<"careRequests">);
+      if (!row || row.companyId !== event.companyId) return;
+      const company = await ctx.db.get(event.companyId);
+      const chosen = company?.clientCare?.escalationMemberIds;
+      const routing = chosen && chosen.length ? { only: chosen } : {};
+      if (event.type === "care_request.opened") {
+        if (row.urgency === "urgent") await notifyMembers(ctx, { ...base, event: "care_urgent", ref: row._id, ...routing });
+        return;
+      }
+      if (row.status !== "waiting_owner" && event.type === "care_request.waiting_owner") return;
+      // A step waiting for approval already sent its own notice with the decision in it.
+      const steps = await ctx.db
+        .query("careSteps")
+        .withIndex("by_request", (q) => q.eq("requestId", row._id))
+        .take(100);
+      if (event.type === "care_request.waiting_owner" && steps.some((s) => s.status === "awaiting_approval")) return;
+      const except = event.actor.kind === "member" ? [event.actor.memberId] : [];
+      await notifyMembers(ctx, { ...base, event: "care_attention", ref: row._id, key: `attention:${event.id}`, facts: { kind: event.type === "care_request.needs_attention" ? "message_failed" : "decision" }, except, ...routing });
+      return;
+    }
     case "retention.reported":
-    case "recruiter.reported": {
+    case "recruiter.reported":
+    case "customer-care.reported": {
       if (event.actor.kind !== "agent") return;
       const data = event.data ?? {};
       // A step that didn't go through moves its case to Needs attention, which sends its own notice.

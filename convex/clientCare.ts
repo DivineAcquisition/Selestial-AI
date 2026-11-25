@@ -269,7 +269,7 @@ export const detail = companyQuery({
     }
     if (row.opportunityId) {
       const o = await ctx.db.get(row.opportunityId);
-      if (o) linked.push({ kind: "Sales opportunity", label: o.name ?? "Inquiry", state: o.stage, href: `/app/agents/sales/pipeline?opp=${o._id}` });
+      if (o) linked.push({ kind: "Sales opportunity", label: o.title, state: o.stage, href: `/app/agents/sales/pipeline?opp=${o._id}` });
     }
     if (row.invoiceId && owner) {
       const i = await ctx.db.get(row.invoiceId);
@@ -367,7 +367,7 @@ export const saveSetup = ownerMutation({
   args: { settings: careSettingsValidator, expectedRevision: v.number() },
   handler: async (ctx, args) => {
     const current = careSettings(ctx.company);
-    if (current.revision !== args.expectedRevision) throw userError("Care Setup changed since you opened it. Reload to see the latest, then save again.", "stale");
+    if (current.revision !== args.expectedRevision) throw userError("Care Setup changed since you opened it. Reload to see the latest, then save again.");
     const s = args.settings;
     const hours = (n: number | undefined, max: number, what: string) => {
       if (n === undefined) return undefined;
