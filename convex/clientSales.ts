@@ -66,7 +66,7 @@ export const forClient = companyQuery({
         followUps: o.followUps,
         estimateCents: o.estimateCents ?? null,
         closedReason: o.closedReason ?? null,
-        href: draft ? `${SALES}/book/${draft._id}` : `${SALES}/pipeline`,
+        href: draft ? `${SALES}/book/${draft._id}?from=customer` : `${SALES}/pipeline`,
       });
     }
 
@@ -76,7 +76,7 @@ export const forClient = companyQuery({
       .take(50);
     const quotes = [];
     for (const q of quoteRows.sort((a, b) => b.createdAt - a.createdAt).slice(0, 15)) {
-      quotes.push({ id: q._id, kind: q.kind, property: await propertyName(q.propertyId), visitCents: q.visit.totalCents, firstCents: q.first?.totalCents ?? null, cadence: q.cadence ? cadenceLabel(q.cadence as Cadence) : null, status: q.status, statusWords: q.status === "sent" && q.expiresAt < Date.now() ? "Expired" : QUOTE_WORDS[q.status], expiresAt: q.expiresAt, createdAt: q.createdAt, href: `${SALES}/book/${q.draftId}` });
+      quotes.push({ id: q._id, kind: q.kind, property: await propertyName(q.propertyId), visitCents: q.visit.totalCents, firstCents: q.first?.totalCents ?? null, cadence: q.cadence ? cadenceLabel(q.cadence as Cadence) : null, status: q.status, statusWords: q.status === "sent" && q.expiresAt < Date.now() ? "Expired" : QUOTE_WORDS[q.status], expiresAt: q.expiresAt, createdAt: q.createdAt, href: `${SALES}/book/${q.draftId}?from=customer` });
     }
 
     const proposalRows = await ctx.db
@@ -103,7 +103,7 @@ export const forClient = companyQuery({
           expiresAt: p.expiresAt ?? null,
           viewCount: p.viewCount,
           updatedAt: p.updatedAt,
-          href: p.setupId ? `${SALES}/setups/${p.setupId}` : p.draftId ? `${SALES}/book/${p.draftId}` : `${SALES}/quotes-proposals`,
+          href: p.setupId ? `${SALES}/setups/${p.setupId}` : p.draftId ? `${SALES}/book/${p.draftId}?from=customer` : `${SALES}/quotes-proposals`,
         };
       });
 
@@ -127,7 +127,7 @@ export const forClient = companyQuery({
         problem: b.problem ?? null,
         jobId: b.jobId ?? null,
         planId: b.planId ?? null,
-        href: `${SALES}/book/${b.draftId}`,
+        href: `${SALES}/book/${b.draftId}?from=customer`,
       });
     }
 
