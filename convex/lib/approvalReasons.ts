@@ -97,6 +97,9 @@ const BY_KIND: Record<ProposalKind, DecisionReasons> = {
   care_action: CARE,
 };
 
+/** Prices and hiring outcomes: read one at a time, never approved in bulk (refunds above the limit join them in approvals.ts). */
+export const NEEDS_ONE_BY_ONE = ["sales_price_override", "plan_change", "proposal_rates", "send_hiring_offer", "decline_application"] as const satisfies readonly ProposalKind[];
+
 /** The agent's own reasons for this proposal first, then the list for its kind. */
 export function reasonsFor(approval: Pick<Doc<"approvals">, "proposal" | "suggestedReasons">): DecisionReasons {
   const base = approval.proposal ? BY_KIND[approval.proposal.kind] : GENERAL;
