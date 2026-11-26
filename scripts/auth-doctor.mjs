@@ -81,6 +81,11 @@ async function main() {
   const claims = token?.claims ?? {};
   say(Boolean(token) && claims.aud === "convex" && Boolean(claims.email) && Boolean(claims.email_verified), `The "${RECORD_TOKEN.name}" token template exists and carries the email and its confirmed status`, `Dashboard: JWT templates, new template named "${RECORD_TOKEN.name}" with claims ${JSON.stringify(RECORD_TOKEN.claims)}. (--fix makes it.)`);
 
+  // Optional (docs/foundation/03-authentication.md, Google). The sign-in pages offer Google only when this is on.
+  const google = settings.user_settings?.social?.oauth_google;
+  const googleOn = google?.enabled === true && google?.authenticatable !== false;
+  console.log(`\n  Google sign-in: ${googleOn ? "on, so the sign-in and sign-up pages offer it" : "off, so the pages show email and password only"}.${googleOn && live ? " A live instance needs its own Google OAuth client (Dashboard: SSO connections, Google, use custom credentials)." : ""}`);
+
   const policy = settings.user_settings?.password_settings ?? {};
   console.log(`\n  Password rules in force: at least ${policy.min_length} characters${policy.disable_hibp === false ? ", breached passwords refused" : ""}. The forms read these; nothing to do.`);
   console.log(`  The record must trust this instance: on the Convex deployment, CLERK_JWT_ISSUER_DOMAIN = ${base}`);

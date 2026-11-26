@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import { templates } from "../../../scripts/auth-emails.mjs";
 import { codeOf, paramOf, problemOf, retryable } from "./errors";
 import { meets, policyFrom, requirements, splitName } from "./password";
-import { AUTH, invitePath, inviteTokenIn, isAuthPath, safeNext, SIGNED_OUT_ONLY, withNext } from "./routes";
+import { AUTH, invitePath, inviteTokenIn, isAuthPath, safeNext, SIGNED_OUT_ONLY, withNext, withParam } from "./routes";
+import { googleEnabled } from "./social";
 
 describe("where a person may be sent after signing in", () => {
   it("keeps a plain path inside the workspace or to an invitation", () => {
@@ -46,9 +47,28 @@ describe("where a person may be sent after signing in", () => {
   });
 
   it("knows which pages belong to signing in", () => {
-    for (const path of ["/login", "/signup", "/forgot-password", "/reset-password", "/auth/callback", "/auth/check-email", "/auth/verify", "/auth/error", "/auth/password-updated", "/invite/abc", "/sign-in", "/sign-up/x"]) expect(isAuthPath(path), path).toBe(true);
+    for (const path of ["/login", "/signup", "/forgot-password", "/reset-password", "/auth/callback", "/auth/check-email", "/auth/verify", "/auth/error", "/auth/password-updated", "/auth/sso-callback", "/auth/continue", "/invite/abc", "/sign-in", "/sign-up/x"]) expect(isAuthPath(path), path).toBe(true);
     for (const path of ["/", "/app", "/c/offer/abc", "/login-help", "/authors", "/invited", "/signup-now"]) expect(isAuthPath(path), path).toBe(false);
     expect(SIGNED_OUT_ONLY).toEqual(["/login", "/signup", "/forgot-password"]);
+  });
+});
+
+describe("signing in with Google", () => {
+  it("is offered only when the sign-in service says Google is on and can sign people in", () => {
+    expect(googleEnabled({ social: { oauth_google: { enabled: true, authenticatable: true } } })).toBe(true);
+    expect(googleEnabled({ social: { oauth_google: { enabled: true } } })).toBe(true);
+    expect(googleEnabled({ social: { oauth_google: { enabled: true, authenticatable: false } } })).toBe(false);
+    expect(googleEnabled({ social: { oauth_google: { enabled: false, authenticatable: true } } })).toBe(false);
+    expect(googleEnabled({ social: { oauth_github: { enabled: true } } })).toBe(false);
+    expect(googleEnabled({})).toBe(false);
+    expect(googleEnabled(null)).toBe(false);
+  });
+
+  it("brings the person back with their destination, and only a safe one", () => {
+    expect(withParam(withNext(AUTH.login, "/invite/abc.def"), "reason", "google")).toBe("/login?next=%2Finvite%2Fabc.def&reason=google");
+    expect(withParam(withNext(AUTH.login, "https://evil.example"), "reason", "google")).toBe("/login?reason=google");
+    expect(withNext(AUTH.sso, "/app/settings")).toBe("/auth/sso-callback?next=%2Fapp%2Fsettings");
+    expect(withNext(AUTH.continue, "//evil.example")).toBe("/auth/continue");
   });
 });
 

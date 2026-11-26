@@ -27,6 +27,8 @@ resetting a password never turns task-link access into membership.
 | Check your email (enter the code, send a new one) | `/auth/check-email` |
 | Email confirmed, or a confirmation link's result | `/auth/verify` |
 | After any sign-in: confirm the session, then go on | `/auth/callback` |
+| Back from Google: finish the sign-in or sign-up, then go on | `/auth/sso-callback` |
+| First sign-in with Google: agree to the Terms (and give a name, if Google shared none) | `/auth/continue` |
 | Forgot password | `/forgot-password` |
 | Enter the reset code, then set a new password | `/reset-password` |
 | Password updated | `/auth/password-updated` |
@@ -71,6 +73,15 @@ resetting a password never turns task-link access into membership.
   replaces the old one. The Owner can copy the link, send a new one or withdraw it.
 - **Company setup is idempotent.** The setup screen sends one key with its request; sending it twice
   makes one company.
+- **Google.** `/login` and `/signup` offer "Continue with Google" when the sign-in instance has Google
+  turned on (read from its public settings on the server, so the button never appears when it would
+  fail). On `/signup` the button waits for the Terms and Privacy agreement, which is sent with the
+  request. Google returns to `/auth/sso-callback`, which finishes the sign-in or sign-up and goes on to
+  `/auth/callback`, carrying the same checked `?next=` (an invitation still comes back to its invitation).
+  A Google account with no Selestial account that started on `/login` is asked to agree on
+  `/auth/continue` before anything is made. A sign-in that still needs a second step after Google goes
+  back to `/login`, which carries on with it. Accepting an invitation still needs the confirmed email to
+  be the invited one, and Google's email arrives confirmed.
 - **Two-step sign-in** is not offered from Settings. Sign-in does handle a second step when the
   service asks for one (a code by email on a new device, an authenticator code, a backup code).
 
@@ -118,6 +129,18 @@ In the dashboard (cannot be done from here):
 3. **Production only.** Add the domain and its DNS records, and set the production keys on Vercel.
    Custom email templates and removing the service's branding may need a paid plan.
 
+Google (optional; the pages offer it only once it is on):
+
+- **SSO connections → Google: on**, with "Enable for sign-up and sign-in" on. A development instance can
+  use the service's shared credentials. **A production instance needs Selestial's own Google OAuth
+  client:** in Google Cloud, create an OAuth client of type "Web application", add the "Authorized
+  redirect URI" the dashboard shows for Google, and paste the client ID and secret into "Use custom
+  credentials". Publish the Google consent screen (app name Selestial, the Terms and Privacy addresses
+  above) so it is not limited to test users. The scopes needed are `openid`, `email` and `profile`.
+- **Account linking:** keep the default, which links a Google sign-in to an existing account with the
+  same confirmed email, so a person who signed up with a password can also use Google.
+- `node scripts/auth-doctor.mjs` reports whether Google is on.
+
 With the API (`--fix`, or by hand):
 
 4. **Organizations: off**, or membership optional. With membership required, every session waits on
@@ -139,6 +162,8 @@ Then: set the Convex and Vercel settings above, run `auth-emails.mjs --apply`, a
 
 ## Tests
 
+- `src/components/auth/google.test.tsx`: when the Google button shows, that sign-up holds it until the
+  agreement is ticked, what is sent to start Google, and what `/auth/continue` asks for (and refuses to).
 - `npm test`: redirects, error wording, password rules, the emails, hosts, and the record's
   invitation and setup rules (accept, wrong email, unconfirmed email, expired, revoked, reissued,
   used, no role escalation, other companies, duplicate memberships, idempotent setup, delivery).

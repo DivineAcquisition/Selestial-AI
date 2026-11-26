@@ -2,10 +2,11 @@
 
 import { useSignIn } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { CodeField, Notice, PasswordField, QuietButton, SubmitButton, TextField, useCooldown } from "@/components/auth/fields";
 import { enter, useNext, useSkipWhenSignedIn } from "@/components/auth/flow";
+import { GoogleButton, OrDivider } from "@/components/auth/google";
 import { AuthLink, AuthShell, useEvents, type TraceStep } from "@/components/auth/shell";
 import { problemOf, type AuthProblem } from "@/lib/auth/errors";
 import { AUTH, inviteTokenIn, withNext } from "@/lib/auth/routes";
@@ -17,9 +18,10 @@ const REASONS: Record<string, string> = {
   session: "Your session ended. Sign in again to pick up where you left off.",
   signed_out: "You are signed out.",
   password: "Your password was updated. Sign in with the new one.",
+  google: "Signing in with Google didn’t finish. Try again, or sign in with your email and password.",
 };
 
-export function LoginScreen() {
+export function LoginScreen({ google = false }: { google?: boolean }) {
   const router = useRouter();
   const next = useNext();
   const reason = useSearchParams().get("reason");
@@ -36,6 +38,15 @@ export function LoginScreen() {
   const cooldown = useCooldown("selestial.signin.code", 30);
   const alreadyIn = useSkipWhenSignedIn(!busy && !entering, next);
   const invited = inviteTokenIn(next) !== null;
+  const resumed = useRef(false);
+
+  // Back from Google with a second step still to do (a code on a new device): carry on from there.
+  useEffect(() => {
+    if (resumed.current || reason !== "google" || !signIn) return;
+    if (signIn.status !== "needs_second_factor" && signIn.status !== "needs_client_trust") return;
+    resumed.current = true;
+    void advance().catch(fail);
+  });
 
   /** Reads where the sign-in stands and does the next thing. Nothing moves on until the session is real. */
   async function advance() {
@@ -222,6 +233,12 @@ export function LoginScreen() {
         <SubmitButton busy={busy || entering} busyLabel={entering ? "Opening your workspace" : "Signing in"} disabled={!signIn || email.trim() === "" || password === ""}>
           Sign in
         </SubmitButton>
+        {google ? (
+          <>
+            <OrDivider />
+            <GoogleButton mode="signin" next={next} disabled={busy || entering} onStart={() => (setProblem(null), note("Opening Google"))} onProblem={(found) => (setProblem(found), note("Google sign-in did not start"))} />
+          </>
+        ) : null}
       </form>
     </AuthShell>
   );

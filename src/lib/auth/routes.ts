@@ -8,6 +8,10 @@ export const AUTH = {
   checkEmail: "/auth/check-email",
   verify: "/auth/verify",
   callback: "/auth/callback",
+  /** Where Google sends the person back to. It finishes the sign-in or sign-up and goes on to `callback`. */
+  sso: "/auth/sso-callback",
+  /** A first sign-in with Google that still needs the person to agree to the Terms (or give a name). */
+  continue: "/auth/continue",
   forgot: "/forgot-password",
   reset: "/reset-password",
   passwordUpdated: "/auth/password-updated",
@@ -51,6 +55,11 @@ export function safeNext(value: string | null | undefined): string | null {
 export function withNext(path: string, next: string | null | undefined): string {
   const safe = safeNext(next);
   return safe ? `${path}?${NEXT_PARAM}=${encodeURIComponent(safe)}` : path;
+}
+
+/** Adds one query parameter to an address that may already have some. */
+export function withParam(path: string, key: string, value: string): string {
+  return `${path}${path.includes("?") ? "&" : "?"}${key}=${encodeURIComponent(value)}`;
 }
 
 /** The address of an invitation. The token is the only thing in it. */
