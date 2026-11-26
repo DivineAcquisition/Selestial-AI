@@ -62,6 +62,24 @@ versions are changed by staff at **/staff/tutorials** without a release.
   files stay in place until no one is pointed at them.
 - **Written steps changed:** edit the catalog, bump `contentVersion`, and update `docsCheckedOn`.
 
+## The first owner video
+
+`setup-company` ("Set up your company") is recorded from Selestial itself, with the fictional company
+Juniper Cleaning Co. Storyboard: `tutorials/storyboards/setup-company.json`. Transcript:
+`tutorials/transcripts/setup-company.txt`.
+
+```bash
+node tutorials/demo/auth-server.mjs
+node tutorials/scripts/capture-company.mjs --base http://localhost:3100
+node tutorials/scripts/narrate.mjs setup-company
+node tutorials/scripts/assemble.mjs setup-company
+```
+
+Capture needs the local demo sign-in described in `tutorials/demo/auth-server.mjs`. Narration uses
+ElevenLabs Eric, and `voice.say` reads "Selestial" as "Celestial" without changing the captions.
+The build (`tutorials/build/setup-company/v1/`) is not committed. Publishing still goes through
+`publish.mjs` and /staff/tutorials.
+
 ## Status
 
 See `docs/tutorials/00-plan.md` for what is verified, produced and published, and what is still needed.

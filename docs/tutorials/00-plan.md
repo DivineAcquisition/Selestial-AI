@@ -74,6 +74,16 @@ Help articles read November 20, 2026. "Interface" means followed in a real demo 
 - Nothing was published by this change. Publication state lives in each deployment's `tutorialSettings`;
   the staff readiness panel reads it from the deployment, not the repository.
 
+## First owner video (November 26, 2026)
+
+`setup-company`, "Set up your company", was recorded from the running app with the fictional company
+Juniper Cleaning Co. (Austin, example.com, 555 numbers only). It is 78.4 seconds, narrated with
+ElevenLabs stock voice Eric, with "Selestial" spoken like "celestial" and captions in the written
+spelling. The transcript is `tutorials/transcripts/setup-company.txt`. The video, poster and captions
+are produced into `tutorials/build/setup-company/v1/` and are not committed. Nothing is published:
+upload still needs the Blob token, then staff review at /staff/tutorials. The guide is not yet offered
+in the product catalog on this branch.
+
 ## Still needed
 
 1. **Recording access.** Share a folder through Remote Control (Claude desktop app › Settings › Claude Code ›

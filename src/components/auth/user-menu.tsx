@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import { KeyIcon, SignOutIcon } from "@/components/icons";
+import { TUTORIAL_DEMO_EMAIL, TUTORIAL_DEMO_NAME, tutorialDemoEnabled } from "@/lib/app/tutorial-demo";
 import { AUTH } from "@/lib/auth/routes";
 
 function initials(name: string): string {
@@ -18,8 +19,25 @@ export function useSignOut() {
   return () => signOut({ redirectUrl: `${AUTH.login}?reason=signed_out` });
 }
 
+/** The account button while a tutorial is recorded locally. It never calls the sign-in service. */
+function DemoUserMenu() {
+  return (
+    <div className="relative">
+      <button type="button" className="icon-gradient flex size-9 items-center justify-center rounded-full text-xs font-semibold" aria-label={`Account menu for ${TUTORIAL_DEMO_NAME}`}>
+        <span aria-hidden>{initials(TUTORIAL_DEMO_NAME)}</span>
+      </button>
+      <span className="sr-only">{TUTORIAL_DEMO_EMAIL}</span>
+    </div>
+  );
+}
+
 /** Who is signed in, with the way to security settings and the way out. */
 export function UserMenu() {
+  if (tutorialDemoEnabled()) return <DemoUserMenu />;
+  return <ClerkUserMenu />;
+}
+
+function ClerkUserMenu() {
   const { user } = useUser();
   const signOut = useSignOut();
   const [open, setOpen] = useState(false);

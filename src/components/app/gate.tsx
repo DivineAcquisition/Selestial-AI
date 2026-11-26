@@ -2,6 +2,7 @@
 
 import { useAuth } from "@clerk/nextjs";
 import { ConvexProviderWithAuth, useConvexAuth, useMutation, useQuery } from "convex/react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -32,6 +33,7 @@ import { useNow } from "@/components/app/use-now";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { convexUrl } from "@/lib/app/config";
+import { tutorialDemoEnabled } from "@/lib/app/tutorial-demo";
 import { LANDING_PATH, SETUP_PAGES } from "@/lib/app/navigation";
 import { AUTH, withNext } from "@/lib/auth/routes";
 
@@ -42,6 +44,27 @@ import { Checkbox } from "@/components/ui/selection";
 
 const STORED = "selestial.company";
 const SETUP_PATH = SETUP_PAGES[0].path;
+
+/** Sign out on the company form. The local tutorial demo has no sign-in service to call. */
+function LeaveAccount() {
+  if (tutorialDemoEnabled()) {
+    return (
+      <Link href="/" className="font-medium text-[#5126c7] underline-offset-4 hover:underline">
+        Sign out
+      </Link>
+    );
+  }
+  return <ClerkLeaveAccount />;
+}
+
+function ClerkLeaveAccount() {
+  const signOut = useSignOut();
+  return (
+    <button type="button" className="font-medium text-[#5126c7] underline-offset-4 hover:underline" onClick={() => void signOut()}>
+      Sign out
+    </button>
+  );
+}
 
 function Loading() {
   return (
@@ -87,7 +110,6 @@ function Onboarding() {
   // connection), the record makes one company, not two.
   const [setupKey] = useState(() => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`));
   const { events, note } = useEvents();
-  const signOut = useSignOut();
   const hasInvitations = Boolean(invitations && invitations.length > 0);
   const steps: TraceStep[] = [
     { key: "account", label: "Sign in", detail: "Your session is confirmed.", state: "done" },
@@ -102,11 +124,7 @@ function Onboarding() {
       lead="You set the standards. Your team starts on review: nothing reaches a customer or a cleaner until you approve it."
       steps={steps}
       events={events}
-      below={
-        <button type="button" className="font-medium text-[#5126c7] underline-offset-4 hover:underline" onClick={() => void signOut()}>
-          Sign out
-        </button>
-      }
+      below={<LeaveAccount />}
     >
       {hasInvitations ? (
         <div className="mb-6 grid gap-2">
@@ -366,11 +384,20 @@ function SignedIn({ children }: { children: React.ReactNode }) {
   return <Companies userId={userId}>{children}</Companies>;
 }
 
+/** The local tutorial demo is already accepted by the record: there is no sign-in service in that process. */
+function DemoSignedIn({ children }: { children: React.ReactNode }) {
+  const { isLoading, isAuthenticated } = useConvexAuth();
+  if (isLoading) return <Loading />;
+  if (!isAuthenticated) return <NotSetUp title="The tutorial demo could not sign in" body="The local demo token server is not running, so this workspace cannot open." />;
+  return <Companies userId="tutorial-jordan">{children}</Companies>;
+}
+
 /** Everything under /app passes through here: set up, signed in, accepted by the record, and inside a company. */
 export function AppGate({ children }: { children: React.ReactNode }) {
   const missing = missingSetup();
   if (missing.length > 0) {
     return <NotSetUp title="We’ll be right back" body="Selestial isn’t available right now. Please try again in a few minutes." />;
   }
+  if (tutorialDemoEnabled()) return <DemoSignedIn>{children}</DemoSignedIn>;
   return <SignedIn>{children}</SignedIn>;
 }

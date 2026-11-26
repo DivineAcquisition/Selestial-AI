@@ -102,14 +102,19 @@ scenes.forEach(({ scene, clip, spans, length }, i) => {
   timeline.push({ id: scene.id, start, length });
   start += length;
 });
-inputs.push("-loop", "1", "-i", logo);
-filters.push(
-  `${scenes.map((_, i) => `[v${i}][a${i}]`).join("")}concat=n=${scenes.length}:v=1:a=1[vc][ac]`,
-  // A small, quiet mark in the corner: branding, not a banner.
-  `[${logoInput}:v]scale=150:-1,format=rgba,colorchannelmixer=aa=0.55[logo]`,
-  `[vc][logo]overlay=x=W-w-36:y=H-h-30:shortest=1,format=yuv420p[vout]`,
-  `[ac]loudnorm=I=-16:TP=-1.5:LRA=11[aout]`,
-);
+filters.push(`${scenes.map((_, i) => `[v${i}][a${i}]`).join("")}concat=n=${scenes.length}:v=1:a=1[vc][ac]`);
+// A storyboard may set "mark": false when the frames already carry the name (title cards).
+if (board.mark !== false) {
+  inputs.push("-loop", "1", "-i", logo);
+  filters.push(
+    // A small, quiet mark in the corner: branding, not a banner.
+    `[${logoInput}:v]scale=150:-1,format=rgba,colorchannelmixer=aa=0.55[logo]`,
+    `[vc][logo]overlay=x=W-w-36:y=H-h-30:shortest=1,format=yuv420p[vout]`,
+  );
+} else {
+  filters.push(`[vc]format=yuv420p[vout]`);
+}
+filters.push(`[ac]loudnorm=I=-16:TP=-1.5:LRA=11[aout]`);
 
 const output = join(dir, "tutorial.mp4");
 execFileSync("ffmpeg", ["-y", "-v", "error", ...inputs, "-filter_complex", filters.join(";"), "-map", "[vout]", "-map", "[aout]", "-c:v", "libx264", "-preset", "slow", "-crf", "20", "-profile:v", "high", "-r", String(FPS), "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", output], { stdio: "inherit" });

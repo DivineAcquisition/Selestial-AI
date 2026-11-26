@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Logo } from "@/components/brand/logo";
+import { tutorialDemoEnabled } from "@/lib/app/tutorial-demo";
 
 /** An honest screen for a piece that is not connected yet. It names the piece and never shows made-up data. */
 export function NotSetUp({ title, body, items, action }: { title: string; body: string; items?: string[]; action?: { label: string; href: string } }) {
@@ -32,7 +33,8 @@ export function NotSetUp({ title, body, items, action }: { title: string; body: 
 /** What this deployment still lacks before anyone can sign in. The words are for a log or a test, not a screen. */
 export function missingSetup(): string[] {
   const missing: string[] = [];
-  if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim()) missing.push("sign-in");
+  // A local tutorial recording signs in with a loopback token instead of the sign-in service.
+  if (!tutorialDemoEnabled() && !process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim()) missing.push("sign-in");
   if (!process.env.NEXT_PUBLIC_CONVEX_URL?.trim()) missing.push("live record");
   return missing;
 }

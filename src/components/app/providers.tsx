@@ -5,9 +5,28 @@ import { ConvexProviderWithAuth, ConvexReactClient } from "convex/react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import { clerkPublishableKey, convexUrl } from "@/lib/app/config";
+import { tutorialDemoEnabled } from "@/lib/app/tutorial-demo";
 import { AUTH } from "@/lib/auth/routes";
 
 const clients = new Map<string, ConvexReactClient>();
+
+/** The local token server (tutorials/demo/auth-server.mjs). Loopback only. */
+const DEMO_TOKEN_URL = "http://127.0.0.1:8787/token";
+
+/** A signed-in fictional owner for local tutorial recording. There is no sign-in service in that process. */
+function useDemoAuth() {
+  const fetchAccessToken = useCallback(async () => {
+    try {
+      const response = await fetch(DEMO_TOKEN_URL, { cache: "no-store" });
+      if (!response.ok) return null;
+      const body = (await response.json()) as { token?: string };
+      return body.token ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
+  return { isLoading: false, isAuthenticated: true, fetchAccessToken };
+}
 
 function clientFor(url: string) {
   const existing = clients.get(url);
@@ -56,6 +75,13 @@ export function useRecordAuth() {
 export function AppProviders({ children }: { children: React.ReactNode }) {
   const key = clerkPublishableKey();
   const url = convexUrl();
+  if (tutorialDemoEnabled() && url) {
+    return (
+      <ConvexProviderWithAuth client={clientFor(url)} useAuth={useDemoAuth}>
+        {children}
+      </ConvexProviderWithAuth>
+    );
+  }
   if (!key || !url) return children;
   return (
     <ClerkProvider
