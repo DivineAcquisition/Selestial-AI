@@ -180,6 +180,7 @@ export function FormsHome() {
                               density="compact"
                               value={row.formId ?? ""}
                               emptyLabel={`Default (${data.forms.find((form) => form.isDefault && form.publishedVersion)?.name ?? "Short form"})`}
+                              placeholder={`Default (${data.forms.find((form) => form.isDefault && form.publishedVersion)?.name ?? "Short form"})`}
                               options={publishedForms.map((form) => ({ value: form.id, label: form.name }))}
                               onValueChange={(next) => void run(() => setForm({ companyId, needId: row.id, formId: (next || null) as Id<"applicationForms"> | null }))}
                             />

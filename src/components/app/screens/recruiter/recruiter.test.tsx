@@ -22,6 +22,12 @@ const { OffersScreen } = await import("./offers");
 const { OnboardingScreen } = await import("./onboarding");
 const { HiringNeedsScreen } = await import("./hiring-needs");
 const { HiringSetupScreen } = await import("./hiring-setup");
+const { FormsHome } = await import("../../recruiter-forms/home");
+const { FormBuilder } = await import("../../recruiter-forms/builder");
+const { ApplicationForm } = await import("../../../applicant/form/application-form");
+const { parseRecipients } = await import("../../recruiter-forms/send-dialog");
+const { standardCleanerForm } = await import("../../../../../convex/lib/recruiter/formTemplates");
+const { fieldsFor, sectionsFor } = await import("../../../../../convex/lib/recruiter/form");
 
 const DAY = 86_400_000;
 const T = Date.UTC(2026, 10, 16, 15);
@@ -282,5 +288,73 @@ describe("Recruiter's screens", () => {
     keep("hiring-setup", page);
     for (const text of ["Open roles", "Where Recruiter looks for hiring mail", "A hiring inbox", "A Gmail label", "Find hiring emails in my business inbox", "It may miss an inquiry", "Recruiter doesn&#x27;t create labels", "Recent reads", "4 looked at · 2 opened · 1 possibly hiring-related", "Send application links to new applicants", "When: ", "Sends: ", "Stops: ", "Hiring FAQ", "Supplies: we provide all supplies.", "Services Recruiter uses"]) expect(page, text).toContain(text);
     expect(page).toContain("Gmail&#x27;s read permission covers your whole mailbox");
+  });
+});
+
+describe("Recruiter's application forms and board", () => {
+  const form = standardCleanerForm();
+  const look = { display: "one_at_a_time" as const, accentColor: "#6838ef", logoUrl: null, companyName: "Alpha Cleaning", copy: { title: "Apply for House Cleaner at Alpha Cleaning", intro: "It takes about five minutes.", submitLabel: "Submit application", thankYouTitle: "Your application is in", thankYouBody: "" } };
+  const fillForms = () => {
+    fill();
+    data["applicationForms:overview"] = {
+      forms: [{ id: "f1", name: "Cleaner application", template: "standard_cleaner", isDefault: true, publishedVersion: 2, draftDiffers: true, display: "one_at_a_time", questions: 24, accentColor: "#6838ef", usedBy: ["House Cleaner"], updatedAt: T, draftSavedBy: "Owner A" }],
+      roles: [{ id: "n1", title: "House Cleaner", status: "open", formId: null, formName: "Cleaner application", publicApply: true, slug: "house-cleaner", url: "https://app.selestial.test/apply/alpha/house-cleaner" }],
+      templates: [{ key: "standard_cleaner", name: "Cleaner application", blurb: "The full application." }],
+      handle: "alpha",
+      careersUrl: "https://app.selestial.test/apply/alpha",
+      canDraft: true,
+      canPublish: true,
+    };
+    data["applicationForms:get"] = {
+      form: { id: "f1", name: "Cleaner application", template: "standard_cleaner", isDefault: true, publishedVersion: 2, publishedAt: T, archived: false, draftRevision: 4, draftSavedAt: T, draftSavedBy: "Owner A", draftDiffers: false },
+      draft: form,
+      versions: [{ version: 2, publishedAt: T, publishedBy: "Owner A", note: null, restoredFrom: null, current: true }],
+      roles: [{ id: "n1", title: "House Cleaner", status: "open", publicApply: true, url: "https://app.selestial.test/apply/alpha/house-cleaner" }],
+      sample: { title: "House Cleaner", coverageAreas: ["78701"], questions: [] },
+      brand: { companyName: "Alpha Cleaning", brandColor: "#6838ef", logoUrl: null },
+      catalog: { builtins: [{ id: "resume", name: "Resume", kind: "file", label: "Resume", help: "", locked: [] }], kinds: [{ kind: "text", label: "Short answer" }], displays: [{ id: "one_at_a_time", label: "One question at a time", blurb: "" }, { id: "sections", label: "One page with sections", blurb: "" }], workAuthorizedWording: "" },
+      handle: "alpha",
+      careersUrl: "https://app.selestial.test/apply/alpha",
+      canDraft: true,
+      canPublish: true,
+    };
+  };
+
+  it("the board shows the pipeline's columns with each applicant, and a way to move them without dragging", () => {
+    fillForms();
+    search = "layout=board";
+    const page = html(<ApplicantsScreen />);
+    keep("applicants-board", page);
+    search = "";
+    for (const text of ["data-testid=\"board\"", "Inbox", "Invited", "Applying", "Screening", "Interview", "Decision", "Offer", "Onboarding", "Drop a card here to close the application.", "Maria Lopez", "Dana Cole", "Move to…", "Send application"]) expect(page, text).toContain(text);
+  });
+
+  it("application forms list the forms, which role uses which, and the public links", () => {
+    fillForms();
+    const page = html(<FormsHome />);
+    keep("application-forms", page);
+    for (const text of ["Application forms", "Cleaner application", "Default", "Published v2", "Unpublished changes", "Used by House Cleaner", "Careers page", "https://app.selestial.test/apply/alpha", "Anyone can apply", "New form"]) expect(page, text).toContain(text);
+  });
+
+  it("the builder draws the form as an applicant sees it, beside its sections and questions", () => {
+    fillForms();
+    const page = html(<FormBuilder formId={"f1" as never} />);
+    keep("application-form-builder", page);
+    for (const text of ["Layout and look", "Page words", "Invitation email", "Share and send", "Getting to jobs", "Do you have a car you can use to get to jobs?", "Ends the application on an answer", "Apply for House Cleaner at Alpha Cleaning", "1 of ", "Continue", "One question at a time"]) expect(page, text).toContain(text);
+  });
+
+  it("one question at a time: the first question, a progress bar, and lettered choices", () => {
+    const need = { title: "House Cleaner", coverageAreas: [], questions: [] };
+    const fields = fieldsFor(form, need, "Alpha Cleaning");
+    const page = html(<ApplicationForm look={look} fields={fields} sections={sectionsFor(form, need)} answers={{}} onAnswer={() => undefined} attestation="True." onContinue={async () => true} onSubmit={() => undefined} busy={null} problem={null} saved={false} jumpTo={{ key: "f.own_car", n: 1 }} />);
+    for (const text of ["Do you have a car you can use to get to jobs?", "data-letter=\"A\"", "Getting to jobs", "Continue"]) expect(page, text).toContain(text);
+  });
+
+  it("reads a pasted list of people to send the application to", () => {
+    expect(parseRecipients("Maria Lopez <Maria@Example.test>\njames@example.test; Lee Chen, lee@example.test\nnot an address")).toEqual([
+      { email: "maria@example.test", name: "Maria Lopez" },
+      { email: "james@example.test" },
+      { email: "lee@example.test", name: "Lee Chen" },
+    ]);
   });
 });

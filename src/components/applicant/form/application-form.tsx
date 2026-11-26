@@ -201,11 +201,20 @@ export function ApplicationForm(props: {
           <Card title="Check your answers">
             {shown
               .filter((field) => field.kind !== "statement" && field.key !== "smsConsent")
-              .map((field) => (
-                <Row key={field.key} label={field.label.length > 90 ? `${field.label.slice(0, 88)}…` : field.label}>
-                  <span data-testid={`review-${field.key}`}>{answerText(field, answers[field.key])}</span>
-                </Row>
-              ))}
+              .map((field) =>
+                field.label.length > 48 ? (
+                  <div key={field.key} className="flex flex-col gap-0.5 text-sm">
+                    <span className="text-muted-foreground">{field.label}</span>
+                    <span className="font-medium" data-testid={`review-${field.key}`}>
+                      {answerText(field, answers[field.key])}
+                    </span>
+                  </div>
+                ) : (
+                  <Row key={field.key} label={field.label}>
+                    <span data-testid={`review-${field.key}`}>{answerText(field, answers[field.key])}</span>
+                  </Row>
+                ),
+              )}
             {shown.some((field) => field.key === "smsConsent") ? <Row label="May we text you about this application?">{answers.smsConsent === true ? "Yes" : "No"}</Row> : null}
           </Card>
           {props.generalFiles && props.files ? <GeneralFiles files={props.files} /> : null}

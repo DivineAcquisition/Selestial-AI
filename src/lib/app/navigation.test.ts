@@ -65,7 +65,7 @@ const SPEC: Record<string, Record<string, string[]>> = {
     "Care": ["Requests", "Follow-ups", "Care Setup"],
   },
   Team: {
-    Recruiter: ["Applicants", "Interviews", "Hiring setup"],
+    Recruiter: ["Applicants", "Interviews", "Application forms", "Hiring setup"],
   },
 };
 

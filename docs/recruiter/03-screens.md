@@ -8,6 +8,11 @@ and onboarding; the applicant panel leads with the prepared step), **Interviews*
 rules). Hiring Needs, Screening, Offers & Agreements, Onboarding & Readiness and Playbook redirect there.
 The contracts below still describe the underlying queries.
 
+**Since November 26, 2026 there is a fifth tab, Application forms** (docs/recruiter/09-application-builder.md):
+the forms applicants answer and a builder for each (`src/components/app/recruiter-forms/`), which role uses
+which, and each role's public application page. Applicants has a **Board** layout beside the list, and a
+**Send application** button that emails the role's form to a list of people.
+
 The owner-facing pages are built in `src/components/app/screens/recruiter/` (pages under
 `src/app/(product)/app/agents/recruiter/`). This is what each reads and which actions it calls.
 

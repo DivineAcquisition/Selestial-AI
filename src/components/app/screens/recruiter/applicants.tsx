@@ -144,10 +144,10 @@ export function ApplicantsScreen() {
         {tabs}
         <div className="flex flex-wrap items-center justify-between gap-2">
           {layoutToggle}
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            <TextInput aria-label="Search applicants" placeholder="Search" value={search} onChange={(event) => setSearch(event.target.value)} className="h-8 w-36" />
-            <Select value={roleFilter} onValueChange={(next) => setRoleFilter(next ?? "")} options={roles.map((value) => ({ value, label: value }))} emptyLabel="Any role" placeholder="Any role" aria-label="Filter by role" />
-            <Select value={sourceFilter} onValueChange={(next) => setSourceFilter(next ?? "")} options={sources.map((value) => ({ value, label: SOURCE_WORDS[value] }))} emptyLabel="Any source" placeholder="Any source" aria-label="Filter by source" />
+          <div className="mb-4 grid grid-cols-[9rem_11rem_11rem] items-center gap-2">
+            <TextInput aria-label="Search applicants" placeholder="Search" value={search} onChange={(event) => setSearch(event.target.value)} className="h-9" />
+            <Select density="compact" value={roleFilter} onValueChange={(next) => setRoleFilter(next ?? "")} options={roles.map((value) => ({ value, label: value }))} emptyLabel="Any role" placeholder="Any role" aria-label="Filter by role" />
+            <Select density="compact" value={sourceFilter} onValueChange={(next) => setSourceFilter(next ?? "")} options={sources.map((value) => ({ value, label: SOURCE_WORDS[value] }))} emptyLabel="Any source" placeholder="Any source" aria-label="Filter by source" />
           </div>
         </div>
         <p className="mb-3 text-xs text-muted-foreground">Drag a card, or use &quot;Move to&quot; on it. Each move does what its button does, after you confirm. Applying, Screening and Onboarding fill up by themselves as applicants finish steps.</p>
