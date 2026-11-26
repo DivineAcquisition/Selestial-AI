@@ -137,7 +137,7 @@ export const COORDINATION = {
   event: { label: "What changed", title: "A cleaner cancels tomorrow’s visit." },
   responses: [
     { agent: "dispatch", title: "Dispatch works on coverage.", body: "It checks eligible replacements, requests acceptance, and flags the job if coverage remains unresolved." },
-    { agent: "sales", title: "Sales works with updated availability.", body: "New bookings reflect the capacity your company can actually offer." },
+    { agent: "sales", title: "Sales works within the updated availability.", body: "New bookings reflect the capacity your company can actually offer." },
     { agent: "retention", title: "Retention keeps the customer’s history in view.", body: "Previous service issues inform whether the customer needs extra attention." },
     { agent: "recruiter", title: "Recruiter sees recurring staffing gaps.", body: "Persistent shortages become a clear recruiting priority." },
   ],
