@@ -75,7 +75,7 @@ describe("Business texting panel", () => {
     const s = await setup(["Lena"]);
     const view = await s.as.query(api.businessTexting.overview, { companyId: s.companyId });
     expect(view).toMatchObject({ state: "ready", label: "Ready to send", number: s.smsNumber, provider: { selestial: true, quo: null }, blockers: [], canTest: true });
-    expect(view.routes.map((row) => row.via)).toEqual(["selestial", "selestial", "selestial", "selestial", "selestial"]);
+    expect(view.routes.map((row) => row.via)).toEqual(["selestial", "selestial", "selestial", "selestial", "selestial", "selestial"]);
     await s.as.mutation(api.companies.pauseMessaging, { companyId: s.companyId });
     const paused = await s.as.query(api.businessTexting.overview, { companyId: s.companyId });
     expect(paused).toMatchObject({ state: "sending_unavailable", paused: { reason: null } });

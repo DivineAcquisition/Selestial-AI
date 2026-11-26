@@ -21,7 +21,7 @@ export type Capability = {
 };
 
 export type ComingSoonAgent = {
-  id: Extract<AgentId, "marketing" | "customer-care">;
+  id: Extract<AgentId, "marketing">;
   name: string;
   department: string;
   pitch: string;
@@ -55,28 +55,6 @@ export const COMING_SOON: Record<ComingSoonAgent["id"], ComingSoonAgent> = {
       { tab: "Performance", title: "What each campaign booked", detail: "Ties sends to inquiries and bookings Sales handled, instead of opens and clicks.", mock: "progress" },
     ],
     availableNow: [{ label: "Content & Creative", detail: "Create images and short videos for your business with Creative Studio today.", path: "/app/agents/marketing/content-creative" }],
-    plan: "Not released yet. We'll say what it comes with when it is.",
-  },
-  "customer-care": {
-    id: "customer-care",
-    name: "Care",
-    department: "Operations",
-    pitch: "Answers customers the way your best office person would: reschedules, sets up new homes, takes service requests and keeps every promise visible to the team.",
-    scene: {
-      trigger: { title: "Text from Dana", detail: "“Can we move Friday to Monday?”" },
-      work: ["Checks Dana's plan and your rescheduling rules", "Finds times her usual crew is free", "Writes back in your company's voice"],
-      outcomes: [
-        { title: "Two open times offered", detail: "Monday 10am or 1pm" },
-        { title: "Dana picks Monday 10am", detail: "Confirmed by text" },
-        { title: "Schedule and crew updated", detail: "Dispatch tells the crew" },
-      ],
-    },
-    capabilities: [
-      { tab: "Conversations", title: "Every customer message answered", detail: "Replies to texts and email within the rules you set, and hands anything sensitive to a person.", mock: "chat" },
-      { tab: "Customer Setup", title: "New homes set up right", detail: "Collects access, pets, alarm codes, parking and priorities before the first visit.", mock: "checklist" },
-      { tab: "Service Requests", title: "Requests tracked to done", detail: "Add-ons, special instructions and one-time asks, logged against the property so the crew sees them.", mock: "list" },
-      { tab: "Rescheduling & Cancellations", title: "Changes handled by your rules", detail: "Moves and skips visits within your notice periods and fees, and tells Dispatch and the crew.", mock: "week" },
-    ],
     plan: "Not released yet. We'll say what it comes with when it is.",
   },
 };

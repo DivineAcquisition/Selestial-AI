@@ -184,6 +184,26 @@ export async function eraseCustomerRecords(ctx: Ctx, customer: Doc<"customers">)
     .withIndex("by_company_customer", (q) => q.eq("companyId", ctx.companyId).eq("customerId", customer._id))
     .take(MAX_ROWS);
   for (const signal of signals) await ctx.db.patch(signal._id, { what: "(erased)", status: signal.status === "open" || signal.status === "in_case" ? "cleared" : signal.status });
+  // Care: the client's words are blanked, steps not yet carried out stop, and requests keep only that they existed.
+  const careRequests = await ctx.db
+    .query("careRequests")
+    .withIndex("by_company_customer", (q) => q.eq("companyId", ctx.companyId).eq("customerId", customer._id))
+    .take(MAX_ROWS);
+  for (const row of careRequests) {
+    await ctx.db.patch(row._id, { summary: "Erased request", requestedOutcome: "(erased)", ask: {}, facts: [], blocker: undefined, nextAction: undefined, pending: undefined, promised: undefined, nextCheckAt: undefined, waiting: undefined, authority: { ...row.authority, name: ERASED_CUSTOMER }, conversation: { channel: row.conversation.channel, address: "erased" }, ...(row.status === "resolved" || row.status === "closed_no_action" ? {} : { status: "closed_no_action" as const, closedAt: Date.now(), resolution: { at: Date.now(), words: "The client's data was erased.", evidence: [] } }) });
+    const entries = await ctx.db.query("careEntries").withIndex("by_request", (q) => q.eq("requestId", row._id)).take(MAX_ROWS);
+    for (const entry of entries) await ctx.db.patch(entry._id, { text: "(erased)" });
+    const careSteps = await ctx.db.query("careSteps").withIndex("by_request", (q) => q.eq("requestId", row._id)).take(MAX_ROWS);
+    for (const step of careSteps) await ctx.db.patch(step._id, { summary: "(erased)", message: undefined, payload: {}, ...(step.status === "proposed" || step.status === "awaiting_approval" || step.status === "ready" ? { status: "cancelled" as const, result: "The client's data was erased." } : {}) });
+    const outbox = await ctx.db.query("messages").withIndex("by_company_care_request", (q) => q.eq("companyId", ctx.companyId).eq("careRequestId", row._id)).take(MAX_ROWS);
+    for (const message of outbox) await ctx.db.patch(message._id, { body: "Erased.", to: undefined, subject: undefined, ...(message.status === "queued" || message.status === "held" ? { status: "not_sent" as const, problem: "The client's details were erased before it went." } : {}) });
+  }
+  const careMessages = await ctx.db
+    .query("careMessages")
+    .withIndex("by_company_customer", (q) => q.eq("companyId", ctx.companyId).eq("customerId", customer._id))
+    .take(MAX_ROWS);
+  for (const message of careMessages) await ctx.db.patch(message._id, { text: "(erased)", from: "erased", sealed: undefined, status: message.status === "queued" ? "skipped" : message.status, mailbox: undefined });
+  steps.push({ step: "Care requests", state: "done", detail: `${careRequests.length} request${careRequests.length === 1 ? "" : "s"} and ${careMessages.length} message${careMessages.length === 1 ? "" : "s"} blanked; anything not yet sent was stopped.` });
   steps.push({ step: "Retention cases and feedback", state: "done", detail: `${cases.length} case${cases.length === 1 ? "" : "s"} and ${feedback.length} feedback record${feedback.length === 1 ? "" : "s"} blanked; ${careLinks.length} customer link${careLinks.length === 1 ? "" : "s"} closed.` });
 
   const properties = await ctx.db

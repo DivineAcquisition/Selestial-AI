@@ -77,7 +77,7 @@ export function quoGaps(route: Extract<SmsRoute, { kind: "quo" }>, input: { orig
 }
 
 const AGENT_ORIGIN: readonly Origin[] = ["agent", "dispatch", "follow_up", "win_back", "recruiting"];
-const AGENT_WORDS: Record<Agent, string> = { sales: "Sales", recruiter: "Recruiter", dispatch: "Dispatch", retention: "Retention", quality: "Quality" };
+const AGENT_WORDS: Record<Agent, string> = { sales: "Sales", recruiter: "Recruiter", dispatch: "Dispatch", retention: "Retention", quality: "Quality", "customer-care": "Care" };
 
 /**
  * Whether an automated send may go to this conversation given who owns it. Operational texts (a job offer, a

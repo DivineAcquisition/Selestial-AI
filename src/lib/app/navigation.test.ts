@@ -61,7 +61,8 @@ const SPEC: Record<string, Record<string, string[]>> = {
   Operations: {
     Dispatch: ["Dispatch Board", "Schedule", "Offers & Coverage", "Live Jobs", "Action Links", "Playbook"],
     Quality: ["Reviews", "Cases", "Corrections", "Standards", "Insights", "Playbook"],
-    "Care": ["Conversations", "Customer Setup", "Service Requests", "Rescheduling & Cancellations", "Playbook"],
+    // Care, live from November 25, 2026: its Overview is the agent's page, and Care Setup is its playbook.
+    "Care": ["Requests", "Follow-ups", "Care Setup"],
   },
   Team: {
     Recruiter: ["Applicants", "Interviews", "Hiring setup"],
@@ -126,13 +127,13 @@ describe("the navigation definition", () => {
   it("keeps the rules every agent's tabs follow", () => {
     for (const agent of AGENTS) {
       // The agent's setup is last (Recruiter's Playbook is its Hiring setup), and conversation with the agent is never a sidebar tab.
-      expect(agent.tabs.at(-1), agent.id).toMatchObject(agent.id === "recruiter" ? { id: "hiring-setup", label: "Hiring setup" } : { id: "playbook", label: "Playbook" });
+      expect(agent.tabs.at(-1), agent.id).toMatchObject(agent.id === "recruiter" ? { id: "hiring-setup", label: "Hiring setup" } : agent.id === "customer-care" ? { id: "care-setup", label: "Care Setup" } : { id: "playbook", label: "Playbook" });
       expect(agent.tabs.filter((tab) => /chat|ask/i.test(tab.label)), agent.id).toEqual([]);
       expect(agent.responsibility.length, agent.id).toBeGreaterThan(10);
     }
     // The two pairs of similar names stay with their owners.
     const owner = (label: string) => AGENTS.filter((agent) => agent.tabs.some((tab) => tab.label === label)).map((agent) => agent.id);
-    expect(owner("Customer Setup")).toEqual(["customer-care"]);
+    expect(owner("Care Setup")).toEqual(["customer-care"]);
     expect(owner("Offers & Coverage")).toEqual(["dispatch"]);
     // Availability is the shared Cleaners record, not any agent's tab.
     expect(owner("Availability")).toEqual([]);
@@ -217,7 +218,7 @@ describe("what is available today", () => {
       for (const backendAgent of department.agents) expect(AGENTS.find((agent) => agent.backendAgent === backendAgent)?.department, backendAgent).toBe(department.id);
     }
     expect(BACKEND_DEPARTMENTS.flatMap((row) => row.agents).sort()).toEqual([...BACKEND_AGENTS].sort());
-    expect(AGENTS.filter((agent) => agent.workflow === "built").map((agent) => agent.id)).toEqual(["sales", "retention", "dispatch", "quality", "recruiter"]);
+    expect(AGENTS.filter((agent) => agent.workflow === "built").map((agent) => agent.id)).toEqual(["sales", "retention", "dispatch", "quality", "customer-care", "recruiter"]);
     // Beneath an agent that is not released, the sidebar lists only tabs that open a real page, never a row
     // of links to the same coming-soon page. A released agent lists every tab.
     for (const agent of AGENTS) {
@@ -226,7 +227,6 @@ describe("what is available today", () => {
       else for (const tab of listed) expect(hrefFor(tab), `${agent.id}.${tab.id}`).not.toBeNull();
     }
     expect(disclosedTabs(AGENTS.find((agent) => agent.id === "marketing")!).map((tab) => tab.id)).toEqual(["content-creative"]);
-    for (const id of ["customer-care"]) expect(disclosedTabs(AGENTS.find((agent) => agent.id === id)!), id).toEqual([]);
     // The plan carries no numbers or states of its own: badges get their values from the record.
     expect(JSON.stringify({ AGENTS, NAV_ITEMS })).not.toMatch(/"count"|"badge"|"status":"(working|active)"/);
   });

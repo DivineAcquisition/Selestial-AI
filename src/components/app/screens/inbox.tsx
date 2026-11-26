@@ -16,6 +16,7 @@ import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { countSegments } from "../../../../convex/lib/messagingBilling/segments";
 import { formatUnits } from "../../../../convex/lib/messagingBilling/money";
+import { CareOnRecord } from "@/components/app/screens/care/related";
 
 type Row = NonNullable<ReturnType<typeof useQuery<typeof api.smsConversations.list>>>[number];
 
@@ -164,6 +165,8 @@ function Thread({ conversationId }: { conversationId: Id<"smsConversations"> }) 
         </div>
         <FormError message={error} />
       </div>
+
+      <CareOnRecord target={{ conversationId }} quietWhenEmpty />
 
       {thread.openTasks.length > 0 ? (
         <ul className="grid gap-1 rounded-xl border border-warning/40 p-3 text-xs">

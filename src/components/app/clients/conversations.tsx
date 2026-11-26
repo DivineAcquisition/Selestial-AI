@@ -32,6 +32,7 @@ function phone(value: string | null) {
 
 import type { Profile } from "./profile";
 import { Checkbox, SegmentedControl, Select } from "@/components/ui/selection";
+import { CareOnRecord } from "@/components/app/screens/care/related";
 
 type Thread = NonNullable<ReturnType<typeof useQuery<typeof api.clientConversations.thread>>>;
 type Item = Thread["items"][number];
@@ -64,6 +65,7 @@ export function ConversationsTab({ profile }: { profile: Profile }) {
         </section>
       </div>
       <aside className="grid min-w-0 content-start gap-4">
+        <CareOnRecord target={{ customerId: profile.id }} />
         <Scheduled thread={thread} />
         <Reach profile={profile} />
       </aside>

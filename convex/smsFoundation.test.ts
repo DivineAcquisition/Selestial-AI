@@ -126,7 +126,7 @@ describe("SMS foundation", () => {
     const s = await setup(["Lena"]);
     await s.as.mutation(api.companies.pauseAll, { companyId: s.companyId });
     const paused = await s.t.run(async (ctx) => (await ctx.db.get(s.companyId))!.pausedAgents);
-    expect([...paused].sort()).toEqual(["dispatch", "quality", "recruiter", "retention", "sales"]);
+    expect([...paused].sort()).toEqual(["customer-care", "dispatch", "quality", "recruiter", "retention", "sales"]);
   });
 
   it("won't repeat a request to the provider when the text would now read differently", async () => {

@@ -36,10 +36,13 @@ working name.
   the next cleaner on a decline or no answer, and hands the visit to a person
   when it cannot be covered. It is code only; no model is called.
 
-Only Dispatch has a workflow. The other seven agents are not built, and four
-of them (Marketing, Quality, Customer Care) do not exist in
-the backend yet. There is no texting, so an offer is a record: someone
-tells the cleaner, and the office records their answer.
+- **Care** (`customer-care`): reads clients' texts and Care-inbox email
+  against their visits, plans and invoices, coordinates changes through the
+  agent that owns each one, and keeps the client informed until the request is
+  resolved. See [`docs/care/00-architecture.md`](docs/care/00-architecture.md)
+  and [`docs/care/01-verification.md`](docs/care/01-verification.md).
+
+Marketing is the one agent not built yet.
 
 ## Setup
 

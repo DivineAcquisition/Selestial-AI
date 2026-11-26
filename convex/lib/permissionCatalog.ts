@@ -25,9 +25,14 @@ export type ActionDef = {
   outsider: boolean;
   /** Money moves. The owner sets a limit per action and per day. */
   money: boolean;
+  /**
+   * Where a new company starts, when the Owner decided it differently from the review-first rule. Only Client
+   * Care's verified answers, invoice look-ups and acknowledgments (the Owner's decision of November 25, 2026).
+   */
+  initial?: Level;
 };
 
-const action = (key: string, agent: Agent, label: string, standard: Level, options: Partial<Pick<ActionDef, "ceiling" | "outsider" | "money">> = {}): ActionDef => ({
+const action = (key: string, agent: Agent, label: string, standard: Level, options: Partial<Pick<ActionDef, "ceiling" | "outsider" | "money" | "initial">> = {}): ActionDef => ({
   key,
   agent,
   label,
@@ -35,6 +40,7 @@ const action = (key: string, agent: Agent, label: string, standard: Level, optio
   ceiling: options.ceiling ?? "execute",
   outsider: options.outsider ?? true,
   money: options.money ?? false,
+  ...(options.initial ? { initial: options.initial } : {}),
 });
 
 export const ACTIONS: readonly ActionDef[] = [
@@ -82,6 +88,23 @@ export const ACTIONS: readonly ActionDef[] = [
   action("quality.verify_correction", "quality", "Verify a correction visit's record against the acceptance criteria", "execute", { outsider: false }),
   action("quality.propose_improvement", "quality", "Propose a change to a checklist, booking question, scope wording, training or inspection frequency (a person decides)", "execute", { ceiling: "execute", outsider: false }),
 
+  // Care (convex/lib/clientCare). Every change it makes is carried out by the function that owns it
+  // (Dispatch's move, Retention's plan change, the visit's cancellation), checked again when it runs.
+  action("care.answer_question", "customer-care", "Answer a client's question from the visit, plan and invoice records", "execute", { initial: "execute" }),
+  action("care.acknowledge", "customer-care", "Acknowledge a client's request and ask only for what is missing or unclear", "execute", { initial: "execute" }),
+  action("care.send_invoice_link", "customer-care", "Tell a client what an existing invoice shows and send its secure payment link", "execute", { initial: "execute" }),
+  action("care.complaint_intake", "customer-care", "Acknowledge a complaint and open or link the Quality and Retention cases (no findings, refunds or promises)", "execute", { initial: "execute" }),
+  action("care.send_update", "customer-care", "Send a promised update about a request that is still being worked", "execute"),
+  action("care.update_preferences", "customer-care", "Record a client's preference for one visit, a property or every future visit", "execute_and_report"),
+  action("care.update_access", "customer-care", "Replace a property's access instructions with what the client sent", "execute_and_report", { ceiling: "execute_and_report" }),
+  action("care.reschedule_visit", "customer-care", "Move one visit to a time Dispatch can cover, inside the change notice", "execute_and_report"),
+  action("care.skip_visit", "customer-care", "Skip a recurring visit, or cancel a one-time visit, inside the change notice", "execute_and_report"),
+  action("care.change_plan", "customer-care", "Pause or end a recurring service at the client's request", "execute_and_report"),
+  // It raises what the client pays, so the Owner always hears about it.
+  action("care.add_extra", "customer-care", "Add a published extra to an upcoming visit at its current price, once the client accepts it", "execute_and_report", { ceiling: "execute_and_report" }),
+  action("care.apply_fee", "customer-care", "Apply a late-change fee the client's agreement or Care Setup sets", "propose", { ceiling: "propose", money: true }),
+  action("care.hand_off", "customer-care", "Hand a request to Sales, Dispatch, Quality, Retention or Finance", "execute", { outsider: false }),
+
   action("recruiter.acknowledge_and_collect", "recruiter", "Acknowledge, answer questions, request missing details", "execute"),
   // An owner opt-in (decided November 15 and confirmed November 22, 2026): only a published fixed requirement, decided in code from the answers.
   action("recruiter.decline_fixed_requirement", "recruiter", "Decline an applicant who doesn't meet a published fixed requirement (decided from their answers, never on judgment)", "execute_and_report"),
@@ -118,5 +141,6 @@ export function actionDef(key: string): ActionDef | undefined {
 
 /** Every company starts with review: anything an outsider sees begins on Propose, whatever it loosens to later. */
 export function initialLevel(def: ActionDef): Level {
+  if (def.initial) return def.initial;
   return def.outsider && rank(def.standard) > rank("propose") ? "propose" : def.standard;
 }

@@ -89,9 +89,12 @@ describe("Client conversations", () => {
     const out = after.items.find((i) => i.type === "out")!;
     expect(out).toMatchObject({ status: "not_sent", problem: "The client replied before it was due, so it was not sent." });
     const reply = after.items.find((i) => i.type === "in")!;
-    // Kept as an excerpt, links taken out, as for every inbound text; and a person has a task to read it.
+    // Kept as an excerpt, links taken out, as for every inbound text; and Care has it as a request with its own task.
     expect(reply).toMatchObject({ kind: "message", fromName: "Dana Whitfield", body: "All good, thanks! See [link]" });
-    expect(reply.type === "in" && reply.taskId).toBeTruthy();
+    await flush(s.t);
+    const requests = await s.t.run(async (ctx) => (await ctx.db.query("careRequests").collect()).filter((r) => r.customerId === customerId));
+    expect(requests).toHaveLength(1);
+    expect(requests[0].taskId).toBeTruthy();
 
     vi.setSystemTime(MORNING + 3 * HOUR);
     await flush(s.t);
@@ -106,8 +109,13 @@ describe("Client conversations", () => {
     const after = await thread(s, customerId);
     expect(after.items.find((i) => i.type === "in")).toMatchObject({ fromName: "Sam (site)" });
     expect(after.scheduled).toHaveLength(0);
-    const tasks = await s.t.run(async (ctx) => (await ctx.db.query("tasks").collect()).filter((t) => t.about?.id === customerId).map((t) => t.title));
-    expect(tasks).toContain("Text from Sam (site) at Dana Whitfield");
+    // Care has it, as a request from Sam with Sam's own contact authority, never the client's.
+    await flush(s.t);
+    const requests = await s.t.run(async (ctx) => (await ctx.db.query("careRequests").collect()).filter((r) => r.customerId === customerId));
+    expect(requests.map((r) => [r.category, r.authority.as, r.authority.name, r.authority.roles])).toEqual([["access", "contact", "Sam (site)", ["site"]]]);
+    // The code itself isn't kept in Care's copy of the words.
+    const kept = await s.t.run(async (ctx) => (await ctx.db.query("careMessages").collect()).map((m) => m.text));
+    expect(kept).toEqual(["Gate code changed, call me"]);
   });
 
   it("a takeover stops the agents' follow-ups and their drafts, keeps the person's own, and can be handed back", async () => {

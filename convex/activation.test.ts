@@ -395,7 +395,7 @@ describe("Activation plan", () => {
   const base: Snapshot = {
     now: NOW,
     companyName: "Alpha",
-    plan: { sales: { ok: true, words: "" }, recruiter: { ok: true, words: "" }, dispatch: { ok: true, words: "" }, retention: { ok: true, words: "" }, quality: { ok: true, words: "" } },
+    plan: { sales: { ok: true, words: "" }, recruiter: { ok: true, words: "" }, dispatch: { ok: true, words: "" }, retention: { ok: true, words: "" }, quality: { ok: true, words: "" }, "customer-care": { ok: true, words: "" } },
     paused: [],
     facts: { areas: "Austin", categories: ["residential"], phone: null, email: null, location: null, workforce: [] },
     sales: { activeServices: 1, draftServiceId: null, bookingPageId: null, agreementId: null, openInquiries: 0, inquiryIds: [], approvedAnswers: 0, proposedAnswers: 0, firstBatchDecided: false, replyLevel: "propose" },

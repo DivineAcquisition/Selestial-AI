@@ -17,7 +17,7 @@ export const QUO_STATUSES = ["setup_incomplete", "ready", "degraded", "disconnec
 export type QuoStatus = (typeof QUO_STATUSES)[number];
 
 /** The four agents that may be allowed to text through the connection. */
-export const QUO_AGENTS = ["sales", "recruiter", "dispatch", "retention", "quality"] as const;
+export const QUO_AGENTS = ["sales", "recruiter", "dispatch", "retention", "quality", "customer-care"] as const;
 
 /** Why a connection cannot be used right now. Each has its own recovery step. */
 export const QUO_PROBLEMS = ["key_rejected", "no_credits", "subscription_expired", "registration", "rate_limited", "outage", "webhook", "number_removed"] as const;

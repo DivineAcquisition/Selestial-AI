@@ -110,7 +110,7 @@ export const AGENTS_SECTION = {
     },
   ],
   bonus: { name: "Quality", line: "Founding customers also get Quality, which reviews finished visits’ photos and checklists and flags what was missed. It stays on your plan after the founding months." },
-  notIncluded: "Marketing and Care are planned and not available yet. No plan or purchase makes them available sooner.",
+  notIncluded: "Marketing is planned and not available yet. No plan or purchase makes it available sooner.",
 };
 
 export const WALKTHROUGH = {
@@ -161,7 +161,7 @@ export const OFFER = {
   duration: `for your first ${FOUNDING_MONTHS} monthly billing periods`,
   renewal: `Then ${RENEWAL_PRICE}/month, the standard Operate price. We email you and show a notice in the app about 30 days before it changes. You don’t need to do anything.`,
   groups: [
-    { title: "Included agents", items: ["Sales, Dispatch, Recruiter and Retention", "Quality, as a founding benefit, kept after your founding months while you have a plan"] },
+    { title: "Included agents", items: ["Sales, Dispatch, Recruiter, Retention and Care", "Quality, as a founding benefit, kept after your founding months while you have a plan"] },
     { title: "AI credits", items: ["A monthly allowance of Selestial Credits for AI work, reset each billing period", "Your allowance and what each task costs are shown in Plan & Usage. If credits run out, new AI work pauses until the next reset; schedules, records and cleaner links keep working. Nothing is bought automatically"] },
     {
       title: "Texts and email",
@@ -214,7 +214,7 @@ export const FAQ = {
     "Selestial is developing, and founding customers’ feedback helps decide what we improve and build next. We’ll be clear about what works today and what doesn’t yet.",
   items: [
     { q: "Who is Founding Access for?", a: "Owners and operators of residential, commercial and short-term rental cleaning companies in the US who want to start early, get hands-on help setting up, and tell us what to improve." },
-    { q: "What can I use today?", a: "Sales, Dispatch, Recruiter and Retention, plus Quality for founding customers. You also get booking pages priced from your services, clients and properties, cleaners, services and pricing, finance, Company Chat, approvals and agreements. Marketing and Care aren’t available yet. Connecting a Gmail inbox for Recruiter is done with our team during setup." },
+    { q: "What can I use today?", a: "Sales, Dispatch, Recruiter, Retention and Care, plus Quality for founding customers. You also get booking pages priced from your services, clients and properties, cleaners, services and pricing, finance, Company Chat, approvals and agreements. Marketing isn’t available yet. Connecting a Gmail inbox for Recruiter is done with our team during setup." },
     { q: "What does joining early mean?", a: `You start on the founding price, get help setting up, and talk directly with the people building Selestial. Founding places go to the first ${CAPACITY} companies whose first payment goes through while enrollment is open.` },
     { q: "Can I keep my current software during setup?", a: "Yes. Imported visits and recurring plans stay on hold until you release them, so nothing is booked twice while you review. Customer payments and subscriptions stay with your current provider." },
     { q: "What can you help migrate?", a: "Customers, properties, recurring plans and upcoming bookings, from CSV exports of Jobber, Housecall Pro, BookingKoala or a spreadsheet. Payment methods, card details, subscriptions and other record types aren’t imported. You review every record before anything goes live." },

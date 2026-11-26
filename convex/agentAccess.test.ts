@@ -26,20 +26,20 @@ describe("Early access to coming-soon agents", () => {
     const t = start();
     const { as, companyId } = await company(t, "owner-a", "Alpha Cleaning");
     const office = await addMember(t, as, companyId, "office-a", "office");
-    expect(await as.query(api.agentAccess.mine, { companyId, agent: "customer-care" })).toMatchObject({ requested: false });
+    expect(await as.query(api.agentAccess.mine, { companyId, agent: "marketing" })).toMatchObject({ requested: false });
 
-    await as.mutation(api.agentAccess.request, { companyId, agent: "customer-care", uses: ["Every call answered", "Every call answered", " "], note: "We miss calls after hours." });
-    await office.mutation(api.agentAccess.request, { companyId, agent: "customer-care", uses: ["Bookings taken by phone"] });
+    await as.mutation(api.agentAccess.request, { companyId, agent: "marketing", uses: ["Every call answered", "Every call answered", " "], note: "We miss calls after hours." });
+    await office.mutation(api.agentAccess.request, { companyId, agent: "marketing", uses: ["Bookings taken by phone"] });
     // Asking again updates your own line; it never adds you twice.
-    await office.mutation(api.agentAccess.request, { companyId, agent: "customer-care", uses: ["Bookings taken by phone", "Questions answered"] });
+    await office.mutation(api.agentAccess.request, { companyId, agent: "marketing", uses: ["Bookings taken by phone", "Questions answered"] });
     const rows = await t.run(async (ctx) => ctx.db.query("agentAccessRequests").collect());
     expect(rows).toHaveLength(1);
     expect(rows[0].requesters.map((r) => r.uses)).toEqual([["Every call answered"], ["Bookings taken by phone", "Questions answered"]]);
-    expect(await office.query(api.agentAccess.mine, { companyId, agent: "customer-care" })).toMatchObject({ requested: true, mine: true, people: 2, status: "requested" });
+    expect(await office.query(api.agentAccess.mine, { companyId, agent: "marketing" })).toMatchObject({ requested: true, mine: true, people: 2, status: "requested" });
 
-    await office.mutation(api.agentAccess.withdraw, { companyId, agent: "customer-care" });
-    expect(await office.query(api.agentAccess.mine, { companyId, agent: "customer-care" })).toMatchObject({ requested: true, mine: false, people: 1 });
-    await as.mutation(api.agentAccess.withdraw, { companyId, agent: "customer-care" });
+    await office.mutation(api.agentAccess.withdraw, { companyId, agent: "marketing" });
+    expect(await office.query(api.agentAccess.mine, { companyId, agent: "marketing" })).toMatchObject({ requested: true, mine: false, people: 1 });
+    await as.mutation(api.agentAccess.withdraw, { companyId, agent: "marketing" });
     expect(await t.run(async (ctx) => ctx.db.query("agentAccessRequests").collect())).toHaveLength(0);
   });
 
@@ -55,10 +55,10 @@ describe("Early access to coming-soon agents", () => {
     const a = await company(t, "owner-a", "Alpha Cleaning");
     const b = await company(t, "owner-b", "Bravo Maids");
     await a.as.mutation(api.agentAccess.request, { companyId: a.companyId, agent: "marketing", uses: ["Campaigns that fill gaps"], note: "Slow Tuesdays." });
-    await b.as.mutation(api.agentAccess.request, { companyId: b.companyId, agent: "customer-care", uses: [] });
     // Another company is not found, and sees nothing of Alpha's request.
     expect(await refusal(b.as.query(api.agentAccess.mine, { companyId: a.companyId, agent: "marketing" }))).toBe("Not found.");
     expect(await b.as.query(api.agentAccess.mine, { companyId: b.companyId, agent: "marketing" })).toMatchObject({ requested: false });
+    await b.as.mutation(api.agentAccess.request, { companyId: b.companyId, agent: "marketing", uses: [] });
     // Staff only.
     expect(await refusal(a.as.query(api.agentAccess.requests, {}))).toBe("Not found.");
     process.env.STAFF_BOOTSTRAP_EMAIL = STAFF.email;
@@ -67,7 +67,7 @@ describe("Early access to coming-soon agents", () => {
     expect(all.map((row) => [row.company, row.agent, row.people])).toEqual(
       expect.arrayContaining([
         ["Alpha Cleaning", "marketing", 1],
-        ["Bravo Maids", "customer-care", 1],
+        ["Bravo Maids", "marketing", 1],
       ]),
     );
     const alpha = all.find((row) => row.company === "Alpha Cleaning")!;

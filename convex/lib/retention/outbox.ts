@@ -40,8 +40,17 @@ export function careIntent(customer: Pick<Doc<"customers">, "_id">, purpose: Car
  * Whose conversation this is right now. Retention writes to a customer only when nobody else is: a person
  * who took over, or Sales working an open request with them, comes first.
  */
-export async function conversationOwner(ctx: Ctx, customer: Doc<"customers">): Promise<{ free: true } | { free: false; who: "person" | "sales"; words: string }> {
+export async function conversationOwner(ctx: Ctx, customer: Doc<"customers">): Promise<{ free: true } | { free: false; who: "person" | "sales" | "care"; words: string }> {
   if (customer.conversationHeld) return { free: false, who: "person", words: "A person is handling this customer's conversation, so Retention sends nothing until it is handed back." };
+  // Care asked the client something and is waiting on their answer: Retention's own outreach waits, so the client hears one voice.
+  const care = await ctx.db
+    .query("careRequests")
+    .withIndex("by_company_customer", (q) => q.eq("companyId", customer.companyId).eq("customerId", customer._id))
+    .order("desc")
+    .take(20);
+  if (care.some((row) => row.status === "waiting_customer" && !row.retentionCaseId)) {
+    return { free: false, who: "care", words: "Care is waiting on this customer's answer to a request, so Retention does not write to them at the same time." };
+  }
   const opportunities = await ctx.db
     .query("salesOpportunities")
     .withIndex("by_company_customer", (q) => q.eq("companyId", customer.companyId).eq("customerId", customer._id))
@@ -120,7 +129,7 @@ export async function queueCareMessage(ctx: MutationCtx, planned: PlannedCareMes
     const owner = await conversationOwner(ctx, customer);
     if (!owner.free) {
       problem = owner.words;
-      refusal = owner.who === "person" ? "conversation_held" : "conversation_with_sales";
+      refusal = owner.who === "person" ? "conversation_held" : owner.who === "care" ? "conversation_with_care" : "conversation_with_sales";
     }
   }
   if (!problem && to) {

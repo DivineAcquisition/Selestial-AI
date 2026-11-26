@@ -1,7 +1,9 @@
 /**
- * Reading customers' replies in an inbox the Owner connected for Care & Retention.
+ * Reading customers' replies in an inbox the Owner connected for Care & Retention. Since November 25, 2026 the
+ * words go to Care (convex/lib/clientCare/intake.ts), which works the request and tells Retention of a
+ * stated wish to cancel; the file keeps its name so the cursor and lease on each connection carry on.
  *
- * Off until the Owner turns it on in Retention's Playbook, and then narrow on purpose:
+ * Off until the Owner turns it on in Care Setup (Retention's earlier switch carries over), and narrow on purpose:
  *  - Nothing received before the moment it was turned on is read.
  *  - Headers are listed; a message is opened only when its sender's address is on exactly one active
  *    customer's record. Everything else in the inbox is never opened and nothing about it is kept.
@@ -27,7 +29,9 @@ import { connectorFor, MailboxAuthError } from "./lib/recruiter/mailbox";
 import { unseal } from "./lib/recruiter/secrets";
 import { isAutomatic, replyText } from "./lib/retention/mail";
 import { enqueueRun } from "./lib/retention/runs";
-import { retentionSettings } from "./lib/retention/settings";
+import { careSettings } from "./lib/clientCare/settings";
+import { receive as careReceive } from "./lib/clientCare/intake";
+import { normalAddress } from "./lib/compliance/recipients";
 
 const LEASE = 3 * 60 * 1000;
 const HOUR = 3_600_000;
@@ -41,8 +45,8 @@ export const begin = internalQuery({
     const connection = await ctx.db.get(args.connectionId);
     if (!connection || connection.status !== "connected" || !purposesOf(connection).includes("care")) return null;
     const company = await ctx.db.get(connection.companyId);
-    if (!company || company.suspendedAt || company.pausedAgents.includes("retention")) return null;
-    if (!AGENT_PROFILES.retention.built || !retentionSettings(company).readCareInbox) return null;
+    if (!company || company.suspendedAt || company.pausedAgents.includes("customer-care")) return null;
+    if (!AGENT_PROFILES["customer-care"].built || !careSettings(company).readInbox) return null;
     return { provider: connection.provider, address: connection.address, folder: connection.folder, cursor: connection.careCursor ?? null, from: connection.careFrom ?? null };
   },
 });
@@ -80,13 +84,23 @@ export const triage = internalQuery({
   },
 });
 
-/** Hands one customer's own words to Retention's worker. Asked twice for the same message, it queues once. */
+/**
+ * Hands one customer's own words to Care (the Owner's decision of November 25, 2026), which keeps them
+ * once by Gmail's message id and works the request, and tells Retention of a stated wish to cancel. When Care
+ * cannot take it (the address is no longer one client's alone), Retention's reader reads it as before.
+ * Asked twice for the same message, it files once.
+ */
 export const file = internalMutation({
-  args: { connectionId: v.id("mailboxConnections"), messageId: v.string(), customerId: v.id("customers"), text: v.string() },
+  args: { connectionId: v.id("mailboxConnections"), messageId: v.string(), customerId: v.id("customers"), text: v.string(), threadId: v.optional(v.string()), subject: v.optional(v.string()), receivedAt: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const connection = await ctx.db.get(args.connectionId);
     const customer = await ctx.db.get(args.customerId);
     if (!connection || !customer || customer.companyId !== connection.companyId) return false;
+    const from = normalAddress("email", customer.email);
+    if (from) {
+      const care = await careReceive(ctx, { companyId: connection.companyId, channel: "email", from, text: args.text, receivedAt: args.receivedAt ?? Date.now(), providerKey: `gmail:${connection._id}:${args.messageId.slice(0, 200)}`, mailbox: { connectionId: connection._id, threadId: args.threadId, subject: args.subject?.slice(0, 200) } });
+      if (care.taken) return !care.repeated;
+    }
     if (!(await allow(ctx, `retention-email:${connection.companyId}:${customer._id}`, 6, HOUR))) return false;
     const runId = await enqueueRun(ctx, { companyId: connection.companyId, kind: "customer_email", key: `email:${connection._id}:${args.messageId.slice(0, 200)}`, customerId: customer._id, payload: args.text });
     return runId !== null;
@@ -154,7 +168,7 @@ export const sync = internalAction({
           opened += 1;
           const text = replyText(message.text);
           if (!text) continue;
-          if (await ctx.runMutation(internal.retentionInbox.file, { connectionId: args.connectionId, messageId: header.id, customerId: customer.customerId, text })) filed += 1;
+          if (await ctx.runMutation(internal.retentionInbox.file, { connectionId: args.connectionId, messageId: header.id, customerId: customer.customerId, text, threadId: header.threadId, subject: header.subject, receivedAt: header.receivedAt })) filed += 1;
         }
         cursor = found.cursor;
         // Saved after the page is filed: a crash replays the page, and filing ignores what it already has.
@@ -176,12 +190,12 @@ export const sync = internalAction({
 export const sweep = internalMutation({
   args: {},
   handler: async (ctx) => {
-    if (!AGENT_PROFILES.retention.built) return 0;
+    if (!AGENT_PROFILES["customer-care"].built) return 0;
     let started = 0;
     for await (const connection of ctx.db.query("mailboxConnections")) {
       if (connection.status !== "connected" || !purposesOf(connection).includes("care")) continue;
       const company = await ctx.db.get(connection.companyId);
-      if (!company || !retentionSettings(company).readCareInbox) continue;
+      if (!company || !careSettings(company).readInbox) continue;
       await ctx.scheduler.runAfter(0, internal.retentionInbox.sync, { connectionId: connection._id });
       started += 1;
     }

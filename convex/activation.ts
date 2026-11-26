@@ -660,6 +660,7 @@ export const routines = companyQuery({
       dispatch: { trigger: "A new or changed visit → Dispatch checks its coverage.", schedule: "Looks for uncovered visits every 15 minutes.", action: "dispatch.request_acceptance" },
       retention: { trigger: "A completed visit or a customer concern → Retention follows through.", schedule: "Reconciles plans, visits, billing and agreements every 10 minutes.", action: "retention.request_feedback" },
       quality: { trigger: "A crew reports a visit complete, evidence arrives, or a concern is reported → Quality reviews it against the standard that applied.", schedule: "Checks reviews, requests and corrections waiting on someone every 10 minutes.", action: "quality.review_completion" },
+      "customer-care": { trigger: "A client texts or emails the company → Care reads it against their visits, plans and invoices and works the request.", schedule: "Checks promised updates, unanswered questions and stuck work every 5 minutes.", action: "care.answer_question" },
     };
     const out = [];
     for (const agent of AGENTS) {

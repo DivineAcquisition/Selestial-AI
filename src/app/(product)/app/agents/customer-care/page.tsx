@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
 
-import { ComingSoonAgentPage } from "@/components/app/coming-soon/agent-page";
-import { COMING_SOON } from "@/lib/app/coming-soon";
+import { CareOverviewScreen } from "@/components/app/screens/care/overview";
 
-export const metadata: Metadata = { title: "Care · Coming soon" };
+export const metadata: Metadata = { title: "Care" };
 
 export default function Page() {
-  return <ComingSoonAgentPage agent={COMING_SOON["customer-care"]} />;
+  return <CareOverviewScreen />;
 }

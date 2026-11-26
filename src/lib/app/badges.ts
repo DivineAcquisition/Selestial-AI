@@ -11,6 +11,7 @@ export type SidebarFacts = {
   sales: { paused: boolean; withYou: number; running: number; waiting: number };
   retention: { paused: boolean; serious: number; withYou: number; overdue: number; underway: number; waiting: number };
   quality?: { paused: boolean; serious: number; withYou: number; overdue: number; underway: number; waiting: number };
+  care?: { paused: boolean; urgent: number; withYou: number; overdue: number; underway: number; waiting: number };
 };
 
 const count = (n: number, label: string): string => `${n} ${label}`;
@@ -55,11 +56,24 @@ function qualityBadges(q: NonNullable<SidebarFacts["quality"]>): Badge[] {
   return badges;
 }
 
+/** Care: an urgent request first, then requests waiting on a person, then promised updates that are late. */
+function careBadges(c: NonNullable<SidebarFacts["care"]>): Badge[] {
+  const badges: Badge[] = [];
+  if (c.urgent > 0) badges.push({ kind: "urgent", label: count(c.urgent, "urgent"), count: c.urgent });
+  if (c.withYou > 0) badges.push({ kind: "decision", label: count(c.withYou, "for you"), count: c.withYou });
+  if (c.overdue > 0) badges.push({ kind: "attention", label: count(c.overdue, "update due"), count: c.overdue });
+  if (c.paused) badges.push({ kind: "attention", label: "Paused" });
+  else if (c.underway > 0) badges.push({ kind: "working", label: "Working" });
+  else if (c.waiting > 0) badges.push({ kind: "working", label: "Waiting on replies" });
+  return badges;
+}
+
 /** Every badge that applies to an agent right now, from the facts each built agent reports. */
 export function agentBadges(agent: AgentId, facts: SidebarFacts | undefined): Badge[] {
   if (facts && agent === "sales") return salesBadges(facts.sales);
   if (facts && agent === "retention") return retentionBadges(facts.retention);
   if (facts?.quality && agent === "quality") return qualityBadges(facts.quality);
+  if (facts?.care && agent === "customer-care") return careBadges(facts.care);
   if (!facts || agent !== "dispatch") return [];
   const d = facts.dispatch;
   const badges: Badge[] = [];
@@ -89,6 +103,14 @@ export function tabBadges(agent: AgentId, tab: string, facts: SidebarFacts | und
     const badges: Badge[] = [];
     if (tab === "cases" && q.serious > 0) badges.push({ kind: "urgent", label: count(q.serious, "serious"), count: q.serious });
     if (tab === "cases" && q.overdue > 0) badges.push({ kind: "attention", label: count(q.overdue, "overdue"), count: q.overdue });
+    return badges;
+  }
+  if (facts?.care && agent === "customer-care") {
+    const c = facts.care;
+    const badges: Badge[] = [];
+    if (tab === "requests" && c.urgent > 0) badges.push({ kind: "urgent", label: count(c.urgent, "urgent"), count: c.urgent });
+    if (tab === "requests" && c.withYou > 0) badges.push({ kind: "decision", label: count(c.withYou, "for you"), count: c.withYou });
+    if (tab === "follow-ups" && c.overdue > 0) badges.push({ kind: "attention", label: count(c.overdue, "update due"), count: c.overdue });
     return badges;
   }
   if (!facts || agent !== "dispatch") return [];

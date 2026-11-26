@@ -329,7 +329,7 @@ function Comparison({ catalog, current, canBuy }: { catalog: Data["catalog"]; cu
   const offer = useQuery(api.earlyOffer.mine, canBuy && !current ? { companyId } : "skip");
   return (
     <Panel title="Plans">
-      <p className="mb-3 text-sm text-muted-foreground">{catalog.plans.length > 1 ? "Your plan, and the plan Selestial offers today." : "One plan, with four agents that work today."}</p>
+      <p className="mb-3 text-sm text-muted-foreground">{catalog.plans.length > 1 ? "Your plan, and the plan Selestial offers today." : "One plan, with five agents that work today."}</p>
       {intentId ? <IntentDialog intentId={intentId} onClose={() => setIntentId(null)} /> : null}
       <div className={catalog.plans.length > 1 ? "grid gap-4 md:grid-cols-2" : "grid max-w-2xl gap-4"}>
         {catalog.plans.map((plan) => {

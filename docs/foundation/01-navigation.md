@@ -27,7 +27,7 @@ work inside them.
 | Department | Agents, in order |
 |---|---|
 | **Growth** | Marketing, Sales, Retention |
-| **Operations** | Dispatch, Quality, Customer Care |
+| **Operations** | Dispatch, Quality, Care |
 | **Team** | Recruiter (with the shared Cleaners workspace) |
 
 | Agent | Owns |
@@ -37,7 +37,7 @@ work inside them.
 | Retention | Notices when a customer relationship needs attention, coordinates the response, and verifies what happened afterward. |
 | Dispatch | Visit eligibility, assignments, coverage, and service coordination. |
 | Quality | Reviews service evidence, investigates issues, coordinates corrective work. |
-| Customer Care | Handles customer communications, setup, requests and scheduling changes. |
+| Care | Understands each client request, coordinates the action with the agent that owns it, and keeps the client informed until it is resolved. Shown as Care from November 25, 2026; its id stays `customer-care`. |
 | Recruiter | Applications, hiring, onboarding, and readiness. |
 
 **Team Coordinator was retired on November 22, 2026**, before it was ever released. It never ran: it was a
@@ -46,8 +46,8 @@ that already run, so nothing is duplicated or lost (section 9).
 
 Two pairs of names are close and stay with their owners:
 
-- **Customer Setup** is Customer Care's and is about customers. **Onboarding &
-  Readiness** is Recruiter's and is about cleaners.
+- **Care Setup** is Care's and is about how Care treats clients. **Hiring
+  setup** is Recruiter's and is about cleaners.
 - **Offers & Agreements** is Recruiter's and is about hiring. **Offers &
   Coverage** is Dispatch's and is about job assignments.
 
@@ -100,7 +100,7 @@ Names and order are the owner's. Playbook is always last. Chat is never a tab: i
 | Retention | Needs Attention · Recovery · Continuity & Renewals · Re-engagement · Playbook (changed November 18, 2026, when Retention was built: see `docs/retention/00-architecture.md`) |
 | Dispatch | Dispatch Board · Schedule · Offers & Coverage · Live Jobs · Action Links · Playbook |
 | Quality | Reviews · Cases · Corrections · Standards · Insights · Playbook (changed November 22, 2026, when Quality was built: see `docs/quality/00-architecture.md`) |
-| Customer Care | Conversations · Customer Setup · Service Requests · Rescheduling & Cancellations · Playbook |
+| Care | Overview (the agent page) · Requests · Follow-ups · Care Setup (decided November 25, 2026; docs/care/00-architecture.md) |
 | Recruiter | Hiring Needs · Applicants · Screening · Interviews · Offers & Agreements · Onboarding & Readiness · Playbook |
 
 ### Sales: Internal Booking, Quotes & Proposals and Booking Forms
@@ -316,8 +316,8 @@ shown, never a guessed one.
 - **A planned destination has no link.** `hrefFor` returns nothing for it. It
   is listed, marked as not built, so the owner can see what is coming.
 - **An existing record page can be available before its agent is.** Customers,
-  Cleaners and the Schedule work today although Customer Care, Team
-  Coordinator and most of Dispatch's tabs do not.
+  Cleaners and the Schedule worked before most agents did; Team Coordinator
+  was retired and its pages lead to Recruiter and Dispatch.
 - **The tests keep this honest.** A destination marked live must have a page.
   A planned one must not, unless it is marked as a notice page. Every page
   under `/app` must be a destination or be listed with what replaces it. So
@@ -375,10 +375,10 @@ grouping in agreement with the sidebar's.
 
 Two gaps remain, and both wait for each new agent to be designed:
 
-1. **Marketing and Customer Care have no id in the schema**, so they
-   cannot own a task, an approval or a permission. (Quality has had one since
-   it was built on November 22, 2026.)
-2. **The permission catalog has no actions for them.**
+1. **Marketing has no id in the schema**, so it cannot own a task, an approval
+   or a permission. (Quality has had one since November 22, 2026, and Client
+   Care, as `customer-care`, since November 25, 2026.)
+2. **The permission catalog has no actions for it.**
 
 ## 8. Decisions and open questions
 
