@@ -16,7 +16,7 @@ import { SegmentedControl } from "@/components/ui/selection";
 import { cn } from "@/lib/utils";
 
 import { matches, NO_EXPORT, PLATFORM_WORDS, TUTORIALS, type Placement, type Platform, type Task } from "../../../../convex/lib/tutorials/catalog";
-import { supportHref, useTutorials, type PublishedTutorial } from "./host";
+import { supportHref, useTutorials, useTutorialsOptional, type PublishedTutorial } from "./host";
 
 /** The tutorial for this placement and platform, the best unpublished match, and any "no export" note. */
 export function useOffer(placement: Placement, platform: Platform | null, task?: Task) {
@@ -96,6 +96,11 @@ function Fallback({ placement, pending, noExport, compact = false }: { placement
 
 /** "See how to export from Jobber": an inline card, dismissible when `dismissKey` is given. */
 export function TutorialCard({ placement, platform, task, title, onUpload, dismissKey }: { placement: Placement; platform: Platform | null; task?: Task; title?: string; onUpload?: () => void; dismissKey?: string }) {
+  if (!useTutorialsOptional()) return null;
+  return <TutorialCardBody placement={placement} platform={platform} task={task} title={title} onUpload={onUpload} dismissKey={dismissKey} />;
+}
+
+function TutorialCardBody({ placement, platform, task, title, onUpload, dismissKey }: { placement: Placement; platform: Platform | null; task?: Task; title?: string; onUpload?: () => void; dismissKey?: string }) {
   const { open, track } = useTutorials();
   const offer = useOffer(placement, platform, task);
   const [dismissed, dismiss] = useDismissed(dismissKey ?? "");

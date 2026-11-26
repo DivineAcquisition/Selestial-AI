@@ -16,6 +16,8 @@ import { cn } from "@/lib/utils";
 
 import { api } from "../../../../convex/_generated/api";
 import { CATEGORY_LABELS } from "../../../../convex/lib/services/spec";
+import { TutorialCard } from "@/components/app/tutorials/offer";
+
 import { Empty, Notice, when } from "./shared";
 
 type Catalog = NonNullable<ReturnType<typeof useQuery<typeof api.services.catalog>>>;
@@ -43,7 +45,14 @@ export function ServicesHome() {
   const prep = useQuery(api.configure.workspace, role === "owner" || role === "manager" ? { companyId } : "skip");
   const [picked, setPicked] = useState<Filter | null>(null);
   if (!catalog) return <Skeleton className="h-72 rounded-2xl" />;
-  if (catalog.services.length === 0) return <FirstTime catalog={catalog} start={start ?? null} prep={prep ?? null} />;
+  if (catalog.services.length === 0) {
+    return (
+      <div className="grid grid-cols-1 gap-5">
+        <TutorialCard placement="services.home" platform={null} title="See how to add a service" />
+        <FirstTime catalog={catalog} start={start ?? null} prep={prep ?? null} />
+      </div>
+    );
+  }
   const anyLive = catalog.services.some((row) => row.status === "active");
   const preparedWaiting = catalog.services.some((row) => row.prepared && row.draft !== null && row.live === null && row.status !== "archived");
   const filter: Filter = picked ?? (anyLive && !preparedWaiting ? "live" : "drafts");
@@ -52,6 +61,7 @@ export function ServicesHome() {
   const waiting = catalog.counts.waiting;
   return (
     <div className="grid grid-cols-1 gap-5">
+      <TutorialCard placement="services.home" platform={null} title="See how to add a service" />
       {catalog.canDraft ? <PreparedLead catalog={catalog} prep={prep ?? null} start={start ?? null} /> : null}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div role="tablist" aria-label="Show" className="inline-flex rounded-xl border border-border bg-card p-1">

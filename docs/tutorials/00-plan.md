@@ -82,8 +82,10 @@ It is also listed under Moving your records (`/app/help`). The files are served 
 `public/tutorials/setup-company/v1/`. Staff can withdraw it at /staff/tutorials. The player keeps
 its controls under the picture, so captions are not covered.
 
-Storyboards for the next two guides, services and cleaners, are recorded in `tutorials/build/` and
-are not narrated yet: the ElevenLabs account had 48 characters left of its 10,000 monthly quota.
+`setup-services`, "Build your services and pricing", is the second published guide. It is offered on
+Services & Pricing and under Moving your records. Its files are in `public/tutorials/setup-services/v1/`.
+The ElevenLabs quota was spent, so this narration is a temporary US English voice, not Eric. Re-narrate
+it with `tutorials/scripts/narrate.mjs` when that account has room again; the pictures stay the same.
 
 ## Still needed
 

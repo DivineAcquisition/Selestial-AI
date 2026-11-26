@@ -67,6 +67,7 @@ export const PLACEMENTS = [
   "migration.review",
   "help",
   "welcome",
+  "services.home",
 ] as const;
 export type Placement = (typeof PLACEMENTS)[number];
 
@@ -210,6 +211,40 @@ export const TUTORIALS: Tutorial[] = [
     action: { kind: "open", label: "Set up services", href: "/app/services" },
     transcript: "Let's set up your company, so everything Selestial prepares fits the way you actually work.\n\nStart with your company name and time zone. Schedules, availability and deadlines all run on this clock.\n\nChoose how to begin. Selestial can read your website or your records, but entering the details yourself is a few short questions.\n\nAdd where you're based and the areas you serve, in your own words. Then choose who you clean for. These shape the services and booking pages Selestial drafts for you. Nothing is priced or published yet.\n\nNext, how your cleaners work with you, and roughly how many. Employees and contractors get different onboarding and pay rules later on.\n\nThen pick what you'd like help with first. You can add the others any time, and setup saves as you go, so you can finish the rest later.\n\nTwo settings change real bookings, so they live in Settings, under Company profile. Add the ZIP codes you serve, and new bookings are only accepted inside them. Then set your booking hours. Each cleaner's own availability still applies.\n\nThat's your company set up. Next, build your services and pricing, so customers and your agents work from real prices.",
     media: SETUP_COMPANY_MEDIA,
+  },
+  {
+    id: "setup-services",
+    platform: "spreadsheet",
+    task: "company_setup",
+    title: "Build your services and pricing",
+    purpose: "Add a service customers can book, and publish it only after you have checked the price.",
+    prerequisites: ["Your company is set up."],
+    role: "An Owner or a Manager.",
+    plan: null,
+    steps: [
+      "Open Services & Pricing.",
+      "Selestial can draft services from setup, you can import a price list, or you can create one yourself.",
+      "To create one yourself, enter the name customers will see and the kind of cleaning.",
+      "In the editor, set the price and what is included. Nothing is live yet.",
+      "Choose Review & publish when it is right. Customers only see a service after you publish it.",
+    ],
+    format: "Nothing to download.",
+    limitations: ["The company in the video, Juniper Cleaning Co., is fictional.", "A service at $0 cannot be booked. Set a price before you publish."],
+    sources: [{ title: "Selestial services (in product)", url: "/app/services" }],
+    docsCheckedOn: "2026-11-26",
+    interfaceVerifiedOn: "2026-11-26",
+    contentVersion: 1,
+    defaultState: "published",
+    placements: ["services.home", "help"],
+    action: { kind: "open", label: "Open Services & Pricing", href: "/app/services" },
+    transcript: "Let's add a service customers can book. You check the price before anything goes live.\n\nServices and Pricing starts here. Selestial can draft services from what you already told it, you can import a price list, or you can create one yourself.\n\nCreate one yourself. Give it the name customers will see, and the kind of cleaning.\n\nYou land in the editor. Nothing is live yet. When the price and scope are right, choose Review and publish. Customers only see a service after you publish it.\n\nNext, add the people who do the work.",
+    media: {
+      version: 1,
+      video: "/tutorials/setup-services/v1/tutorial.mp4",
+      poster: "/tutorials/setup-services/v1/poster.jpg",
+      captions: "/tutorials/setup-services/v1/captions.vtt",
+      durationSeconds: 39.5,
+    },
   },
   // ── Spreadsheet and Selestial (verified in Selestial itself) ──────────────────────────────────
   {

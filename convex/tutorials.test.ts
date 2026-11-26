@@ -55,7 +55,7 @@ describe("Tutorial publication", () => {
     const { admin } = await staffSetup(t);
     const { as, companyId } = await company(t, "owner-a", "Alpha Cleaning");
     // The company-setup video ships published. Nothing else does until staff publish it.
-    expect((await as.query(api.tutorials.published, { companyId })).map((row) => row.id)).toEqual(["setup-company"]);
+    expect((await as.query(api.tutorials.published, { companyId })).map((row) => row.id)).toEqual(["setup-company", "setup-services"]);
 
     // Jobber's steps are from its help center but not yet followed in an account.
     await expect(admin.mutation(api.tutorials.setState, { tutorialId: "jobber-export-clients", state: "published" })).rejects.toThrow(/real account/);
@@ -63,7 +63,7 @@ describe("Tutorial publication", () => {
     // Verified in Selestial itself, with no video yet: published as written steps, never as an empty player.
     await admin.mutation(api.tutorials.setState, { tutorialId: "spreadsheet-prepare-clients", state: "published" });
     const shown = await as.query(api.tutorials.published, { companyId });
-    expect(shown.map((row) => row.id)).toEqual(["setup-company", "spreadsheet-prepare-clients"]);
+    expect(shown.map((row) => row.id)).toEqual(["setup-company", "setup-services", "spreadsheet-prepare-clients"]);
     expect(shown.find((row) => row.id === "spreadsheet-prepare-clients")?.media).toBeNull();
     expect(shown.find((row) => row.id === "setup-company")?.media?.video).toMatch(/^\//);
 
@@ -96,7 +96,7 @@ describe("Tutorial publication", () => {
 
     // Needs update takes it away from owners until it is reviewed again.
     await admin.mutation(api.tutorials.setState, { tutorialId: row.id, state: "needs_update" });
-    expect((await as.query(api.tutorials.published, { companyId })).map((item) => item.id)).toEqual(["setup-company"]);
+    expect((await as.query(api.tutorials.published, { companyId })).map((item) => item.id)).toEqual(["setup-company", "setup-services"]);
     await admin.mutation(api.tutorials.resolveReport, { reportId: row.reports[0].id });
     await admin.mutation(api.tutorials.setState, { tutorialId: row.id, state: "published" });
     expect((await as.query(api.tutorials.published, { companyId })).find((item) => item.id === "spreadsheet-prepare-clients")?.reported).toBe(false);

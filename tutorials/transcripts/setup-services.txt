@@ -1,0 +1,9 @@
+Let's add a service customers can book. You check the price before anything goes live.
+
+Services and Pricing starts here. Selestial can draft services from what you already told it, you can import a price list, or you can create one yourself.
+
+Create one yourself. Give it the name customers will see, and the kind of cleaning.
+
+You land in the editor. Nothing is live yet. When the price and scope are right, choose Review and publish. Customers only see a service after you publish it.
+
+Next, add the people who do the work.

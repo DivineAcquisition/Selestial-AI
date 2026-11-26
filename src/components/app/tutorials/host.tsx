@@ -45,6 +45,11 @@ export function useTutorials(): Tutorials {
   return value;
 }
 
+/** Null on screens rendered outside the workspace, such as a component test. */
+export function useTutorialsOptional(): Tutorials | null {
+  return useContext(TutorialsContext);
+}
+
 export const SUPPORT_EMAIL = "support@selestial.io";
 
 /** The support email, with the tutorial and screen it came from. Never the owner's records or answers. */
