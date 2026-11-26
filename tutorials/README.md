@@ -77,8 +77,8 @@ node tutorials/scripts/assemble.mjs setup-company
 
 Capture needs the local demo sign-in described in `tutorials/demo/auth-server.mjs`. Narration uses
 ElevenLabs Eric, and `voice.say` reads "Selestial" as "Celestial" without changing the captions.
-The build (`tutorials/build/setup-company/v1/`) is not committed. Publishing still goes through
-`publish.mjs` and /staff/tutorials.
+The published files are in `public/tutorials/setup-company/v1/`. The first time an Owner opens the
+app, the tutorial dialog opens with the video paused. Staff can withdraw it at /staff/tutorials.
 
 ## Status
 

@@ -9,7 +9,7 @@
  * the upload control the screen gave. No action here imports, approves or starts anything.
  */
 import { useMutation, useQuery } from "convex/react";
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
 import { BookOpen, Check, ChevronDown, Download, ExternalLink, Flag, LifeBuoy, Upload } from "@/components/icons";
@@ -59,7 +59,7 @@ export function formatDay(day: string): string {
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
 }
 
-export function TutorialHost({ children }: { children: React.ReactNode }) {
+export function TutorialHost({ children, welcome = false }: { children: React.ReactNode; welcome?: boolean }) {
   const { companyId } = useCompany();
   const published = useQuery(api.tutorials.published, { companyId }) as PublishedTutorial[] | undefined;
   const send = useMutation(api.tutorials.track);
@@ -93,6 +93,7 @@ export function TutorialHost({ children }: { children: React.ReactNode }) {
   return (
     <TutorialsContext.Provider value={value}>
       {children}
+      {welcome ? <WelcomeOnce /> : null}
       <Dialog
         open={isOpen}
         onOpenChange={(next) => {
@@ -134,6 +135,38 @@ export function TutorialHost({ children }: { children: React.ReactNode }) {
       </Dialog>
     </TutorialsContext.Provider>
   );
+}
+
+const WELCOME_ID = "setup-company";
+
+/**
+ * The first time an Owner opens the workspace, the company-setup video opens in the tutorial dialog.
+ * It does not play until they press play. Closing it is remembered on this device, per company.
+ */
+function WelcomeOnce() {
+  const { companyId, role } = useCompany();
+  const { published, open } = useTutorials();
+  useEffect(() => {
+    if (role !== "owner" || !published) return;
+    const tutorial = published.find((row) => row.id === WELCOME_ID && row.media);
+    if (!tutorial?.media) return;
+    const key = `selestial:welcome-tutorial:${companyId}:${tutorial.id}:v${tutorial.media.version}`;
+    try {
+      if (window.localStorage.getItem(key) === "1") return;
+    } catch {
+      // Private mode still shows it; it simply comes back next visit.
+    }
+    const timer = window.setTimeout(() => {
+      try {
+        window.localStorage.setItem(key, "1");
+      } catch {
+        // Shown for this visit only.
+      }
+      open(tutorial.id, "welcome");
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [role, published, companyId, open]);
+  return null;
 }
 
 /** Opened for a tutorial that is not published (or was unpublished meanwhile): say so and offer the way forward. */

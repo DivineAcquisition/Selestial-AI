@@ -76,13 +76,10 @@ Help articles read November 20, 2026. "Interface" means followed in a real demo 
 
 ## First owner video (November 26, 2026)
 
-`setup-company`, "Set up your company", was recorded from the running app with the fictional company
-Juniper Cleaning Co. (Austin, example.com, 555 numbers only). It is 78.4 seconds, narrated with
-ElevenLabs stock voice Eric, with "Selestial" spoken like "celestial" and captions in the written
-spelling. The transcript is `tutorials/transcripts/setup-company.txt`. The video, poster and captions
-are produced into `tutorials/build/setup-company/v1/` and are not committed. Nothing is published:
-upload still needs the Blob token, then staff review at /staff/tutorials. The guide is not yet offered
-in the product catalog on this branch.
+`setup-company`, "Set up your company", ships published. The first time an Owner opens setup or the
+workspace, the tutorial dialog opens with the video paused. Closing it is remembered on that device.
+It is also listed under Moving your records (`/app/help`). The files are served from
+`public/tutorials/setup-company/v1/`. Staff can withdraw it at /staff/tutorials.
 
 ## Still needed
 

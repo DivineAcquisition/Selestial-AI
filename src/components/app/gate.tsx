@@ -237,13 +237,13 @@ function Workspace({ companyId, role, userId, businesses, onSwitch, support, chi
     return (
       <CompanyProvider company={{ companyId, name: company.name, timezone: company.timezone, role }}>
         {banner ? <div className="sticky top-0 z-header">{banner}</div> : null}
-        <TutorialHost>{children}</TutorialHost>
+        <TutorialHost welcome>{children}</TutorialHost>
       </CompanyProvider>
     );
   }
   return (
     <CompanyProvider company={{ companyId, name: company.name, timezone: company.timezone, role }}>
-      <TutorialHost>
+      <TutorialHost welcome={!support}>
       <NavOwnerProvider>
       <ChatProvider userId={userId} companyId={companyId}>
         <DetailProvider>

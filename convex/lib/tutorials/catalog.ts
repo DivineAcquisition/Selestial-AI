@@ -24,7 +24,7 @@ export const PLATFORM_WORDS: Record<Platform, string> = {
 };
 
 /** What an owner is trying to bring in, or check. One tutorial does one task. */
-export const TASKS = ["customers", "properties", "appointments", "recurring", "team", "history", "spreadsheet_prep", "import_errors", "review"] as const;
+export const TASKS = ["customers", "properties", "appointments", "recurring", "team", "history", "spreadsheet_prep", "import_errors", "review", "company_setup"] as const;
 export type Task = (typeof TASKS)[number];
 
 export const TASK_WORDS: Record<Task, string> = {
@@ -37,6 +37,7 @@ export const TASK_WORDS: Record<Task, string> = {
   spreadsheet_prep: "Preparing a spreadsheet",
   import_errors: "Fixing import errors",
   review: "Reviewing imported records",
+  company_setup: "Setting up your company",
 };
 
 /** Publication states. Only "published" is ever shown to an owner. */
@@ -65,6 +66,7 @@ export const PLACEMENTS = [
   "import.history",
   "migration.review",
   "help",
+  "welcome",
 ] as const;
 export type Placement = (typeof PLACEMENTS)[number];
 
@@ -170,7 +172,45 @@ const CHECKED = "2026-11-20";
 const RECHECKED = "2026-11-22";
 const GHL_EXPORT: Source = { title: "HighLevel: How to Export Contacts to a CSV in HighLevel", url: "https://help.gohighlevel.com/support/solutions/articles/48001238482-contacts-export-as-csv-upgrade", updated: "2025-12-24" };
 
+const SETUP_COMPANY_MEDIA: Media = {
+  version: 1,
+  video: "/tutorials/setup-company/v1/tutorial.mp4",
+  poster: "/tutorials/setup-company/v1/poster.jpg",
+  captions: "/tutorials/setup-company/v1/captions.vtt",
+  durationSeconds: 78.4,
+};
+
 export const TUTORIALS: Tutorial[] = [
+  // ── Selestial itself ───────────────────────────────────────────────────────────────────────────
+  {
+    id: "setup-company",
+    platform: "spreadsheet",
+    task: "company_setup",
+    title: "Set up your company",
+    purpose: "Name your company, say where you work, and set the ZIP codes and hours new bookings use.",
+    prerequisites: ["You are the Owner of the company."],
+    role: "An Owner.",
+    plan: null,
+    steps: [
+      "Enter your company name and time zone. Schedules and deadlines use this clock.",
+      "Choose how to begin. Entering the details yourself is a few short questions.",
+      "Add where you are based and the areas you serve, then choose who you clean for.",
+      "Say how your cleaners work with you, and roughly how many.",
+      "Pick what you would like help with first. Setup saves as you go.",
+      "In Settings, under Company profile, add the ZIP codes you serve and your booking hours.",
+    ],
+    format: "Nothing to download.",
+    limitations: ["The company in the video, Juniper Cleaning Co., is fictional.", "Saving booking hours and ZIP codes changes which new bookings are accepted. Each cleaner's own availability still applies."],
+    sources: [{ title: "Selestial setup (in product)", url: "/app/setup" }],
+    docsCheckedOn: "2026-11-26",
+    interfaceVerifiedOn: "2026-11-26",
+    contentVersion: 1,
+    defaultState: "published",
+    placements: ["welcome", "help"],
+    action: { kind: "open", label: "Set up services", href: "/app/services" },
+    transcript: "Let's set up your company, so everything Selestial prepares fits the way you actually work.\n\nStart with your company name and time zone. Schedules, availability and deadlines all run on this clock.\n\nChoose how to begin. Selestial can read your website or your records, but entering the details yourself is a few short questions.\n\nAdd where you're based and the areas you serve, in your own words. Then choose who you clean for. These shape the services and booking pages Selestial drafts for you. Nothing is priced or published yet.\n\nNext, how your cleaners work with you, and roughly how many. Employees and contractors get different onboarding and pay rules later on.\n\nThen pick what you'd like help with first. You can add the others any time, and setup saves as you go, so you can finish the rest later.\n\nTwo settings change real bookings, so they live in Settings, under Company profile. Add the ZIP codes you serve, and new bookings are only accepted inside them. Then set your booking hours. Each cleaner's own availability still applies.\n\nThat's your company set up. Next, build your services and pricing, so customers and your agents work from real prices.",
+    media: SETUP_COMPANY_MEDIA,
+  },
   // ── Spreadsheet and Selestial (verified in Selestial itself) ──────────────────────────────────
   {
     id: "spreadsheet-prepare-clients",

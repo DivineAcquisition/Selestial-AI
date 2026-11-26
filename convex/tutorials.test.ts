@@ -54,7 +54,8 @@ describe("Tutorial publication", () => {
     const t = start();
     const { admin } = await staffSetup(t);
     const { as, companyId } = await company(t, "owner-a", "Alpha Cleaning");
-    expect(await as.query(api.tutorials.published, { companyId })).toEqual([]);
+    // The company-setup video ships published. Nothing else does until staff publish it.
+    expect((await as.query(api.tutorials.published, { companyId })).map((row) => row.id)).toEqual(["setup-company"]);
 
     // Jobber's steps are from its help center but not yet followed in an account.
     await expect(admin.mutation(api.tutorials.setState, { tutorialId: "jobber-export-clients", state: "published" })).rejects.toThrow(/real account/);
@@ -62,8 +63,9 @@ describe("Tutorial publication", () => {
     // Verified in Selestial itself, with no video yet: published as written steps, never as an empty player.
     await admin.mutation(api.tutorials.setState, { tutorialId: "spreadsheet-prepare-clients", state: "published" });
     const shown = await as.query(api.tutorials.published, { companyId });
-    expect(shown.map((row) => row.id)).toEqual(["spreadsheet-prepare-clients"]);
-    expect(shown[0].media).toBeNull();
+    expect(shown.map((row) => row.id)).toEqual(["setup-company", "spreadsheet-prepare-clients"]);
+    expect(shown.find((row) => row.id === "spreadsheet-prepare-clients")?.media).toBeNull();
+    expect(shown.find((row) => row.id === "setup-company")?.media?.video).toMatch(/^\//);
 
     // With media and no reviewed transcript, a video is not published.
     await admin.mutation(api.tutorials.setState, { tutorialId: "spreadsheet-prepare-clients", state: "draft" });
@@ -87,17 +89,17 @@ describe("Tutorial publication", () => {
     expect(Object.keys(events[0]).sort()).toEqual(["_creationTime", "_id", "at", "companyId", "kind", "placement", "tutorialId"]);
 
     await as.mutation(api.tutorials.reportOutdated, { companyId, tutorialId: "spreadsheet-prepare-clients", placement: "import.clients.upload", note: "The download menu moved." });
-    expect((await as.query(api.tutorials.published, { companyId }))[0].reported).toBe(true);
+    expect((await as.query(api.tutorials.published, { companyId })).find((row) => row.id === "spreadsheet-prepare-clients")?.reported).toBe(true);
     const list = await admin.query(api.tutorials.staffList, {});
     const row = list.find((item) => item.id === "spreadsheet-prepare-clients")!;
     expect(row.reports).toHaveLength(1);
 
     // Needs update takes it away from owners until it is reviewed again.
     await admin.mutation(api.tutorials.setState, { tutorialId: row.id, state: "needs_update" });
-    expect(await as.query(api.tutorials.published, { companyId })).toEqual([]);
+    expect((await as.query(api.tutorials.published, { companyId })).map((item) => item.id)).toEqual(["setup-company"]);
     await admin.mutation(api.tutorials.resolveReport, { reportId: row.reports[0].id });
     await admin.mutation(api.tutorials.setState, { tutorialId: row.id, state: "published" });
-    expect((await as.query(api.tutorials.published, { companyId }))[0].reported).toBe(false);
+    expect((await as.query(api.tutorials.published, { companyId })).find((item) => item.id === "spreadsheet-prepare-clients")?.reported).toBe(false);
 
     const metrics = await admin.query(api.tutorials.metrics, { days: 30 });
     expect(metrics.tutorials.find((item) => item.id === row.id)?.counts).toMatchObject({ opened: 1, reported_outdated: 1 });
