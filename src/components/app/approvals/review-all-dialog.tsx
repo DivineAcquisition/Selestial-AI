@@ -176,7 +176,6 @@ function GroupRow({ group, now, timezone, selected, onSelect, note, children }: 
             <span className="block text-sm font-medium text-strong">{group.actionLabel}</span>
             <span className="block text-xs text-muted-foreground">
               {group.department} · {late ? "Deadline passed" : `First deadline ${whenLabel(group.earliestDeadline, now, timezone)}`}
-              {group.overdue > 0 && !late ? ` · ${group.overdue} overdue` : ""}
             </span>
             {note ? <span className="mt-0.5 block text-xs text-warning-foreground">{note}</span> : null}
           </span>
