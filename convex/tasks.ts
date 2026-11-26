@@ -5,10 +5,11 @@
  */
 import { v } from "convex/values";
 
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { owned } from "./lib/access";
 import { companyMutation, companyQuery, type MemberAccess } from "./lib/builders";
+import { departmentOf } from "./lib/departments";
 import { userError } from "./lib/errors";
 import { byMember, recordEvent } from "./lib/events";
 import { agentValidator, taskStatusValidator, waitingOnValidator, type TaskStatus } from "./lib/statuses";
@@ -119,6 +120,82 @@ export const complete = companyMutation({
     const task = await owned(ctx, args.taskId);
     await move(ctx, task, "done", { outcome: text(args.outcome, "The outcome", 1000), closedAt: Date.now() });
     return null;
+  },
+});
+
+export type HandoffGroup = {
+  key: string;
+  department: string;
+  agent: Doc<"tasks">["agent"];
+  /** What deciding any one of these settles. */
+  label: string;
+  count: number;
+  earliestDeadline: number;
+  overdue: number;
+  samples: string[];
+  ids: Id<"tasks">[];
+};
+
+const HANDOFF_LIMIT = 2000;
+
+/** Every task handed to a person, in groups by agent and what deciding it settles. A task covered by a pending approval is left to the approval. */
+export const handoffSummary = companyQuery({
+  args: { asOf: v.number() },
+  handler: async (ctx, args): Promise<{ total: number; overdue: number; groups: HandoffGroup[]; truncated: boolean }> => {
+    const held = await ctx.db
+      .query("tasks")
+      .withIndex("by_company_status_due", (q) => q.eq("companyId", ctx.companyId).eq("status", "needs_decision"))
+      .take(HANDOFF_LIMIT + 1);
+    const pending = await ctx.db
+      .query("approvals")
+      .withIndex("by_company_status_decideBy", (q) => q.eq("companyId", ctx.companyId).eq("status", "pending"))
+      .take(HANDOFF_LIMIT);
+    const covered = new Set(pending.map((row) => row.taskId).filter(Boolean));
+    const truncated = held.length > HANDOFF_LIMIT;
+    const rows = held.slice(0, HANDOFF_LIMIT).filter((task) => !covered.has(task._id));
+    const groups = new Map<string, HandoffGroup>();
+    for (const task of rows) {
+      const key = `${task.agent}:${task.completionCondition}`;
+      let group = groups.get(key);
+      if (!group) {
+        group = { key, department: departmentOf(task.agent).name, agent: task.agent, label: task.completionCondition, count: 0, earliestDeadline: task.dueAt, overdue: 0, samples: [], ids: [] };
+        groups.set(key, group);
+      }
+      group.count += 1;
+      group.ids.push(task._id);
+      group.earliestDeadline = Math.min(group.earliestDeadline, task.dueAt);
+      if (task.dueAt <= args.asOf) group.overdue += 1;
+      if (group.samples.length < 5) group.samples.push(task.openQuestion ? `${task.title} ${task.openQuestion}` : task.title);
+    }
+    const list = [...groups.values()].sort((a, b) => a.department.localeCompare(b.department) || b.count - a.count || a.label.localeCompare(b.label));
+    return { total: rows.length, overdue: list.reduce((sum, group) => sum + group.overdue, 0), groups: list, truncated };
+  },
+});
+
+export type CloseResult = { id: Id<"tasks">; ok: boolean; message?: string };
+
+/** Closes up to 25 handed-over tasks with one reason. One that is no longer waiting on a person is reported, not closed. */
+export const closeMany = companyMutation({
+  support: { capability: "records.edit", summary: "closed handed-over tasks in bulk" },
+  args: { taskIds: v.array(v.id("tasks")), reason: v.string() },
+  handler: async (ctx, args): Promise<CloseResult[]> => {
+    if (args.taskIds.length > 25) throw userError("Close at most 25 at a time.");
+    const reason = text(args.reason, "The reason", 1000);
+    const out: CloseResult[] = [];
+    for (const id of args.taskIds) {
+      const task = await ctx.db.get(id);
+      if (!task || task.companyId !== ctx.companyId) {
+        out.push({ id, ok: false, message: "Not found." });
+        continue;
+      }
+      if (task.status !== "needs_decision") {
+        out.push({ id, ok: false, message: "Already handled." });
+        continue;
+      }
+      await move(ctx, task, "cancelled", { outcome: reason, closedAt: Date.now() });
+      out.push({ id, ok: true });
+    }
+    return out;
   },
 });
 

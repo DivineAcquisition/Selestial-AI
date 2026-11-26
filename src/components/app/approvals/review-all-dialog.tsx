@@ -3,7 +3,7 @@
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 
-import { useCompany } from "@/components/app/company";
+import { canManage, useCompany } from "@/components/app/company";
 import { messageOf } from "@/components/app/form";
 import { HoldButton } from "@/components/app/hold-button";
 import { ReasonPicker, type PickedReason } from "@/components/app/reason-picker";
@@ -17,8 +17,12 @@ import { cn } from "@/lib/utils";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import type { BatchResult, QueueGroup } from "../../../../convex/approvals";
+import type { DecisionReason } from "../../../../convex/lib/approvalReasons";
+import type { CloseResult, HandoffGroup } from "../../../../convex/tasks";
 
 export type QueueSummary = { total: number; overdue: number; groups: QueueGroup[]; truncated: boolean };
+export type HandoffSummary = { total: number; overdue: number; groups: HandoffGroup[]; truncated: boolean };
+type CloseTasks = (ids: Id<"tasks">[], reason: string) => Promise<CloseResult[]>;
 type Decide = (ids: Id<"approvals">[], decision: "approved" | "skipped", picked: PickedReason) => Promise<BatchResult[]>;
 
 const BATCH = 10;
@@ -39,25 +43,75 @@ export async function inBatches(ids: Id<"approvals">[], decision: "approved" | "
   return out;
 }
 
-/** "Review all": the whole queue in groups, decided a group at a time. */
-export function ReviewAllDialog({ open, onOpenChange, onReviewGroup }: { open: boolean; onOpenChange: (open: boolean) => void; onReviewGroup: (group: QueueGroup) => void }) {
-  const { companyId, timezone } = useCompany();
+const CLOSE_BATCH = 25;
+
+const CLOSE_REASONS: DecisionReason[] = [
+  { code: "not_real", label: "Not real or a duplicate" },
+  { code: "not_needed", label: "No longer needed" },
+  { code: "handled_elsewhere", label: "Already handled elsewhere" },
+];
+
+/** Closes the tasks 25 at a time with one reason, and keeps going when one batch fails. */
+async function closeInBatches(ids: Id<"tasks">[], reason: string, close: CloseTasks, onProgress: (done: number) => void): Promise<RunResult[]> {
+  const out: RunResult[] = [];
+  for (let at = 0; at < ids.length; at += CLOSE_BATCH) {
+    const batch = ids.slice(at, at + CLOSE_BATCH);
+    try {
+      out.push(...(await close(batch, reason)));
+    } catch (caught) {
+      const message = messageOf(caught);
+      out.push(...batch.map(() => ({ ok: false, message })));
+    }
+    onProgress(Math.min(ids.length, at + CLOSE_BATCH));
+  }
+  return out;
+}
+
+/** "Review all": the whole queue in groups, decided a group at a time. Approvals for Owners and Managers, and every task handed to a person. */
+export function ReviewAllDialog({ open, onOpenChange, onReviewGroup }: { open: boolean; onOpenChange: (open: boolean) => void; onReviewGroup: (group: { department: string }) => void }) {
+  const { companyId, timezone, role } = useCompany();
   const [now] = useState(() => Date.now());
-  const summary = useQuery(api.approvals.queueSummary, open ? { companyId, asOf: now } : "skip");
+  const managing = canManage(role);
+  const approvals = useQuery(api.approvals.queueSummary, open && managing ? { companyId, asOf: now } : "skip");
+  const handoffs = useQuery(api.tasks.handoffSummary, open ? { companyId, asOf: now } : "skip");
   const decideMany = useMutation(api.approvals.decideMany);
+  const closeMany = useMutation(api.tasks.closeMany);
   const decide: Decide = (approvalIds, decision, picked) => decideMany({ companyId, approvalIds, decision, ...(decision === "skipped" ? { reasonCode: picked.reasonCode, note: picked.note } : {}) });
+  const close: CloseTasks = (taskIds, reason) => closeMany({ companyId, taskIds, reason });
+  const summary = managing ? (approvals ?? null) : EMPTY;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPopup className="max-w-3xl">
-        <ReviewAllView summary={summary ?? null} now={now} timezone={timezone} decide={decide} onReviewGroup={onReviewGroup} onClose={() => onOpenChange(false)} />
+        <ReviewAllView summary={summary} handoffs={handoffs ?? null} now={now} timezone={timezone} decide={decide} close={close} onReviewGroup={onReviewGroup} onClose={() => onOpenChange(false)} />
       </DialogPopup>
     </Dialog>
   );
 }
 
-type Run = { verb: "Approving" | "Skipping"; total: number; done: number; results: BatchResult[] | null };
+const EMPTY: QueueSummary = { total: 0, overdue: 0, groups: [], truncated: false };
 
-export function ReviewAllView({ summary, now, timezone, decide, onReviewGroup, onClose }: { summary: QueueSummary | null; now: number; timezone: string; decide: Decide; onReviewGroup: (group: QueueGroup) => void; onClose: () => void }) {
+type RunResult = { ok: boolean; message?: string; carriedOut?: BatchResult["carriedOut"] };
+type Run = { verb: "Approving" | "Skipping" | "Closing"; total: number; done: number; results: RunResult[] | null };
+
+export function ReviewAllView({
+  summary,
+  handoffs,
+  now,
+  timezone,
+  decide,
+  close,
+  onReviewGroup,
+  onClose,
+}: {
+  summary: QueueSummary | null;
+  handoffs: HandoffSummary | null;
+  now: number;
+  timezone: string;
+  decide: Decide;
+  close: CloseTasks;
+  onReviewGroup: (group: { department: string }) => void;
+  onClose: () => void;
+}) {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [run, setRun] = useState<Run | null>(null);
   // Approvals already sent are left out until the summary catches up, so nothing is sent twice.
@@ -85,7 +139,24 @@ export function ReviewAllView({ summary, now, timezone, decide, onReviewGroup, o
     setRun((before) => (before ? { ...before, done: ids.length, results } : before));
   }
 
-  if (!summary) {
+  async function closeGroups(targets: HandoffGroup[], picked: PickedReason) {
+    const ids = targets.flatMap((group) => group.ids);
+    if (ids.length === 0) return;
+    const reason = picked.note?.trim() || CLOSE_REASONS.find((row) => row.code === picked.reasonCode)?.label || "Closed from Review all.";
+    setRun({ verb: "Closing", total: ids.length, done: 0, results: null });
+    const results = await closeInBatches(ids, reason, close, (done) => setRun((before) => (before ? { ...before, done } : before)));
+    setSent((before) => new Set([...before, ...ids]));
+    setRun((before) => (before ? { ...before, done: ids.length, results } : before));
+  }
+
+  const handed = (handoffs?.groups ?? [])
+    .map((group) => {
+      const ids = group.ids.filter((id) => !sent.has(id));
+      return ids.length === group.ids.length ? group : { ...group, ids, count: ids.length };
+    })
+    .filter((group) => group.count > 0);
+
+  if (!summary || !handoffs) {
     return (
       <DialogHeader>
         <DialogTitle>Loading the queue…</DialogTitle>
@@ -97,16 +168,36 @@ export function ReviewAllView({ summary, now, timezone, decide, onReviewGroup, o
   return (
     <>
       <DialogHeader>
-        <DialogTitle>
-          {summary.total.toLocaleString("en-US")} {summary.total === 1 ? "approval" : "approvals"} waiting
-        </DialogTitle>
+        <DialogTitle>{waitingTitle(summary.total, handoffs.total)}</DialogTitle>
         <DialogDescription>
-          {summary.overdue > 0 ? `${summary.overdue} past their deadline. ` : ""}Approve or skip a whole group at once. Each one is still checked before it is carried out. Prices, refunds above the limit and hiring outcomes stay for one-by-one review.
-          {summary.truncated ? " Only the first 2,000 are shown here." : ""}
+          {summary.overdue + handoffs.overdue > 0 ? `${summary.overdue + handoffs.overdue} past their deadline. ` : ""}
+          {summary.total > 0 ? "Approve or skip a whole group at once. Each one is still checked before it is carried out. Prices, refunds above the limit and hiring outcomes stay for one-by-one review. " : ""}
+          {handoffs.total > 0 ? "Questions an agent handed to you can be closed a group at a time, or opened to answer one by one." : ""}
+          {summary.truncated || handoffs.truncated ? " Only the first 2,000 are shown here." : ""}
         </DialogDescription>
       </DialogHeader>
       <DialogPanel className="grid gap-5">
-        {groups.length === 0 ? <p className="text-sm text-muted-foreground">Nothing is waiting.</p> : null}
+        {groups.length === 0 && handed.length === 0 ? <p className="text-sm text-muted-foreground">Nothing is waiting.</p> : null}
+        {handed.length > 0 ? (
+          <section aria-label="Handed to you" className="grid gap-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Handed to you</h3>
+            {handed.map((group) => (
+              <GroupRow key={group.key} group={{ ...group, actionLabel: group.label }} now={now} timezone={timezone}>
+                <Button variant="outline" size="sm" onClick={() => onReviewGroup(group)}>
+                  Answer one by one
+                </Button>
+                <ReasonPicker
+                  label={`Close ${group.count}`}
+                  question={`Why close these ${group.count}? The same reason is recorded on each. Nothing is sent to anyone.`}
+                  reasons={CLOSE_REASONS}
+                  confirm={`Close ${group.count}`}
+                  variant="ghost"
+                  onSubmit={(picked) => closeGroups([group], picked)}
+                />
+              </GroupRow>
+            ))}
+          </section>
+        ) : null}
         {departments.map((department) => (
           <section key={department} aria-label={department} className="grid gap-2">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{department}</h3>
@@ -152,6 +243,13 @@ export function ReviewAllView({ summary, now, timezone, decide, onReviewGroup, o
   );
 }
 
+function waitingTitle(approvals: number, handed: number) {
+  const parts = [];
+  if (approvals > 0) parts.push(`${approvals.toLocaleString("en-US")} ${approvals === 1 ? "approval" : "approvals"}`);
+  if (handed > 0) parts.push(`${handed.toLocaleString("en-US")} handed to you`);
+  return parts.length > 0 ? `${parts.join(" and ")} waiting` : "Nothing is waiting";
+}
+
 function toggled(before: Set<string>, key: string, on: boolean) {
   const next = new Set(before);
   if (on) next.add(key);
@@ -164,7 +262,7 @@ function SkipGroup({ groups, onSkip }: { groups: QueueGroup[]; onSkip: (reason: 
   return <ReasonPicker label={`Skip ${count}`} question={`Why skip these ${count}? The same reason is recorded on each.`} reasons={groups[0]?.skipReasons ?? []} confirm={`Skip ${count}`} required={false} variant="ghost" onSubmit={onSkip} />;
 }
 
-function GroupRow({ group, now, timezone, selected, onSelect, note, children }: { group: QueueGroup; now: number; timezone: string; selected?: boolean; onSelect?: (on: boolean) => void; note?: string; children: React.ReactNode }) {
+function GroupRow({ group, now, timezone, selected, onSelect, note, children }: { group: Pick<QueueGroup, "key" | "department" | "actionLabel" | "count" | "earliestDeadline" | "overdue" | "samples">; now: number; timezone: string; selected?: boolean; onSelect?: (on: boolean) => void; note?: string; children: React.ReactNode }) {
   const [more, setMore] = useState(false);
   const late = group.earliestDeadline <= now;
   return (
@@ -215,7 +313,7 @@ function RunView({ run, onBack, onClose }: { run: Run; onBack: () => void; onClo
   const failures = new Map<string, number>();
   for (const row of results ?? []) if (!row.ok) failures.set(row.message ?? "Not decided.", (failures.get(row.message ?? "Not decided.") ?? 0) + 1);
   for (const row of notCarried) failures.set(row.carriedOut!.detail, (failures.get(row.carriedOut!.detail) ?? 0) + 1);
-  const pastTense = run.verb === "Approving" ? "Approved" : "Skipped";
+  const pastTense = run.verb === "Approving" ? "Approved" : run.verb === "Closing" ? "Closed" : "Skipped";
   return (
     <>
       <DialogHeader>
@@ -223,7 +321,7 @@ function RunView({ run, onBack, onClose }: { run: Run; onBack: () => void; onClo
         <DialogDescription>{results ? "Here is what happened." : "Keep this open until it finishes. Each one is checked again before it is carried out."}</DialogDescription>
       </DialogHeader>
       <DialogPanel className="grid gap-3">
-        <div role="progressbar" aria-valuemin={0} aria-valuemax={run.total} aria-valuenow={run.done} aria-label={`${run.verb} approvals`} className="h-2 overflow-hidden rounded-full bg-muted">
+        <div role="progressbar" aria-valuemin={0} aria-valuemax={run.total} aria-valuenow={run.done} aria-label={run.verb} className="h-2 overflow-hidden rounded-full bg-muted">
           <div className="h-full rounded-full bg-brand-500 transition-[width] duration-300" style={{ width: `${percent}%` }} />
         </div>
         {results && failures.size > 0 ? (
