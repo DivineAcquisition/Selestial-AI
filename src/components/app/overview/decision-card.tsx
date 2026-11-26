@@ -8,6 +8,7 @@ import { BorderBeam } from "@/components/ui/border-beam";
 import { Clock, LightningIcon, ShieldCheck } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/selection";
 import { until, whenLabel } from "@/lib/app/format";
 import { cn } from "@/lib/utils";
 
@@ -34,6 +35,10 @@ export function DecisionCard({
   onApprove,
   onSkip,
   onOpen,
+  selected,
+  onSelect,
+  focused,
+  skipRequest = 0,
 }: {
   decision: Decision;
   now: number;
@@ -43,15 +48,32 @@ export function DecisionCard({
   onApprove: (decision: Decision) => void;
   onSkip?: (decision: Decision, picked: PickedReason) => Promise<unknown>;
   onOpen: (ref: RecordRef) => void;
+  /** Set on the Approvals page, where proposals can be decided together. */
+  selected?: boolean;
+  onSelect?: (selected: boolean) => void;
+  /** The card the keyboard is on. */
+  focused?: boolean;
+  /** Raised to open Skip from outside the card (the "s" shortcut). */
+  skipRequest?: number;
 }) {
   const due = until(decision.deadline, now);
   const proposal = decision.ref.kind === "approval";
   return (
-    <article className={cn("live-enter relative overflow-hidden rounded-2xl border bg-card p-4 sm:p-5", due.late ? "border-destructive/50" : due.soon ? "border-warning/60" : "border-border")}>
+    <article
+      data-decision={decision.ref.id}
+      aria-current={focused || undefined}
+      className={cn(
+        "live-enter relative overflow-hidden rounded-2xl border bg-card p-4 sm:p-5",
+        due.late ? "border-destructive/50" : due.soon ? "border-warning/60" : "border-border",
+        focused ? "ring-2 ring-brand-500/60 ring-offset-2 ring-offset-background" : null,
+        selected ? "bg-brand-500/[0.03]" : null,
+      )}
+    >
       {/* The agent is waiting on a person: the edge keeps moving until someone decides. */}
       {due.soon ? <BorderBeam size={90} duration={7} colorFrom="#f0b45c" colorTo="#6838ef" borderWidth={2} /> : null}
       <header className="flex flex-wrap items-center justify-between gap-2">
         <span className="flex items-center gap-2.5 text-xs text-muted-foreground">
+          {onSelect && proposal ? <Checkbox checked={Boolean(selected)} onCheckedChange={onSelect} aria-label={`Select "${decision.title}"`} /> : null}
           <AgentAvatar agent={decision.agent} state="needs_you" size="sm" />
           <span>
             <span className="block text-sm font-semibold text-strong">
@@ -138,6 +160,8 @@ export function DecisionCard({
             <HoldButton label="Hold to approve" holdingLabel="Keep holding" busy={busy} onConfirm={() => onApprove(decision)} />
             {onSkip && decision.reasons ? (
               <ReasonPicker
+                key={skipRequest}
+                startOpen={skipRequest > 0}
                 label="Skip"
                 question="Why skip it? Optional, but it tells the agent what to avoid."
                 reasons={decision.reasons.skip}

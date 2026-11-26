@@ -10,7 +10,7 @@ import { cleanerOption, SearchableSelect } from "@/components/ui/selection";
 import { HoldButton } from "@/components/app/hold-button";
 import { useNow } from "@/components/app/use-now";
 import { Modal } from "@/components/app/modal";
-import { ReasonPicker } from "@/components/app/reason-picker";
+import { ReasonPicker, type PickedReason } from "@/components/app/reason-picker";
 import { EditVisitForm, MoveVisitForm } from "@/components/app/screens/visit-forms";
 import { Button } from "@/components/ui/button";
 import { centsFrom, clock, zonedInstant } from "@/lib/app/format";
@@ -432,6 +432,28 @@ function ReadingActions({ reading }: { reading: NonNullable<NonNullable<Detail["
   );
 }
 
+const TASK_OUTCOMES = [
+  { code: "resolved_by_phone", label: "Sorted out by phone" },
+  { code: "customer_confirmed", label: "The customer confirmed" },
+  { code: "cleaner_confirmed", label: "The cleaner confirmed" },
+  { code: "done_elsewhere", label: "Already handled elsewhere" },
+  { code: "not_needed", label: "No longer needed" },
+];
+
+const TASK_CANCEL_REASONS = [
+  { code: "duplicate", label: "A duplicate of another task" },
+  { code: "customer_cancelled", label: "The customer cancelled" },
+  { code: "not_needed", label: "No longer needed" },
+  { code: "mistake", label: "Opened by mistake" },
+];
+
+/** A task keeps its outcome as words: the picked one, then any detail the person added. */
+function taskWords(list: { code: string; label: string }[], picked: PickedReason): string {
+  const label = list.find((row) => row.code === picked.reasonCode)?.label;
+  if (!label) return picked.note ?? "";
+  return picked.note ? `${label}: ${picked.note}` : label;
+}
+
 function TaskActions({ detail, timezone }: { detail: Detail; timezone: string }) {
   const { companyId } = useCompany();
   const taskId = detail.ref.id as Id<"tasks">;
@@ -488,8 +510,23 @@ function TaskActions({ detail, timezone }: { detail: Detail; timezone: string })
           <Button variant={status === "needs_decision" ? "primary" : "outline"} size="sm" onClick={() => setOpen(true)}>
             {status === "needs_decision" ? "Decide the next step" : "Change the next step"}
           </Button>
-          <WithWords label="Close as done" placeholder="What was the outcome?" confirm="Close the task" onSubmit={(outcome) => complete({ companyId, taskId, outcome })} />
-          <WithWords label="Cancel the task" placeholder="Why is it cancelled?" confirm="Cancel the task" variant="ghost" onSubmit={(reason) => cancel({ companyId, taskId, reason })} />
+          <ReasonPicker
+            label="Close as done"
+            question="What was the outcome?"
+            reasons={TASK_OUTCOMES}
+            confirm="Close the task"
+            otherPlaceholder="What was the outcome?"
+            onSubmit={(picked) => complete({ companyId, taskId, outcome: taskWords(TASK_OUTCOMES, picked) })}
+          />
+          <ReasonPicker
+            label="Cancel the task"
+            question="Why is it cancelled?"
+            reasons={TASK_CANCEL_REASONS}
+            confirm="Cancel the task"
+            variant="ghost"
+            otherPlaceholder="Why is it cancelled?"
+            onSubmit={(picked) => cancel({ companyId, taskId, reason: taskWords(TASK_CANCEL_REASONS, picked) })}
+          />
         </div>
       )}
     </div>
