@@ -3,10 +3,12 @@
  * Changes that decide something about a person (the contact to use, the role, a decision, closing,
  * removing their data) are for Owners and Managers.
  */
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 
-import type { Doc } from "./_generated/dataModel";
-import type { QueryCtx } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
+import { COLUMN_IDS, moveFor } from "./lib/recruiter/board";
+import { literals } from "./lib/statuses";
 import { owned } from "./lib/access";
 import { companyMutation, companyQuery, managerMutation, managerQuery, type MemberAccess } from "./lib/builders";
 import { userError } from "./lib/errors";
@@ -210,47 +212,99 @@ export const handBack = managerMutation({
  * A person adds an application themselves: someone who walked in, phoned, or applied on a job board whose
  * notification had no usable address. It then goes through the same steps as any other.
  */
+async function addApplication(ctx: MutationCtx & MemberAccess, need: Doc<"hiringNeeds">, input: { name?: string; email: string; phone?: string }): Promise<Id<"applications">> {
+  const address = email(input.email, "The applicant's email");
+  const name = input.name?.trim() ? text(input.name, "The applicant's name", 80) : undefined;
+  const phone = normalizePhone(input.phone) ?? undefined;
+  const where = `entered by ${ctx.member.name}`;
+  let applicant = await ctx.db
+    .query("applicants")
+    .withIndex("by_company_email", (q) => q.eq("companyId", ctx.companyId).eq("email", address))
+    .first();
+  if (applicant) {
+    const theirs = await ctx.db
+      .query("applications")
+      .withIndex("by_company_applicant", (q) => q.eq("companyId", ctx.companyId).eq("applicantId", applicant!._id))
+      .take(50);
+    if (theirs.some((other) => other.needId === need._id && isActive(other))) throw userError("This person already has an open application for that role.");
+  } else {
+    const applicantId = await ctx.db.insert("applicants", { companyId: ctx.companyId, name, email: address, phone, createdAt: Date.now() });
+    applicant = (await ctx.db.get(applicantId))!;
+  }
+  const applicationId = await ctx.db.insert("applications", {
+    companyId: ctx.companyId,
+    applicantId: applicant._id,
+    needId: need._id,
+    roleSeen: need.title,
+    source: "manual",
+    appliedAt: Date.now(),
+    stage: "received",
+    contact: { status: "direct", address, evidence: [{ address, kind: "direct", where }], resolvedBy: ctx.member._id },
+    facts: [...(name ? [{ field: "name", value: name, from: "owner" as const, where }] : []), ...(phone ? [{ field: "phone", value: phone, from: "owner" as const, where }] : [])],
+    followUpsSent: 0,
+    createdAt: Date.now(),
+  });
+  await grantApplicationEmail(ctx, (await ctx.db.get(applicationId))!, need.title, byMember(ctx));
+  await recordEvent(ctx, { companyId: ctx.companyId, type: "application.received", actor: byMember(ctx), subject: { table: "applications", id: applicationId }, data: { source: "manual", contact: "direct", matchedRole: true } });
+  return applicationId;
+}
+
 export const addManually = managerMutation({
   args: { needId: v.id("hiringNeeds"), name: v.string(), email: v.string(), phone: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const need = await owned(ctx, args.needId);
-    const address = email(args.email, "The applicant's email");
-    const name = text(args.name, "The applicant's name", 80);
-    const phone = normalizePhone(args.phone) ?? undefined;
-    const where = `entered by ${ctx.member.name}`;
-    let applicant = await ctx.db
-      .query("applicants")
-      .withIndex("by_company_email", (q) => q.eq("companyId", ctx.companyId).eq("email", address))
-      .first();
-    if (applicant) {
-      const theirs = await ctx.db
-        .query("applications")
-        .withIndex("by_company_applicant", (q) => q.eq("companyId", ctx.companyId).eq("applicantId", applicant!._id))
-        .take(50);
-      if (theirs.some((other) => other.needId === need._id && isActive(other))) throw userError("This person already has an open application for that role.");
-    } else {
-      const applicantId = await ctx.db.insert("applicants", { companyId: ctx.companyId, name, email: address, phone, createdAt: Date.now() });
-      applicant = (await ctx.db.get(applicantId))!;
-    }
-    const applicationId = await ctx.db.insert("applications", {
-      companyId: ctx.companyId,
-      applicantId: applicant._id,
-      needId: need._id,
-      roleSeen: need.title,
-      source: "manual",
-      appliedAt: Date.now(),
-      stage: "received",
-      contact: { status: "direct", address, evidence: [{ address, kind: "direct", where }], resolvedBy: ctx.member._id },
-      facts: [{ field: "name", value: name, from: "owner", where }, ...(phone ? [{ field: "phone", value: phone, from: "owner" as const, where }] : [])],
-      followUpsSent: 0,
-      createdAt: Date.now(),
-    });
-    await grantApplicationEmail(ctx, (await ctx.db.get(applicationId))!, need.title, byMember(ctx));
-    await recordEvent(ctx, { companyId: ctx.companyId, type: "application.received", actor: byMember(ctx), subject: { table: "applications", id: applicationId }, data: { source: "manual", contact: "direct", matchedRole: true } });
+    text(args.name, "The applicant's name", 80);
+    const applicationId = await addApplication(ctx, need, args);
     await routeApplication(ctx, applicationId);
     return applicationId;
   },
 });
+
+const MAX_RECIPIENTS = 50;
+
+/**
+ * A person sends the role's application to people by email: each gets their own private link. Choosing
+ * Send is the approval; every sending check still applies, and someone already applying is skipped.
+ */
+export const sendApplication = managerMutation({
+  args: { needId: v.id("hiringNeeds"), recipients: v.array(v.object({ email: v.string(), name: v.optional(v.string()) })) },
+  handler: async (ctx, args) => {
+    const need = await owned(ctx, args.needId);
+    if (need.status !== "open") throw userError(`${need.title} is ${need.status}. Open the role before sending its application.`);
+    if (args.recipients.length === 0) throw userError("Add at least one email address.");
+    if (args.recipients.length > MAX_RECIPIENTS) throw userError(`Send to at most ${MAX_RECIPIENTS} people at a time.`);
+    const seen = new Set<string>();
+    const results: { email: string; outcome: "sent" | "skipped" | "failed"; detail: string }[] = [];
+    for (const recipient of args.recipients) {
+      const address = recipient.email.trim().toLowerCase();
+      if (seen.has(address)) continue;
+      seen.add(address);
+      try {
+        const applicationId = await addApplication(ctx, need, recipient);
+        const sent = await sendInvitation(ctx, applicationId, byMember(ctx));
+        if (!sent.ok) {
+          await setNextAction(ctx, (await ctx.db.get(applicationId))!, { what: `The application link was not sent. ${sent.detail}`, by: "owner", dueAt: Date.now() + DAY });
+          results.push({ email: address, outcome: "failed", detail: sent.detail });
+          continue;
+        }
+        await refresh(ctx, applicationId);
+        results.push({ email: address, outcome: "sent", detail: "Sent." });
+      } catch (error) {
+        results.push({ email: address || recipient.email, outcome: "skipped", detail: messageOf(error) });
+      }
+    }
+    await recordEvent(ctx, { companyId: ctx.companyId, type: "application.sent_in_bulk", actor: byMember(ctx), subject: { table: "hiringNeeds", id: need._id }, data: { sent: results.filter((row) => row.outcome === "sent").length, skipped: results.filter((row) => row.outcome !== "sent").length } });
+    return results;
+  },
+});
+
+function messageOf(error: unknown): string {
+  if (error instanceof ConvexError) {
+    const data = error.data as { message?: unknown } | undefined;
+    if (data && typeof data.message === "string") return data.message;
+  }
+  return "This address could not be added.";
+}
 
 /**
  * Shows a live applicant link's address to a manager so they can pass it on by hand. The reveal is
@@ -272,18 +326,21 @@ export const revealLink = managerMutation({
  * A person sends the invitation again with a fresh link: after a link expired, or when it is not known
  * whether the first one went. The old link stops working.
  */
+async function sendNewLink(ctx: MutationCtx & MemberAccess, application: Doc<"applications">) {
+  if (!isActive(application) || application.submittedAt) throw userError("This application is not waiting on the form.");
+  await revokeApplicationLinks(ctx, application, `${ctx.member.name} sent a new link.`, byMember(ctx), "apply");
+  const sent = await sendInvitation(ctx, application._id, byMember(ctx), { again: true });
+  if (!sent.ok) throw userError(sent.detail);
+  await ctx.db.patch(application._id, { followUpsSent: 0, invitedAt: undefined });
+  await settleTask(ctx, application, "decision", `${ctx.member.name} sent a new link.`, byMember(ctx));
+  await settleTask(ctx, application, "delivery", `${ctx.member.name} sent the invitation again.`, byMember(ctx));
+  await refresh(ctx, application._id);
+}
+
 export const inviteAgain = managerMutation({
   args: { applicationId: v.id("applications") },
   handler: async (ctx, args) => {
-    const application = await owned(ctx, args.applicationId);
-    if (!isActive(application) || application.submittedAt) throw userError("This application is not waiting on the form.");
-    await revokeApplicationLinks(ctx, application, `${ctx.member.name} sent a new link.`, byMember(ctx), "apply");
-    const sent = await sendInvitation(ctx, application._id, byMember(ctx), { again: true });
-    if (!sent.ok) throw userError(sent.detail);
-    await ctx.db.patch(application._id, { followUpsSent: 0, invitedAt: undefined });
-    await settleTask(ctx, application, "decision", `${ctx.member.name} sent a new link.`, byMember(ctx));
-    await settleTask(ctx, application, "delivery", `${ctx.member.name} sent the invitation again.`, byMember(ctx));
-    await refresh(ctx, application._id);
+    await sendNewLink(ctx, await owned(ctx, args.applicationId));
     return null;
   },
 });
@@ -331,6 +388,8 @@ export const rescreen = managerMutation({
  * the application waits for an offer to be drafted and approved. Hold: it waits for you. Reject: it is
  * closed for the reason you give, and the applicant is told only if you say so.
  */
+type DecisionArgs = { decision: "interview" | "hold" | "offer" | "reject"; reason?: string; rejectReason?: "requirement_not_met" | "not_selected" | "no_response" | "other"; tellApplicant?: boolean };
+
 export const decide = managerMutation({
   args: {
     applicationId: v.id("applications"),
@@ -339,8 +398,11 @@ export const decide = managerMutation({
     rejectReason: v.optional(v.union(v.literal("requirement_not_met"), v.literal("not_selected"), v.literal("no_response"), v.literal("other"))),
     tellApplicant: v.optional(v.boolean()),
   },
-  handler: async (ctx, args) => {
-    const application = await owned(ctx, args.applicationId);
+  handler: async (ctx, args) => decideOn(ctx, await owned(ctx, args.applicationId), args),
+});
+
+async function decideOn(ctx: MutationCtx & MemberAccess, application: Doc<"applications">, args: DecisionArgs): Promise<null> {
+  {
     const reviewable: Stage[] = ["screening", "interview", "decision_pending"];
     if (!reviewable.includes(application.stage)) throw userError("A decision is made on an application that has been submitted and screened.");
     const reason = optionalText(args.reason, "The reason", 2000);
@@ -371,6 +433,60 @@ export const decide = managerMutation({
     await setNextAction(ctx, staged, { what: "Draft the offer from the role's approved terms, then approve sending it", by: "owner", dueAt });
     await askPerson(ctx, staged, { what: "decision", title: "Draft and approve the offer", question: "You decided to make an offer. Draft it from the role's approved terms; it is sent only after you approve it.", dueAt, completionCondition: "The offer was sent, or the decision was changed", actor });
     return null;
+  }
+}
+
+/**
+ * A card moved on the pipeline board (lib/recruiter/board.ts). Each move is the same as its button: the
+ * link, a decision or closing, with the same checks. A move the board doesn't allow is refused here too.
+ */
+export const move = managerMutation({
+  args: {
+    applicationId: v.id("applications"),
+    to: literals(COLUMN_IDS),
+    reason: v.optional(v.string()),
+    closure: v.optional(closureReasonValidator),
+    note: v.optional(v.string()),
+    tellApplicant: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const application = await owned(ctx, args.applicationId);
+    const plan = moveFor(application.stage, args.to);
+    if (!plan) throw userError("An application can't be moved there from where it is.");
+    const actor = byMember(ctx);
+    switch (plan.move) {
+      case "invite": {
+        const sent = await sendInvitation(ctx, application._id, actor);
+        if (!sent.ok) throw userError(sent.detail);
+        await settleTask(ctx, application, "invitation", `${ctx.member.name} sent the application link.`, actor);
+        await refresh(ctx, application._id);
+        return { detail: sent.detail };
+      }
+      case "invite_again":
+        await sendNewLink(ctx, application);
+        return { detail: "A new application link was sent." };
+      case "interview":
+        await decideOn(ctx, application, { decision: "interview" });
+        return { detail: "Recruiter is arranging the interview." };
+      case "offer":
+        await decideOn(ctx, application, { decision: "offer" });
+        return { detail: "Draft the offer from the role's approved terms, then approve sending it." };
+      case "hold": {
+        await decideOn(ctx, application, { decision: "hold", reason: args.reason });
+        const fresh = (await ctx.db.get(application._id))!;
+        if (fresh.stage !== "decision_pending") await setStage(ctx, fresh, "decision_pending", actor, { nextAction: fresh.nextAction });
+        return { detail: "Held for a decision." };
+      }
+      case "close": {
+        if (!args.closure) throw userError("Choose why the application is closing.");
+        if (args.closure === "hired") throw userError("An application is closed as hired by completing its onboarding handoff.");
+        await closeApplication(ctx, application, args.closure, actor, { note: optionalText(args.note, "The note", 2000), by: ctx.member._id });
+        if (args.tellApplicant) await sendDecline(ctx, application, actor);
+        await settleTask(ctx, application, "review", `${ctx.member.name} closed the application.`, actor);
+        await settleTask(ctx, application, "decision", `${ctx.member.name} closed the application.`, actor);
+        return { detail: args.tellApplicant ? "Closed, and the applicant is being told." : "Closed." };
+      }
+    }
   },
 });
 

@@ -42,6 +42,8 @@ export const PUBLIC_QUERY_FILES = [
   "convex/notifications.ts",
   // A company's published texting pages (privacy, texting terms, sign-up): only the page's own words and the company's public name.
   "convex/textingPublic.ts",
+  // A company's public application pages: its public name and brand, and the roles it opened to anyone, as the Owner wrote them.
+  "convex/applyPublic.ts",
   // Founding Access: the shared enrollment window and aggregate counts only, never a company or person.
   "convex/founding.ts",
 ] as const;

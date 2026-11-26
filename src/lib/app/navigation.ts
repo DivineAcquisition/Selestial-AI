@@ -308,6 +308,11 @@ export const BOOKING_PAGES: readonly { path: string; label: string; purpose: str
   { path: `${APP_ROOT}/agents/sales/booking-forms/[id]`, label: "Booking experience", purpose: "One booking experience: its live preview, its words, look and behavior, test bookings, versions and publishing." },
 ];
 
+/** Pages inside Recruiter's Application forms. Application forms lists them. */
+export const RECRUITER_PAGES: readonly { path: string; label: string; purpose: string }[] = [
+  { path: `${APP_ROOT}/agents/recruiter/forms/[id]`, label: "Application form", purpose: "One application form: its sections and questions, look, words and invitation email, a live preview, versions, publishing, and how to share it." },
+];
+
 /** Pages inside Cleaners. They have no sidebar entry of their own: the directory links to them. */
 export const CLEANER_PAGES: readonly { path: string; label: string; purpose: string }[] = [
   { path: `${APP_ROOT}/cleaners/[id]/[[...section]]`, label: "Cleaner", purpose: "One person's profile, each section at its own address: overview, availability and jobs, onboarding and documents, skills and equipment, performance and coaching, pay, and activity." },
@@ -503,11 +508,13 @@ export const AGENTS: readonly AgentNav[] = [
     backendAgent: "recruiter",
     workflow: "built",
     overview: LIVE,
-    // Four tabs (November 23, 2026): Overview, Applicants, Interviews, Hiring setup. Screening, offers and
-    // onboarding are views of Applicants; roles and the Playbook are in Hiring setup. Old addresses redirect.
+    // Five tabs (November 26, 2026): Overview, Applicants, Interviews, Application forms, Hiring setup.
+    // Screening, offers and onboarding are views of Applicants; roles and the Playbook are in Hiring setup.
+    // Old addresses redirect.
     tabs: [
       ["applicants", "Applicants", LIVE],
       ["interviews", "Interviews", LIVE],
+      ["forms", "Application forms", LIVE],
       ["hiring-setup", "Hiring setup", LIVE],
     ],
   }),

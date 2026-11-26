@@ -250,4 +250,4 @@ export const CLOSURE_WORDS: Record<NonNullable<ApplicationRow["closure"]>["reaso
   other: "Other",
 };
 
-export const SOURCE_WORDS: Record<ApplicationRow["source"], string> = { indeed: "Indeed", ziprecruiter: "ZipRecruiter", direct: "Direct email", manual: "Added by hand", other: "Other" };
+export const SOURCE_WORDS: Record<ApplicationRow["source"], string> = { indeed: "Indeed", ziprecruiter: "ZipRecruiter", direct: "Direct email", manual: "Added by hand", website: "Your application page", other: "Other" };

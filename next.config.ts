@@ -82,6 +82,21 @@ const nextConfig: NextConfig = {
         source: "/b/:handle/:slug/embed",
         headers: [{ key: "Content-Security-Policy", value: "frame-ancestors *" }],
       },
+      // Public application pages: what any visitor sees. Starting one hands the applicant to their private
+      // link under /c, so nothing here is a credential; they are still kept out of search results and referrers.
+      {
+        source: "/apply/:path*",
+        headers: [
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
+        ],
+      },
+      // The embeddable card for a role may sit inside a company's own website. It holds no applicant data and
+      // opens the full application page in a new tab, so framing it exposes nothing.
+      {
+        source: "/apply/:handle/:role/embed",
+        headers: [{ key: "Content-Security-Policy", value: "frame-ancestors *" }],
+      },
       // A company's texting sign-up may be embedded on its own website (?embed=1). It holds no session.
       {
         source: "/b/:handle/texts",

@@ -25,6 +25,8 @@ import { OnboardingScreen } from "./onboarding";
 import { ScreeningScreen } from "./screening";
 import { CLOSURE_WORDS, CriteriaList, EvidenceTrace, JourneyTimeline, PipelineFlow, RECOMMENDATION, SOURCE_WORDS, STAGE_WORDS, STEPS, stepOf, WhoActs, type ApplicationDetail, type ApplicationRow, type TraceStep } from "./shared";
 import { EmailInput } from "@/components/ui/fields";
+import { SendApplicationDialog } from "@/components/app/recruiter-forms/send-dialog";
+import { PipelineBoard } from "./board";
 
 const VIEWS = [
   { id: "all", label: "Everyone" },
@@ -51,7 +53,7 @@ function whoActs(row: ApplicationRow): "you" | "recruiter" | "applicant" {
  * acts next, with one opened beside the list. Decisions, offers and onboarding are views of the same people.
  */
 export function ApplicantsScreen() {
-  const { companyId, timezone } = useCompany();
+  const { companyId, timezone, role } = useCompany();
   const now = useNow();
   const params = useSearchParams();
   const router = useRouter();
@@ -65,7 +67,17 @@ export function ApplicantsScreen() {
   const [whoFilter, setWhoFilter] = useState("");
   const openId = params.get("open") as Id<"applications"> | null;
   const view: View = (VIEWS.find((entry) => entry.id === params.get("view"))?.id ?? "all") as View;
-  const setOpen = (id: Id<"applications"> | null) => router.replace(id ? `/app/agents/recruiter/applicants?open=${id}` : "/app/agents/recruiter/applicants", { scroll: false });
+  const layout: "board" | "list" = params.get("layout") === "board" ? "board" : "list";
+  const address = (next: { open?: string | null; layout?: "board" | "list" }) => {
+    const query = new URLSearchParams();
+    if ((next.layout ?? layout) === "board") query.set("layout", "board");
+    const open = next.open === undefined ? openId : next.open;
+    if (open) query.set("open", open);
+    const text = query.toString();
+    return `/app/agents/recruiter/applicants${text ? `?${text}` : ""}`;
+  };
+  const setOpen = (id: Id<"applications"> | null) => router.replace(address({ open: id }), { scroll: false });
+  const setLayout = (next: "board" | "list") => router.replace(address({ layout: next }), { scroll: false });
   const setView = (next: View) => router.replace(next === "all" ? "/app/agents/recruiter/applicants" : `/app/agents/recruiter/applicants?view=${next}`, { scroll: false });
   const lead = "Everyone Recruiter is working with, from the first email to onboarding.";
 
@@ -104,17 +116,56 @@ export function ApplicantsScreen() {
   if (view !== "all") {
     return (
       <>
-        <PageHeader title="Applicants" lead={lead} actions={<AddApplicant />} />
+        <PageHeader title="Applicants" lead={lead} actions={<HeaderActions />} />
         {tabs}
         {view === "decisions" ? <ScreeningScreen embedded /> : view === "offers" ? <OffersScreen embedded /> : <OnboardingScreen embedded />}
       </>
     );
   }
 
+  const layoutToggle = (
+    <div role="radiogroup" aria-label="Show applicants as" className="mb-4 inline-flex rounded-lg border border-border p-0.5">
+      {(["list", "board"] as const).map((entry) => (
+        <button key={entry} type="button" role="radio" aria-checked={layout === entry} onClick={() => setLayout(entry)} data-testid={`layout-${entry}`} className={cn("h-8 rounded-md px-3 text-sm", layout === entry ? "bg-brand-500/10 font-medium text-strong" : "text-muted-foreground hover:text-strong")}>
+          {entry === "list" ? "List" : "Board"}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (layout === "board") {
+    const onBoard = live
+      .filter((row) => !roleFilter || (row.role ?? row.roleSeen) === roleFilter)
+      .filter((row) => !sourceFilter || row.source === sourceFilter)
+      .filter((row) => !needle || `${row.name ?? ""} ${row.role ?? ""} ${row.roleSeen ?? ""} ${row.contact.address ?? ""}`.toLowerCase().includes(needle));
+    return (
+      <>
+        <PageHeader title="Applicants" lead={lead} actions={<HeaderActions />} />
+        {tabs}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {layoutToggle}
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <TextInput aria-label="Search applicants" placeholder="Search" value={search} onChange={(event) => setSearch(event.target.value)} className="h-8 w-36" />
+            <Select value={roleFilter} onValueChange={(next) => setRoleFilter(next ?? "")} options={roles.map((value) => ({ value, label: value }))} emptyLabel="Any role" placeholder="Any role" aria-label="Filter by role" />
+            <Select value={sourceFilter} onValueChange={(next) => setSourceFilter(next ?? "")} options={sources.map((value) => ({ value, label: SOURCE_WORDS[value] }))} emptyLabel="Any source" placeholder="Any source" aria-label="Filter by source" />
+          </div>
+        </div>
+        <p className="mb-3 text-xs text-muted-foreground">Drag a card, or use &quot;Move to&quot; on it. Each move does what its button does, after you confirm. Applying, Screening and Onboarding fill up by themselves as applicants finish steps.</p>
+        <PipelineBoard rows={onBoard} openId={openId} onOpen={(id) => setOpen(id)} canMove={role !== "office"} />
+        {openId ? (
+          <div className="mt-5">
+            <ApplicantDetail applicationId={openId} now={now} timezone={timezone} onClose={() => setOpen(null)} />
+          </div>
+        ) : null}
+      </>
+    );
+  }
+
   return (
     <>
-      <PageHeader title="Applicants" lead={lead} actions={<AddApplicant />} />
+      <PageHeader title="Applicants" lead={lead} actions={<HeaderActions />} />
       {tabs}
+      {layoutToggle}
       <Panel className="mb-5">
         <PipelineFlow counts={counts} selected={step} onSelect={(index) => setStep(step === index ? null : index)} />
       </Panel>
@@ -167,6 +218,23 @@ export function ApplicantsScreen() {
         {openId ? <ApplicantDetail applicationId={openId} now={now} timezone={timezone} onClose={() => setOpen(null)} /> : null}
       </div>
     </>
+  );
+}
+
+function HeaderActions() {
+  const { companyId, role } = useCompany();
+  const needs = useQuery(api.hiringNeeds.list, { companyId, status: "open" });
+  const [sending, setSending] = useState(false);
+  return (
+    <div className="flex flex-wrap items-start gap-2">
+      {role !== "office" ? (
+        <Button size="sm" variant="outline" onClick={() => setSending(true)}>
+          <Mail aria-hidden /> Send application
+        </Button>
+      ) : null}
+      <AddApplicant />
+      <SendApplicationDialog open={sending} onClose={() => setSending(false)} roles={(needs ?? []).map((need) => ({ id: need._id, title: need.title }))} />
+    </div>
   );
 }
 

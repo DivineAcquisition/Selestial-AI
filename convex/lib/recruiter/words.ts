@@ -39,6 +39,14 @@ export function customInvitationEmail(parts: Parts, words: { subject: string; bo
   return { subject: fillIn(words.subject), body: `${fillIn(words.body)}\n\n${footer(parts)}` };
 }
 
+/** Someone typed this address on the public application page for a role it has already applied for. */
+export function resumeEmail(parts: Parts): { subject: string; body: string } {
+  return {
+    subject: `Continue your ${parts.role} application at ${parts.company}`,
+    body: `${greeting(parts.name)}\n\nSomeone asked to apply for the ${parts.role} position at ${parts.company} with this email address, and you already have an application for it. You can pick up where you left off here:\n{link}\n\nIf that wasn't you, you can ignore this email.\n\n${footer(parts)}`,
+  };
+}
+
 export function followUpEmail(parts: Parts): { subject: string; body: string } {
   return {
     subject: `Reminder: your ${parts.role} application at ${parts.company}`,
