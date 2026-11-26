@@ -1,0 +1,99 @@
+{
+  "tutorial": "setup-cleaners",
+  "version": 1,
+  "title": "Get your cleaners ready",
+  "voice": {
+    "provider": "elevenlabs",
+    "voiceId": "cjVigY5qzO86Huf0OWal",
+    "name": "Eric",
+    "model": "eleven_multilingual_v2",
+    "settings": { "stability": 0.55, "similarity_boost": 0.75, "style": 0.1, "use_speaker_boost": true },
+    "say": { "Selestial": "Celestial" }
+  },
+  "mark": false,
+  "sampleData": "Fictional cleaner Riley Example, riley@example.com, 512-555-0104. Nobody real.",
+  "scenes": [
+    {
+      "id": "title",
+      "narration": "Let's add a cleaner. They start onboarding. Nobody is offered work just because they were added.",
+      "capture": {
+        "kind": "card",
+        "eyebrow": "Setup guide · 3 of 6",
+        "title": "Get your cleaners ready",
+        "body": "Add a person, see what is still missing, and make them active only when work can be offered.",
+        "left": "Riley Example is a fictional cleaner.",
+        "seconds": 7
+      },
+      "minSeconds": 5
+    },
+    {
+      "id": "open",
+      "narration": "Open Cleaners and choose Add cleaner.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/cleaners",
+        "ready": { "role": "heading", "name": "Cleaners" },
+        "actions": [
+          { "do": "highlight", "target": { "role": "button", "name": "Add cleaner" }, "ms": 1200 },
+          { "do": "click", "target": { "role": "button", "name": "Add cleaner" } },
+          { "do": "waitFor", "target": { "role": "textbox", "name": "Full name" }, "cut": true, "timeout": 20000 },
+          { "do": "pause", "ms": 500 }
+        ]
+      },
+      "minSeconds": 5
+    },
+    {
+      "id": "details",
+      "narration": "Add their name, how they work with you, and a phone or email. Independent contractor is already selected.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/cleaners",
+        "ready": { "role": "heading", "name": "Cleaners" },
+        "actions": [
+          { "do": "click", "target": { "role": "button", "name": "Add cleaner" } },
+          { "do": "waitFor", "target": { "role": "textbox", "name": "Full name" }, "cut": true },
+          { "do": "type", "target": { "role": "textbox", "name": "Full name" }, "text": "Riley Example" },
+          { "do": "highlight", "target": "text=Independent contractor", "ms": 1100 },
+          { "do": "type", "target": { "role": "textbox", "name": "Mobile phone" }, "text": "5125550104" },
+          { "do": "type", "target": { "role": "textbox", "name": "Email" }, "text": "riley@example.com" },
+          { "do": "pause", "ms": 600 },
+          { "do": "click", "target": { "role": "button", "name": "Add cleaner", "in": "dialog" } },
+          { "do": "waitFor", "target": "text=Make active", "cut": true, "timeout": 30000 },
+          { "do": "pause", "ms": 800 }
+        ]
+      },
+      "minSeconds": 10
+    },
+    {
+      "id": "ready",
+      "narration": "They're in your list, still onboarding. Make them active only when the requirements for work are met. Until then, no job can be offered.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/cleaners",
+        "ready": { "role": "heading", "name": "Cleaners" },
+        "actions": [
+          { "do": "highlight", "target": "text=Onboarding in progress", "ms": 1500 },
+          { "do": "scroll", "target": "text=Next: working agreement" },
+          { "do": "highlight", "target": "text=Next: working agreement", "note": "No work until onboarding is done", "ms": 2200 },
+          { "do": "pause", "ms": 700 }
+        ]
+      },
+      "minSeconds": 7,
+      "poster": true
+    },
+    {
+      "id": "next",
+      "narration": "You can add the rest the same way, or import a list.",
+      "capture": {
+        "kind": "card",
+        "eyebrow": "Up next",
+        "title": "Connect your email and phone",
+        "whereLabel": "In Settings:",
+        "where": "Email & texting",
+        "left": "Setup guide · 3 of 6",
+        "seconds": 6
+      },
+      "minSeconds": 5
+    }
+  ]
+}

@@ -16,8 +16,6 @@ import { cn } from "@/lib/utils";
 
 import type { Media } from "../../../../convex/lib/tutorials/catalog";
 
-import { Select } from "@/components/ui/selection";
-
 export type PlayerEvent = "play_started" | "play_completed" | "play_failed";
 
 const SPEEDS = [0.75, 1, 1.25, 1.5, 2] as const;
@@ -151,15 +149,16 @@ export function TutorialPlayer({ media, title, onEvent }: { media: Media; title:
   return (
     <div
       ref={frame}
-      className={cn("group/player relative overflow-hidden rounded-xl bg-black text-white", full && "flex items-center")}
+      className={cn("group/player overflow-hidden rounded-xl bg-black text-white", full ? "flex h-dvh flex-col justify-center" : "grid")}
       role="group"
       aria-label={`Video: ${title}`}
       onKeyDown={onKeyDown}
     >
+      <div className="relative min-h-0">
       <video
         key={attempt}
         ref={video}
-        className="aspect-video w-full bg-black"
+        className={cn("tutorial-video aspect-video w-full bg-black", full && "max-h-[calc(100dvh-4.25rem)] object-contain")}
         poster={media.poster}
         preload="metadata"
         playsInline
@@ -215,14 +214,10 @@ export function TutorialPlayer({ media, title, onEvent }: { media: Media; title:
           <Play className="ml-0.5 size-7" weight="fill" aria-hidden />
         </button>
       ) : null}
+      </div>
 
-      <div className={cn("absolute inset-x-0 bottom-0 flex flex-wrap items-center gap-x-1 gap-y-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-2 pt-6 pb-1.5", failed && "hidden")}>
-        <button type="button" className={control} onClick={toggle} aria-label={playing ? "Pause" : "Play"}>
-          {playing ? <Pause className="size-5" weight="fill" aria-hidden /> : <Play className="size-5" weight="fill" aria-hidden />}
-        </button>
-        <span className="w-[5.5rem] shrink-0 text-xs tabular-nums" aria-hidden>
-          {clock(time)} / {clock(shown)}
-        </span>
+      {/* Beneath the picture, so captions are never covered and the bar cannot wrap over the video. */}
+      <div className={cn("grid gap-0.5 border-t border-white/10 bg-black px-2 pt-1 pb-1.5", failed && "hidden")}>
         <input
           type="range"
           min={0}
@@ -236,45 +231,65 @@ export function TutorialPlayer({ media, title, onEvent }: { media: Media; title:
           }}
           aria-label="Seek"
           aria-valuetext={`${clock(time)} of ${clock(shown)}`}
-          className="order-first h-6 w-full min-w-0 cursor-pointer accent-[#8e6df6] sm:order-none sm:w-auto sm:flex-1"
+          className="h-6 w-full min-w-0 cursor-pointer accent-[#8e6df6]"
         />
-        <button type="button" className={control} onClick={toggleMute} aria-label={muted ? "Turn sound on" : "Mute"} aria-pressed={muted}>
-          {muted || volume === 0 ? <VolumeX className="size-5" aria-hidden /> : <Volume2 className="size-5" aria-hidden />}
-        </button>
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.05}
-          value={muted ? 0 : volume}
-          onChange={(e) => {
-            const element = video.current;
-            const next = Number(e.target.value);
-            setVolume(next);
-            setMuted(next === 0);
-            if (element) {
-              element.volume = next;
-              element.muted = next === 0;
-            }
-          }}
-          aria-label="Volume"
-          aria-valuetext={`${Math.round((muted ? 0 : volume) * 100)}%`}
-          className="hidden h-6 w-20 cursor-pointer accent-white sm:block"
-        />
-        <label className="sr-only" htmlFor={`speed-${attempt}`}>
-          Playback speed
-        </label>
-        <Select value={String(speed)} onValueChange={(picked) => {
-            const next = Number(picked ?? "") as (typeof SPEEDS)[number];
-            setSpeed(next);
-            if (video.current) video.current.playbackRate = next;
-          }} options={SPEEDS.map((value) => ({ value: String(value), label: `${value}×` }))} className="h-9 shrink-0 cursor-pointer rounded-lg bg-transparent px-1.5 text-xs font-medium text-white hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-white [&>option]:text-black" id={`speed-${attempt}`} />
-        <button type="button" className={cn(control, captions && "bg-white/15")} onClick={toggleCaptions} aria-label="Captions" aria-pressed={captions}>
-          <Captions className="size-5" aria-hidden />
-        </button>
-        <button type="button" className={control} onClick={toggleFull} aria-label={full ? "Exit full screen" : "Full screen"}>
-          {full ? <Minimize className="size-5" aria-hidden /> : <Maximize className="size-5" aria-hidden />}
-        </button>
+        <div className="flex items-center gap-1">
+          <button type="button" className={control} onClick={toggle} aria-label={playing ? "Pause" : "Play"}>
+            {playing ? <Pause className="size-5" weight="fill" aria-hidden /> : <Play className="size-5" weight="fill" aria-hidden />}
+          </button>
+          <span className="w-[5.5rem] shrink-0 text-xs tabular-nums" aria-hidden>
+            {clock(time)} / {clock(shown)}
+          </span>
+          <span className="min-w-2 flex-1" />
+          <button type="button" className={control} onClick={toggleMute} aria-label={muted ? "Turn sound on" : "Mute"} aria-pressed={muted}>
+            {muted || volume === 0 ? <VolumeX className="size-5" aria-hidden /> : <Volume2 className="size-5" aria-hidden />}
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={muted ? 0 : volume}
+            onChange={(e) => {
+              const element = video.current;
+              const next = Number(e.target.value);
+              setVolume(next);
+              setMuted(next === 0);
+              if (element) {
+                element.volume = next;
+                element.muted = next === 0;
+              }
+            }}
+            aria-label="Volume"
+            aria-valuetext={`${Math.round((muted ? 0 : volume) * 100)}%`}
+            className="hidden h-6 w-16 cursor-pointer accent-white sm:block"
+          />
+          <label className="sr-only" htmlFor={`speed-${attempt}`}>
+            Playback speed
+          </label>
+          <select
+            id={`speed-${attempt}`}
+            value={String(speed)}
+            onChange={(e) => {
+              const next = Number(e.target.value) as (typeof SPEEDS)[number];
+              setSpeed(next);
+              if (video.current) video.current.playbackRate = next;
+            }}
+            className="h-9 shrink-0 cursor-pointer appearance-none rounded-lg bg-transparent px-2 text-xs font-medium text-white tabular-nums hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-white [&>option]:text-black"
+          >
+            {SPEEDS.map((value) => (
+              <option key={value} value={String(value)}>
+                {value}×
+              </option>
+            ))}
+          </select>
+          <button type="button" className={cn(control, captions && "bg-white/15")} onClick={toggleCaptions} aria-label="Captions" aria-pressed={captions}>
+            <Captions className="size-5" aria-hidden />
+          </button>
+          <button type="button" className={control} onClick={toggleFull} aria-label={full ? "Exit full screen" : "Full screen"}>
+            {full ? <Minimize className="size-5" aria-hidden /> : <Maximize className="size-5" aria-hidden />}
+          </button>
+        </div>
       </div>
       <p className="sr-only" aria-live="polite">
         {announce}

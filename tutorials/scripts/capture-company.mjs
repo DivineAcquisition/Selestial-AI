@@ -85,7 +85,11 @@ async function installOverlay(page) {
 
 function locatorOf(page, target) {
   if (typeof target === "string") return page.locator(target).first();
-  if (target.role) return page.getByRole(target.role, { name: target.name, exact: target.exact ?? false }).first();
+  if (target.role) {
+    const root = target.in ? page.getByRole(target.in) : page;
+    const found = root.getByRole(target.role, { name: target.name, exact: target.exact ?? false });
+    return target.nth === undefined ? found.first() : found.nth(target.nth);
+  }
   throw new Error(`Bad target ${JSON.stringify(target)}`);
 }
 
@@ -120,9 +124,16 @@ for (const scene of board.scenes) {
       );
       await page.waitForTimeout(900);
     } else if (scene.capture.kind === "playwright") {
+      await context.addInitScript(() => {
+        const original = Storage.prototype.getItem;
+        Storage.prototype.getItem = function (key) {
+          if (String(key).startsWith("selestial:welcome-tutorial:")) return "1";
+          return original.call(this, key);
+        };
+      });
       await page.goto(new URL(scene.capture.start, base).toString(), { waitUntil: "domcontentloaded" });
       await installOverlay(page);
-      const ready = READY[scene.id];
+      const ready = scene.capture.ready ?? READY[scene.id];
       if (ready) {
         const locator = locatorOf(page, ready);
         // A dev server can answer the first request with a shell that never hydrates. Reload once.

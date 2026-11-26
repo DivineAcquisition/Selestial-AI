@@ -79,7 +79,11 @@ Help articles read November 20, 2026. "Interface" means followed in a real demo 
 `setup-company`, "Set up your company", ships published. The first time an Owner opens setup or the
 workspace, the tutorial dialog opens with the video paused. Closing it is remembered on that device.
 It is also listed under Moving your records (`/app/help`). The files are served from
-`public/tutorials/setup-company/v1/`. Staff can withdraw it at /staff/tutorials.
+`public/tutorials/setup-company/v1/`. Staff can withdraw it at /staff/tutorials. The player keeps
+its controls under the picture, so captions are not covered.
+
+Storyboards for the next two guides, services and cleaners, are recorded in `tutorials/build/` and
+are not narrated yet: the ElevenLabs account had 48 characters left of its 10,000 monthly quota.
 
 ## Still needed
 

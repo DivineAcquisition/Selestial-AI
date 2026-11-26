@@ -1,0 +1,96 @@
+{
+  "tutorial": "setup-services",
+  "version": 1,
+  "title": "Build your services and pricing",
+  "voice": {
+    "provider": "elevenlabs",
+    "voiceId": "cjVigY5qzO86Huf0OWal",
+    "name": "Eric",
+    "model": "eleven_multilingual_v2",
+    "settings": { "stability": 0.55, "similarity_boost": 0.75, "style": 0.1, "use_speaker_boost": true },
+    "say": { "Selestial": "Celestial" }
+  },
+  "mark": false,
+  "sampleData": "Fictional company Juniper Cleaning Co. No live services yet. Example prices only.",
+  "scenes": [
+    {
+      "id": "title",
+      "narration": "Let's add a service customers can book. You check the price before anything goes live.",
+      "capture": {
+        "kind": "card",
+        "eyebrow": "Setup guide · 2 of 6",
+        "title": "Build your services and pricing",
+        "body": "Draft a service, set what it costs, and publish it only when it is right.",
+        "left": "Juniper Cleaning Co. is a fictional demo company.",
+        "seconds": 7
+      },
+      "minSeconds": 5
+    },
+    {
+      "id": "choices",
+      "narration": "Services and Pricing starts here. Selestial can draft services from what you already told it, you can import a price list, or you can create one yourself.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/services",
+        "ready": { "role": "heading", "name": "Set up what you sell" },
+        "actions": [
+          { "do": "highlight", "target": "text=Set up with Selestial", "ms": 1600 },
+          { "do": "highlight", "target": "text=Import prices", "ms": 1200 },
+          { "do": "click", "target": "text=Create manually" },
+          { "do": "waitFor", "target": { "role": "textbox", "name": "Name customers will see" }, "cut": true, "timeout": 30000 },
+          { "do": "pause", "ms": 700 }
+        ]
+      },
+      "minSeconds": 8
+    },
+    {
+      "id": "manual",
+      "narration": "Create one yourself. Give it the name customers will see, and the kind of cleaning.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/services/new?mode=blank",
+        "ready": { "role": "textbox", "name": "Name customers will see" },
+        "actions": [
+          { "do": "type", "target": { "role": "textbox", "name": "Name customers will see" }, "text": "Standard home cleaning" },
+          { "do": "pause", "ms": 600 },
+          { "do": "highlight", "target": "text=Homes", "ms": 1200 },
+          { "do": "click", "target": { "role": "button", "name": "Start building" } },
+          { "do": "waitFor", "target": { "role": "button", "name": "Review & publish" }, "cut": true, "timeout": 45000 },
+          { "do": "pause", "ms": 600 }
+        ]
+      },
+      "minSeconds": 8
+    },
+    {
+      "id": "publish",
+      "narration": "You land in the editor. Nothing is live yet. When the price and scope are right, choose Review and publish. Customers only see a service after you publish it.",
+      "capture": {
+        "kind": "playwright",
+        "start": "/app/services",
+        "ready": { "role": "heading", "name": "Services & Pricing" },
+        "actions": [
+          { "do": "click", "target": "text=Standard home cleaning" },
+          { "do": "waitFor", "target": { "role": "button", "name": "Review & publish" }, "cut": true, "timeout": 30000 },
+          { "do": "highlight", "target": { "role": "button", "name": "Review & publish" }, "note": "Nothing is live until you publish", "ms": 2200 },
+          { "do": "pause", "ms": 800 }
+        ]
+      },
+      "minSeconds": 8,
+      "poster": true
+    },
+    {
+      "id": "next",
+      "narration": "Next, add the people who do the work.",
+      "capture": {
+        "kind": "card",
+        "eyebrow": "Up next",
+        "title": "Get your cleaners ready",
+        "whereLabel": "In the sidebar:",
+        "where": "Cleaners",
+        "left": "Setup guide · 2 of 6",
+        "seconds": 6
+      },
+      "minSeconds": 5
+    }
+  ]
+}
