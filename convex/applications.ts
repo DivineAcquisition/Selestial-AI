@@ -16,7 +16,8 @@ import { grantApplicationEmail, withdrawApplicantContact } from "./lib/recruiter
 import { askPerson, closeApplication, isActive, setNextAction, setStage, settleTask, withdrawApplication } from "./lib/recruiter/applications";
 import { CONTACT_WORDS } from "./lib/recruiter/contact";
 import { sendDecline } from "./lib/recruiter/decisions";
-import { answerWords, completion, formFields } from "./lib/recruiter/form";
+import { answerWords, completion, visibleFields } from "./lib/recruiter/form";
+import { applicationFields } from "./lib/recruiter/forms";
 import { startInterview } from "./lib/recruiter/interviews";
 import { routeApplication, sendInvitation } from "./lib/recruiter/invitations";
 import { siteOrigin, tokenFor } from "./lib/dispatch/links";
@@ -80,7 +81,7 @@ export const get = companyQuery({
     const applicant = await ctx.db.get(application.applicantId);
     const need = application.needId ? await ctx.db.get(application.needId) : null;
     const session = await ctx.db.query("formSessions").withIndex("by_company_application", (q) => q.eq("companyId", ctx.companyId).eq("applicationId", application._id)).first();
-    const fields = need ? formFields(need) : [];
+    const fields = need ? visibleFields((await applicationFields(ctx, application, need)).fields, session?.answers ?? {}).filter((field) => field.kind !== "statement") : [];
     const inbound = await ctx.db.query("sourceMessages").withIndex("by_company_application", (q) => q.eq("companyId", ctx.companyId).eq("applicationId", application._id)).take(100);
     const outbound = await applicationMessages(ctx, application);
     const attachments = await ctx.db.query("applicantAttachments").withIndex("by_company_application", (q) => q.eq("companyId", ctx.companyId).eq("applicationId", application._id)).take(20);
@@ -99,7 +100,7 @@ export const get = companyQuery({
       applicant: applicant ? { name: applicant.name ?? null, email: applicant.email ?? null, phone: applicant.phone ?? null, location: applicant.location ?? null, mayBeTexted: applicant.smsConsent !== undefined, doNotContact: applicant.doNotContact ?? null, possibleDuplicateOf: applicant.possibleDuplicateOf ?? null } : null,
       contactEvidence: application.contact.evidence,
       facts: application.facts,
-      form: session ? { ...completion(fields, session.answers), savedAt: session.savedAt, submittedAt: session.submittedAt ?? null, answers: fields.map((field) => ({ key: field.key, label: field.label, answer: answerWords(session.answers[field.key]) })) } : null,
+      form: session ? { ...completion(fields, session.answers), savedAt: session.savedAt, submittedAt: session.submittedAt ?? null, answers: fields.map((field) => ({ key: field.key, label: field.label, answer: answerWords(session.answers[field.key], field.kind) })) } : null,
       attachments: attachments.map((file) => ({ attachmentId: file._id, kind: file.kind, fileName: file.fileName, size: file.size, uploadedAt: file.uploadedAt, verified: false as const })),
       conversation,
       remindersSent: application.followUpsSent,

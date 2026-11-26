@@ -17,7 +17,8 @@ import { notFound, userError } from "./lib/errors";
 import { recordEvent, type Actor } from "./lib/events";
 import { recordTextConsent } from "./lib/recruiter/consent";
 import { firstName, isActive, setStage, settleTask, withdrawApplication } from "./lib/recruiter/applications";
-import { assertSubmittable, ATTEST_WORDING, cleanAnswers, completion, formFields, smsConsentWording } from "./lib/recruiter/form";
+import { assertSubmittable, ATTEST_WORDING, cleanAnswers, completion, shownAnswers, smsConsentWording, withFiles, type Field } from "./lib/recruiter/form";
+import { applicationFields, presentation, sessionOf as formSessionOf } from "./lib/recruiter/forms";
 import { bookSlot, cancelInterviewTime, liveInterview, openSlots } from "./lib/recruiter/interviews";
 import { answerOffer, liveOffer, payWords } from "./lib/recruiter/offers";
 import { answersValidator, type Answers, type Fact } from "./lib/recruiter/schema";
@@ -38,11 +39,14 @@ async function needOf(ctx: (QueryCtx | MutationCtx) & ApplicantAccess): Promise<
 }
 
 async function sessionOf(ctx: (QueryCtx | MutationCtx) & ApplicantAccess) {
-  return ctx.db
-    .query("formSessions")
-    .withIndex("by_company_application", (q) => q.eq("companyId", ctx.companyId).eq("applicationId", ctx.application._id))
-    .first();
+  return formSessionOf(ctx, ctx.application);
 }
+
+async function fieldsOf(ctx: (QueryCtx | MutationCtx) & ApplicantAccess, need: Doc<"hiringNeeds">) {
+  return applicationFields(ctx, ctx.application, need, ctx.company.name);
+}
+
+const fileKind = (field: Field): "resume" | "supporting" => (field.options?.[0] === "resume" ? "resume" : "supporting");
 
 async function filesOf(ctx: (QueryCtx | MutationCtx) & ApplicantAccess) {
   return ctx.db
@@ -80,17 +84,21 @@ export const application = applicantQuery({
     const state = applyState(ctx, need);
     const base = { company: ctx.company.name, role: need.title, state, firstName: firstName(ctx.applicant.name) };
     // Once the page is not open, it says why and shows nothing the applicant entered.
-    if (state !== "open") return { ...base, form: null };
-    const fields = formFields(need, ctx.company.name);
+    const { fields, sections, definition } = await fieldsOf(ctx, need);
+    const look = await presentation(ctx, ctx.company, definition, need.title);
+    if (state !== "open") return { ...base, look, form: null };
     const session = await sessionOf(ctx);
-    const answers = { ...prefill(ctx), ...(session?.answers ?? {}) };
+    const files = await filesOf(ctx);
+    const answers = withFiles(fields, { ...prefill(ctx), ...(session?.answers ?? {}) }, files);
     return {
       ...base,
+      look,
       form: {
         about: { responsibilities: need.responsibilities, location: need.location, availability: need.requiredAvailability },
         fields,
+        sections,
         answers,
-        files: (await filesOf(ctx)).map((file) => ({ attachmentId: file._id, kind: file.kind, fileName: file.fileName })),
+        files: files.map((file) => ({ attachmentId: file._id, kind: file.kind, field: file.field ?? (file.kind === "resume" ? "resume" : null), fileName: file.fileName })),
         maxFiles: MAX_FILES,
         savedAt: session?.savedAt ?? null,
         progress: completion(fields, answers),
@@ -118,9 +126,10 @@ export const saveDraft = applicantMutation({
     const need = await openForm(ctx);
     const now = Date.now();
     const session = await sessionOf(ctx);
-    const answers = cleanAnswers(formFields(need, ctx.company.name), { ...(session?.answers ?? prefill(ctx)), ...args.answers });
+    const { fields, pin } = await fieldsOf(ctx, need);
+    const answers = cleanAnswers(fields, { ...(session?.answers ?? prefill(ctx)), ...args.answers });
     if (session) await ctx.db.patch(session._id, { answers, savedAt: now });
-    else await ctx.db.insert("formSessions", { companyId: ctx.companyId, applicationId: ctx.application._id, answers, startedAt: now, savedAt: now });
+    else await ctx.db.insert("formSessions", { companyId: ctx.companyId, applicationId: ctx.application._id, answers, ...(pin ? { form: pin } : {}), startedAt: now, savedAt: now });
     if (ctx.application.stage === "invited") {
       await setStage(ctx, ctx.application, "application_started", asApplicant(ctx), { formStartedAt: now, nextAction: { what: "Finish and submit the application form", by: "applicant", dueAt: ctx.link.expiresAt } });
     }
@@ -147,9 +156,16 @@ export const fileUploadUrl = applicantMutation({
 export const attachFile = applicantMutation({
   purpose: "apply",
   action: "upload",
-  args: { storageId: v.id("_storage"), kind: v.union(v.literal("resume"), v.literal("supporting")), fileName: v.string(), clientKey: v.string() },
+  args: { storageId: v.id("_storage"), kind: v.union(v.literal("resume"), v.literal("supporting")), fileName: v.string(), clientKey: v.string(), field: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    await openForm(ctx);
+    const need = await openForm(ctx);
+    // A file answers one of the form's file questions. Without one named, it is the resume, as before file questions.
+    const question = args.field ? (await fieldsOf(ctx, need)).fields.find((row) => row.key === args.field && row.kind === "file") : undefined;
+    if (args.field && !question) {
+      await discardUpload(ctx, args.storageId);
+      throw userError("This form has no such file question.");
+    }
+    const kind = question ? fileKind(question) : args.kind;
     const clientKey = args.clientKey.trim().slice(0, 80);
     if (clientKey.length < 8) throw userError("This file could not be recorded. Try again.");
     const files = await filesOf(ctx);
@@ -171,7 +187,7 @@ export const attachFile = applicantMutation({
       .take(5000);
     if (everyone.some((row) => row.storageId === args.storageId)) throw userError("This file is already recorded.");
     const fileName = args.fileName.replace(/[^\w .()-]+/g, "_").trim().slice(0, 120) || "file";
-    const attachmentId = await ctx.db.insert("applicantAttachments", { companyId: ctx.companyId, applicationId: ctx.application._id, kind: args.kind, storageId: args.storageId, fileName, contentType: file.contentType, size: file.size, clientKey, uploadedAt: Date.now() });
+    const attachmentId = await ctx.db.insert("applicantAttachments", { companyId: ctx.companyId, applicationId: ctx.application._id, kind, ...(question ? { field: question.key } : {}), storageId: args.storageId, fileName, contentType: file.contentType, size: file.size, clientKey, uploadedAt: Date.now() });
     return { attachmentId, duplicate: false };
   },
 });
@@ -198,24 +214,28 @@ export const submit = applicantMutation({
   handler: async (ctx, args) => {
     const need = await openForm(ctx);
     if (!args.attested) throw userError("Please confirm that what you entered is true and complete.");
-    const fields = formFields(need, ctx.company.name);
+    const { fields, pin } = await fieldsOf(ctx, need);
     const session = await sessionOf(ctx);
-    const answers = cleanAnswers(fields, { ...(session?.answers ?? prefill(ctx)), ...args.answers });
+    // Only what the applicant was shown is kept, and file questions are answered by the files recorded.
+    const answers = withFiles(fields, shownAnswers(fields, cleanAnswers(fields, { ...(session?.answers ?? prefill(ctx)), ...args.answers })), await filesOf(ctx));
     assertSubmittable(fields, answers);
     const now = Date.now();
     if (session) await ctx.db.patch(session._id, { answers, savedAt: now, submittedAt: now });
-    else await ctx.db.insert("formSessions", { companyId: ctx.companyId, applicationId: ctx.application._id, answers, startedAt: now, savedAt: now, submittedAt: now });
+    else await ctx.db.insert("formSessions", { companyId: ctx.companyId, applicationId: ctx.application._id, answers, ...(pin ? { form: pin } : {}), startedAt: now, savedAt: now, submittedAt: now });
 
     const where = "the application form, as the applicant wrote it";
     const said = (field: string, key: string): Fact[] => (typeof answers[key] === "string" || typeof answers[key] === "number" ? [{ field, value: String(answers[key]), from: "form", where }] : []);
-    const facts = [...ctx.application.facts.filter((fact) => fact.from !== "form"), ...said("name", "fullName"), ...said("email", "email"), ...said("phone", "phone"), ...said("location", "city"), ...said("experience_years", "experienceYears")];
+    // A home address is kept as the answer; the record's location is only the city and state from it.
+    const home = Array.isArray(answers.address) ? [answers.address[1], answers.address[2]].filter(Boolean).join(", ") : "";
+    const location = typeof answers.city === "string" ? answers.city : home || undefined;
+    const facts = [...ctx.application.facts.filter((fact) => fact.from !== "form"), ...said("name", "fullName"), ...said("email", "email"), ...said("phone", "phone"), ...(location ? [{ field: "location", value: location, from: "form" as const, where }] : []), ...said("experience_years", "experienceYears")];
     const email = typeof answers.email === "string" ? answers.email : undefined;
     const phone = typeof answers.phone === "string" ? answers.phone : undefined;
     // The address they typed on their own application is theirs. It is added to the evidence; the address the invitation reached stays on the record beside it.
     const contact = email
       ? { ...ctx.application.contact, status: "direct" as const, address: email, bouncedAt: email === ctx.application.contact.address ? ctx.application.contact.bouncedAt : undefined, evidence: [...ctx.application.contact.evidence.filter((entry) => !(entry.address === email && entry.where === where)), { address: email, kind: "direct" as const, where }].slice(-30) }
       : ctx.application.contact;
-    await ctx.db.patch(ctx.applicant._id, { name: typeof answers.fullName === "string" ? answers.fullName : ctx.applicant.name, email: email ?? ctx.applicant.email, phone: phone ?? ctx.applicant.phone, location: typeof answers.city === "string" ? answers.city : ctx.applicant.location, smsConsent: answers.smsConsent === true && phone ? (ctx.applicant.smsConsent?.phone === phone ? ctx.applicant.smsConsent : { at: now, wording: smsConsentWording(ctx.company.name), phone }) : undefined });
+    await ctx.db.patch(ctx.applicant._id, { name: typeof answers.fullName === "string" ? answers.fullName : ctx.applicant.name, email: email ?? ctx.applicant.email, phone: phone ?? ctx.applicant.phone, location: location ?? ctx.applicant.location, smsConsent: answers.smsConsent === true && phone ? (ctx.applicant.smsConsent?.phone === phone ? ctx.applicant.smsConsent : { at: now, wording: smsConsentWording(ctx.company.name), phone }) : undefined });
     await recordTextConsent(ctx, ctx.applicant, answers.smsConsent === true && Boolean(phone), asApplicant(ctx), smsConsentWording(ctx.company.name));
     const fresh = (await ctx.db.get(ctx.application._id))!;
     await setStage(ctx, fresh, "application_submitted", asApplicant(ctx), { facts, contact, formStartedAt: fresh.formStartedAt ?? now, submittedAt: now, questionSince: undefined, nextAction: { what: "Screen the application", by: "recruiter", dueAt: now + DAY } });

@@ -29,6 +29,16 @@ export function invitationEmail(parts: Parts & { source: Source }): { subject: s
   };
 }
 
+/**
+ * The invitation in the company's own words, from its application form. "{first_name}", "{role}" and
+ * "{company}" are filled in and "{link}" is kept for the sender. The footer saying who is writing and how
+ * to stop is always added.
+ */
+export function customInvitationEmail(parts: Parts, words: { subject: string; body: string }): { subject: string; body: string } {
+  const fillIn = (value: string) => value.replace(/\{first_name\}/g, firstName(parts.name) ?? "there").replace(/\{role\}/g, parts.role).replace(/\{company\}/g, parts.company);
+  return { subject: fillIn(words.subject), body: `${fillIn(words.body)}\n\n${footer(parts)}` };
+}
+
 export function followUpEmail(parts: Parts): { subject: string; body: string } {
   return {
     subject: `Reminder: your ${parts.role} application at ${parts.company}`,

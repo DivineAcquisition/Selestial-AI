@@ -235,6 +235,8 @@ export const DELETION_PLAN: readonly TablePlan[] = [
   del("inboxRuns", "Records of each read of the hiring inbox, kept 30 days."),
   del("applicantLinks", "Applicants' links."),
   del("formSessions", "Applicants' answers."),
+  del("applicationForms", "The company's application forms."),
+  del("applicationFormVersions", "Published versions of application forms."),
   del("applicantAttachments", "Applicants' files."),
   del("screenings", "Screening of applications."),
   del("interviewSlots", "Interview times."),

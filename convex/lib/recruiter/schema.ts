@@ -8,6 +8,7 @@ import { defineTable } from "convex/server";
 import { v } from "convex/values";
 
 import { literals } from "../statuses";
+import { formDefinitionValidator } from "./formDefinition";
 
 // ── Lists ────────────────────────────────────────────────────────────────────────────────────────
 
@@ -56,7 +57,8 @@ export const CLOSURE_REASONS = ["requirement_not_met", "not_selected", "role_clo
 export type ClosureReason = (typeof CLOSURE_REASONS)[number];
 export const closureReasonValidator = literals(CLOSURE_REASONS);
 
-export const SOURCES = ["indeed", "ziprecruiter", "direct", "manual", "other"] as const;
+/** website: the applicant started on the company's public application page (convex/applyPublic.ts). */
+export const SOURCES = ["indeed", "ziprecruiter", "direct", "manual", "website", "other"] as const;
 export type Source = (typeof SOURCES)[number];
 export const sourceValidator = literals(SOURCES);
 
@@ -356,11 +358,56 @@ export const recruiterTables = {
     criteria: v.array(criterionValidator),
     interviewProcess: v.optional(v.string()),
     status: needStatusValidator,
+    /** The company's application form for this role. Absent: the company's default form, or the original short form. */
+    formId: v.optional(v.id("applicationForms")),
+    /** The role's address on the company's public application page, /apply/<handle>/<slug>. */
+    slug: v.optional(v.string()),
+    /** Anyone can apply on the public page while the role is open. Off: only people sent a link can. */
+    publicApply: v.optional(v.boolean()),
     /** Set when Dispatch's staffing-gap request led a person to open this. The request itself opens nothing. */
     fromTaskId: v.optional(v.id("tasks")),
     createdBy: v.id("members"),
     createdAt: v.number(),
-  }).index("by_company_status", ["companyId", "status"]),
+  })
+    .index("by_company_status", ["companyId", "status"])
+    .index("by_company_slug", ["companyId", "slug"]),
+
+  /**
+   * An application form the company built (lib/recruiter/formDefinition.ts). The draft is the working
+   * copy; applicants only ever see a published version, and each keeps the version it started on.
+   */
+  applicationForms: defineTable({
+    companyId: v.id("companies"),
+    name: v.string(),
+    /** The template it started from. */
+    template: v.string(),
+    draft: formDefinitionValidator,
+    draftRevision: v.number(),
+    draftSavedAt: v.number(),
+    draftSavedBy: v.string(),
+    draftDiffers: v.boolean(),
+    publishedVersion: v.optional(v.number()),
+    publishedAt: v.optional(v.number()),
+    /** The form a role without its own form uses. At most one per company. */
+    isDefault: v.boolean(),
+    archivedAt: v.optional(v.number()),
+    createdBy: v.id("members"),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_company_updated", ["companyId", "updatedAt"]),
+
+  /** A published form, frozen. Restoring an earlier one publishes a new version that names it. */
+  applicationFormVersions: defineTable({
+    companyId: v.id("companies"),
+    formId: v.id("applicationForms"),
+    version: v.number(),
+    definition: formDefinitionValidator,
+    hash: v.string(),
+    note: v.optional(v.string()),
+    restoredFrom: v.optional(v.number()),
+    publishedBy: v.id("members"),
+    publishedAt: v.number(),
+  }).index("by_company_form_version", ["companyId", "formId", "version"]),
 
   applicants: defineTable({
     companyId: v.id("companies"),
@@ -575,6 +622,8 @@ export const recruiterTables = {
     companyId: v.id("companies"),
     applicationId: v.id("applications"),
     answers: answersValidator,
+    /** The form version the applicant started on. Absent: the original short form, from before companies built their own. */
+    form: v.optional(v.object({ formId: v.id("applicationForms"), version: v.number() })),
     startedAt: v.number(),
     savedAt: v.number(),
     submittedAt: v.optional(v.number()),
@@ -585,6 +634,8 @@ export const recruiterTables = {
     companyId: v.id("companies"),
     applicationId: v.id("applications"),
     kind: v.union(v.literal("resume"), v.literal("supporting")),
+    /** The file question it answers. Absent: from before file questions, read as the resume. */
+    field: v.optional(v.string()),
     storageId: v.id("_storage"),
     fileName: v.string(),
     contentType: v.string(),

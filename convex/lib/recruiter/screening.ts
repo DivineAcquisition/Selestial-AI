@@ -16,7 +16,9 @@ import type { Actor } from "../events";
 import { recordEvent } from "../events";
 import { askPerson, RECRUITER, setNextAction, setStage } from "./applications";
 import { proposeOrDecline } from "./decisions";
-import { answerWords, formFields } from "./form";
+import { answerWords, formFields, visibleFields, type Field } from "./form";
+import { knockedOut, knockoutWords } from "./formDefinition";
+import { applicationFields } from "./forms";
 import { normalizePhone } from "./mail";
 import { queueApplicantMessage } from "./outbox";
 import type { Answers, Criterion, CriterionOutcome, Fact } from "./schema";
@@ -70,12 +72,25 @@ function contradictionsIn(answers: Answers, facts: Fact[], contactAddress: strin
   return out;
 }
 
-export function evaluate(need: Pick<Doc<"hiringNeeds">, "criteria" | "coverageAreas" | "questions">, answers: Answers, facts: Fact[], contactAddress?: string): Evaluation {
-  const fields = formFields(need);
-  const asked = new Set(fields.map((field) => field.key));
-  const results = need.criteria.map((criterion) => ({ key: criterion.key, label: criterion.label, fixed: criterion.fixed, source: "The application form", ...judge(criterion, answers, asked) }));
+/**
+ * The form's own knockout answers, as requirements. A gate is a published fixed requirement: the applicant
+ * was told before sending. A flag is for a person to weigh. Only questions the applicant was shown count.
+ */
+export function knockoutResults(fields: Field[], answers: Answers): CriterionResult[] {
+  return visibleFields(fields, answers)
+    .filter((field) => field.knockout && answers[field.key] !== undefined)
+    .map((field) => {
+      const out = knockedOut(field.knockout, answers[field.key]);
+      const said = `Answered "${answerWords(answers[field.key], field.kind)}".`;
+      return { key: `form_${field.key.replace(/\W/g, "_")}`, label: field.label, fixed: field.knockout!.outcome === "gate", source: "The application form", outcome: out ? ("does_not_meet" as const) : ("meets" as const), evidence: out ? `${said} The form ends an application on ${knockoutWords(field.knockout!)}.` : said };
+    });
+}
+
+export function evaluate(need: Pick<Doc<"hiringNeeds">, "criteria" | "coverageAreas" | "questions">, answers: Answers, facts: Fact[], contactAddress?: string, fields: Field[] = formFields(need)): Evaluation {
+  const asked = new Set(visibleFields(fields, answers).map((field) => field.key));
+  const results = [...need.criteria.map((criterion) => ({ key: criterion.key, label: criterion.label, fixed: criterion.fixed, source: "The application form", ...judge(criterion, answers, asked) })), ...knockoutResults(fields, answers)];
   const contradictions = contradictionsIn(answers, facts, contactAddress);
-  const unanswered = fields.filter((field) => !field.required && field.kind !== "yes_no" && answers[field.key] === undefined).map((field) => field.label);
+  const unanswered = visibleFields(fields, answers).filter((field) => !field.required && field.kind !== "yes_no" && field.kind !== "consent" && field.kind !== "statement" && answers[field.key] === undefined).map((field) => field.label);
   const missing = [...results.filter((row) => row.outcome === "needs_clarification").map((row) => row.label), ...unanswered];
   const notMet = results.filter((row) => row.outcome === "does_not_meet");
   const unclear = results.filter((row) => row.outcome === "needs_clarification");
@@ -122,7 +137,8 @@ export async function runScreening(ctx: MutationCtx, applicationId: Id<"applicat
     .withIndex("by_company_application", (q) => q.eq("companyId", application.companyId).eq("applicationId", application._id))
     .first();
   if (!need || !applicant || !session?.submittedAt) return null;
-  const result = evaluate(need, session.answers, application.facts, application.contact.address);
+  const { fields } = await applicationFields(ctx, application, need);
+  const result = evaluate(need, session.answers, application.facts, application.contact.address, fields);
   const screeningId = await ctx.db.insert("screenings", { companyId: application.companyId, applicationId, needId: need._id, ...result, createdAt: Date.now() });
   await recordEvent(ctx, { companyId: application.companyId, type: "application.screened", actor: RECRUITER, subject: { table: "screenings", id: screeningId }, data: { applicationId, recommendation: result.recommendation } });
   const who = applicant.name ?? "An applicant";

@@ -27,7 +27,8 @@ import { payWords } from "./offers";
 import { applicationMessages } from "./outbox";
 import { AWAITING_FORM, OPEN_FINDING, USABLE_CONTACT, type FindingKind, type FindingStatus, type PreparedKind } from "./schema";
 import { DAY, HOUR, recruiterSettings } from "./settings";
-import { followUpEmail, inquiryReplyEmail, interviewInvitationEmail, interviewReminderEmail, invitationEmail, partsFor, payReplyEmail } from "./words";
+import { invitationWords } from "./forms";
+import { followUpEmail, inquiryReplyEmail, interviewInvitationEmail, interviewReminderEmail, partsFor, payReplyEmail } from "./words";
 import { notifyMembers } from "../notify/route";
 
 export type Prepared = NonNullable<Doc<"recruiterFindings">["prepared"]>;
@@ -177,7 +178,7 @@ export async function derive(ctx: QueryCtx | MutationCtx, application: Doc<"appl
     // Not sent the application link yet, for an open role: the link answers "is it still open?" and lets them apply.
     const linkSent = messages.some((row) => row.purpose === "application_invitation" && row.status !== "failed" && row.status !== "not_sent");
     if (!linkSent && need?.status === "open" && (application.stage === "received" || application.stage === "invitation_awaiting_approval")) {
-      const email = invitationEmail({ ...parts, source: application.source });
+      const email = await invitationWords(ctx, need, parts, application.source);
       return {
         ...base,
         kind: "applicant_question",
@@ -228,7 +229,7 @@ export async function derive(ctx: QueryCtx | MutationCtx, application: Doc<"appl
 
   // 5. A new application, not yet sent the link.
   if ((application.stage === "received" || application.stage === "invitation_awaiting_approval") && !invited) {
-    const email = invitationEmail({ ...parts, source: application.source });
+    const email = await invitationWords(ctx, need, parts, application.source);
     return {
       ...base,
       kind: "new_application",

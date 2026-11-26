@@ -91,6 +91,8 @@ export const EXPORT_TABLES: readonly ExportTable[] = [
   { table: "recruiterFindings", index: "by_company_updated" },
   { table: "inboxRuns", index: "by_company_started" },
   { table: "formSessions", index: "by_company_application" },
+  { table: "applicationForms", index: "by_company_updated" },
+  { table: "applicationFormVersions", index: "by_company_form_version" },
   { table: "applicantAttachments", index: "by_company_application", omit: ["storageId", "clientKey"], why: "Internal file references. The files themselves are not in the file." },
   { table: "screenings", index: "by_company_application" },
   { table: "hiringDecisions", index: "by_company_application" },

@@ -15,7 +15,8 @@ import type { MutationCtx } from "../../_generated/server";
 import { authorityFor } from "../authority";
 import { RECRUITER, isActive } from "./applications";
 import { CONTACT_WORDS, contactNextStep } from "./contact";
-import { completion, formFields } from "./form";
+import { completion } from "./form";
+import { applicationFields, invitationWords } from "./forms";
 import { createHandoff } from "./handoff";
 import { bookSlot, liveInterview, openSlots, RUN_INTERVIEW } from "./interviews";
 import { autoEligible, invitationState, routeApplication, SEND_INVITATION, sendInvitation } from "./invitations";
@@ -25,7 +26,7 @@ import { liveOffer, payWords, prepareOffer } from "./offers";
 import { applicationMessages, sendProblem } from "./outbox";
 import { latestScreening, requestInformation, runScreening } from "./screening";
 import { DAY, recruiterSettings } from "./settings";
-import { invitationEmail, partsFor } from "./words";
+import { partsFor } from "./words";
 
 export const TOOL_NAMES = [
   "list_hiring_messages",
@@ -122,7 +123,7 @@ export async function runTool(ctx: MutationCtx, company: Doc<"companies">, tool:
     case "prepare_invitation": {
       if (!mine || !applicant) return noApplication();
       if (!need) return refused("read", "The application is not matched to a role.", mine._id);
-      const email = invitationEmail({ ...partsFor(company, settings.fromName, applicant, need.title), source: mine.source });
+      const email = await invitationWords(ctx, need, partsFor(company, settings.fromName, applicant, need.title), mine.source);
       return read({ to: mine.contact.address ?? null, contact: mine.contact.status, subject: email.subject, body: email.body, blockedBy: await sendProblem(ctx, mine, applicant, "application_invitation", settings), withoutReview: await autoEligible(ctx, mine, applicant), mode: settings.invitationMode }, mine._id);
     }
     case "request_approval": {
@@ -152,7 +153,7 @@ export async function runTool(ctx: MutationCtx, company: Doc<"companies">, tool:
       if (!mine) return noApplication();
       const session = await ctx.db.query("formSessions").withIndex("by_company_application", (q) => q.eq("companyId", company._id).eq("applicationId", mine._id)).first();
       const messages = await applicationMessages(ctx, mine);
-      return read({ stage: mine.stage, nextAction: mine.nextAction ?? null, invitedAt: mine.invitedAt ?? null, startedAt: mine.formStartedAt ?? null, submittedAt: mine.submittedAt ?? null, form: need && session ? completion(formFields(need), session.answers) : null, remindersSent: mine.followUpsSent, waitingOnReply: mine.questionSince !== undefined, withPerson: mine.withPersonSince !== undefined, messages: messages.map((message) => ({ purpose: message.purpose, channel: message.channel ?? "sms", status: message.status, problem: message.problem ?? null })) }, mine._id);
+      return read({ stage: mine.stage, nextAction: mine.nextAction ?? null, invitedAt: mine.invitedAt ?? null, startedAt: mine.formStartedAt ?? null, submittedAt: mine.submittedAt ?? null, form: need && session ? completion((await applicationFields(ctx, mine, need)).fields, session.answers) : null, remindersSent: mine.followUpsSent, waitingOnReply: mine.questionSince !== undefined, withPerson: mine.withPersonSince !== undefined, messages: messages.map((message) => ({ purpose: message.purpose, channel: message.channel ?? "sms", status: message.status, problem: message.problem ?? null })) }, mine._id);
     }
     case "request_missing_information": {
       if (!mine || !isActive(mine)) return noApplication();

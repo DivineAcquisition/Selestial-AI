@@ -12,7 +12,9 @@ import { companyQuery, ownerMutation } from "./lib/builders";
 import { userError } from "./lib/errors";
 import { byMember, recordEvent, type Actor } from "./lib/events";
 import { assertJobRelated } from "./lib/recruiter/fairness";
-import { formFields, SCREENABLE } from "./lib/recruiter/form";
+import { normalizeSlug, slugify } from "./lib/booking/settings";
+import { fieldsFor, formFields, SCREENABLE } from "./lib/recruiter/form";
+import { formForNeed } from "./lib/recruiter/forms";
 import { routeApplication } from "./lib/recruiter/invitations";
 import { compensationValidator, criterionValidator, needStatusValidator, questionValidator, type Criterion, type Question } from "./lib/recruiter/schema";
 import { cents, instant, optionalText, tags, text } from "./lib/text";
@@ -134,7 +136,53 @@ export const get = companyQuery({
   args: { needId: v.id("hiringNeeds") },
   handler: async (ctx, args) => {
     const need = await owned(ctx, args.needId);
-    return { ...need, form: formFields(need) };
+    return { ...need, form: fieldsFor((await formForNeed(ctx, need)).definition, need) };
+  },
+});
+
+/** The application form this role uses. Null: the company's default form. Only a published form can be chosen. */
+export const setForm = ownerMutation({
+  args: { needId: v.id("hiringNeeds"), formId: v.union(v.id("applicationForms"), v.null()) },
+  handler: async (ctx, args) => {
+    const need = await owned(ctx, args.needId);
+    if (args.formId) {
+      const form = await owned(ctx, args.formId);
+      if (form.archivedAt !== undefined) throw userError("That form is archived. Restore it first.");
+      if (form.publishedVersion === undefined) throw userError("Publish that form before a role uses it.");
+    }
+    await ctx.db.patch(need._id, { formId: args.formId ?? undefined });
+    await recordEvent(ctx, { companyId: ctx.companyId, type: "hiring_need.form_changed", actor: byMember(ctx), subject: { table: "hiringNeeds", id: need._id }, data: { formId: args.formId } });
+    return null;
+  },
+});
+
+async function uniqueRoleSlug(ctx: MutationCtx, companyId: Id<"companies">, base: string, except: Id<"hiringNeeds">): Promise<string> {
+  const root = slugify(base).slice(0, 36) || "role";
+  for (let i = 1; i < 200; i += 1) {
+    const slug = i === 1 ? root : `${root}-${i}`;
+    const taken = await ctx.db
+      .query("hiringNeeds")
+      .withIndex("by_company_slug", (q) => q.eq("companyId", companyId).eq("slug", slug))
+      .first();
+    if (!taken || taken._id === except) return slug;
+  }
+  throw userError("Choose a different address for this role.");
+}
+
+/**
+ * Lets anyone apply for the role on the company's public page, or stops it. People already applying keep
+ * their links either way. The address is the role's own, made from its title unless the Owner names one.
+ */
+export const setPublicApply = ownerMutation({
+  args: { needId: v.id("hiringNeeds"), publicApply: v.boolean(), slug: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const need = await owned(ctx, args.needId);
+    const wanted = args.slug?.trim() ? normalizeSlug(args.slug) : (need.slug ?? need.title);
+    const slug = await uniqueRoleSlug(ctx, ctx.companyId, wanted, need._id);
+    if (args.slug?.trim() && slug !== normalizeSlug(args.slug)) throw userError("Another role already uses that address.");
+    await ctx.db.patch(need._id, { publicApply: args.publicApply, slug });
+    await recordEvent(ctx, { companyId: ctx.companyId, type: args.publicApply ? "hiring_need.public_apply_on" : "hiring_need.public_apply_off", actor: byMember(ctx), subject: { table: "hiringNeeds", id: need._id }, data: { slug } });
+    return { slug };
   },
 });
 

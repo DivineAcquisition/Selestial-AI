@@ -54,6 +54,7 @@ export const subjectValidator = v.union(
   v.object({ table: v.literal("dataExports"), id: v.id("dataExports") }),
   v.object({ table: v.literal("deletionRecords"), id: v.id("deletionRecords") }),
   v.object({ table: v.literal("hiringNeeds"), id: v.id("hiringNeeds") }),
+  v.object({ table: v.literal("applicationForms"), id: v.id("applicationForms") }),
   v.object({ table: v.literal("applicants"), id: v.id("applicants") }),
   v.object({ table: v.literal("applications"), id: v.id("applications") }),
   v.object({ table: v.literal("mailboxConnections"), id: v.id("mailboxConnections") }),

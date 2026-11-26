@@ -21,7 +21,8 @@ import { applicantLinkState, issueApplicantLink, liveApplicantLink } from "./lin
 import { applicationMessages, queueApplicantMessage, sendProblem } from "./outbox";
 import { AWAITING_FORM, USABLE_CONTACT, type Stage } from "./schema";
 import { DAY, HOUR, recruiterSettings } from "./settings";
-import { followUpEmail, followUpText, invitationEmail, partsFor } from "./words";
+import { invitationWords } from "./forms";
+import { followUpEmail, followUpText, partsFor } from "./words";
 
 export const SEND_INVITATION = "recruiter.send_invitation";
 export const FOLLOW_UP = "recruiter.follow_up";
@@ -84,7 +85,7 @@ export async function sendInvitation(ctx: MutationCtx, applicationId: Id<"applic
   if (!USABLE_CONTACT.includes(application.contact.status)) return { ok: false, detail: CONTACT_WORDS[application.contact.status] };
 
   const link = await issueApplicantLink(ctx, { application, purpose: "apply", expiresAt: Date.now() + settings.linkTtlDays * DAY, actor });
-  const email = options.override ?? invitationEmail({ ...partsFor(company, settings.fromName, applicant, need.title), source: application.source });
+  const email = options.override ?? (await invitationWords(ctx, need, partsFor(company, settings.fromName, applicant, need.title), application.source));
   // Every earlier attempt stays on the record. The next one is planned under its own key, so asking twice for the same attempt is still one email.
   const dedupeKey = invitations.last ? `${inviteKey(application._id)}:after:${invitations.last._id}` : inviteKey(application._id);
   const message = await queueApplicantMessage(ctx, { company, application, applicant, purpose: "application_invitation", channel: "email", subject: email.subject, body: email.body, link, dedupeKey, actor });
