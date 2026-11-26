@@ -3,13 +3,14 @@
 import { useMutation } from "convex/react";
 import { useState } from "react";
 
+import { inBatches } from "@/components/app/approvals/review-all-dialog";
 import { useCompany } from "@/components/app/company";
-import { messageOf } from "@/components/app/form";
 import { HoldButton } from "@/components/app/hold-button";
 import { ReasonPicker, type PickedReason } from "@/components/app/reason-picker";
 import { Button } from "@/components/ui/button";
 
 import { api } from "../../../../convex/_generated/api";
+import type { Id } from "../../../../convex/_generated/dataModel";
 import type { DecisionReason } from "../../../../convex/lib/approvalReasons";
 import type { Decision } from "../../../../convex/overview";
 
@@ -28,27 +29,25 @@ function sharedSkipReasons(decisions: Decision[]): DecisionReason[] {
  */
 export function BulkBar({ selected, onClear }: { selected: Decision[]; onClear: () => void }) {
   const { companyId } = useCompany();
-  const decide = useMutation(api.approvals.decide);
+  const decideMany = useMutation(api.approvals.decideMany);
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [verb, setVerb] = useState<"Approved" | "Skipped">("Approved");
+  const oneByOne = selected.filter((item) => item.oneByOne).length;
 
   async function each(decision: "approved" | "skipped", picked: PickedReason = {}) {
     setBusy(true);
     setOutcome(null);
     setVerb(decision === "approved" ? "Approved" : "Skipped");
-    const result: Outcome = { done: 0, failed: [] };
-    for (const item of selected) {
-      if (item.ref.kind !== "approval") continue;
-      try {
-        await decide({ companyId, approvalId: item.ref.id, decision, ...(decision === "skipped" ? { reasonCode: picked.reasonCode, note: picked.note } : {}) });
-        result.done += 1;
-      } catch (caught) {
-        result.failed.push({ title: item.title, message: messageOf(caught) });
-      }
-    }
+    const items = selected.filter((item) => item.ref.kind === "approval" && !(decision === "approved" && item.oneByOne));
+    const ids = items.map((item) => item.ref.id as Id<"approvals">);
+    const results = await inBatches(ids, decision, picked, (approvalIds) => decideMany({ companyId, approvalIds, decision, ...(decision === "skipped" ? { reasonCode: picked.reasonCode, note: picked.note } : {}) }), () => {});
+    const title = (id: string) => items.find((item) => item.ref.id === id)?.title ?? "A proposal";
     setBusy(false);
-    setOutcome(result);
+    setOutcome({
+      done: results.filter((row) => row.ok && row.carriedOut?.ok !== false).length,
+      failed: results.flatMap((row) => (!row.ok ? [{ title: title(row.id), message: row.message ?? "Not decided." }] : row.carriedOut && !row.carriedOut.ok ? [{ title: title(row.id), message: row.carriedOut.detail }] : [])),
+    });
     onClear();
   }
 
@@ -78,7 +77,7 @@ export function BulkBar({ selected, onClear }: { selected: Decision[]; onClear: 
   return (
     <div role="region" aria-label="Decide the selected proposals" className="sticky top-2 z-10 mb-4 flex flex-wrap items-start gap-2 rounded-xl border border-brand-500/40 bg-card/95 px-4 py-3 shadow-lg backdrop-blur">
       <p className="mr-2 self-center text-sm font-medium text-strong">{count} selected</p>
-      <HoldButton label={`Hold to approve ${count}`} holdingLabel="Keep holding" busy={busy} onConfirm={() => void each("approved")} />
+      <HoldButton label={`Hold to approve ${count - oneByOne}`} holdingLabel="Keep holding" busy={busy} disabled={count === oneByOne} onConfirm={() => void each("approved")} />
       <ReasonPicker
         label={`Skip ${count}`}
         question={`Why skip these ${count}? The same reason is recorded on each.`}
@@ -90,6 +89,11 @@ export function BulkBar({ selected, onClear }: { selected: Decision[]; onClear: 
       <Button variant="ghost" size="sm" disabled={busy} onClick={onClear}>
         Clear selection
       </Button>
+      {oneByOne > 0 ? (
+        <p className="basis-full text-xs text-muted-foreground">
+          {oneByOne} selected {oneByOne === 1 ? "is a price, refund or hiring decision" : "are price, refund or hiring decisions"}, approved one at a time from its card. Skipping includes {oneByOne === 1 ? "it" : "them"}.
+        </p>
+      ) : null}
     </div>
   );
 }

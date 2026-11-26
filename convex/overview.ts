@@ -8,7 +8,7 @@ import { v } from "convex/values";
 
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
-import { reasonsFor, type DecisionReasons } from "./lib/approvalReasons";
+import { needsOneByOne, reasonsFor, type DecisionReasons } from "./lib/approvalReasons";
 import { companyQuery, type MemberAccess } from "./lib/builders";
 import { agentVerdict } from "./lib/billing/access";
 import { AGENT_PROFILES, departmentOf, DEPARTMENTS } from "./lib/departments";
@@ -309,6 +309,8 @@ export type Decision = {
   run: RunStep[];
   /** The reasons offered for skipping or taking over a proposal. Null for a task a person must decide. */
   reasons: DecisionReasons | null;
+  /** Prices, refunds above the limit and hiring outcomes: decided one at a time, never in bulk. */
+  oneByOne: boolean;
 };
 
 async function runFor(ctx: Ctx, agent: Agent, about: Doc<"tasks">["about"], asOf: number): Promise<RunStep[]> {
@@ -344,6 +346,7 @@ export const decisions = companyQuery({
         carriesOut: Boolean(approval.proposal),
         run: await runFor(ctx, approval.agent, approval.about, args.asOf),
         reasons: reasonsFor(approval),
+        oneByOne: needsOneByOne(approval),
       });
     }
     for (const task of tasks) {
@@ -363,6 +366,7 @@ export const decisions = companyQuery({
         carriesOut: false,
         run: await runFor(ctx, task.agent, task.about, args.asOf),
         reasons: null,
+        oneByOne: false,
       });
     }
     return items.sort((a, b) => a.deadline - b.deadline);

@@ -9,7 +9,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, type MutationCtx } from "./_generated/server";
 import { owned } from "./lib/access";
 import { requestApproval } from "./lib/approvalQueue";
-import { decisionNote, NEEDS_ONE_BY_ONE, reasonsFor, type DecisionReason } from "./lib/approvalReasons";
+import { decisionNote, needsOneByOne, reasonsFor, type DecisionReason } from "./lib/approvalReasons";
 import { keepAvoidRule } from "./approvalRules";
 import { managerMutation, managerQuery, type MemberAccess } from "./lib/builders";
 import { departmentOf } from "./lib/departments";
@@ -152,13 +152,6 @@ async function applyDecision(ctx: MutationCtx & MemberAccess, approval: Doc<"app
     return { carriedOut };
   }
   return { carriedOut: await afterDecision(ctx, decidedApproval, args.decision, byMember(ctx)) };
-}
-
-/** Approvals a person should read one at a time: prices, money above the limit, and hiring outcomes. Never approved in bulk. */
-export function needsOneByOne(approval: Doc<"approvals">): boolean {
-  const kind = approval.proposal?.kind;
-  if (kind && (NEEDS_ONE_BY_ONE as readonly string[]).includes(kind)) return true;
-  return kind === "retention_action" && ownerOnly(approval);
 }
 
 const MAX_BATCH = 10;

@@ -1,4 +1,5 @@
 import type { Doc } from "../_generated/dataModel";
+import { ownerOnly } from "./retention/approvals";
 
 /**
  * The reasons a person can pick when they skip a proposal or take it over, so a "no" is one tap and the
@@ -97,8 +98,14 @@ const BY_KIND: Record<ProposalKind, DecisionReasons> = {
   care_action: CARE,
 };
 
-/** Prices and hiring outcomes: read one at a time, never approved in bulk (refunds above the limit join them in approvals.ts). */
-export const NEEDS_ONE_BY_ONE = ["sales_price_override", "plan_change", "proposal_rates", "send_hiring_offer", "decline_application"] as const satisfies readonly ProposalKind[];
+const NEEDS_ONE_BY_ONE: readonly ProposalKind[] = ["sales_price_override", "plan_change", "proposal_rates", "send_hiring_offer", "decline_application"];
+
+/** Prices, refunds above the limit and hiring outcomes: read one at a time, never approved in bulk. */
+export function needsOneByOne(approval: Pick<Doc<"approvals">, "proposal" | "action">): boolean {
+  const kind = approval.proposal?.kind;
+  if (kind && NEEDS_ONE_BY_ONE.includes(kind)) return true;
+  return kind === "retention_action" && ownerOnly(approval);
+}
 
 /** The agent's own reasons for this proposal first, then the list for its kind. */
 export function reasonsFor(approval: Pick<Doc<"approvals">, "proposal" | "suggestedReasons">): DecisionReasons {

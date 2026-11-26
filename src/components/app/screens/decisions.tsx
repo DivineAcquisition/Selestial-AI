@@ -4,18 +4,21 @@ import { useQuery } from "convex/react";
 import { useEffect, useRef, useState } from "react";
 
 import { BulkBar } from "@/components/app/approvals/bulk-bar";
+import { ReviewAllDialog } from "@/components/app/approvals/review-all-dialog";
 import { StandingRules } from "@/components/app/approvals/standing-rules";
-import { useCompany } from "@/components/app/company";
+import { canManage, useCompany } from "@/components/app/company";
 import { useDetail } from "@/components/app/detail-panel";
 import { DecisionCard, NoDecisions } from "@/components/app/overview/decision-card";
 import { useApprove } from "@/components/app/screens/overview";
 import { PageHeader } from "@/components/app/shell";
 import { useNow } from "@/components/app/use-now";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { until } from "@/lib/app/format";
 import { cn } from "@/lib/utils";
 
 import { api } from "../../../../convex/_generated/api";
+import type { QueueGroup } from "../../../../convex/approvals";
 import type { Decision } from "../../../../convex/overview";
 
 type Urgency = "all" | "late" | "soon";
@@ -179,6 +182,13 @@ export function DecisionsScreen({ department }: { department?: string }) {
           </div>
         </div>
       ) : null}
+      <ReviewAll
+        loaded={all?.filter((decision) => decision.ref.kind === "approval").length ?? 0}
+        onReviewGroup={(group) => {
+          setPickedDepartment(group.department);
+          setUrgency("all");
+        }}
+      />
       <BulkBar selected={selected} onClear={() => setSelectedIds(new Set())} />
       {list}
       {decisions && decisions.length > 0 ? (
@@ -188,6 +198,55 @@ export function DecisionsScreen({ department }: { department?: string }) {
       ) : null}
       <StandingRules />
     </>
+  );
+}
+
+/** Above this many, the page offers the grouped review rather than card by card. */
+const BUSY_QUEUE = 25;
+
+/** The way into the grouped review: a banner when the queue is long or longer than the page shows, otherwise a quiet button. Owners and Managers only. */
+function ReviewAll({ loaded, onReviewGroup }: { loaded: number; onReviewGroup: (group: QueueGroup) => void }) {
+  const { companyId, role } = useCompany();
+  const [asOf] = useState(() => Date.now());
+  const [open, setOpen] = useState(false);
+  const summary = useQuery(api.approvals.queueSummary, canManage(role) ? { companyId, asOf } : "skip");
+  if (!summary || summary.total === 0) return null;
+  const busy = summary.total >= BUSY_QUEUE || summary.total > loaded;
+  const dialog = (
+    <ReviewAllDialog
+      open={open}
+      onOpenChange={setOpen}
+      onReviewGroup={(group) => {
+        setOpen(false);
+        onReviewGroup(group);
+      }}
+    />
+  );
+  if (!busy) {
+    return (
+      <div className="mb-3 flex justify-end">
+        <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+          Review all in groups
+        </Button>
+        {dialog}
+      </div>
+    );
+  }
+  return (
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-brand-500/40 bg-brand-500/[0.05] px-4 py-3">
+      <span className="min-w-0">
+        <span className="block text-sm font-semibold text-strong">
+          {summary.total.toLocaleString("en-US")} approvals waiting{summary.overdue > 0 ? `, ${summary.overdue} past their deadline` : ""}.
+        </span>
+        <span className="block text-xs text-muted-foreground">
+          {summary.total > loaded ? `Showing the first ${loaded} below. ` : ""}Review them in {summary.groups.length} {summary.groups.length === 1 ? "group" : "groups"} and approve or skip a whole group at once.
+        </span>
+      </span>
+      <Button variant="primary" size="sm" onClick={() => setOpen(true)}>
+        Review all
+      </Button>
+      {dialog}
+    </div>
   );
 }
 
