@@ -18,7 +18,6 @@ import { until } from "@/lib/app/format";
 import { cn } from "@/lib/utils";
 
 import { api } from "../../../../convex/_generated/api";
-import type { QueueGroup } from "../../../../convex/approvals";
 import type { Decision } from "../../../../convex/overview";
 
 type Urgency = "all" | "late" | "soon";
@@ -183,7 +182,7 @@ export function DecisionsScreen({ department }: { department?: string }) {
         </div>
       ) : null}
       <ReviewAll
-        loaded={all?.filter((decision) => decision.ref.kind === "approval").length ?? 0}
+        loaded={all?.length ?? 0}
         onReviewGroup={(group) => {
           setPickedDepartment(group.department);
           setUrgency("all");
@@ -204,14 +203,18 @@ export function DecisionsScreen({ department }: { department?: string }) {
 /** Above this many, the page offers the grouped review rather than card by card. */
 const BUSY_QUEUE = 25;
 
-/** The way into the grouped review: a banner when the queue is long or longer than the page shows, otherwise a quiet button. Owners and Managers only. */
-function ReviewAll({ loaded, onReviewGroup }: { loaded: number; onReviewGroup: (group: QueueGroup) => void }) {
+/** The way into the grouped review: a banner when the queue is long or longer than the page shows, otherwise a quiet button. */
+function ReviewAll({ loaded, onReviewGroup }: { loaded: number; onReviewGroup: (group: { department: string }) => void }) {
   const { companyId, role } = useCompany();
   const [asOf] = useState(() => Date.now());
   const [open, setOpen] = useState(false);
-  const summary = useQuery(api.approvals.queueSummary, canManage(role) ? { companyId, asOf } : "skip");
-  if (!summary || summary.total === 0) return null;
-  const busy = summary.total >= BUSY_QUEUE || summary.total > loaded;
+  const approvals = useQuery(api.approvals.queueSummary, canManage(role) ? { companyId, asOf } : "skip");
+  const handoffs = useQuery(api.tasks.handoffSummary, { companyId, asOf });
+  const total = (approvals?.total ?? 0) + (handoffs?.total ?? 0);
+  if (!handoffs || total === 0) return null;
+  const overdue = (approvals?.overdue ?? 0) + handoffs.overdue;
+  const groupCount = (approvals?.groups.length ?? 0) + handoffs.groups.length;
+  const busy = total >= BUSY_QUEUE || total > loaded;
   const dialog = (
     <ReviewAllDialog
       open={open}
@@ -236,10 +239,10 @@ function ReviewAll({ loaded, onReviewGroup }: { loaded: number; onReviewGroup: (
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-brand-500/40 bg-brand-500/[0.05] px-4 py-3">
       <span className="min-w-0">
         <span className="block text-sm font-semibold text-strong">
-          {summary.total.toLocaleString("en-US")} approvals waiting{summary.overdue > 0 ? `, ${summary.overdue} past their deadline` : ""}.
+          {total.toLocaleString("en-US")} waiting on you{overdue > 0 ? `, ${overdue} past their deadline` : ""}.
         </span>
         <span className="block text-xs text-muted-foreground">
-          {summary.total > loaded ? `Showing the first ${loaded} below. ` : ""}Review them in {summary.groups.length} {summary.groups.length === 1 ? "group" : "groups"} and approve or skip a whole group at once.
+          {total > loaded ? `Showing the first ${loaded} below. ` : ""}Review them in {groupCount} {groupCount === 1 ? "group" : "groups"} and decide or close a whole group at once.
         </span>
       </span>
       <Button variant="primary" size="sm" onClick={() => setOpen(true)}>
