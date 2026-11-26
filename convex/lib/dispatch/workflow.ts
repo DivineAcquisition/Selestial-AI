@@ -214,6 +214,15 @@ function fitWords(candidate: Candidate, others: number): string {
   return `${candidate.name} ${list}. ${rest}`;
 }
 
+/** What a person might hold against this offer, from the same facts that ranked the cleaner: offered first when they skip it. */
+export function offerDoubts(candidate: Candidate, next: Candidate | undefined): { code: string; label: string }[] {
+  const doubts: { code: string; label: string }[] = [];
+  if (next) doubts.push({ code: "ask_next", label: `Ask ${next.name} first instead` });
+  if (candidate.otherVisitsThatDay > 0) doubts.push({ code: "busy_day", label: `${candidate.name} already has ${candidate.otherVisitsThatDay} other ${candidate.otherVisitsThatDay === 1 ? "visit" : "visits"} that day` });
+  if (candidate.priorVisitsForCustomer === 0 && !candidate.preferred) doubts.push({ code: "new_to_customer", label: `${candidate.name} hasn't cleaned for this customer before` });
+  return doubts;
+}
+
 /** What was tried for a place that lost its cleaner, what is left, and when a person has to have decided. */
 function unresolvedWords(job: Doc<"jobs">, assignments: Doc<"assignments">[], excluded: Excluded[], timezone: string): string {
   const asked = assignments.filter((row) => row.status === "declined" || row.status === "expired" || (row.status === "cancelled" && row.endCause === "undelivered")).length;
@@ -394,6 +403,7 @@ export async function coverJob(ctx: MutationCtx, jobId: Id<"jobs">): Promise<Cov
         decideBy,
         about: { table: "jobs", id: job._id },
         taskId: task._id,
+        suggestedReasons: { skip: offerDoubts(candidate, candidates.find((row) => !taken.has(row.cleanerId))) },
       });
       proposals.push({ summary, decideBy });
       proposed += 1;

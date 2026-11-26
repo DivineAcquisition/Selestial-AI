@@ -2,6 +2,7 @@
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import type { aboutValidator, proposalValidator } from "../schema";
+import { cleanSuggestions } from "./approvalReasons";
 import { notFound } from "./errors";
 import { recordEvent } from "./events";
 import { actionDef } from "./permissionCatalog";
@@ -28,6 +29,8 @@ export async function requestApproval(
     proposal?: Proposal;
     about?: About;
     taskId?: Id<"tasks">;
+    /** Reasons the agent expects a person might give for this one proposal, offered first (lib/approvalReasons.ts). */
+    suggestedReasons?: { skip?: { code: string; label: string }[]; change?: { code: string; label: string }[] };
   },
 ): Promise<Id<"approvals">> {
   const def = actionDef(input.action);
@@ -49,6 +52,7 @@ export async function requestApproval(
     proposal: input.proposal,
     about: input.about,
     taskId: input.taskId,
+    suggestedReasons: cleanSuggestions(input.suggestedReasons),
     status: "pending",
     decideBy: instant(input.decideBy, "The decision deadline"),
     createdAt: Date.now(),

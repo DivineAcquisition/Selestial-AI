@@ -756,6 +756,8 @@ export default defineSchema({
     note: v.optional(v.string()),
     /** The reason the person picked from the list offered for this proposal (convex/lib/approvalReasons.ts). */
     reasonCode: v.optional(v.string()),
+    /** Reasons the agent wrote for this one proposal, offered before the list for its kind. */
+    suggestedReasons: v.optional(v.object({ skip: v.array(v.object({ code: v.string(), label: v.string() })), change: v.array(v.object({ code: v.string(), label: v.string() })) })),
     /** Whether an approved proposal was carried out, checked again at that moment, and why not if not. */
     carriedOut: v.optional(v.object({ ok: v.boolean(), detail: v.string(), at: v.number() })),
     createdAt: v.number(),
@@ -763,6 +765,24 @@ export default defineSchema({
     .index("by_company_status_decideBy", ["companyId", "status", "decideBy"])
     .index("by_company_task", ["companyId", "taskId"])
     .index("by_status_decideBy", ["status", "decideBy"]),
+
+  /**
+   * A standing rule a person kept from a reason they gave on an approval, so the agent stops proposing
+   * the same thing. Removing it lets the agent propose it again; nothing else changes.
+   */
+  approvalRules: defineTable({
+    companyId: v.id("companies"),
+    kind: v.literal("avoid_cleaner_for_customer"),
+    cleanerId: v.id("cleaners"),
+    customerId: v.id("customers"),
+    /** The reason's words, as the person picked them, with any detail they added. */
+    why: v.string(),
+    approvalId: v.optional(v.id("approvals")),
+    createdBy: v.id("members"),
+    createdAt: v.number(),
+  })
+    .index("by_company_customer", ["companyId", "customerId"])
+    .index("by_company_created", ["companyId", "createdAt"]),
 
   // ── Dispatch: messages, links, coverage and the service itself ─────────────────────────────────
   /**

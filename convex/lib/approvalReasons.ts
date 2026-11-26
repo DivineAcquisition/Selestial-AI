@@ -4,17 +4,26 @@ import type { Doc } from "../_generated/dataModel";
  * The reasons a person can pick when they skip a proposal or take it over, so a "no" is one tap and the
  * agent gets the same words every time. Each list fits the kind of proposal; "Other" is always free text.
  */
-export type DecisionReason = { code: string; label: string };
+export type DecisionReason = {
+  code: string;
+  label: string;
+  /** When set, the person may keep this reason as a standing rule; the words say what the rule does. */
+  remember?: string;
+  /** Written by the agent for this one proposal, not taken from the list for its kind. */
+  suggested?: boolean;
+};
 export type DecisionReasons = { skip: DecisionReason[]; change: DecisionReason[] };
 
 type ProposalKind = NonNullable<Doc<"approvals">["proposal"]>["kind"];
 
-const r = (code: string, label: string): DecisionReason => ({ code, label });
+const r = (code: string, label: string, remember?: string): DecisionReason => (remember ? { code, label, remember } : { code, label });
+
+const AVOID_PAIR = "Don't propose this cleaner for this customer again";
 
 const DISPATCH_OFFER: DecisionReasons = {
   skip: [
-    r("not_a_fit", "Not the right cleaner for this client"),
-    r("client_request", "The customer asked for someone else"),
+    r("not_a_fit", "Not the right cleaner for this client", AVOID_PAIR),
+    r("client_request", "The customer asked for someone else", AVOID_PAIR),
     r("cleaner_busy", "This cleaner has enough on"),
     r("pay_wrong", "The pay doesn't look right"),
   ],
@@ -82,8 +91,29 @@ const BY_KIND: Record<ProposalKind, DecisionReasons> = {
   quality_improvement: QUALITY,
 };
 
-export function reasonsFor(approval: Pick<Doc<"approvals">, "proposal">): DecisionReasons {
-  return approval.proposal ? BY_KIND[approval.proposal.kind] : GENERAL;
+/** The agent's own reasons for this proposal first, then the list for its kind. */
+export function reasonsFor(approval: Pick<Doc<"approvals">, "proposal" | "suggestedReasons">): DecisionReasons {
+  const base = approval.proposal ? BY_KIND[approval.proposal.kind] : GENERAL;
+  const merge = (own: { code: string; label: string }[] | undefined, list: DecisionReason[]) => {
+    const first = (own ?? []).map((row) => ({ code: row.code, label: row.label, suggested: true }));
+    return [...first, ...list.filter((row) => !first.some((mine) => mine.code === row.code))];
+  };
+  return { skip: merge(approval.suggestedReasons?.skip, base.skip), change: merge(approval.suggestedReasons?.change, base.change) };
+}
+
+const MAX_SUGGESTED = 3;
+
+/** An agent's suggested reasons, checked: short words, codes that cannot collide with the list's, at most three of each. */
+export function cleanSuggestions(input: { skip?: { code: string; label: string }[]; change?: { code: string; label: string }[] } | undefined) {
+  if (!input) return undefined;
+  const clean = (rows: { code: string; label: string }[] | undefined) =>
+    (rows ?? [])
+      .map((row) => ({ code: `agent:${row.code.trim().toLowerCase().replace(/[^a-z0-9_]+/g, "_").slice(0, 40)}`, label: row.label.trim().slice(0, 120) }))
+      .filter((row) => row.label.length > 0 && row.code.length > "agent:".length)
+      .slice(0, MAX_SUGGESTED);
+  const skip = clean(input.skip);
+  const change = clean(input.change);
+  return skip.length || change.length ? { skip, change } : undefined;
 }
 
 /**

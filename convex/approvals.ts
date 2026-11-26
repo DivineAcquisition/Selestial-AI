@@ -9,6 +9,7 @@ import { internalMutation } from "./_generated/server";
 import { owned } from "./lib/access";
 import { requestApproval } from "./lib/approvalQueue";
 import { decisionNote, reasonsFor, type DecisionReason } from "./lib/approvalReasons";
+import { keepAvoidRule } from "./approvalRules";
 import { managerMutation, managerQuery } from "./lib/builders";
 import { afterDecision, afterExpiry, type CarriedOut } from "./lib/dispatch/workflow";
 import { isOwner } from "./lib/roles";
@@ -41,6 +42,7 @@ export const request = internalMutation({
     proposal: v.optional(proposalValidator),
     about: v.optional(aboutValidator),
     taskId: v.optional(v.id("tasks")),
+    suggestedReasons: v.optional(v.object({ skip: v.optional(v.array(v.object({ code: v.string(), label: v.string() }))), change: v.optional(v.array(v.object({ code: v.string(), label: v.string() }))) })),
   },
   handler: async (ctx, args) => requestApproval(ctx, args),
 });
@@ -72,6 +74,8 @@ export const decide = managerMutation({
     /** One of the reasons offered for this proposal (reasonsFor). The note then adds to it. */
     reasonCode: v.optional(v.string()),
     note: v.optional(v.string()),
+    /** Keep the reason as a standing rule. Only a reason that offers one (its `remember` words) can be kept. */
+    remember: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<{ carriedOut: CarriedOut | null }> => {
     const approval = await owned(ctx, args.approvalId);
@@ -93,6 +97,9 @@ export const decide = managerMutation({
     }
     const note = decisionNote(reason, words);
     if (args.decision === "changed" && !note) throw userError("Say what to change.");
+    if (args.remember && !reason?.remember) throw userError("That reason cannot be kept as a standing rule.");
+    // The rule is in place before the agent looks again below, so its next proposal already follows it.
+    if (args.remember && note && approval.proposal?.kind === "offer_assignment") await keepAvoidRule(ctx, approval, approval.proposal, note);
     const decided = { status: args.decision, decidedBy: ctx.member._id, decidedAt: Date.now(), note, ...(reason ? { reasonCode: reason.code } : {}) };
     await ctx.db.patch(approval._id, decided);
     await recordEvent(ctx, { companyId: ctx.companyId, type: `approval.${args.decision}`, actor: byMember(ctx), subject: { table: "approvals", id: approval._id }, data: { action: approval.action, ...(reason ? { reasonCode: reason.code } : {}) } });
