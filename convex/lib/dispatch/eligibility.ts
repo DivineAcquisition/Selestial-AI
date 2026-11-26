@@ -44,6 +44,8 @@ export type CleanerFacts = {
   /** Times the cleaner said they can work on a date, outside their weekly pattern. */
   extraAvailable?: Span[];
   endedForJob: Ended | null;
+  /** A person kept a standing rule not to propose this cleaner for this customer (convex/approvalRules.ts). */
+  avoidedForCustomer?: boolean;
   /** Visits for this customer the cleaner accepted before. */
   priorVisitsForCustomer: number;
   pay: PayAnswer;
@@ -58,6 +60,7 @@ export type ExclusionCode =
   | "requirements"
   | "date_exception"
   | "already_asked"
+  | "standing_rule"
   | "missing_skill"
   | "outside_area"
   | "outside_hours"
@@ -86,6 +89,8 @@ export function assess(cleaner: CleanerFacts, job: JobFacts, rules: Rules = DISP
   if (cleaner.notTakingWork) return { code: "not_ready", reason: cleaner.notTakingWork };
   if (cleaner.blockers && cleaner.blockers.length > 0) return { code: "requirements", reason: `has not met what is needed before work: ${cleaner.blockers.map((label) => label.toLowerCase()).join(", ")}` };
   if (rules.ended && cleaner.endedForJob) return { code: "already_asked", reason: ENDED_WORDS[cleaner.endedForJob], ended: cleaner.endedForJob };
+  // Kept with the "already asked" rules: a person offering by hand may still choose this cleaner.
+  if (rules.ended && cleaner.avoidedForCustomer) return { code: "standing_rule", reason: "is not proposed for this customer, by a standing rule you kept" };
   const missing = job.requiredSkills.filter((skill) => !cleaner.skills.includes(skill));
   if (missing.length > 0) return { code: "missing_skill", reason: `does not have a skill the job needs: ${missing.join(", ")}` };
   if (rules.serviceArea && !cleaner.serviceAreas.includes(job.postalCode)) {
@@ -175,5 +180,5 @@ export function rankCleaners(cleaners: CleanerFacts[], job: JobFacts, rules: Rul
  * setup problem or a person's choice and Recruiter is not told there is a gap.
  */
 export function isStaffingGap(excluded: Excluded[]): boolean {
-  return !excluded.some((entry) => entry.code === "no_pay" || entry.ended === "skipped");
+  return !excluded.some((entry) => entry.code === "no_pay" || entry.code === "standing_rule" || entry.ended === "skipped");
 }

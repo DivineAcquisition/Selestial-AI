@@ -347,6 +347,38 @@ describe("Dispatch", () => {
     expect((await s.as.query(api.dispatch.candidates, { companyId: s.companyId, jobId })).withPerson).toBe(true);
   });
 
+  it("offers its own doubts first, and keeps a reason as a standing rule until a person removes it", async () => {
+    const s = await setup();
+    await dispatchJob(s.as, s.companyId, s.place);
+    const [forLena] = await s.pending();
+
+    // Dispatch's own reasons for this proposal come first, written from the facts that ranked Lena.
+    const [card] = await s.as.query(api.overview.decisions, { companyId: s.companyId, asOf: NOW });
+    expect(card.reasons?.skip.slice(0, 2)).toEqual([
+      { code: "agent:ask_next", label: "Ask Rosa first instead", suggested: true },
+      { code: "agent:new_to_customer", label: "Lena hasn't cleaned for this customer before", suggested: true },
+    ]);
+    expect(card.reasons?.skip.find((row) => row.code === "client_request")?.remember).toBeTruthy();
+
+    // Only a reason that offers a rule can be kept as one.
+    await expect(s.as.mutation(api.approvals.decide, { companyId: s.companyId, approvalId: forLena._id, decision: "skipped", reasonCode: "pay_wrong", remember: true })).rejects.toThrow("cannot be kept");
+    await s.as.mutation(api.approvals.decide, { companyId: s.companyId, approvalId: forLena._id, decision: "skipped", reasonCode: "client_request", note: "Prefers Rosa", remember: true });
+    const rules = await s.as.query(api.approvalRules.list, { companyId: s.companyId });
+    expect(rules).toMatchObject([{ words: "Dispatch does not propose Lena for Dana Whitfield", why: "The customer asked for someone else: Prefers Rosa" }]);
+
+    // Another visit for the same customer: Lena is not proposed, and that is not a staffing gap.
+    const later = await dispatchJob(s.as, s.companyId, s.place, { startsAt: JOB_START + 4 * HOUR, endsAt: JOB_END + 4 * HOUR });
+    expect((await s.pending()).filter((row) => row.proposal?.kind === "offer_assignment" && row.proposal.jobId === later).map((row) => (row.proposal?.kind === "offer_assignment" ? row.proposal.cleanerId : null))).toEqual([s.cleaners.Rosa]);
+    const seen = await s.as.query(api.dispatch.candidates, { companyId: s.companyId, jobId: later });
+    expect(seen.excluded).toMatchObject([{ name: "Lena", code: "standing_rule" }]);
+    expect(await s.tasks("open", "recruiter")).toEqual([]);
+
+    // Removed: Lena can be proposed for this customer again.
+    await s.as.mutation(api.approvalRules.remove, { companyId: s.companyId, ruleId: rules[0].ruleId });
+    expect(await s.as.query(api.approvalRules.list, { companyId: s.companyId })).toEqual([]);
+    expect((await s.as.query(api.dispatch.candidates, { companyId: s.companyId, jobId: later })).excluded).toEqual([]);
+  });
+
   it("lets a person take a visit over, and keeps approvals with Owners and Managers", async () => {
     const s = await setup();
     const office = await addMember(s.t, s.as, s.companyId, "office-a", "office");

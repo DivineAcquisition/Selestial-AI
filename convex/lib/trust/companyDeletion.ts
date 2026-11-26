@@ -201,6 +201,7 @@ export const DELETION_PLAN: readonly TablePlan[] = [
   del("tasks", "Agent and team tasks."),
   del("permissions", "The company's agent permission settings."),
   del("approvals", "Agent approvals and their reasons."),
+  del("approvalRules", "Standing rules kept from approval decisions."),
   del("actionLinks", "Cleaners' job and offer links."),
   del("coverageRequests", "Requests to cover a visit."),
   del("checklistItems", "Visit checklists."),

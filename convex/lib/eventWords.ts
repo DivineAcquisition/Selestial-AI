@@ -118,6 +118,10 @@ export async function describeEvents(ctx: QueryCtx, company: Doc<"companies">, e
       ref = { kind: "approval", id: subject.id };
       const summary = approval ? `"${approval.summary}"` : "a proposal";
       text = { requested: `proposed ${summary}`, approved: `approved ${summary}`, changed: `changed ${summary}`, skipped: `skipped ${summary}`, expired: `closed ${summary}: nobody decided in time`, carried_out: `carried out ${summary}`, not_carried_out: `could not carry out ${summary} because it was no longer valid` }[what] ?? null;
+    } else if (subject.table === "cleaners" && event.type.startsWith("approval_rule.")) {
+      const name = await cleanerName(subject.id);
+      const customer = typeof data.customerId === "string" ? ((await doc(data.customerId as Id<"customers">))?.name ?? "a customer") : "a customer";
+      text = { kept: `kept a standing rule: Dispatch does not propose ${name} for ${customer}`, removed: `removed the standing rule about ${name} and ${customer}` }[what] ?? null;
     } else if (subject.table === "cleaners") {
       const name = await cleanerName(subject.id);
       text =

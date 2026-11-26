@@ -63,6 +63,8 @@ export type JobHistory = {
   prior: Map<string, number>;
   /** Cleaners already ruled out for this visit at this time. */
   ended: Map<string, Ended>;
+  /** Cleaners a person said, as a standing rule, not to propose for this customer. */
+  avoided?: Set<string>;
   /** The Owner's crew pay rule and the role the next offer would carry, so a candidate's pay is the pay they would be offered. */
   crewPay: { rule: CrewPay; role: "lead" | "support" };
 };
@@ -96,8 +98,13 @@ export async function jobHistory(ctx: Db, job: Doc<"jobs">, assignments: Doc<"as
       if (row.status === "accepted") prior.set(row.cleanerId, (prior.get(row.cleanerId) ?? 0) + 1);
     }
   }
+  const rules = await ctx.db
+    .query("approvalRules")
+    .withIndex("by_company_customer", (q) => q.eq("companyId", job.companyId).eq("customerId", job.customerId))
+    .take(200);
+  const avoided = new Set<string>(rules.filter((row) => row.kind === "avoid_cleaner_for_customer").map((row) => row.cleanerId));
   const company = await ctx.db.get(job.companyId);
-  return { prior, ended, crewPay: { rule: company ? crewPayOf(company) : CREW_PAY_DEFAULT, role: nextRole(assignments) } };
+  return { prior, ended, avoided, crewPay: { rule: company ? crewPayOf(company) : CREW_PAY_DEFAULT, role: nextRole(assignments) } };
 }
 
 /**
@@ -171,6 +178,7 @@ export async function cleanerFacts(ctx: Db, job: Doc<"jobs">, cleaner: Doc<"clea
       return { exceptionsOff: around.off, extraAvailable: around.extra };
     })()),
     endedForJob: history.ended.get(cleaner._id) ?? null,
+    avoidedForCustomer: history.avoided?.has(cleaner._id) ?? false,
     priorVisitsForCustomer: history.prior.get(cleaner._id) ?? 0,
     pay: payFor(cleaner, job, history.crewPay),
   };
