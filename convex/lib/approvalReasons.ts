@@ -64,6 +64,11 @@ const QUALITY: DecisionReasons = {
   change: [r("contact_myself", "I'll handle it with the crew myself")],
 };
 
+const CARE: DecisionReasons = {
+  skip: [r("wording", "The message isn't right"), r("not_needed", "The client doesn't need this"), r("already_handled", "Already handled"), r("bad_timing", "Wrong time for it")],
+  change: [r("contact_myself", "I'll talk to the client myself"), r("different_step", "I'll do something different")],
+};
+
 const GENERAL: DecisionReasons = {
   skip: [r("not_needed", "Not needed"), r("not_now", "Not now"), r("something_wrong", "Something in it is wrong")],
   change: [r("do_myself", "I'll do it my own way")],
@@ -89,6 +94,7 @@ const BY_KIND: Record<ProposalKind, DecisionReasons> = {
   retention_action: RETENTION,
   quality_request: QUALITY,
   quality_improvement: QUALITY,
+  care_action: CARE,
 };
 
 /** The agent's own reasons for this proposal first, then the list for its kind. */

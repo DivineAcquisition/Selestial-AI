@@ -31,7 +31,7 @@ export async function afterCareDecision(ctx: MutationCtx, approval: Doc<"approva
   await ctx.db.patch(step._id, { approvalId: undefined, updatedAt: Date.now() });
   if (decision !== "approved") {
     await ctx.db.patch(step._id, { status: "cancelled", result: decision === "changed" ? `A person handled it another way: ${approval.note ?? ""}`.slice(0, 300) : "Not approved.", updatedAt: Date.now() });
-    await addEntry(ctx, request, { kind: "decision", text: decision === "changed" ? `A person chose to handle "${step.summary}" another way: ${approval.note ?? ""}` : `A person skipped "${step.summary}".`, actor: decidedBy });
+    await addEntry(ctx, request, { kind: "decision", text: decision === "changed" ? `A person chose to handle "${step.summary}" another way: ${approval.note ?? ""}` : `A person skipped "${step.summary}"${approval.note ? `: ${approval.note}` : "."}`, actor: decidedBy });
     if (isOpen(request)) await moveRequest(ctx, request, { status: "waiting_owner", waiting: { on: "owner", reason: decision === "changed" ? "A person is handling this their way." : "Care's step was skipped.", since: Date.now() }, blocker: "Resolve the request when it's done, or close it.", nextAction: "Do what's needed, then resolve or close the request." }, decidedBy);
     return record(ctx, approval, { ok: true, detail: "Set aside. Nothing was sent or changed." });
   }
