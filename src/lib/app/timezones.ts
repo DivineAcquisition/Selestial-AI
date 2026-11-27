@@ -87,3 +87,18 @@ export function filterTimeZones(options: readonly TimeZoneOption[], query: strin
   if (words.length === 0) return [...options];
   return options.filter((row) => row.id === keep || words.every((word) => row.keywords.includes(word)));
 }
+
+/** The zone this browser reports, when it is one the list knows. Nothing is assumed when it reports none. */
+export function detectedTimeZone(): string | null {
+  try {
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return zone && allIds().includes(zone) ? zone : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The same zones as options for the shared searchable select, grouped by region, common ones first. */
+export function timeZoneSelectOptions(saved?: string): { value: string; label: string; group: string; keywords: string[] }[] {
+  return timeZoneOptions(saved).map((row) => ({ value: row.id, label: row.label, group: row.region, keywords: row.keywords.split(/\s+/) }));
+}

@@ -51,6 +51,9 @@ import { createDraft, writeDraft } from "./lib/services/workflow";
 import { sha256 } from "./lib/agreements/hash";
 import { businessSettingsOf, hoursWindowValidator, normalizeBusiness, revisionOf } from "./lib/settings/business";
 import { factsOf, stateFact } from "./lib/setup/facts";
+import { noteMilestone } from "./lib/setup/milestones";
+import { noticeInApp } from "./lib/activation/notices";
+import { pricingPath } from "./lib/setup/path";
 import type { WeeklyWindow } from "./lib/availability";
 
 type Ctx = QueryCtx | MutationCtx;
@@ -61,6 +64,7 @@ export const MAX_ATTEMPTS = 3;
 /** How long one build may hold its row before the sweep counts it as abandoned. */
 export const LEASE_MS = 2 * MINUTE;
 const BACKOFF_MS = [20 * SECOND, 2 * MINUTE, 10 * MINUTE];
+const KIND_NOUN: Record<OutputKind, string> = { services: "service drafts", booking: "booking form preview", agreements: "agreement drafts", standards: "job standards" };
 
 export const REVIEW_PATH = "/app/setup/business";
 
@@ -99,13 +103,17 @@ export async function inputsOf(ctx: Ctx, company: Doc<"companies">): Promise<Inp
     const value = setup?.answers[id];
     return typeof value === "string" ? value : null;
   };
+  // "Do you already have prices?" (setup's pricing.path) read as the pricing state the builders know:
+  // help working them out starts from costs; "later" prepares a quote request instead of a price.
+  const path = pricingPath(setup?.answers ?? {});
+  const pricingState = answer("pricing.state") ?? (path === "existing" ? "set_prices" : path === "assist" ? "starting_out" : path === "later" ? "quote_each" : null);
   const business = businessSettingsOf(company);
   return {
     categories,
     offered,
     templates: servicesToPrepare(categories, offered),
     costs: profile?.costs ?? null,
-    pricingState: answer("pricing.state"),
+    pricingState,
     agreementsHave: answer("agreements.have"),
     serviceAreas: business.serviceAreas,
     hours: business.hours,
@@ -164,7 +172,7 @@ async function queue(ctx: MutationCtx, company: Doc<"companies">, memberId: Id<"
 }
 
 /** After an answer changes: rebuild what was already prepared and now reads differently. Never the first time. */
-async function requeueChanged(ctx: MutationCtx & MemberAccess): Promise<void> {
+export async function requeueChanged(ctx: MutationCtx & MemberAccess): Promise<void> {
   const any = await ctx.db
     .query("configOutputs")
     .withIndex("by_company_kind", (q) => q.eq("companyId", ctx.companyId))
@@ -290,6 +298,24 @@ export const regenerate = ownerMutation({
   },
 });
 
+/**
+ * Setup's "Build my workspace" queues only the kinds its outcome needs. Like start, anything already up to
+ * date, queued or working is left alone, so pressing Build again, or from a second tab, prepares nothing twice.
+ */
+export async function queueForSetup(ctx: MutationCtx, company: Doc<"companies">, memberId: Id<"members">, kinds: readonly OutputKind[]): Promise<OutputKind[]> {
+  if (!kinds.length) return [];
+  const queued = await queue(ctx, company, memberId, kinds, false);
+  if (queued.length) await recordEvent(ctx, { companyId: company._id, type: "configuration.started", actor: { kind: "member", memberId }, subject: { table: "companies", id: company._id }, data: { kinds: queued.join(", "), via: "setup_build" } });
+  return queued;
+}
+
+/** Prepares one kind again for setup's retry: a failed one, or one whose answers changed. Edited drafts are still kept. */
+export async function requeueKind(ctx: MutationCtx & MemberAccess, kind: OutputKind): Promise<OutputKind[]> {
+  const inputs = await inputsOf(ctx, ctx.company);
+  if (!inputs.categories.length) throw userError("Tell us who you clean for first, in your company details.");
+  return queue(ctx, ctx.company, ctx.member._id, [kind], true);
+}
+
 // ── Running ─────────────────────────────────────────────────────────────────────────────────────────
 
 /** One build, outside a transaction, so a failure can be recorded after the build's writes roll back. */
@@ -338,6 +364,7 @@ export const failed = internalMutation({
       return;
     }
     await ctx.db.patch(row._id, { state: "failed", nextRunAt: undefined, lastError: message, finishedAt: now, updatedAt: now });
+    await noticeInApp(ctx, { companyId: args.companyId, kind: "failed", agent: "sales", headline: `Your ${KIND_NOUN[args.kind]} couldn't be prepared`, summary: `${message} Everything else is unaffected. You can try it again from setup.`, target: { table: "configOutputs", id: row._id, label: "Try again", href: "/app/setup?step=result" }, key: `configure:${row._id}:failed:${now}` });
     await recordEvent(ctx, { companyId: args.companyId, type: "configuration.failed", actor: { kind: "system" }, subject: { table: "companies", id: args.companyId }, data: { kind: args.kind, attempts: row.attempts } });
     // What waited on it can't go ahead; say so on its card.
     for (const kind of OUTPUT_KINDS) {
@@ -386,6 +413,9 @@ export const build = internalMutation({
     const now = Date.now();
     await ctx.db.patch(row._id, { state: built.missing.length && !built.records.length ? "waiting" : "done", inputsHash: hash, builtFromHash: hash, ...built, nextRunAt: undefined, lastError: undefined, finishedAt: now, updatedAt: now });
     await recordEvent(ctx, { companyId: company._id, type: "configuration.prepared", actor: { kind: "system" }, subject: { table: "companies", id: args.companyId }, data: { kind: args.kind, records: built.records.length, created: built.records.filter((r) => r.created).length, kept: built.kept.length } });
+    if (built.records.length) await noteMilestone(ctx, company._id, "firstUsableAt", { via: `configure.${args.kind}` });
+    // Told once per kind, the first time it is ready; rebuilding it after a changed answer is quiet.
+    if (built.records.length && row.builtFromHash === undefined) await noticeInApp(ctx, { companyId: company._id, kind: "asset_created", agent: "sales", headline: `Your ${KIND_NOUN[args.kind]} ${args.kind === "booking" ? "is" : "are"} ready to review`, summary: "Prepared as drafts from the details you confirmed. Nothing is published until you publish it.", target: { table: "configOutputs", id: row._id, label: "Review", href: "/app/setup?step=result" }, key: `configure:${row._id}:ready` });
     // What waited on this goes next.
     for (const kind of OUTPUT_KINDS) {
       if (!DEPENDS_ON[kind].includes(args.kind)) continue;
@@ -685,47 +715,53 @@ async function standardItem(ctx: QueryCtx, companyId: Id<"companies">, record: G
   return { label: standard.name, href: "/app/agents/quality/standards", status: standard.status === "published" ? "published" : "ready", detail: `${standard.requirements.length} requirement${standard.requirements.length === 1 ? "" : "s"} for a finished visit.`, flags: [] };
 }
 
-/** Every card on "Your business setup": what was made, from what, where it stands and the one next thing to do. */
+/** Every card on "Your business setup", read from the records each one made. Shared with setup's build progress. */
+export async function cardsOf(ctx: QueryCtx, company: Doc<"companies">, inputs?: Inputs) {
+  const current = inputs ?? (await inputsOf(ctx, company));
+  const cards = [];
+  for (const kind of OUTPUT_KINDS) {
+    const row = await rowOf(ctx, company._id, kind);
+    const items: Item[] = [];
+    for (const record of row?.records ?? []) {
+      const item = kind === "services" ? await serviceItem(ctx, company._id, record) : kind === "booking" ? await bookingItem(ctx, company._id, record) : kind === "agreements" ? await agreementItem(ctx, company._id, record) : await standardItem(ctx, company._id, record);
+      if (item) items.push(item);
+    }
+    const running = row?.state === "queued" || row?.state === "working";
+    const status: ReviewStatus | "not_started" = !row
+      ? "not_started"
+      : running
+        ? "preparing"
+        : row.state === "failed"
+          ? "failed"
+          : row.state === "waiting" || items.some((i) => i.status === "needs_info") || (row.missing.length > 0 && items.length === 0)
+            ? "needs_info"
+            : items.length && items.every((i) => i.status === "published")
+              ? "published"
+              : items.length && items.every((i) => i.status === "approved" || i.status === "published")
+                ? "approved"
+                : "ready";
+    cards.push({
+      kind,
+      status,
+      items,
+      notes: row?.notes ?? [],
+      missing: row?.missing ?? [],
+      kept: row?.kept ?? [],
+      error: row?.state === "failed" || (running && row?.lastError) ? (row?.lastError ?? null) : null,
+      retrying: running && Boolean(row?.lastError),
+      changed: Boolean(row && !running && row.builtFromHash !== undefined && row.builtFromHash !== inputsHash(kind, current)),
+      dependsOn: DEPENDS_ON[kind],
+      finishedAt: row?.finishedAt ?? null,
+    });
+  }
+  return cards;
+}
+
 export const workspace = companyQuery({
   args: {},
   handler: async (ctx) => {
     const inputs = await inputsOf(ctx, ctx.company);
-    const cards = [];
-    for (const kind of OUTPUT_KINDS) {
-      const row = await rowOf(ctx, ctx.companyId, kind);
-      const items: Item[] = [];
-      for (const record of row?.records ?? []) {
-        const item = kind === "services" ? await serviceItem(ctx, ctx.companyId, record) : kind === "booking" ? await bookingItem(ctx, ctx.companyId, record) : kind === "agreements" ? await agreementItem(ctx, ctx.companyId, record) : await standardItem(ctx, ctx.companyId, record);
-        if (item) items.push(item);
-      }
-      const running = row?.state === "queued" || row?.state === "working";
-      const status: ReviewStatus | "not_started" = !row
-        ? "not_started"
-        : running
-          ? "preparing"
-          : row.state === "failed"
-            ? "failed"
-            : row.state === "waiting" || items.some((i) => i.status === "needs_info") || (row.missing.length > 0 && items.length === 0)
-              ? "needs_info"
-              : items.length && items.every((i) => i.status === "published")
-                ? "published"
-                : items.length && items.every((i) => i.status === "approved" || i.status === "published")
-                  ? "approved"
-                  : "ready";
-      cards.push({
-        kind,
-        status,
-        items,
-        notes: row?.notes ?? [],
-        missing: row?.missing ?? [],
-        kept: row?.kept ?? [],
-        error: row?.state === "failed" || (running && row?.lastError) ? (row?.lastError ?? null) : null,
-        retrying: running && Boolean(row?.lastError),
-        changed: Boolean(row && !running && row.builtFromHash !== undefined && row.builtFromHash !== inputsHash(kind, inputs)),
-        dependsOn: DEPENDS_ON[kind],
-        finishedAt: row?.finishedAt ?? null,
-      });
-    }
+    const cards = await cardsOf(ctx, ctx.company, inputs);
     return {
       started: cards.some((card) => card.status !== "not_started"),
       ready: inputs.categories.length > 0,
@@ -737,4 +773,3 @@ export const workspace = companyQuery({
     };
   },
 });
-

@@ -10,57 +10,63 @@ import { describe, expect, it } from "vitest";
 import { addMember, company, refusal, start } from "../tests/harness";
 import { api } from "./_generated/api";
 import { NOT_ALLOWED, NOT_FOUND } from "./lib/errors";
-import { questionsFor, stepsFor } from "./lib/setup/path";
+import { answeredBy, NO_RECORDS, normalizeStep, pricingPath, progress, stepsFor, toAsk, unanswered, type Known } from "./lib/setup/path";
 
 describe("Company setup", () => {
-  it("starts a new company in setup, saves each step, and resumes where the owner left off", async () => {
+  it("starts a new company on the outcome, saves each stage, and resumes where the owner left off", async () => {
     const t = start();
     const { as, companyId } = await company(t, "owner-a", "Alpha Cleaning");
     let view = await as.query(api.setup.state, { companyId });
-    expect(view).toMatchObject({ required: true, canEdit: true, setup: { status: "in_progress", step: "start", revision: 0, priority: null } });
+    expect(view).toMatchObject({ required: true, canEdit: true, setup: { status: "in_progress", step: "outcome", revision: 0, priority: null, built: null } });
+    expect(view.setup!.steps.map((row) => row.id)).toEqual(["outcome", "essentials", "context", "build", "result"]);
 
-    // Company basics: the name and clock go to the company itself; the rest become confirmed facts.
-    let { revision } = await as.mutation(api.setup.save, {
+    // The outcome first: recorded once as selected.
+    let { revision } = await as.mutation(api.setup.save, { companyId, expectedRevision: 0, step: "essentials", priority: "dispatch", secondary: ["recruiter", "dispatch"] });
+    view = await as.query(api.setup.state, { companyId });
+    expect(view.setup).toMatchObject({ step: "essentials", priority: "dispatch", secondary: ["recruiter"] });
+
+    // Essentials: the name and clock go to the company itself; the rest become confirmed facts.
+    ({ revision } = await as.mutation(api.setup.save, {
       companyId,
-      expectedRevision: 0,
-      step: "team",
+      expectedRevision: revision,
+      step: "context",
       methods: ["manual"],
       company: { name: "Alpha Cleaning Co.", timezone: "America/Denver" },
-      facts: { "company.location": "Denver, CO", "company.areas": "Denver and Aurora", "services.categories": ["residential", "short_term_rental"] },
-    });
+      facts: { "company.location": "Denver, CO", "services.categories": ["residential", "short_term_rental"] },
+    }));
     expect((await as.query(api.companies.get, { companyId })).name).toBe("Alpha Cleaning Co.");
     view = await as.query(api.setup.state, { companyId });
     expect(view.company).toMatchObject({ name: "Alpha Cleaning Co.", timezone: "America/Denver" });
     expect(view.facts["services.categories"]).toMatchObject({ value: ["residential", "short_term_rental"], state: "confirmed", source: "owner" });
-    expect(view.setup).toMatchObject({ step: "team", methods: ["manual"] });
 
-    // The priority decides which questions follow. Dispatch asks about the schedule, not about hiring.
-    ({ revision } = await as.mutation(api.setup.save, { companyId, expectedRevision: revision, step: "priority", priority: "dispatch", secondary: ["recruiter", "dispatch"] }));
-    view = await as.query(api.setup.state, { companyId });
-    expect(view.setup!.secondary).toEqual(["recruiter"]);
-    const ids = view.setup!.steps.map((step) => step.id);
-    expect(ids).toContain("q:jobs.where");
-    expect(ids).toContain("q:hiring.now");
-    expect(ids).not.toContain("q:inquiries.channels");
-    expect(view.setup!.stillNeeded).toEqual(["jobs.where", "hiring.now"]);
-    // A question from another path is refused, and "I'm not sure" is an answer.
-    expect(await refusal(as.mutation(api.setup.save, { companyId, expectedRevision: revision, step: "priority", answers: { "inquiries.channels": ["phone"] } }))).toContain("not part of your setup");
-    ({ revision } = await as.mutation(api.setup.save, { companyId, expectedRevision: revision, step: "q:jobs.assigning", answers: { "jobs.where": "unsure" }, skip: "q:jobs.assigning" }));
-    view = await as.query(api.setup.state, { companyId });
-    expect(view.setup).toMatchObject({ step: "q:jobs.assigning", skipped: ["q:jobs.assigning"], stillNeeded: ["hiring.now"] });
+    // The outcome decides which questions are asked: Dispatch asks about the schedule, not about hiring or prices.
+    let questions = (await as.query(api.setup.questions, { companyId }))!;
+    expect(questions.questions.map((row) => row.id)).toEqual(["jobs.where", "jobs.assigning"]);
+    expect(questions.stillNeeded).toEqual(["jobs.where"]);
+    // A question from no chosen outcome is refused, and "I'm not sure" is an answer.
+    expect(await refusal(as.mutation(api.setup.save, { companyId, expectedRevision: revision, step: "context", answers: { "inquiries.channels": ["phone"] } }))).toContain("not part of your setup");
+    ({ revision } = await as.mutation(api.setup.save, { companyId, expectedRevision: revision, step: "context", answers: { "jobs.where": "unsure" } }));
+    questions = (await as.query(api.setup.questions, { companyId }))!;
+    expect(questions.stillNeeded).toEqual([]);
+    expect(questions.questions.find((row) => row.id === "jobs.where")!.answeredBy).toBe("You answered this earlier.");
 
-    // Saving the same step again changes nothing; an older tab is refused and nothing is overwritten.
-    expect(await as.mutation(api.setup.save, { companyId, expectedRevision: revision, step: "q:jobs.assigning" })).toEqual({ revision });
-    expect(await refusal(as.mutation(api.setup.save, { companyId, expectedRevision: revision - 1, step: "start", priority: "sales" }))).toContain("changed somewhere else");
-    expect((await as.query(api.setup.state, { companyId })).setup).toMatchObject({ step: "q:jobs.assigning", priority: "dispatch" });
+    // Saving the same thing again changes nothing; an older tab is refused and nothing is overwritten.
+    expect(await as.mutation(api.setup.save, { companyId, expectedRevision: revision, step: "context" })).toEqual({ revision });
+    expect(await refusal(as.mutation(api.setup.save, { companyId, expectedRevision: revision - 1, step: "outcome", priority: "sales" }))).toContain("changed somewhere else");
+    expect((await as.query(api.setup.state, { companyId })).setup).toMatchObject({ step: "context", priority: "dispatch" });
 
-    // Changing priority keeps earlier answers for when they are relevant again.
-    ({ revision } = await as.mutation(api.setup.save, { companyId, expectedRevision: revision, step: "priority", priority: "sales", secondary: [] }));
-    ({ revision } = await as.mutation(api.setup.save, { companyId, expectedRevision: revision, step: "priority", priority: "dispatch", secondary: [] }));
+    // Changing outcome keeps earlier answers for when they are relevant again.
+    ({ revision } = await as.mutation(api.setup.save, { companyId, expectedRevision: revision, step: "outcome", priority: "sales", secondary: [] }));
+    ({ revision } = await as.mutation(api.setup.save, { companyId, expectedRevision: revision, step: "outcome", priority: "dispatch", secondary: [] }));
     expect((await as.query(api.setup.state, { companyId })).setup!.answers["jobs.where"]).toBe("unsure");
 
+    // A step id from the earlier, longer setup is saved as the stage that now holds it; an unknown one is refused.
+    ({ revision } = await as.mutation(api.setup.save, { companyId, expectedRevision: revision, step: "basics" }));
+    expect((await as.query(api.setup.state, { companyId })).setup!.step).toBe("essentials");
+    expect(await refusal(as.mutation(api.setup.save, { companyId, expectedRevision: revision, step: "nowhere" }))).toContain("not part of your setup");
+
     // Confirming the context is recorded once; entering the workspace ends the gate and switches nothing on.
-    await as.mutation(api.setup.save, { companyId, expectedRevision: revision, step: "review", confirmContext: true });
+    await as.mutation(api.setup.save, { companyId, expectedRevision: revision, step: "build", confirmContext: true });
     expect((await as.query(api.setup.state, { companyId })).setup!.contextConfirmed).toBe(true);
     await as.mutation(api.setup.enter, { companyId });
     await as.mutation(api.setup.enter, { companyId });
@@ -68,7 +74,7 @@ describe("Company setup", () => {
     expect(view).toMatchObject({ required: false, setup: { status: "entered" } });
     expect((await as.query(api.permissions.list, { companyId })).actions.filter((row) => row.changed)).toEqual([]);
     const events = await t.run(async (ctx) => (await ctx.db.query("events").collect()).filter((row) => row.type.startsWith("setup.")).map((row) => row.type));
-    expect(events).toEqual(["setup.context_confirmed", "setup.workspace_entered"]);
+    expect(events).toEqual(["setup.outcome_selected", "setup.context_confirmed", "setup.workspace_entered"]);
   });
 
   it("never sends an existing company or invited staff through setup, and lets only the Owner change it", async () => {
@@ -90,7 +96,7 @@ describe("Company setup", () => {
     // The Owner can choose to go through it; it is a place they visit, not a gate.
     await as.mutation(api.setup.begin, { companyId });
     await as.mutation(api.setup.begin, { companyId });
-    expect(await as.query(api.setup.state, { companyId })).toMatchObject({ required: false, setup: { status: "entered", step: "start" } });
+    expect(await as.query(api.setup.state, { companyId })).toMatchObject({ required: false, setup: { status: "entered", step: "outcome" } });
     expect(await t.run(async (ctx) => (await ctx.db.query("companySetups").collect()).length)).toBe(1);
 
     // Another company's setup answers exactly like a missing one.
@@ -106,7 +112,7 @@ describe("Company setup", () => {
     expect(await refusal(save({ company: { timezone: "Mars/Olympus" }, facts: { "company.location": "Denver" } }))).toContain("time zone");
     expect(await refusal(save({ facts: { "pay.rate": "50%" } }))).toContain("not something setup records");
     expect(await refusal(save({ facts: { "services.categories": "residential" } }))).toContain("right form");
-    expect(await refusal(save({ step: "q:hiring.now" }))).toContain("not part of your setup");
+    expect(await refusal(save({ step: "q:made.up" }))).toContain("not part of your setup");
     expect((await as.query(api.setup.state, { companyId })).facts).toEqual({});
     const { revision } = await save({ facts: { "company.location": "Denver, CO", "tools.current": ["spreadsheets"] } });
     await as.mutation(api.setup.save, { companyId, expectedRevision: revision, step: "basics", facts: { "company.location": "", "tools.current": [] } });
@@ -131,16 +137,27 @@ describe("Company setup", () => {
     expect((await as.query(api.setup.state, { companyId })).agents.find((row) => row.agent === "dispatch")!.state).toBe("paused");
   });
 
-  it("asks each question once, and only for what the owner chose", () => {
-    expect(questionsFor(undefined, [])).toEqual([]);
-    const sales = questionsFor("sales", []).map((question) => question.id);
-    expect(sales).toEqual(["inquiries.channels", "pricing.state", "customers.where"]);
-    // Pricing is wanted by both Sales and Booking: asked once.
-    const both = questionsFor("sales", ["booking"]).map((question) => question.id);
-    expect(both.filter((id) => id === "pricing.state")).toHaveLength(1);
-    // A secondary priority adds its required questions only, never its optional ones.
-    expect(questionsFor("pricing", ["recruiter"]).map((question) => question.id)).toEqual(["pricing.state", "hiring.now"]);
-    expect(stepsFor(undefined, []).map((step) => step.id)).toEqual(["start", "basics", "team", "priority", "offer", "records", "prepare", "review"]);
+  it("asks only what nothing already answers: earlier answers, confirmed facts and records", () => {
+    const known = (over: Partial<Known> = {}): Known => ({ answers: {}, facts: {}, records: { ...NO_RECORDS }, ...over });
+    expect(toAsk(undefined, known())).toEqual([]);
+    expect(toAsk("sales", known()).map((question) => question.id)).toEqual(["pricing.path", "inquiries.channels", "company.areas", "contact.phone"]);
+    // Facts confirmed on the website panel, or typed earlier, remove their questions.
+    expect(toAsk("sales", known({ facts: { "company.areas": "Austin", "contact.phone": "512" } })).map((question) => question.id)).toEqual(["pricing.path", "inquiries.channels"]);
+    // An older setup's answer to "How do you price a job today?" answers "Do you already have prices?".
+    expect(toAsk("pricing", known({ answers: { "pricing.state": "set_prices" } }))).toEqual([]);
+    expect(pricingPath({ "pricing.state": "quote_each" })).toBe("later");
+    // A published service means prices exist: the question isn't asked.
+    expect(answeredBy(toAsk("booking", known())[0], known({ records: { ...NO_RECORDS, activeServices: 1 } }))).toContain("published service");
+    // Records answer questions: upcoming jobs, customers, an open role.
+    expect(toAsk("dispatch", known({ records: { ...NO_RECORDS, upcomingJobs: 3 } })).map((question) => question.id)).toEqual(["jobs.assigning"]);
+    expect(toAsk("retention", known({ records: { ...NO_RECORDS, customers: 12 } }))).toEqual([]);
+    expect(unanswered("recruiter", known({ records: { ...NO_RECORDS, openRoles: 1 }, facts: { "workforce.arrangement": ["employees"] } }))).toEqual([]);
+    // A fact merely found on a website answers nothing: only confirmed facts are passed in as known.
+    expect(unanswered("recruiter", known()).map((question) => question.id)).toEqual(["hiring.now", "workforce.arrangement"]);
+    // The stages never change with the outcome, so progress never moves backward.
+    expect(stepsFor().map((step) => step.id)).toEqual(["outcome", "essentials", "context", "build", "result"]);
+    expect(progress({ step: "q:hiring.now" })).toEqual({ done: 2, total: 5, stage: "context" });
+    expect(normalizeStep("review")).toBe("build");
   });
 });
 

@@ -17,7 +17,21 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 import type { FunctionReturnType } from "convex/server";
 import { api } from "../../../../convex/_generated/api";
+import { fromCard, summarize, type BuildCounts } from "../../../../convex/lib/setup/build";
 import { BusinessInputs } from "./business-inputs";
+
+/** Each state counted once, in words. Failed and waiting work is never called prepared. */
+export function countWords(counts: BuildCounts): string {
+  const parts = [
+    counts.ready ? `${counts.ready} ready to review` : null,
+    counts.published ? `${counts.published} published` : null,
+    counts.needsInput ? `${counts.needsInput} ${counts.needsInput === 1 ? "needs" : "need"} your input` : null,
+    counts.waitingConnection ? `${counts.waitingConnection} waiting for a connection` : null,
+    counts.preparing ? `${counts.preparing} preparing` : null,
+    counts.failed ? `${counts.failed} failed, retry available` : null,
+  ].filter(Boolean);
+  return parts.length ? `${parts.join(" · ")}.` : "Nothing prepared yet.";
+}
 
 type View = FunctionReturnType<typeof api.configure.workspace>;
 type Card = View["cards"][number];
@@ -176,8 +190,9 @@ export function PrepareBusiness({ showLink = true }: { showLink?: boolean }) {
   const startPrep = useMutation(api.configure.start);
   const { busy, error, run } = useRun();
   if (view === undefined) return <Skeleton className="h-28 rounded-2xl" />;
-  const preparing = view.cards.filter((c) => c.status === "preparing").length;
-  const done = view.cards.filter((c) => c.status !== "preparing" && c.status !== "not_started").length;
+  const items = view.cards.map(fromCard).filter((item) => item !== null);
+  const counts = summarize(items);
+  const preparing = counts.preparing;
   const anyChanged = view.cards.some((c) => c.changed || c.status === "not_started");
   return (
     <section className="grid gap-3 rounded-2xl border border-brand-500/30 bg-brand-500/[0.04] p-4 sm:p-5" aria-labelledby="prepare-business">
@@ -194,12 +209,12 @@ export function PrepareBusiness({ showLink = true }: { showLink?: boolean }) {
       ) : preparing ? (
         <p className="flex items-center gap-2 text-sm text-strong" role="status">
           <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" aria-hidden />
-          Preparing {preparing} of {view.cards.length}. You can leave this page; it keeps going.
+          {countWords(counts)} You can leave this page; it keeps going.
         </p>
       ) : (
         <p className="flex items-center gap-2 text-sm text-strong" role="status">
           <CheckCircle2 className="size-4 text-success" aria-hidden />
-          {done} of {view.cards.length} prepared and waiting for your review.
+          {countWords(counts)}
         </p>
       )}
       <div className="flex flex-wrap gap-2">

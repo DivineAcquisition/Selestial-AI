@@ -60,6 +60,39 @@ export function SetupFunnel() {
               ))}
             </tbody>
           </table>
+          {[
+            { title: "By first outcome", rows: funnel.byPriority },
+            { title: "By entry path", rows: funnel.byEntry },
+          ].map((group) => (
+            <table key={group.title} className="w-full text-sm">
+              <caption className="py-1 text-left text-xs font-semibold text-muted-foreground uppercase">{group.title}</caption>
+              <thead className="text-left text-xs text-muted-foreground">
+                <tr>
+                  <th scope="col" className="py-2 font-medium">Group</th>
+                  <th scope="col" className="py-2 text-right font-medium">Setups</th>
+                  <th scope="col" className="py-2 text-right font-medium">First usable output</th>
+                  <th scope="col" className="py-2 text-right font-medium">Median to usable</th>
+                  <th scope="col" className="py-2 text-right font-medium">First operational action</th>
+                  <th scope="col" className="py-2 text-right font-medium">Median to operational</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {group.rows.map((row) => (
+                  <tr key={row.value}>
+                    <th scope="row" className="py-2 text-left font-medium text-strong">{row.value}</th>
+                    <td className="py-2 text-right tabular-nums">{row.setups}</td>
+                    <td className="py-2 text-right tabular-nums">{row.usable}</td>
+                    <td className="py-2 text-right tabular-nums">{duration(row.medianMinutesToUsable)}</td>
+                    <td className="py-2 text-right tabular-nums">{row.operational}</td>
+                    <td className="py-2 text-right tabular-nums">{duration(row.medianMinutesToOperational)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ))}
+          <p className="text-xs text-muted-foreground">
+            Handoffs: {funnel.events["setup.handoff_started"]} started, {funnel.events["setup.handoff_completed"]} connected, {funnel.events["setup.handoff_failed"]} failed, {funnel.events["setup.handoff_returned"]} returned to setup. Left early {funnel.events["setup.exited"]} times, came back {funnel.events["setup.resumed"]}. Preparation failures: {funnel.events["configuration.failed"] + funnel.events["activation.task_failed"]}, recovered after a retry: {funnel.preparationRecovered}. Entering the workspace is not counted as activation.
+          </p>
           <p className="text-xs text-muted-foreground">
             {funnel.optedInLater} {funnel.optedInLater === 1 ? "company" : "companies"} already using Selestial chose setup later and {funnel.optedInLater === 1 ? "is" : "are"} not counted above.
             {funnel.byPriority.length ? ` First priorities: ${funnel.byPriority.map((row) => `${row.priority} ${row.count}`).join(", ")}.` : ""}

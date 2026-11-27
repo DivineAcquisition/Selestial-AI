@@ -37,6 +37,7 @@ export function AgentsWorking() {
   const { companyId, role } = useCompany();
   const params = useSearchParams();
   const linked = params.get("activation");
+  const setupView = useQuery(api.setup.state, role === "owner" ? { companyId } : "skip");
   const view = useQuery(api.activation.current, { companyId, ...(linked && /^[a-z0-9]{8,64}$/i.test(linked) ? { activationId: linked as Id<"activations"> } : {}) });
   const ref = useRef<HTMLElement>(null);
   const [open, setOpen] = useState<Id<"activationTasks"> | null>(null);
@@ -46,7 +47,9 @@ export function AgentsWorking() {
   }, [linked, view?.activation]);
 
   if (view === undefined) return <Skeleton className="h-40 rounded-2xl" />;
-  if (!view.activation) return role === "owner" ? <StartCard focus={view.focus} /> : null;
+  // An Owner still in setup builds from setup's own panel (setup/checklist.tsx): one control, not two.
+  const inSetup = setupView?.setup && !setupView.setup.built;
+  if (!view.activation) return role === "owner" && !inSetup ? <StartCard focus={view.focus} /> : null;
   const a = view.activation;
   // A batch that settled more than two weeks ago steps aside unless a notice links to it.
   if (!linked && a.finishedAt && now && now - a.finishedAt > 14 * 86_400_000) return role === "owner" ? <StartCard focus={view.focus} again /> : null;

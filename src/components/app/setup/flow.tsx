@@ -1,48 +1,42 @@
 "use client";
 
 /**
- * Company setup: four stages, one short decision at a time, with what Selestial knows so far beside it.
- * Every step is saved as the owner leaves it, so closing the tab, changing device or coming back next week
- * resumes in the same place. Nothing here switches an agent on or sends anything to anyone.
+ * Company setup: choose an outcome → confirm essentials → add relevant context → build the workspace →
+ * review the first useful result. About three short decisions before anything is prepared; everything
+ * else (full hours, ZIP codes, every agreement, every integration, every permission) can wait.
+ *
+ * Saving is the same on every screen (autosave.ts): edits save on their own after a pause and before every
+ * move, "Saved" means the server has them, and another tab's newer save is never overwritten silently.
+ * Leaving and coming back, a reload, or a trip to an integration resumes at the same stage.
  */
 import { useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
-import { Field, messageOf, TextInput } from "@/components/app/form";
-import { ArrowLeft, ArrowRight, Check, ChevronDown, CircleHelp, Globe, Info, PenLine, Plug, Rocket, Sparkles } from "@/components/icons";
-import { CheckboxRow, ChoiceChips, FieldSource, FieldSuggestion, SearchableSelect, SegmentedControl, SelectionCard, SelectionCards, suggestionState, type Option } from "@/components/ui/selection";
-import { Badge } from "@/components/ui/badge";
+import { messageOf } from "@/components/app/form";
+import { Modal } from "@/components/app/modal";
+import { ArrowLeft, ArrowRight, Check, ChevronDown, Rocket, Sparkles } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import { ChoiceChips } from "@/components/ui/selection";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LANDING_PATH } from "@/lib/app/navigation";
+import { timeZoneLabel, timeZoneOptions } from "@/lib/app/timezones";
 import { cn } from "@/lib/utils";
 
 import type { FunctionReturnType } from "convex/server";
 import { api } from "../../../../convex/_generated/api";
-import { CATEGORY_CHOICES, SCALE_CHOICES, TOOL_CHOICES, WORKFORCE_CHOICES, type Choice } from "../../../../convex/lib/setup/facts";
-import { connectionsFor, PRIORITY_INFO, QUESTIONS, STAGES, stepsFor, UNSURE } from "../../../../convex/lib/setup/path";
-import { AgentWork } from "./work";
-import { BeforeStart } from "./review";
-
-const FIRST_WORK_PATH = "/app/first-work";
-import { ActivationReview } from "@/components/app/activation/review";
-import { MigrationEntry } from "@/components/app/migration/entry";
-import { MigrationRecordsStep, MigrationReview } from "./migration";
-import { WebsiteProgress } from "./prepare";
-import { PrepareBusiness } from "./business";
-import { BusinessInputs } from "./business-inputs";
-import type { Method, Priority } from "../../../../convex/lib/setup/schema";
+import { CATEGORY_CHOICES } from "../../../../convex/lib/setup/facts";
+import { PRIORITY_INFO, STAGES, type StageId } from "../../../../convex/lib/setup/path";
+import { safeSetupPath } from "../../../../convex/lib/setup/routes";
+import type { Priority } from "../../../../convex/lib/setup/schema";
+import { STATUS_WORDS, useAutosave, type Patch } from "./autosave";
+import { ResultPanel } from "./build-panel";
+import { BuildStep, ContextStep, contextBlocked, contextNeeded, EssentialsStep, OutcomeStep, StepHeading, type Form } from "./steps";
 
 type View = FunctionReturnType<typeof api.setup.state>;
 type Setup = NonNullable<View["setup"]>;
 type Value = string | string[];
-
-const one = (value: Value | undefined) => (typeof value === "string" ? value : "");
-const many = (value: Value | undefined) => (Array.isArray(value) ? value : []);
-const labelOf = (choices: Choice[], value: string) => choices.find((choice) => choice.value === value)?.label ?? value;
-const toggle = (list: string[], value: string) => (list.includes(value) ? list.filter((item) => item !== value) : [...list, value]);
 
 export function SetupScreen() {
   const { companyId } = useCompany();
@@ -60,7 +54,7 @@ export function SetupScreen() {
   if (!view.canEdit) return <Message title="Setup is the Owner's" body="Your company's Owner sets this up. You can start working in the workspace now." />;
   if (!view.setup) {
     return (
-      <Message title="Your company is already working in Selestial" body="Setup is optional for you. Going through it lets you confirm what Selestial knows about your company and choose what it helps with first. Nothing you have is changed.">
+      <Message title="Your company is already working in Selestial" body="Setup is optional for you. Going through it lets you confirm what Selestial knows about your company and choose what it helps with first. Nothing you have is changed, and no permission is reset.">
         <Button variant="primary" onClick={() => void begin({ companyId })}>
           Go through setup
         </Button>
@@ -86,175 +80,213 @@ function Message({ title, body, children }: { title: string; body: string; child
   );
 }
 
-// ── Small building blocks ───────────────────────────────────────────────────────────────────────────
+const one = (value: Value | undefined) => (typeof value === "string" ? value : "");
+const many = (value: Value | undefined) => (Array.isArray(value) ? value : []);
 
-const asOptions = (choices: Choice[]) => choices.map((choice) => ({ value: choice.value, label: choice.label, description: choice.hint }));
-
-function Why({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="flex gap-2 rounded-xl bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">
-      <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-      <span>{children}</span>
-    </p>
-  );
+/** The form as the server has it: confirmed facts fill fields; anything only found on a website does not. */
+function fromServer(view: View, setup: Setup): Form {
+  return {
+    priority: setup.priority,
+    secondary: setup.secondary,
+    answers: setup.answers,
+    facts: Object.fromEntries(Object.entries(view.facts).filter(([, row]) => row.state === "confirmed").map(([key, row]) => [key, row.value])),
+    name: view.company.name,
+    timezone: view.company.timezone,
+    methods: setup.methods,
+  };
 }
 
-function StepHeading({ eyebrow, title, lead }: { eyebrow: string; title: string; lead?: string }) {
-  return (
-    <header className="grid gap-1.5">
-      <p className="text-xs font-semibold tracking-wide text-brand-300 uppercase">{eyebrow}</p>
-      <h1 className="font-display text-2xl font-semibold text-balance text-strong sm:text-3xl">{title}</h1>
-      {lead ? <p className="text-sm text-muted-foreground">{lead}</p> : null}
-    </header>
-  );
+function apply(form: Form, patch: Patch): Form {
+  return {
+    ...form,
+    ...(patch.priority !== undefined ? { priority: patch.priority as Priority } : {}),
+    ...(patch.secondary !== undefined ? { secondary: patch.secondary as Priority[] } : {}),
+    ...(patch.methods !== undefined ? { methods: patch.methods } : {}),
+    answers: { ...form.answers, ...patch.answers },
+    facts: { ...form.facts, ...patch.facts },
+    name: patch.company?.name ?? form.name,
+    timezone: patch.company?.timezone ?? form.timezone,
+  };
 }
 
-// ── The flow ────────────────────────────────────────────────────────────────────────────────────────
-
-const METHOD_CARDS: { id: Method; icon: typeof Globe; title: string; body: string }[] = [
-  { id: "website", icon: Globe, title: "Use my website", body: "Give us the address. It is kept with your company details." },
-  { id: "connect", icon: Plug, title: "Connect or upload information", body: "Bring in what you already have: a spreadsheet, a calendar, an inbox." },
-  { id: "manual", icon: PenLine, title: "Enter details myself", body: "A few short questions. Most take one tap." },
-];
-
-function zones(): string[] {
-  try {
-    return Intl.supportedValuesOf("timeZone");
-  } catch {
-    return [];
-  }
-}
+const ORDER: StageId[] = STAGES.map((stage) => stage.id);
 
 function Flow({ view, setup, onReload }: { view: View; setup: Setup; onReload: () => void }) {
   const { companyId } = useCompany();
   const router = useRouter();
-  const save = useMutation(api.setup.save);
-  const startRead = useMutation(api.setupWebsite.start);
-  const [useFound, setUseFound] = useState<string[]>([]);
+  const saveSetup = useMutation(api.setup.save);
+  const build = useMutation(api.setup.build);
+  const exit = useMutation(api.setup.exit);
   const enter = useMutation(api.setup.enter);
-  const startAgents = useMutation(api.activation.start);
+  const resume = useMutation(api.setup.resume);
+  const handoff = useMutation(api.setup.handoff);
+  const questions = useQuery(api.setup.questions, { companyId });
+  const status = useQuery(api.setup.buildStatus, { companyId });
 
-  const [revision, setRevision] = useState(setup.revision);
-  // A link can open a step directly (Integrations links to "records"); otherwise setup resumes where it was.
-  const [stepId, setStepId] = useState(() => {
-    if (typeof window === "undefined") return setup.step;
-    const asked = new URLSearchParams(window.location.search).get("step");
-    return asked && setup.steps.some((row) => row.id === asked) ? asked : setup.step;
+  // A link can open a stage directly ("Return to setup", Home); otherwise setup resumes where it was.
+  const [stepId, setStepId] = useState<StageId>(() => {
+    const asked = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("step");
+    const wanted = asked && (ORDER as string[]).includes(asked) ? (asked as StageId) : setup.step;
+    return wanted === "result" && !setup.built ? "build" : wanted;
   });
-  const [methods, setMethods] = useState<Method[]>(setup.methods);
-  const [priority, setPriority] = useState<Priority | null>(setup.priority);
-  const [secondary, setSecondary] = useState<Priority[]>(setup.secondary);
-  const [answers, setAnswers] = useState<Record<string, Value>>(setup.answers);
-  const [name, setName] = useState(view.company.name);
-  const [timezone, setTimezone] = useState(view.company.timezone);
-  // Only what a person confirmed fills the fields. Anything found on a page is offered beside the field instead.
-  const [facts, setFacts] = useState<Record<string, Value>>(() => Object.fromEntries(Object.entries(view.facts).filter(([, row]) => row.state === "confirmed").map(([key, row]) => [key, row.value])));
-  const [state, setState] = useState<"saved" | "saving" | "failed">("saved");
+
+  const save = useCallback(
+    (input: Patch & { expectedRevision: number; step: string; skip?: string; confirmContext?: boolean }) =>
+      saveSetup({ companyId, ...input, priority: input.priority as Priority | undefined, secondary: input.secondary as Priority[] | undefined, methods: input.methods as ("website" | "connect" | "manual")[] | undefined }),
+    [saveSetup, companyId],
+  );
+  const autosave = useAutosave({ storageKey: `selestial.setup.pending.${companyId}`, serverRevision: setup.revision, step: stepId, save });
+  const [form, setForm] = useState<Form>(() => apply(fromServer(view, setup), autosave.pending));
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const allZones = useMemo(() => zones(), []);
-  const zoneOptions = useMemo(() => zoneChoices(allZones), [allZones]);
+  const zones = useMemo(() => new Set(timeZoneOptions(view.company.timezone).map((row) => row.id)), [view.company.timezone]);
 
-  const steps = stepsFor(priority ?? undefined, secondary);
-  const index = Math.max(0, steps.findIndex((step) => step.id === stepId));
-  const step = steps[index];
-  const stage = step.stage;
-  const question = step.id.startsWith("q:") ? QUESTIONS.find((item) => item.id === step.id.slice(2)) : undefined;
-  const fact = (key: string, value: Value) => setFacts((current) => ({ ...current, [key]: value }));
-  const info = PRIORITY_INFO.find((item) => item.id === priority);
+  const update = useCallback(
+    (patch: Patch) => {
+      setForm((current) => apply(current, patch));
+      autosave.edit(patch);
+    },
+    [autosave],
+  );
 
-  /** Saves this step's own fields and moves to `to`. Returns false, with the reason shown, if it was refused. */
-  async function go(to: string, extra: { skip?: string; confirmContext?: boolean } = {}): Promise<boolean> {
-    setState("saving");
+  // Another tab or device saved while this one had nothing unsaved: show what it saved.
+  const { external, clearExternal } = autosave;
+  useEffect(() => {
+    if (!external) return;
+    clearExternal();
+    onReload();
+  }, [external, clearExternal, onReload]);
+
+  // Coming back after "Save and exit" is recorded once, for the funnel.
+  const resumed = useRef(false);
+  useEffect(() => {
+    if (resumed.current || !setup.exitedAt || (setup.resumedAt ?? 0) > setup.exitedAt) return;
+    resumed.current = true;
+    void resume({ companyId }).catch(() => undefined);
+  }, [setup.exitedAt, setup.resumedAt, resume, companyId]);
+
+  // Moving between stages puts focus on the new heading, for keyboard and screen reader users.
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    window.scrollTo({ top: 0 });
+    document.getElementById("step-heading")?.focus();
+  }, [stepId]);
+
+  const records = questions?.records ?? null;
+  const index = ORDER.indexOf(stepId);
+  const info = PRIORITY_INFO.find((item) => item.id === form.priority);
+  const built = status?.started === true;
+
+  async function go(to: StageId, extra: { skip?: string; confirmContext?: boolean } = {}): Promise<boolean> {
+    setError(null);
+    const ok = await autosave.flush({ step: to, ...extra });
+    if (ok) setStepId(to);
+    return ok;
+  }
+
+  async function startBuild() {
+    if (busy) return;
+    setBusy(true);
     setError(null);
     try {
-      if (step.id === "start" && methods.includes("website") && to !== step.id) await startRead({ companyId, url: one(facts["company.website"]) });
-      type Own = { methods?: Method[]; priority?: Priority; secondary?: Priority[]; company?: { name: string; timezone: string }; facts?: Record<string, Value>; answers?: Record<string, Value> };
-      const own: Own =
-        step.id === "start"
-          ? { methods, facts: { "company.website": methods.includes("website") ? one(facts["company.website"]) : "" } }
-          : step.id === "basics"
-            ? { company: { name, timezone }, facts: { "company.location": one(facts["company.location"]), "company.areas": one(facts["company.areas"]), "services.categories": many(facts["services.categories"]), ...Object.fromEntries(useFound.map((key) => [key, view.facts[key]?.value ?? ""])) } }
-            : step.id === "team"
-              ? { facts: { "workforce.arrangement": many(facts["workforce.arrangement"]), "scale.cleaners": one(facts["scale.cleaners"]), "tools.current": many(facts["tools.current"]), "tools.other": one(facts["tools.other"]) } }
-              : step.id === "priority"
-                ? { ...(priority ? { priority } : {}), secondary }
-                : question && answers[question.id] !== undefined
-                  ? { answers: { [question.id]: answers[question.id] } }
-                  : {};
-      const result = await save({ companyId, expectedRevision: revision, step: to, ...own, ...extra });
-      setRevision(result.revision);
-      setStepId(to);
-      setState("saved");
-      window.scrollTo({ top: 0 });
-      return true;
+      if (!(await autosave.flush({ step: "build", confirmContext: true }))) return;
+      const result = await build({ companyId });
+      autosave.adopt(result.revision);
+      setStepId("result");
     } catch (caught) {
-      setState("failed");
       setError(messageOf(caught));
-      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Leaves setup for a page it allows (an import, a connection, a draft): saved first, and remembered for "Return to setup". */
+  async function leaveTo(href: string) {
+    const safe = safeSetupPath(href);
+    if (!safe) return;
+    if (!(await autosave.flush())) return;
+    await handoff({ companyId, href: safe, phase: "started" }).catch(() => undefined);
+    router.push(safe);
+  }
+
+  async function exitNow() {
+    setBusy(true);
+    try {
+      if (!(await autosave.flush())) {
+        setLeaving(false);
+        return;
+      }
+      await exit({ companyId });
+      router.push(LANDING_PATH);
+    } catch (caught) {
+      setError(messageOf(caught));
+      setLeaving(false);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function openWorkspace() {
+    setBusy(true);
+    try {
+      if (!(await autosave.flush())) return;
+      await enter({ companyId });
+      router.push(LANDING_PATH);
+    } catch (caught) {
+      setError(messageOf(caught));
+    } finally {
+      setBusy(false);
     }
   }
 
   const blocked =
-    step.id === "start"
-      ? methods.length === 0
-        ? "Choose at least one way to start."
-        : methods.includes("website") && one(facts["company.website"]).trim() === ""
-          ? "Enter your website address, or untick that option."
-          : null
-      : step.id === "basics"
-        ? name.trim() === ""
+    stepId === "outcome"
+      ? form.priority
+        ? null
+        : "Choose what Selestial should help with first."
+      : stepId === "essentials"
+        ? !form.name.trim()
           ? "Your company needs a name."
-          : allZones.length > 0 && !allZones.includes(timezone)
+          : !form.timezone || !zones.has(form.timezone)
             ? "Choose a time zone from the list."
-            : null
-        : step.id === "priority"
-          ? priority
-            ? null
-            : "Choose what Selestial should help with first."
-          : question && !question.optional && (answers[question.id] === undefined || (Array.isArray(answers[question.id]) && answers[question.id].length === 0))
-            ? "Choose an answer, or say you are not sure."
-            : null;
+            : !one(form.facts["company.location"]).trim()
+              ? "Add where you're based."
+              : many(form.facts["services.categories"]).length === 0
+                ? "Choose at least one kind of cleaning."
+                : null
+        : stepId === "context"
+          ? contextBlocked(form.priority, form, records)
+          : null;
 
-  const next = steps[index + 1];
-  const previous = steps[index - 1];
+  const next = (): Promise<boolean> | void => {
+    if (stepId === "outcome") return go("essentials");
+    if (stepId === "essentials") return contextNeeded(form.priority, form, records, Boolean(view.prepared.service)) ? go("context") : go(built ? "result" : "build", { skip: "context" });
+    if (stepId === "context") return go(built ? "result" : "build");
+    if (stepId === "build") return built ? go("result") : void startBuild();
+  };
+  const previous = stepId === "result" ? "context" : stepId === "build" ? (contextNeeded(form.priority, form, records, Boolean(view.prepared.service)) ? "context" : "essentials") : index > 0 ? ORDER[index - 1] : null;
 
-  async function openWorkspace(confirmContext: boolean) {
-    if (confirmContext && !(await go("review", { confirmContext: true }))) return;
-    await enter({ companyId });
-    router.push(FIRST_WORK_PATH);
-  }
-
-  /**
-   * The Owner starts the work shown on the review step. The server plans and runs it in the background, so
-   * leaving the page right after is fine; pressing it twice starts one batch. Save and exit never does this.
-   */
-  async function startMyAgents() {
-    if (!(await go("review", { confirmContext: true }))) return;
-    setState("saving");
-    try {
-      await startAgents({ companyId, source: "setup" });
-      router.push(`${LANDING_PATH}#agents-working`);
-    } catch (caught) {
-      setState("failed");
-      setError(messageOf(caught));
-    }
-  }
-
-  const summary = <Summary name={name} timezone={timezone} facts={facts} priority={priority} secondary={secondary} agents={view.agents} postalCodes={view.company.postalCodes} />;
+  const summary = <Summary form={form} />;
+  const wide = stepId === "result" || stepId === "build";
 
   return (
-    <div className="flex min-h-dvh flex-col bg-muted/40">
-      <header className="border-b border-border bg-card">
+    <div className="flex min-h-dvh flex-col bg-[#f7f5ff]">
+      <header className="border-b border-border bg-white">
         <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
           <p className="font-display text-base font-semibold text-strong">Selestial</p>
-          <ol className="ml-2 hidden items-center gap-1 md:flex" aria-label="Setup stages">
+          <ol className="ml-2 hidden items-center gap-1 lg:flex" aria-label="Setup stages">
             {STAGES.map((item, at) => {
-              const current = item.id === stage;
-              const done = STAGES.findIndex((row) => row.id === stage) > at;
+              const current = item.id === stepId;
+              const done = index > at;
               return (
-                <li key={item.id} aria-current={current ? "step" : undefined} className={cn("flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium", current ? "bg-brand-500/10 text-strong" : done ? "text-strong" : "text-muted-foreground")}>
-                  <span className={cn("grid size-4 place-items-center rounded-full text-[10px]", done ? "bg-success text-white" : current ? "bg-brand-500 text-white" : "bg-muted text-muted-foreground")} aria-hidden>
+                <li key={item.id} aria-current={current ? "step" : undefined} className={cn("flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium", current ? "bg-[#eee8ff] text-[#5126c7]" : done ? "text-strong" : "text-muted-foreground")}>
+                  <span className={cn("grid size-4 place-items-center rounded-full text-[10px]", done ? "bg-[#6838ef] text-white" : current ? "bg-[#5126c7] text-white" : "bg-muted text-muted-foreground")} aria-hidden>
                     {done ? <Check className="size-3" /> : at + 1}
                   </span>
                   {item.label}
@@ -262,301 +294,118 @@ function Flow({ view, setup, onReload }: { view: View; setup: Setup; onReload: (
               );
             })}
           </ol>
-          <p className="ml-auto text-xs text-muted-foreground" role="status" aria-live="polite">
-            {state === "saving" ? "Saving…" : state === "failed" ? "Not saved" : "Saved"}
+          <p className={cn("ml-auto text-xs", autosave.status === "failed" || autosave.status === "conflict" ? "font-medium text-destructive-foreground" : "text-muted-foreground")} role="status" aria-live="polite">
+            {STATUS_WORDS[autosave.status]}
           </p>
-          <Button variant="ghost" size="sm" onClick={() => void (async () => ((await go(step.id)) ? openWorkspace(false) : undefined))()}>
+          <Button variant="ghost" size="sm" onClick={() => setLeaving(true)}>
             Save and exit
           </Button>
         </div>
         <div className="mx-auto max-w-6xl px-4 pb-3 sm:px-6">
-          <p className="mb-1 text-xs text-muted-foreground md:hidden">
-            {STAGES.find((item) => item.id === stage)?.label} · step {index + 1} of {steps.length}
+          <p className="mb-1 text-xs text-muted-foreground lg:hidden">
+            {STAGES[index]?.label} · step {index + 1} of {STAGES.length}
           </p>
-          <div className="h-1.5 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuemin={0} aria-valuemax={steps.length} aria-valuenow={index + 1} aria-label={`Step ${index + 1} of ${steps.length} on your path`}>
-            <div className="h-full rounded-full bg-brand-500 transition-[width] motion-reduce:transition-none" style={{ width: `${((index + 1) / steps.length) * 100}%` }} />
+          <div className="h-1.5 overflow-hidden rounded-full bg-[#eee8ff]" role="progressbar" aria-valuemin={1} aria-valuemax={STAGES.length} aria-valuenow={index + 1} aria-label={`Setup: step ${index + 1} of ${STAGES.length}, ${STAGES[index]?.label}`}>
+            <div className="h-full rounded-full bg-[#6838ef] transition-[width] motion-reduce:transition-none" style={{ width: `${((index + 1) / STAGES.length) * 100}%` }} />
           </div>
         </div>
       </header>
 
-      <div className={cn("mx-auto grid w-full flex-1 gap-6 px-4 py-6 sm:px-6", step.id === "review" ? "max-w-3xl" : "max-w-6xl lg:grid-cols-[minmax(0,1fr)_22rem]")}>
-        <main className="min-w-0">
-          <div className="grid gap-5 rounded-2xl border border-border bg-card p-5 sm:p-7">
-            {step.id === "start" ? (
+      {autosave.status === "conflict" || autosave.status === "failed" ? (
+        <div className="border-b border-destructive/20 bg-destructive/5" role="alert">
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2 px-4 py-2.5 text-sm sm:px-6">
+            <p className="min-w-0 flex-1 text-strong">
+              {autosave.status === "conflict" ? "Setup was changed in another tab or on another device. Your edits here are kept until you choose." : `Your latest changes aren't saved yet${autosave.error ? ` (${autosave.error})` : ""}. They're kept on this device.`}
+            </p>
+            {autosave.status === "conflict" ? (
               <>
-                <StepHeading eyebrow="Your company" title="How would you like to start?" lead="Choose one or more. You can change your mind at any point, and nothing is used until you have seen it." />
-                <SelectionCards
-                  type="multiple"
-                  aria-label="Ways to start"
-                  columns={1}
-                  value={methods}
-                  onValueChange={(next) => setMethods(next)}
-                  options={METHOD_CARDS.map((card) => ({ value: card.id, label: card.title, description: card.body, icon: <card.icon className="size-5" /> }))}
-                  extra={(option, on) =>
-                    on && option.value === "website" ? (
-                      <div className="px-3.5 pb-3.5">
-                        <Field label="Website address">
-                          <TextInput value={one(facts["company.website"])} onChange={(event) => fact("company.website", event.target.value)} placeholder="yourcompany.com" inputMode="url" autoComplete="url" maxLength={200} />
-                        </Field>
-                      </div>
-                    ) : on && option.value === "connect" ? (
-                      <p className="px-3.5 pb-3.5 text-xs text-muted-foreground">You will choose what to bring in after you pick a priority, so we only ask for what that needs.</p>
-                    ) : null
-                  }
-                />
-              </>
-            ) : null}
-
-            {step.id === "basics" ? (
-              <>
-                <StepHeading eyebrow="Your company" title="The basics" lead="Only what every part of Selestial needs. Anything already known is filled in." />
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="Company name">
-                    <TextInput value={name} onChange={(event) => setName(event.target.value)} maxLength={160} autoComplete="organization" required />
-                  </Field>
-                  <div className="grid content-start gap-1.5">
-                    <Field label="Where you are based" hint="City and state is enough.">
-                      <TextInput value={one(facts["company.location"])} onChange={(event) => fact("company.location", event.target.value)} placeholder="Austin, TX" maxLength={120} />
-                    </Field>
-                    <Suggestion found={view.facts["company.location"]} current={facts["company.location"]} onUse={(value) => fact("company.location", value)} />
-                  </div>
-                  <Field label="Time zone" hint="Schedules, availability and deadlines are shown on this clock. Type a city to search." required>
-                    {zoneOptions.length ? <SearchableSelect value={timezone} onValueChange={(zone) => setTimezone(zone ?? "")} options={zoneOptions} placeholder="Search for a city" clearable={false} /> : <TextInput value={timezone} onChange={(event) => setTimezone(event.target.value)} autoComplete="off" />}
-                  </Field>
-                  <div className="grid content-start gap-1.5">
-                    <Field label="Areas you serve" hint="Cities or neighborhoods, in your own words.">
-                      <TextInput value={one(facts["company.areas"])} onChange={(event) => fact("company.areas", event.target.value)} placeholder="Austin, Round Rock, Cedar Park" maxLength={300} />
-                    </Field>
-                    <Suggestion found={view.facts["company.areas"]} current={facts["company.areas"]} onUse={(value) => fact("company.areas", value)} />
-                  </div>
-                </div>
-                <fieldset className="grid gap-2">
-                  <legend className="mb-1 text-sm font-medium text-strong">Who do you clean for?</legend>
-                  <Suggestion found={view.facts["services.categories"]} current={facts["services.categories"]} onUse={(value) => fact("services.categories", value)} words={(value) => many(value).map((item) => labelOf(CATEGORY_CHOICES, item)).join(", ")} />
-                  <SelectionCards type="multiple" aria-label="Who do you clean for?" value={many(facts["services.categories"])} onValueChange={(next) => fact("services.categories", next)} options={asOptions(CATEGORY_CHOICES)} />
-                </fieldset>
-                {(["contact.phone", "contact.email", "company.about", "policies.published"] as const).some((key) => view.facts[key]?.state === "found") ? (
-                  <fieldset className="grid gap-2 rounded-xl border border-border p-3">
-                    <legend className="px-1 text-sm font-medium text-strong">Also found on your website</legend>
-                    <p className="text-xs text-muted-foreground">Tick what is right. Anything you leave unticked stays a suggestion and is not used.</p>
-                    {(["contact.phone", "contact.email", "company.about", "policies.published"] as const)
-                      .filter((key) => view.facts[key]?.state === "found")
-                      .map((key) => (
-                        <CheckboxRow
-                          key={key}
-                          checked={useFound.includes(key)}
-                          onCheckedChange={() => setUseFound(toggle(useFound, key))}
-                          title={<span className="font-normal break-words">{one(view.facts[key]?.value)}</span>}
-                          description={FOUND_LABELS[key]}
-                          aside={<FieldSource source={{ kind: "website" }} />}
-                        />
-                      ))}
-                  </fieldset>
-                ) : null}
-                <Why>These tailor the services, agreements and booking pages Selestial prepares. They do not publish or price anything.</Why>
-              </>
-            ) : null}
-
-            {step.id === "team" ? (
-              <>
-                <StepHeading eyebrow="Your company" title="Your team and how you run today" lead="Optional. It helps Selestial suggest the right setup for your size." />
-                <fieldset className="grid gap-2">
-                  <legend className="mb-1 text-sm font-medium text-strong">How do your cleaners work with you?</legend>
-                  <SelectionCards type="multiple" aria-label="How do your cleaners work with you?" value={many(facts["workforce.arrangement"])} onValueChange={(next) => fact("workforce.arrangement", next)} options={asOptions(WORKFORCE_CHOICES)} />
-                </fieldset>
-                <div className="grid gap-2">
-                  <SegmentedControl label="About how many people clean for you?" value={one(facts["scale.cleaners"])} options={SCALE_CHOICES.map((choice) => ({ id: choice.value, label: choice.label }))} onChange={(value) => fact("scale.cleaners", value)} />
-                  {one(facts["scale.cleaners"]) ? (
-                    <button type="button" onClick={() => fact("scale.cleaners", "")} className="justify-self-start text-xs text-muted-foreground underline-offset-2 hover:text-strong hover:underline focus-visible:outline-2 focus-visible:outline-brand-500">
-                      Clear this answer
-                    </button>
-                  ) : null}
-                </div>
-                <div className="grid gap-2">
-                  <p id="setup-tools-label" className="text-sm font-medium text-strong">
-                    What do you run the business on today?
-                  </p>
-                  <ChoiceChips aria-labelledby="setup-tools-label" options={asOptions(TOOL_CHOICES)} value={many(facts["tools.current"])} onValueChange={(nextValue) => fact("tools.current", nextValue)} />
-                  <Field label="Anything else" hint="The name of an app or system you use, if you want to bring records from it later.">
-                    <TextInput value={one(facts["tools.other"])} onChange={(event) => fact("tools.other", event.target.value)} maxLength={200} />
-                  </Field>
-                </div>
-                <Why>Workers on payroll, contractors and subcontractor companies have different onboarding and pay rules in Selestial. We never ask for pay rates or bank details here.</Why>
-              </>
-            ) : null}
-
-            {step.id === "priority" ? (
-              <>
-                <StepHeading eyebrow="Your priority" title="What would you like Selestial to help with first?" lead="Pick one to start with. The next questions follow from it, and you can add the others whenever you like." />
-                <SelectionCards
-                  type="single"
-                  aria-label="First priority"
-                  value={priority}
-                  onValueChange={(id) => {
-                    setPriority(id);
-                    setSecondary(secondary.filter((value) => value !== id));
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    autosave.discard();
+                    onReload();
                   }}
-                  options={PRIORITY_INFO.map((item) => ({ value: item.id, label: item.title, description: item.caveat }))}
-                  extra={(option, first) =>
-                    priority && !first ? (
-                      <div className="border-t border-border/70 px-3.5 py-2">
-                        <CheckboxRow density="compact" checked={secondary.includes(option.value)} onCheckedChange={() => setSecondary(toggle(secondary, option.value) as Priority[])} title={<span className="font-normal text-muted-foreground">Also important to me</span>} />
-                      </div>
-                    ) : null
-                  }
-                />
-                {info ? (
-                  <p className="flex gap-2 rounded-xl border border-brand-500/30 bg-brand-500/8 px-3.5 py-3 text-sm text-strong" role="status">
-                    <Sparkles className="mt-0.5 size-4 shrink-0 text-brand-300" aria-hidden />
-                    {info.first}
-                  </p>
-                ) : null}
+                >
+                  Load the latest
+                </Button>
+                <Button variant="primary" size="sm" onClick={() => void autosave.keepMine()}>
+                  Keep my changes
+                </Button>
               </>
-            ) : null}
+            ) : (
+              <Button variant="primary" size="sm" onClick={() => void autosave.flush()}>
+                Try again
+              </Button>
+            )}
+          </div>
+        </div>
+      ) : null}
 
-            {question ? (
-              <>
-                <StepHeading eyebrow={info ? info.title : "Your priority"} title={question.title} lead={question.kind === "multi" ? "Choose all that apply." : undefined} />
-                {question.kind === "multi" ? (
-                  <div className="grid gap-2">
-                    <SelectionCards type="multiple" aria-label={question.title} value={many(answers[question.id])} onValueChange={(next) => setAnswers({ ...answers, [question.id]: next })} options={asOptions(question.choices)} />
-                    {/* "Not sure" replaces the whole answer, so it is its own choice rather than one more tick. */}
-                    <SelectionCard title="I'm not sure" description="We will mark it as open and come back to it." selected={answers[question.id] === UNSURE} onPress={() => setAnswers({ ...answers, [question.id]: UNSURE })} />
-                  </div>
-                ) : (
-                  <SelectionCards
-                    type="single"
-                    aria-label={question.title}
-                    value={typeof answers[question.id] === "string" ? (answers[question.id] as string) : null}
-                    onValueChange={(next) => setAnswers({ ...answers, [question.id]: next })}
-                    options={[...asOptions(question.choices), { value: UNSURE, label: "I'm not sure", description: "We will mark it as open and come back to it." }]}
-                  />
-                )}
-                <details className="group rounded-xl bg-muted/50 px-3 py-2.5 text-sm">
-                  <summary className="flex cursor-pointer list-none items-center gap-2 font-medium text-strong">
-                    <CircleHelp className="size-4 text-muted-foreground" aria-hidden />
-                    Why we ask, and help deciding
-                    <ChevronDown className="ml-auto size-4 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden />
-                  </summary>
-                  <p className="mt-2 text-muted-foreground">{question.why}</p>
-                  <p className="mt-2 text-muted-foreground">If more than one fits, pick the one that is true most often. Nothing is locked in: you can change this later in the workspace.</p>
-                </details>
-              </>
-            ) : null}
-
-            {step.id === "offer" ? (
-              <>
-                <StepHeading eyebrow="Prepare your workspace" title="Your services, costs and hours" lead="Optional, and every answer can be left blank. Selestial uses these to prepare your services, prices, booking form and agreements as drafts for you to review." />
-                <BusinessInputs compact />
-              </>
-            ) : null}
-
-            {step.id === "records" ? (
-              <>
-                <StepHeading eyebrow="Prepare your workspace" title="Bring in what you already have" lead="Optional. Anything you bring in now saves you typing it later. Nothing is contacted because it was imported." />
-                <MigrationEntry className="border-brand-500/30 bg-brand-500/[0.03]" />
-                <MigrationRecordsStep />
-                {connectionsFor(priority ?? undefined, secondary).length ? (
-                  <section className="grid gap-2" aria-labelledby="connect-heading">
-                    <h2 id="connect-heading" className="text-sm font-semibold text-strong">
-                      Connections that help with this
-                    </h2>
-                    <ul className="grid gap-2 sm:grid-cols-2">
-                      {connectionsFor(priority ?? undefined, secondary).map((connection) => (
-                        <li key={connection.id}>
-                          <a href={connection.href} target="_blank" rel="noreferrer" className="flex h-full flex-col gap-0.5 rounded-xl border border-border px-3.5 py-3 text-sm hover:border-brand-500/40 focus-visible:outline-2 focus-visible:outline-brand-500">
-                            <span className="font-medium text-strong">{connection.title}</span>
-                            <span className="text-muted-foreground">{connection.does}</span>
-                            <span className="mt-1 text-xs font-medium text-brand-300">Set up in a new tab</span>
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
-                    <p className="text-xs text-muted-foreground">None of these is required. You can continue without any of them.</p>
-                  </section>
-                ) : null}
-              </>
-            ) : null}
-
-            {step.id === "prepare" ? (
-              <>
-                <StepHeading eyebrow="Prepare your workspace" title="Your first drafts, and what your team needs" lead="Drafts are prepared for you to review; nothing is published or sent. Each agent's readiness is read from your company's record right now, not from whether setup is finished." />
-                {info ? (
-                  <p className="flex gap-2 rounded-xl border border-brand-500/30 bg-brand-500/8 px-3.5 py-3 text-sm text-strong">
-                    <Sparkles className="mt-0.5 size-4 shrink-0 text-brand-300" aria-hidden />
-                    <span>
-                      <span className="font-medium">Your first priority: {info.title.toLowerCase()}.</span> {info.first}
-                    </span>
-                  </p>
-                ) : null}
-                <PrepareBusiness />
-                <h2 className="text-sm font-semibold text-strong">Your team&apos;s first work</h2>
-                <p className="-mt-2 text-sm text-muted-foreground">Each agent reviews your own records and says what it found. Nobody is contacted and nothing is sent.</p>
-                <AgentWork first={info?.agent ?? null} canEdit={view.canEdit} hiringBrief={Boolean(view.prepared.hiringBrief)} />
-                <Why>You do not need to finish any of this now. Each next step is waiting on the page it belongs to once you open your workspace.</Why>
-              </>
-            ) : null}
-
-            {step.id === "review" ? (
-              <>
-                <StepHeading eyebrow="Review & start" title="Is this right?" lead="This is what Selestial will use across your workspace. You can correct any of it now or later." />
-                {summary}
-                <div className="flex flex-wrap gap-2 text-sm">
-                  {(["basics", "team", "priority"] as const).map((id) => (
-                    <Button key={id} variant="outline" size="sm" onClick={() => void go(id)}>
-                      <PenLine aria-hidden />
-                      Edit {id === "basics" ? "company details" : id === "team" ? "team" : "priority"}
+      <div className={cn("mx-auto grid w-full flex-1 gap-6 px-4 py-6 pb-28 sm:px-6", wide ? "max-w-3xl" : "max-w-6xl lg:grid-cols-[minmax(0,1fr)_20rem]")}>
+        <main className="min-w-0" aria-labelledby="step-heading">
+          <div className="grid gap-5 rounded-2xl border border-border bg-white p-5 shadow-[0_1px_2px_rgba(33,26,53,0.04)] sm:p-7">
+            {stepId === "outcome" ? <OutcomeStep form={form} update={update} /> : null}
+            {stepId === "essentials" ? <EssentialsStep view={view} form={form} update={update} /> : null}
+            {stepId === "context" ? <ContextStep view={view} form={form} update={update} records={records} onLeave={(href) => void leaveTo(href)} /> : null}
+            {stepId === "build" && form.priority ? (
+              status?.started ? (
+                <>
+                  <StepHeading id="step-heading" eyebrow="Step 4 · Build" title="Your workspace is built" lead={status.outdated ? "Your answers changed since it was built. Update it to refresh the drafts you haven't edited; anything you changed is kept." : "Everything is running or ready. See your first result."} />
+                  {status.outdated ? (
+                    <Button variant="outline" className="justify-self-start" loading={busy} onClick={() => void startBuild()}>
+                      Update my workspace
                     </Button>
-                  ))}
-                </div>
-                <MigrationReview />
-                <BeforeStart agent={info?.agent ?? null} canEdit={view.canEdit} />
-                <div className="grid gap-1 border-t border-border pt-4">
-                  <h2 className="font-display text-lg font-semibold text-strong">What Selestial will start</h2>
-                  <p className="text-sm text-muted-foreground">Selestial will begin the work shown below. You can leave this page—we’ll notify you when results are ready.</p>
-                </div>
-                <ActivationReview focus={priority} secondary={secondary} />
-                <Why>Save and exit opens your workspace without starting anything, and switches nothing on. Starting your agents runs only the work above, within the permissions you set.</Why>
+                  ) : null}
+                </>
+              ) : (
+                <BuildStep preview={status && !status.started ? status : undefined} outcome={form.priority} />
+              )
+            ) : null}
+            {stepId === "result" && form.priority ? (
+              <>
+                <StepHeading id="step-heading" eyebrow={info ? `Your first result · ${info.title}` : "Your first result"} title={status?.started ? (status.counts.preparing && !status.counts.usable ? "Your workspace is being prepared" : "Here's what Selestial prepared") : "Preparing your workspace"} lead={status?.started && status.counts.preparing ? "Results appear here as they're ready. You can leave: the work keeps going." : undefined} />
+                {status?.started ? <ResultPanel status={status} onEdit={() => void go(contextNeeded(form.priority, form, records, Boolean(view.prepared.service)) ? "context" : "essentials")} onFinishLater={() => setLeaving(true)} beforeLeave={() => autosave.flush()} /> : <Skeleton className="h-48 rounded-2xl" />}
+                <MorePriorities form={form} update={update} onAdd={() => void startBuild()} busy={busy} running={status?.started === true && status.activation?.status === "running"} />
               </>
             ) : null}
 
             {error ? (
               <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-3.5 py-3 text-sm text-strong" role="alert">
-                <p>{error}</p>
-                {error.includes("somewhere else") ? (
-                  <Button variant="outline" size="sm" className="mt-2" onClick={onReload}>
-                    Load the latest
-                  </Button>
-                ) : null}
+                {error}
               </div>
             ) : null}
           </div>
 
-          <details className={cn("mt-4 rounded-2xl border border-border bg-card lg:hidden", step.id === "review" && "hidden")} open={previewOpen} onToggle={(event) => setPreviewOpen((event.target as HTMLDetailsElement).open)}>
-            <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 px-4 text-sm font-medium text-strong">
-              <Sparkles className="size-4 text-brand-300" aria-hidden />
-              What Selestial knows so far
-              <ChevronDown className={cn("ml-auto size-4 text-muted-foreground transition-transform motion-reduce:transition-none", previewOpen && "rotate-180")} aria-hidden />
-            </summary>
-            <div className="border-t border-border p-4">{summary}</div>
-          </details>
+          {!wide ? (
+            <details className="mt-4 rounded-2xl border border-border bg-white lg:hidden" open={previewOpen} onToggle={(event) => setPreviewOpen((event.target as HTMLDetailsElement).open)}>
+              <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 px-4 text-sm font-medium text-strong">
+                <Sparkles className="size-4 text-[#6838ef]" aria-hidden />
+                What Selestial knows so far
+                <ChevronDown className={cn("ml-auto size-4 text-muted-foreground transition-transform motion-reduce:transition-none", previewOpen && "rotate-180")} aria-hidden />
+              </summary>
+              <div className="border-t border-border p-4">{summary}</div>
+            </details>
+          ) : null}
         </main>
 
-        <aside className={cn("hidden", step.id !== "review" && "lg:block")} aria-label="What Selestial knows so far">
-          <div className="sticky top-6 rounded-2xl border border-border bg-card p-5">
-            <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-strong">
-              <Sparkles className="size-4 text-brand-300" aria-hidden />
-              What Selestial knows so far
-            </p>
-            {summary}
-          </div>
-        </aside>
+        {!wide ? (
+          <aside className="hidden lg:block" aria-label="What Selestial knows so far">
+            <div className="sticky top-6 rounded-2xl border border-border bg-white p-5">
+              <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-strong">
+                <Sparkles className="size-4 text-[#6838ef]" aria-hidden />
+                What Selestial knows so far
+              </p>
+              {summary}
+            </div>
+          </aside>
+        ) : null}
       </div>
 
-      <footer className="sticky bottom-0 border-t border-border bg-card/95 backdrop-blur">
+      <footer className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-white/95 backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2 px-4 py-3 sm:px-6">
           {previous ? (
-            <Button variant="ghost" onClick={() => void go(previous.id)} disabled={state === "saving"}>
+            <Button variant="ghost" onClick={() => void go(previous)} disabled={busy || autosave.status === "saving"}>
               <ArrowLeft aria-hidden />
               Back
             </Button>
@@ -564,109 +413,97 @@ function Flow({ view, setup, onReload }: { view: View; setup: Setup; onReload: (
           <p className="min-w-0 flex-1 text-right text-xs text-muted-foreground" aria-live="polite">
             {blocked ?? ""}
           </p>
-          {step.optional && next ? (
-            <Button variant="outline" onClick={() => void go(next.id, { skip: step.id })} disabled={state === "saving"}>
-              Skip for now
-            </Button>
-          ) : null}
-          {next ? (
-            <Button variant="primary" size="lg" onClick={() => void go(next.id)} disabled={Boolean(blocked) || state === "saving"} loading={state === "saving"}>
-              Continue
+          {stepId === "result" ? (
+            <Button variant="primary" size="lg" onClick={() => void openWorkspace()} loading={busy}>
+              Open my workspace
               <ArrowRight aria-hidden />
             </Button>
+          ) : stepId === "build" && !built ? (
+            <Button variant="primary" size="lg" onClick={() => void startBuild()} disabled={busy || !form.priority} loading={busy}>
+              <Rocket aria-hidden />
+              Build my workspace
+            </Button>
           ) : (
-            <>
-              <Button variant="outline" size="lg" onClick={() => void openWorkspace(true)} disabled={state === "saving"}>
-                Save and exit
-              </Button>
-              <Button variant="primary" size="lg" onClick={() => void startMyAgents()} disabled={state === "saving" || !priority} loading={state === "saving"}>
-                <Rocket aria-hidden />
-                Start my agents
-              </Button>
-            </>
+            <Button variant="primary" size="lg" onClick={() => void next()} disabled={Boolean(blocked) || busy} loading={autosave.status === "saving" && busy}>
+              {stepId === "build" ? "See your result" : "Continue"}
+              <ArrowRight aria-hidden />
+            </Button>
           )}
         </div>
       </footer>
+
+      <Modal open={leaving} onClose={() => setLeaving(false)} title="Save and exit setup?" description="Everything you entered is saved.">
+        <div className="grid gap-3 text-sm">
+          <p className="text-muted-foreground">
+            {built
+              ? "The preparation you started keeps running in the background, and you'll be notified when results are ready. Your agents send nothing and publish nothing on their own."
+              : "Nothing has been prepared yet and no agent work has started. Come back from Home whenever you're ready: setup opens where you left it."}
+          </p>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="ghost" onClick={() => setLeaving(false)}>
+              Stay in setup
+            </Button>
+            <Button variant="primary" loading={busy} onClick={() => void exitNow()}>
+              Save and open my workspace
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
 
-const FOUND_LABELS = { "contact.phone": "Phone", "contact.email": "Email", "company.about": "How you describe the company", "policies.published": "A policy, in your website's words" } as const;
-
-/**
- * A value found on the owner's website, offered beside the field. It is used only if they choose it, and
- * choosing it fills the field the same way typing would: it is saved with the step, like everything else.
- */
-function Suggestion({ found, current, onUse, words }: { found: View["facts"][string] | undefined; current: Value | undefined; onUse: (value: Value) => void; words?: (value: Value) => string }) {
-  const [dismissed, setDismissed] = useState<string[]>([]);
-  const show = (value: Value) => (words ? words(value) : one(value));
-  const offer = found?.conflict && found.conflict.source === "website" ? found.conflict.value : found && found.source === "website" && found.state === "found" ? found.value : null;
-  if (!offer || !suggestionState({ current: current ?? "", proposed: offer, dismissed }).offer) return null;
+/** Additional priorities, after the first result: optional, and added to the workspace only when the owner asks. */
+function MorePriorities({ form, update, onAdd, busy, running }: { form: Form; update: (patch: Patch) => void; onAdd: () => void; busy: boolean; running: boolean }) {
+  const others = PRIORITY_INFO.filter((item) => item.id !== form.priority);
   return (
-    <FieldSuggestion
-      value={show(offer)}
-      source={{ kind: "website" }}
-      reason={found?.conflict ? "Your website says something different from what is here now. Your answer stays unless you apply this." : undefined}
-      applyLabel="Use this"
-      onApply={() => onUse(offer)}
-      onDismiss={() => setDismissed([...dismissed, JSON.stringify(offer)])}
-    />
+    <details className="group rounded-2xl border border-border bg-white">
+      <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 px-4 text-sm font-medium text-strong focus-visible:outline-2 focus-visible:outline-brand-500">
+        Add more priorities (optional)
+        <ChevronDown className="ml-auto size-4 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden />
+      </summary>
+      <div className="grid gap-3 border-t border-border p-4">
+        <p id="more-priorities" className="text-sm text-muted-foreground">
+          Choose anything else Selestial should help with. Nothing changes until you add it to your workspace.
+        </p>
+        <ChoiceChips aria-labelledby="more-priorities" options={others.map((item) => ({ value: item.id, label: item.title }))} value={form.secondary} onValueChange={(next) => update({ secondary: next })} />
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" disabled={!form.secondary.length || running || busy} loading={busy} onClick={onAdd}>
+            Add to my workspace
+          </Button>
+          {running ? <span className="text-xs text-muted-foreground">Your current work is still running. Add these once it settles.</span> : null}
+        </div>
+      </div>
+    </details>
   );
 }
 
-/** Time zones grouped by region, labelled by their main city so people can find theirs by name. */
-function zoneChoices(zones: string[]): Option<string>[] {
-  return zones.map((zone) => {
-    const [region, ...rest] = zone.split("/");
-    const city = rest.length ? rest[rest.length - 1].replace(/_/g, " ") : zone;
-    return { value: zone, label: rest.length ? `${city} (${zone})` : zone, group: rest.length ? region.replace(/_/g, " ") : "Other", keywords: [zone.replace(/_/g, " ")] };
-  });
-}
-
-const AGENT_TONE = { ready_to_work: "success", waiting_for_information: "warning", connection_needed: "info", plan_needed: "info", paused: "outline", not_available: "outline" } as const;
-const AGENT_WORDS = { ready_to_work: "Ready to work", waiting_for_information: "Waiting for information", connection_needed: "Connection needed", plan_needed: "Plan needed", paused: "Paused", not_available: "Not available yet" } as const;
-
-function AgentBadge({ state }: { state: View["agents"][number]["state"] }) {
-  return <Badge variant={AGENT_TONE[state]}>{AGENT_WORDS[state]}</Badge>;
-}
-
 /** What is known, in the owner's words as they type it. Nothing here is a guess: an empty line says "Not given yet". */
-function Summary({ name, timezone, facts, priority, secondary, agents, postalCodes }: { name: string; timezone: string; facts: Record<string, Value>; priority: Priority | null; secondary: Priority[]; agents: View["agents"]; postalCodes: string[] }) {
+function Summary({ form }: { form: Form }) {
   const rows: [string, string][] = [
-    ["Company", name.trim()],
-    ["Based in", one(facts["company.location"])],
-    ["Time zone", timezone],
-    ["Serves", [one(facts["company.areas"]), postalCodes.length ? `booking limited to ${postalCodes.length} postal ${postalCodes.length === 1 ? "code" : "codes"}` : ""].filter(Boolean).join("; ")],
-    ["Cleans for", many(facts["services.categories"]).map((value) => labelOf(CATEGORY_CHOICES, value)).join(", ")],
-    ["Cleaners", [many(facts["workforce.arrangement"]).map((value) => labelOf(WORKFORCE_CHOICES, value)).join(", "), one(facts["scale.cleaners"]) ? `${labelOf(SCALE_CHOICES, one(facts["scale.cleaners"]))} people` : ""].filter(Boolean).join(" · ")],
-    ["Uses today", [...many(facts["tools.current"]).map((value) => labelOf(TOOL_CHOICES, value)), one(facts["tools.other"])].filter(Boolean).join(", ")],
-    ["Website", one(facts["company.website"])],
+    ["Company", form.name.trim()],
+    ["Based in", one(form.facts["company.location"])],
+    ["Time zone", form.timezone ? timeZoneLabel(form.timezone) : ""],
+    ["Cleans for", many(form.facts["services.categories"]).map((value) => CATEGORY_CHOICES.find((choice) => choice.value === value)?.label ?? value).join(", ")],
+    ["Website", one(form.facts["company.website"])],
   ];
-  const first = PRIORITY_INFO.find((item) => item.id === priority);
+  const first = PRIORITY_INFO.find((item) => item.id === form.priority);
   return (
     <div className="grid gap-4">
-      <WebsiteProgress />
+      <div className="rounded-xl bg-[#eee8ff] px-3 py-2.5 text-sm">
+        <p className="text-xs font-medium text-[#5126c7]">First outcome</p>
+        <p className="text-strong">{first ? first.title : "Not chosen yet"}</p>
+        {first ? <p className="mt-0.5 text-xs text-muted-foreground">{first.first}</p> : null}
+      </div>
       <dl className="grid gap-2 text-sm">
         {rows.map(([label, value]) => (
-          <div key={label} className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-2">
+          <div key={label} className="grid grid-cols-[6rem_minmax(0,1fr)] gap-2">
             <dt className="text-muted-foreground">{label}</dt>
             <dd className={cn("min-w-0 break-words", value ? "text-strong" : "text-muted-foreground italic")}>{value || "Not given yet"}</dd>
           </div>
         ))}
       </dl>
-      <div className="rounded-xl bg-muted/50 px-3 py-2.5 text-sm">
-        <p className="text-xs font-medium text-muted-foreground">First priority</p>
-        <p className="text-strong">{first ? first.title : "Not chosen yet"}</p>
-        {secondary.length ? <p className="mt-0.5 text-xs text-muted-foreground">Also: {secondary.map((value) => PRIORITY_INFO.find((item) => item.id === value)?.title.toLowerCase()).join("; ")}</p> : null}
-      </div>
-      <ul className="grid gap-1.5 text-sm" aria-label="Your team's readiness">
-        {agents.map((agent) => (
-          <li key={agent.agent} className="flex items-center justify-between gap-2">
-            <span className="text-strong">{agent.name}</span>
-            <AgentBadge state={agent.state} />
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }
+

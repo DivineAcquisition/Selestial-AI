@@ -10,7 +10,7 @@ import { v } from "convex/values";
 
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { internalAction, internalMutation, internalQuery } from "./_generated/server";
+import { internalAction, internalMutation, internalQuery, type MutationCtx } from "./_generated/server";
 import { companyQuery, ownerMutation } from "./lib/builders";
 import { userError } from "./lib/errors";
 import { byMember, recordEvent } from "./lib/events";
@@ -45,26 +45,56 @@ export const status = companyQuery({
   },
 });
 
-/** Starts reading the owner's site. Asking again while a read runs, or after one finished, finds it. */
+/** How many completed reads setup allows a company: the first, and two corrections. */
+export const MAX_COMPLETED_READS = 3;
+
+/**
+ * Starts reading the owner's site. Asking again while a read runs, or after one finished for the same
+ * site, finds it. Reading a different site after a finished read replaces it, but only when the owner
+ * confirmed that (`replace`), and at most MAX_COMPLETED_READS times. Replacing clears suggestions that
+ * came from the old site and were never confirmed; anything the owner confirmed or typed is kept.
+ */
 export const start = ownerMutation({
-  args: { url: v.string() },
+  args: { url: v.string(), replace: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
     const site = normalizeSite(args.url);
     if (!site.ok) throw userError(site.words);
     const previous = await latest(ctx, ctx.companyId);
-    if (previous && (previous.status === "queued" || previous.status === "reading")) return { readId: previous._id, already: true };
+    if (previous && (previous.status === "queued" || previous.status === "reading")) {
+      if (sameSite(previous.host, site.host)) return { readId: previous._id, already: true, confirm: null };
+      if (!args.replace) return { readId: null, already: false, confirm: { current: previous.host } };
+      await ctx.db.patch(previous._id, { status: "stopped", finishedAt: Date.now(), problem: "Replaced by another address." });
+    }
     if (previous && previous.status === "ready") {
-      if (sameSite(previous.host, site.host)) return { readId: previous._id, already: true };
-      throw userError("Your website was already read once during setup. Correct the details by hand; reading another site isn't offered here yet.");
+      if (sameSite(previous.host, site.host)) return { readId: previous._id, already: true, confirm: null };
+      if (!args.replace) return { readId: null, already: false, confirm: { current: previous.host } };
+      const reads = await ctx.db
+        .query("websiteReads")
+        .withIndex("by_company_started", (q) => q.eq("companyId", ctx.companyId))
+        .take(50);
+      if (reads.filter((row) => row.status === "ready").length >= MAX_COMPLETED_READS) throw userError(`Setup has read ${MAX_COMPLETED_READS} websites for this company, which is the limit. Enter the rest of your details yourself.`);
+      await clearWebsiteSuggestions(ctx, ctx.companyId);
     }
     // The address the owner typed is theirs to state.
     await stateFact(ctx, ctx.companyId, ctx.member._id, "company.website", site.host);
     const readId = await ctx.db.insert("websiteReads", { companyId: ctx.companyId, host: site.host, status: "queued", pages: [], services: [], found: 0, reader: "rules", free: true, requestedBy: ctx.member._id, startedAt: Date.now() });
     await ctx.scheduler.runAfter(0, internal.setupWebsite.run, { readId });
-    await recordEvent(ctx, { companyId: ctx.companyId, type: "setup.website_read_started", actor: byMember(ctx), subject: { table: "companies", id: ctx.companyId }, data: { host: site.host } });
-    return { readId, already: false };
+    await recordEvent(ctx, { companyId: ctx.companyId, type: previous && args.replace ? "setup.website_replaced" : "setup.website_read_started", actor: byMember(ctx), subject: { table: "companies", id: ctx.companyId }, data: { host: site.host } });
+    return { readId, already: false, confirm: null };
   },
 });
+
+/** Suggestions from a website the owner is replacing: unconfirmed ones go, and conflicts it raised close. Confirmed facts stay. */
+async function clearWebsiteSuggestions(ctx: MutationCtx, companyId: Id<"companies">) {
+  const rows = await ctx.db
+    .query("companyFacts")
+    .withIndex("by_company_key", (q) => q.eq("companyId", companyId))
+    .take(200);
+  for (const row of rows) {
+    if (row.state === "found" && row.source === "website") await ctx.db.delete(row._id);
+    else if (row.conflict?.source === "website") await ctx.db.patch(row._id, { conflict: undefined, updatedAt: Date.now() });
+  }
+}
 
 /** Stops a read between pages. What was already read is kept. */
 export const stop = ownerMutation({

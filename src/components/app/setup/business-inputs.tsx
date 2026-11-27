@@ -7,10 +7,12 @@
  * show the same thing. Every field can be left blank: blank means "I don't know", never zero.
  */
 import { useMutation, useQuery } from "convex/react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { useCompany } from "@/components/app/company";
 import { Field, messageOf, TextArea, TextInput } from "@/components/app/form";
+import { Button } from "@/components/ui/button";
+import { Checkbox, ChoiceChips, Select } from "@/components/ui/selection";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
@@ -54,41 +56,53 @@ const minutes = (value: string) => {
 /** ZIP codes from whatever the owner typed: spaces, commas or new lines. */
 export const zipsFrom = (text: string) => [...new Set(text.split(/[\s,;]+/).map((z) => z.trim()).filter(Boolean))];
 
-function Saved({ state }: { state: "idle" | "saving" | "saved" | "failed" }) {
+type SaveState = "idle" | "unsaved" | "saving" | "saved" | "failed";
+
+/** "Saved" only once the server confirmed it; a change still in the field says "Unsaved changes". */
+function Saved({ state }: { state: SaveState }) {
   if (state === "idle") return null;
   return (
     <span role="status" className={cn("text-xs", state === "failed" ? "text-destructive-foreground" : "text-muted-foreground")}>
-      {state === "saving" ? "Saving…" : state === "saved" ? "Saved" : "Not saved"}
+      {state === "saving" ? "Saving…" : state === "saved" ? "Saved" : state === "unsaved" ? "Unsaved changes" : "Not saved. Your entry is kept here; try again."}
     </span>
   );
 }
 
 function useSave() {
-  const [state, setState] = useState<"idle" | "saving" | "saved" | "failed">("idle");
+  const [state, setState] = useState<SaveState>("idle");
   const [error, setError] = useState<string | null>(null);
+  // Only the newest save may set the state, so a slow older response never shows "Saved" over a newer edit.
+  const latest = useRef(0);
   async function save(work: () => Promise<unknown>) {
+    const mine = ++latest.current;
     setState("saving");
     setError(null);
     try {
       await work();
-      setState("saved");
+      if (mine === latest.current) setState("saved");
     } catch (caught) {
-      setState("failed");
-      setError(messageOf(caught));
+      if (mine === latest.current) {
+        setState("failed");
+        setError(messageOf(caught));
+      }
     }
   }
-  return { state, error, save };
+  const dirty = () => setState("unsaved");
+  return { state, error, save, dirty };
 }
 
-export function BusinessInputs({ compact = false }: { compact?: boolean }) {
+type SectionId = "services" | "costs" | "availability";
+
+/** The answers business configuration reads. Setup shows only the section its outcome needs; the review page shows all. */
+export function BusinessInputs({ compact = false, sections = ["services", "costs", "availability"] }: { compact?: boolean; sections?: SectionId[] }) {
   const { companyId } = useCompany();
   const inputs = useQuery(api.configure.inputs, { companyId });
   if (inputs === undefined) return <Skeleton className="h-72 rounded-2xl" />;
   return (
     <div className="grid gap-5">
-      <Offering inputs={inputs} />
-      <CostsForm inputs={inputs} compact={compact} />
-      <Availability inputs={inputs} />
+      {sections.includes("services") ? <Offering inputs={inputs} /> : null}
+      {sections.includes("costs") ? <CostsForm inputs={inputs} compact={compact} /> : null}
+      {sections.includes("availability") ? <Availability inputs={inputs} /> : null}
     </div>
   );
 }
@@ -136,7 +150,7 @@ function Offering({ inputs }: { inputs: Inputs }) {
             <div className="grid gap-2 sm:grid-cols-2">
               {group.choices.map((choice) => (
                 <label key={choice.templateId} className={cn("flex cursor-pointer gap-3 rounded-xl border px-3.5 py-3 text-sm transition-colors", picked.includes(choice.templateId) ? "border-brand-500/50 bg-brand-500/5" : "border-border hover:border-brand-500/30")}>
-                  <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-brand-500" checked={picked.includes(choice.templateId)} onChange={() => toggle(choice.templateId)} disabled={!inputs.canEdit} />
+                  <Checkbox className="mt-0.5 shrink-0" checked={picked.includes(choice.templateId)} onCheckedChange={() => toggle(choice.templateId)} disabled={!inputs.canEdit} />
                   <span className="min-w-0">
                     <span className="block font-medium text-strong">{choice.label}</span>
                     <span className="block text-muted-foreground">{choice.hint}</span>
@@ -153,10 +167,16 @@ function Offering({ inputs }: { inputs: Inputs }) {
   );
 }
 
-function CostsForm({ inputs, compact }: { inputs: Inputs; compact: boolean }) {
+const PAY_OPTIONS = [
+  { value: "hourly", label: "By the hour" },
+  { value: "per_visit", label: "A set amount per visit" },
+  { value: "revenue_share", label: "A share of the price" },
+] as const;
+
+export function CostsForm({ inputs, compact }: { inputs: Inputs; compact: boolean }) {
   const { companyId } = useCompany();
   const saveCosts = useMutation(api.configure.saveCosts);
-  const { state, error, save } = useSave();
+  const { state, error, save, dirty } = useSave();
   const initial = inputs.costs;
   const [model, setModel] = useState<"" | NonNullable<Pay>["model"]>(initial.pay?.model ?? "");
   const [payAmount, setPayAmount] = useState(initial.pay?.model === "hourly" ? fromCents(initial.pay.hourlyCents) : initial.pay?.model === "per_visit" ? fromCents(initial.pay.amountCents) : initial.pay?.model === "revenue_share" ? String(initial.pay.sharePercent) : "");
@@ -185,59 +205,74 @@ function CostsForm({ inputs, compact }: { inputs: Inputs; compact: boolean }) {
     void save(() => saveCosts({ companyId, pay: payFrom(v.model, v.payAmount, v.burden), targetMarginPercent: toNumber(v.margin), minimumJobCents: toCents(v.minimum), suppliesPerVisitCents: toCents(v.supplies) }));
   };
   const disabled = !inputs.canEdit;
+  const edit = (set: (value: string) => void) => (event: React.ChangeEvent<HTMLInputElement>) => {
+    set(event.target.value);
+    dirty();
+  };
 
   return (
-    <Section id="costs" title="What a job costs you" lead="With what you pay cleaners and the margin you aim for, Selestial works out suggested prices and shows every assumption. Leave anything blank if you don't know: prices then stay as template examples, clearly marked." aside={<Saved state={state} />}>
+    <Section id="costs" title="What a job costs you" lead="Two answers are enough to start: how you pay cleaners and the margin you aim for. Selestial works out suggested prices and shows every assumption. They stay drafts until you approve them." aside={<Saved state={state} />}>
       <div className={cn("grid gap-3", !compact && "sm:grid-cols-2")}>
         <Field label="How you pay cleaners">
-          <select
-            className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
+          <Select
             value={model}
             disabled={disabled}
-            onChange={(event) => {
-              const next = event.target.value as typeof model;
-              setModel(next);
+            options={PAY_OPTIONS}
+            placeholder="I don't know yet"
+            emptyLabel="I don't know yet"
+            onValueChange={(next) => {
+              const value = (next ?? "") as typeof model;
+              setModel(value);
               setPayAmount("");
-              commit({ model: next, payAmount: "" });
+              commit({ model: value, payAmount: "" });
             }}
-          >
-            <option value="">I don&apos;t know yet</option>
-            <option value="hourly">By the hour</option>
-            <option value="per_visit">A set amount per visit</option>
-            <option value="revenue_share">A share of the price</option>
-          </select>
+          />
         </Field>
         {model ? (
           <Field label={model === "hourly" ? "Hourly wage ($)" : model === "per_visit" ? "Pay per visit ($)" : "Cleaner's share (%)"}>
-            <TextInput inputMode="decimal" value={payAmount} disabled={disabled} onChange={(e) => setPayAmount(e.target.value)} onBlur={() => commit()} placeholder={model === "revenue_share" ? "e.g. 45" : "e.g. 22"} />
-          </Field>
-        ) : null}
-        {model === "hourly" ? (
-          <Field label="Payroll costs on top (%)" hint="Taxes, insurance and benefits, as a share of the wage. Leave blank for none.">
-            <TextInput inputMode="decimal" value={burden} disabled={disabled} onChange={(e) => setBurden(e.target.value)} onBlur={() => commit()} placeholder="e.g. 12" />
+            <TextInput inputMode="decimal" value={payAmount} disabled={disabled} onChange={edit(setPayAmount)} onBlur={() => commit()} placeholder={model === "revenue_share" ? "e.g. 45" : "e.g. 22"} />
           </Field>
         ) : null}
         <Field label="Margin you aim for (%)" hint="What's left of the price after direct costs.">
-          <TextInput inputMode="decimal" value={margin} disabled={disabled} onChange={(e) => setMargin(e.target.value)} onBlur={() => commit()} placeholder="e.g. 40" />
-        </Field>
-        <Field label="Smallest job you take ($)">
-          <TextInput inputMode="decimal" value={minimum} disabled={disabled} onChange={(e) => setMinimum(e.target.value)} onBlur={() => commit()} placeholder="e.g. 120" />
-        </Field>
-        <Field label="Supplies per visit ($)">
-          <TextInput inputMode="decimal" value={supplies} disabled={disabled} onChange={(e) => setSupplies(e.target.value)} onBlur={() => commit()} placeholder="e.g. 8" />
+          <TextInput inputMode="decimal" value={margin} disabled={disabled} onChange={edit(setMargin)} onBlur={() => commit()} placeholder="e.g. 40" />
         </Field>
       </div>
+      <details className="group rounded-xl border border-border px-3.5 py-2.5" open={Boolean(burden || minimum || supplies) || undefined}>
+        <summary className="cursor-pointer text-sm font-medium text-strong focus-visible:outline-2 focus-visible:outline-brand-500">More costs (optional): payroll, minimum job, supplies</summary>
+        <div className={cn("mt-3 grid gap-3", !compact && "sm:grid-cols-2")}>
+          {model === "hourly" ? (
+            <Field label="Payroll costs on top (%)" hint="Taxes, insurance and benefits, as a share of the wage. Leave blank for none.">
+              <TextInput inputMode="decimal" value={burden} disabled={disabled} onChange={edit(setBurden)} onBlur={() => commit()} placeholder="e.g. 12" />
+            </Field>
+          ) : null}
+          <Field label="Smallest job you take ($)">
+            <TextInput inputMode="decimal" value={minimum} disabled={disabled} onChange={edit(setMinimum)} onBlur={() => commit()} placeholder="e.g. 120" />
+          </Field>
+          <Field label="Supplies per visit ($)">
+            <TextInput inputMode="decimal" value={supplies} disabled={disabled} onChange={edit(setSupplies)} onBlur={() => commit()} placeholder="e.g. 8" />
+          </Field>
+        </div>
+      </details>
       {error ? <p role="alert" className="text-sm text-destructive-foreground">{error}</p> : null}
     </Section>
   );
 }
 
-function Availability({ inputs }: { inputs: Inputs }) {
+/** Copies one day's hours to the days chosen, keeping every other day as it is. Pure, for the shortcut below. */
+export function copyHours(hours: Hours, from: number, to: number[]): Hours {
+  const source = hours.find((h) => h.weekday === from);
+  if (!source) return hours;
+  const kept = hours.filter((h) => h.weekday === from || !to.includes(h.weekday));
+  return [...kept, ...to.filter((day) => day !== from).map((weekday) => ({ weekday, startMinute: source.startMinute, endMinute: source.endMinute }))].sort((a, b) => a.weekday - b.weekday);
+}
+
+export function Availability({ inputs }: { inputs: Inputs }) {
   const { companyId } = useCompany();
   const saveAvailability = useMutation(api.configure.saveAvailability);
-  const { state, error, save } = useSave();
+  const { state, error, save, dirty } = useSave();
   const [zips, setZips] = useState(inputs.serviceAreas.join(", "));
   const [hours, setHours] = useState<Hours>(inputs.hours);
+  const [copying, setCopying] = useState<{ from: number; to: string[] } | null>(null);
   const disabled = !inputs.canEdit;
   const commit = (nextHours: Hours, nextZips = zips) => void save(async () => {
     const result = await saveAvailability({ companyId, serviceAreas: zipsFrom(nextZips), hours: nextHours });
@@ -248,36 +283,84 @@ function Availability({ inputs }: { inputs: Inputs }) {
     const next = [...hours.filter((h) => h.weekday !== weekday), ...(window ? [{ weekday, ...window }] : [])].sort((a, b) => a.weekday - b.weekday);
     setHours(next);
     if (persist) commit(next);
+    else dirty();
   };
 
   return (
-    <Section id="availability" title="Where and when you take bookings" lead={`Your booking form checks addresses against these ZIP codes and offers times inside these hours (${inputs.timezone}). Both are optional now, and live in your Company profile.`} aside={<Saved state={state} />}>
-      <Field label="ZIP codes you serve" hint="Separate them with commas or spaces.">
-        <TextArea value={zips} disabled={disabled} onChange={(e) => setZips(e.target.value)} onBlur={() => commit(hours)} placeholder="78701, 78702, 78703" rows={2} />
-      </Field>
+    <Section id="availability" title="When you take bookings" lead={`Your booking form offers times inside these hours (${inputs.timezone}). Optional now: set one day and copy it to the others.`} aside={<Saved state={state} />}>
       <fieldset className="grid gap-1.5">
         <legend className="mb-1 text-sm font-medium text-strong">Days and hours</legend>
         {DAYS.map((day) => {
           const window = dayOf(day.weekday);
           return (
-            <div key={day.weekday} className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm">
-              <label className="flex min-w-32 items-center gap-2">
-                <input type="checkbox" className="size-4 accent-brand-500" checked={window !== null} disabled={disabled} onChange={(e) => setDay(day.weekday, e.target.checked ? { startMinute: 8 * 60, endMinute: 17 * 60 } : null, true)} />
-                <span className="text-strong">{day.label}</span>
-              </label>
-              {window ? (
-                <span className="flex items-center gap-1.5">
-                  <input aria-label={`${day.label} opens`} type="time" className="h-9 rounded-md border border-input bg-background px-2" value={clock(window.startMinute)} disabled={disabled} onChange={(e) => { const m = minutes(e.target.value); if (m !== null) setDay(day.weekday, { ...window, startMinute: m }, false); }} onBlur={() => commit(hours)} />
-                  <span className="text-muted-foreground">to</span>
-                  <input aria-label={`${day.label} closes`} type="time" className="h-9 rounded-md border border-input bg-background px-2" value={clock(window.endMinute)} disabled={disabled} onChange={(e) => { const m = minutes(e.target.value); if (m !== null) setDay(day.weekday, { ...window, endMinute: m }, false); }} onBlur={() => commit(hours)} />
-                </span>
-              ) : (
-                <span className="text-muted-foreground">Closed</span>
-              )}
+            <div key={day.weekday} className="grid gap-2 rounded-lg border border-border px-3 py-2 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex min-w-32 items-center gap-2">
+                  <Checkbox checked={window !== null} disabled={disabled} onCheckedChange={(checked) => setDay(day.weekday, checked ? { startMinute: 8 * 60, endMinute: 17 * 60 } : null, true)} />
+                  <span className="text-strong">{day.label}</span>
+                </label>
+                {window ? (
+                  <span className="flex items-center gap-1.5">
+                    <input aria-label={`${day.label} opens`} type="time" className="h-9 rounded-md border border-input bg-background px-2 focus-visible:outline-2 focus-visible:outline-brand-500" value={clock(window.startMinute)} disabled={disabled} onChange={(e) => { const m = minutes(e.target.value); if (m !== null) setDay(day.weekday, { ...window, startMinute: m }, false); }} onBlur={() => commit(hours)} />
+                    <span className="text-muted-foreground">to</span>
+                    <input aria-label={`${day.label} closes`} type="time" className="h-9 rounded-md border border-input bg-background px-2 focus-visible:outline-2 focus-visible:outline-brand-500" value={clock(window.endMinute)} disabled={disabled} onChange={(e) => { const m = minutes(e.target.value); if (m !== null) setDay(day.weekday, { ...window, endMinute: m }, false); }} onBlur={() => commit(hours)} />
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">Closed</span>
+                )}
+                {window && !disabled ? (
+                  <Button variant="ghost" size="xs" className="ml-auto" aria-expanded={copying?.from === day.weekday} onClick={() => setCopying(copying?.from === day.weekday ? null : { from: day.weekday, to: [] })}>
+                    Copy to other days
+                  </Button>
+                ) : null}
+              </div>
+              {copying?.from === day.weekday ? (
+                <div className="grid gap-2 rounded-md bg-muted/40 p-2">
+                  <p id={`copy-${day.weekday}`} className="text-xs text-muted-foreground">
+                    Copy {day.label}&apos;s hours to:
+                  </p>
+                  <ChoiceChips
+                    aria-labelledby={`copy-${day.weekday}`}
+                    density="compact"
+                    options={DAYS.filter((d) => d.weekday !== day.weekday).map((d) => ({ value: String(d.weekday), label: d.label.slice(0, 3) }))}
+                    value={copying.to}
+                    onValueChange={(to) => setCopying({ from: day.weekday, to })}
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="xs" variant="outline" onClick={() => setCopying({ from: day.weekday, to: ["1", "2", "3", "4", "5"].filter((d) => d !== String(day.weekday)) })}>
+                      Weekdays
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="primary"
+                      disabled={copying.to.length === 0}
+                      onClick={() => {
+                        const next = copyHours(hours, day.weekday, copying.to.map(Number));
+                        setHours(next);
+                        commit(next);
+                        setCopying(null);
+                      }}
+                    >
+                      Copy hours
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           );
         })}
       </fieldset>
+      <details className="rounded-xl border border-border px-3.5 py-2.5" open={zips.trim() ? true : undefined}>
+        <summary className="cursor-pointer text-sm font-medium text-strong focus-visible:outline-2 focus-visible:outline-brand-500">Limit online booking to ZIP codes (optional)</summary>
+        <div className="mt-3 grid gap-2">
+          <p className="text-xs text-muted-foreground">
+            This is a real booking rule: an address outside these ZIP codes can&apos;t book online. The areas you described in your company details are only description and limit nothing.
+          </p>
+          <Field label="ZIP codes customers may book from" hint="Separate them with commas or spaces. Leave empty to accept any address.">
+            <TextArea value={zips} disabled={disabled} onChange={(e) => { setZips(e.target.value); dirty(); }} onBlur={() => commit(hours)} placeholder="78701, 78702, 78703" rows={2} />
+          </Field>
+        </div>
+      </details>
       {error ? <p role="alert" className="text-sm text-destructive-foreground">{error}</p> : null}
     </Section>
   );

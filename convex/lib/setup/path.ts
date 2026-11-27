@@ -1,63 +1,107 @@
 /**
- * The setup path: which steps and questions this owner sees. Pure, and shared by the functions and the
+ * The setup path: which screens and questions this owner sees. Pure, and shared by the functions and the
  * screens, so the server and the browser never disagree about what comes next.
  *
- * A question is asked only when its answer is not already known, it matters for what the owner chose, and
- * it cannot simply wait. Every question can be answered "I'm not sure".
+ * The journey is fixed at five stages: choose an outcome → confirm essentials → add relevant context →
+ * build the workspace → review the first useful result. The number of stages never changes, so the
+ * progress bar never moves backward; only the questions inside "Add relevant context" depend on the
+ * outcome, and a question is asked only when nothing the company already has answers it: an earlier
+ * answer, a confirmed fact, or a record (an upcoming visit, a customer, a connected inbox). When nothing
+ * is left to ask, the context stage is passed through on its own.
  */
-import type { Choice } from "./facts";
+import type { Choice, FactKey } from "./facts";
 import type { Priority } from "./schema";
 
 export const STAGES = [
-  { id: "company", label: "Your company" },
-  { id: "priority", label: "Your priority" },
-  { id: "prepare", label: "Prepare your workspace" },
-  { id: "review", label: "Review & start" },
+  { id: "outcome", label: "Choose an outcome" },
+  { id: "essentials", label: "Confirm essentials" },
+  { id: "context", label: "Add context" },
+  { id: "build", label: "Build your workspace" },
+  { id: "result", label: "Review your first result" },
 ] as const;
 export type StageId = (typeof STAGES)[number]["id"];
 
 export type PriorityInfo = {
   id: Priority;
   title: string;
+  /** One line under the choice: what it leads to. */
+  hint: string;
   /** The launch agent that does this work, or null for setup the owner does with Selestial's help. */
   agent: "sales" | "dispatch" | "recruiter" | "retention" | null;
   /** What the owner gets first, in one sentence. */
   first: string;
-  /** Said plainly when the work behind it is not built yet. */
-  caveat?: string;
 };
 
 export const PRIORITY_INFO: PriorityInfo[] = [
-  { id: "sales", title: "Turn more inquiries into bookings", agent: "sales", first: "Start with Sales. We'll prepare your inquiry process and show which leads are ready for follow-up." },
-  { id: "dispatch", title: "Keep jobs covered and organized", agent: "dispatch", first: "Start with Dispatch. We'll check your upcoming jobs for missing coverage and show who could cover them and which cleaners haven't given you their hours." },
-  { id: "recruiter", title: "Find and onboard cleaners", agent: "recruiter", first: "Start with Recruiter. We'll prepare your hiring brief and what you screen for, ready to review applicants." },
-  {
-    id: "retention",
-    title: "Keep customers coming back",
-    agent: "retention",
-    first: "Start with Retention. We'll get your customer records and recurring service ready, so follow-up has what it needs.",
-  },
-  { id: "pricing", title: "Set up services and pricing", agent: null, first: "We'll prepare one service you can review, with a live quote preview, before anything is published." },
-  { id: "booking", title: "Get agreements and booking ready", agent: null, first: "We'll prepare a booking page draft and a service agreement draft for you to review." },
+  { id: "sales", title: "Turn more inquiries into bookings", hint: "A quote or booking form, and answers to common customer questions.", agent: "sales", first: "Sales prepares your quote request or booking form and proposed answers to common questions." },
+  { id: "dispatch", title: "Keep upcoming jobs covered", hint: "A coverage review of your real upcoming jobs and cleaners.", agent: "dispatch", first: "Dispatch reviews coverage for your upcoming jobs and names what is missing." },
+  { id: "recruiter", title: "Find and onboard cleaners", hint: "A hiring role, application and screening questions.", agent: "recruiter", first: "Recruiter drafts your hiring role, application and screening questions." },
+  { id: "retention", title: "Keep customers coming back", hint: "Follow-up opportunities found in your customer history.", agent: "retention", first: "Retention reviews your customers and past visits for real follow-up opportunities." },
+  { id: "pricing", title: "Set up services and pricing", hint: "Service drafts with your prices, or help working them out.", agent: null, first: "We prepare your service drafts, with your prices or clearly marked examples." },
+  { id: "booking", title: "Launch my booking form", hint: "A booking form preview, and what it needs to go live.", agent: null, first: "We prepare a booking form preview and show exactly what it needs before it can be published." },
 ];
+
+/** Everything the company already has that can answer a question, so it is not asked again. */
+export type Known = {
+  answers: Record<string, string | string[]>;
+  /** Confirmed facts only. A fact merely found on a website answers nothing. */
+  facts: Partial<Record<FactKey, string | string[]>>;
+  records: { upcomingJobs: number; readyCleaners: number; customers: number; completedJobs: number; activeServices: number; openInquiries: number; hiringInbox: "connected" | "broken" | "none"; openRoles: number };
+};
+
+export const NO_RECORDS: Known["records"] = { upcomingJobs: 0, readyCleaners: 0, customers: 0, completedJobs: 0, activeServices: 0, openInquiries: 0, hiringInbox: "none", openRoles: 0 };
 
 export type Question = {
   id: string;
-  /** The priorities this question matters for. */
+  /** The outcomes this question matters for. */
   for: Priority[];
   title: string;
-  /** Why it is asked, when that is not obvious. */
+  /** Why it is asked, in one sentence. */
   why: string;
-  kind: "single" | "multi";
+  kind: "single" | "multi" | "text";
   choices: Choice[];
-  /** Can be skipped without stopping anything. */
+  /** Can be left without stopping anything. */
   optional: boolean;
+  /** Saved as a confirmed company fact instead of a setup answer, so every agent reads it. */
+  fact?: FactKey;
+  placeholder?: string;
+  /** What else already answers it. Returns the reason in the owner's words, or null when it must be asked. */
+  answeredBy?: (known: Known) => string | null;
 };
+
+export const UNSURE = "unsure";
+
+const has = (value: string | string[] | undefined) => (Array.isArray(value) ? value.length > 0 : typeof value === "string" && value.trim() !== "");
+
+/** The answers to "Do you already have prices?" an older setup gave, read as the new question's answer. */
+export function pricingPath(answers: Record<string, string | string[]>): "existing" | "assist" | "later" | null {
+  const direct = answers["pricing.path"];
+  if (direct === "existing" || direct === "assist" || direct === "later") return direct;
+  const legacy = answers["pricing.state"];
+  if (legacy === "set_prices" || legacy === "some_prices") return "existing";
+  if (legacy === "starting_out") return "assist";
+  if (legacy === "quote_each") return "later";
+  return null;
+}
 
 export const QUESTIONS: Question[] = [
   {
+    id: "pricing.path",
+    for: ["pricing", "sales", "booking"],
+    title: "Do you already have prices you want to use?",
+    why: "A firm price needs one you have approved. Without one, customers can still ask for a quote.",
+    kind: "single",
+    choices: [
+      { value: "existing", label: "Yes, use my existing prices", hint: "Enter one service and its price now; add the rest later." },
+      { value: "assist", label: "Help me work out my prices", hint: "A few costs, with every assumption shown. Nothing is published." },
+      { value: "later", label: "I'll finish pricing later", hint: "Customers ask for a quote until you set prices." },
+    ],
+    optional: false,
+    answeredBy: (k) => (pricingPath(k.answers) ? "You answered this earlier." : k.records.activeServices > 0 ? "You already have a published service with prices." : null),
+  },
+  {
     id: "inquiries.channels",
-    for: ["sales", "booking"],
+    for: ["sales"],
     title: "How do new customers reach you today?",
     why: "Sales starts where your inquiries already arrive, instead of asking you to move them.",
     kind: "multi",
@@ -73,24 +117,32 @@ export const QUESTIONS: Question[] = [
     optional: false,
   },
   {
-    id: "pricing.state",
-    for: ["sales", "pricing", "booking"],
-    title: "How do you price a job today?",
-    why: "A firm quote needs a price you have approved. Without one, we prepare a quote request instead of a price.",
-    kind: "single",
-    choices: [
-      { value: "set_prices", label: "I have set prices", hint: "A price list or a formula you already use" },
-      { value: "some_prices", label: "Some services are priced", hint: "Others I quote one by one" },
-      { value: "quote_each", label: "I quote every job myself" },
-      { value: "starting_out", label: "I'm still working it out" },
-    ],
-    optional: false,
+    id: "company.areas",
+    for: ["sales", "booking"],
+    title: "Which areas do you serve?",
+    why: "Sales can answer \"Do you come to me?\". This is description only: it does not limit who can book.",
+    kind: "text",
+    choices: [],
+    optional: true,
+    fact: "company.areas",
+    placeholder: "Austin, Round Rock and Cedar Park",
+  },
+  {
+    id: "contact.phone",
+    for: ["sales", "booking"],
+    title: "What number should customers call or text?",
+    why: "Shown on your booking form and in answers Sales proposes. Nothing is sent from it.",
+    kind: "text",
+    choices: [],
+    optional: true,
+    fact: "contact.phone",
+    placeholder: "(512) 555-0100",
   },
   {
     id: "jobs.where",
-    for: ["dispatch", "retention"],
+    for: ["dispatch"],
     title: "Where is your schedule kept today?",
-    why: "Dispatch can only cover jobs it can see. This tells us the simplest way to bring yours in.",
+    why: "Dispatch can only review jobs it can see. This tells us the simplest way to bring yours in.",
     kind: "single",
     choices: [
       { value: "calendar", label: "A calendar", hint: "Google Calendar or similar" },
@@ -100,12 +152,13 @@ export const QUESTIONS: Question[] = [
       { value: "none_yet", label: "No regular jobs yet" },
     ],
     optional: false,
+    answeredBy: (k) => (k.records.upcomingJobs > 0 ? `You already have ${k.records.upcomingJobs === 1 ? "an upcoming job" : `${k.records.upcomingJobs} upcoming jobs`} in Selestial.` : null),
   },
   {
     id: "jobs.assigning",
     for: ["dispatch"],
     title: "How do cleaners get their jobs?",
-    why: "Dispatch offers work the way your cleaners already expect it.",
+    why: "Dispatch proposes cleaners the way your team already expects. It sends no offers on its own.",
     kind: "single",
     choices: [
       { value: "i_assign", label: "I assign every job" },
@@ -127,12 +180,27 @@ export const QUESTIONS: Question[] = [
       { value: "pipeline", label: "Not yet, but I want applicants ready" },
     ],
     optional: false,
+    answeredBy: (k) => (k.records.openRoles > 0 ? "You already have an open role." : null),
+  },
+  {
+    id: "workforce.arrangement",
+    for: ["recruiter"],
+    title: "How will this cleaner work with you?",
+    why: "Employees and contractors get different role wording and onboarding. We never ask for pay rates or bank details here.",
+    kind: "multi",
+    choices: [
+      { value: "employees", label: "Employee", hint: "On your payroll" },
+      { value: "contractors", label: "Independent contractor", hint: "Paid per job or by share" },
+      { value: "subcontractors", label: "Subcontractor company", hint: "Another company supplies the cleaner" },
+    ],
+    optional: false,
+    fact: "workforce.arrangement",
   },
   {
     id: "hiring.sources",
     for: ["recruiter"],
     title: "Where do applicants come from?",
-    why: "Recruiter only contacts people who applied to you. This tells us where to look for them.",
+    why: "If applicants email you, you can connect a hiring inbox later. It is read only for applications, and only after you authorize it.",
     kind: "multi",
     choices: [
       { value: "job_boards", label: "Job boards", hint: "Indeed, Craigslist and similar" },
@@ -145,7 +213,7 @@ export const QUESTIONS: Question[] = [
   },
   {
     id: "customers.where",
-    for: ["retention", "sales"],
+    for: ["retention"],
     title: "Where are your customer records today?",
     why: "Follow-up needs to know who your customers are and when you last cleaned for them.",
     kind: "single",
@@ -155,82 +223,105 @@ export const QUESTIONS: Question[] = [
       { value: "phone", label: "My phone and messages" },
       { value: "few", label: "I only have a few so far" },
     ],
-    optional: true,
-  },
-  {
-    id: "agreements.have",
-    for: ["booking"],
-    title: "Do you have a service agreement you use today?",
-    why: "We start from your own wording when you have it, and from a template when you don't.",
-    kind: "single",
-    choices: [
-      { value: "own", label: "Yes, my own document" },
-      { value: "informal", label: "Only terms in emails or texts" },
-      { value: "none", label: "No, I need one" },
-    ],
-    optional: true,
+    optional: false,
+    answeredBy: (k) => (k.records.customers > 0 ? `You already have ${k.records.customers === 1 ? "a customer" : `${k.records.customers} customers`} in Selestial.` : null),
   },
 ];
 
-export const UNSURE = "unsure";
+/** Whether a question is already answered, and by what. A confirmed fact or a record counts; a found fact does not. */
+export function answeredBy(question: Question, known: Known): string | null {
+  if (question.fact) {
+    if (has(known.facts[question.fact])) return "Already in your company details.";
+  } else if (has(known.answers[question.id])) {
+    return "You answered this earlier.";
+  }
+  return question.answeredBy?.(known) ?? null;
+}
 
-/** The questions for what this owner chose, in order, each asked once however many priorities want it. */
-export function questionsFor(primary: Priority | undefined, secondary: Priority[]): Question[] {
+export type ContextQuestion = { question: Question; answeredBy: string | null };
+
+/** Every question for this outcome, each with whether something already answers it. */
+export function contextFor(primary: Priority | undefined | null, known: Known): ContextQuestion[] {
   if (!primary) return [];
-  const chosen = [primary, ...secondary.filter((value) => value !== primary)];
-  // The first priority's questions come first; a secondary priority adds only its required ones.
-  return QUESTIONS.filter((question) => question.for.includes(primary) || (!question.optional && question.for.some((value) => chosen.includes(value)))).sort(
-    (a, b) => Number(b.for.includes(primary)) - Number(a.for.includes(primary)),
-  );
+  return QUESTIONS.filter((question) => question.for.includes(primary)).map((question) => ({ question, answeredBy: answeredBy(question, known) }));
 }
 
-export type Step = { id: string; stage: StageId; optional: boolean };
-
-/** Every step of this owner's path. It changes only when their choices do. */
-export function stepsFor(primary: Priority | undefined, secondary: Priority[]): Step[] {
-  return [
-    { id: "start", stage: "company", optional: false },
-    { id: "basics", stage: "company", optional: false },
-    { id: "team", stage: "company", optional: true },
-    { id: "priority", stage: "priority", optional: false },
-    ...questionsFor(primary, secondary).map((question) => ({ id: `q:${question.id}`, stage: "priority" as const, optional: question.optional })),
-    // Services, costs, ZIP codes and hours for business configuration. Each answer saves to its own record.
-    { id: "offer", stage: "prepare", optional: true },
-    { id: "records", stage: "prepare", optional: true },
-    { id: "prepare", stage: "prepare", optional: false },
-    { id: "review", stage: "review", optional: false },
-  ];
+/** The questions still to ask for this outcome. */
+export function toAsk(primary: Priority | undefined | null, known: Known): Question[] {
+  return contextFor(primary, known)
+    .filter((row) => row.answeredBy === null)
+    .map((row) => row.question);
 }
 
-const answered = (value: string | string[] | undefined) => (Array.isArray(value) ? value.length > 0 : Boolean(value));
-
-/** How far along the path the owner is, counted in the steps of their own path. */
-export function progress(input: { primary?: Priority; secondary: Priority[]; step: string; answers: Record<string, string | string[]>; skipped: string[] }): { done: number; total: number; stage: StageId } {
-  const steps = stepsFor(input.primary, input.secondary);
-  const at = Math.max(0, steps.findIndex((step) => step.id === input.step));
-  return { done: at, total: steps.length, stage: steps[at]?.stage ?? "company" };
+/** Required questions nothing answers yet: what keeps "Add context" from being complete. */
+export function unanswered(primary: Priority | undefined | null, known: Known): Question[] {
+  return toAsk(primary, known).filter((question) => !question.optional);
 }
 
-/** Required questions still unanswered: what stops "Review & start" from being offered as complete. */
-export function unanswered(primary: Priority | undefined, secondary: Priority[], answers: Record<string, string | string[]>): Question[] {
-  return questionsFor(primary, secondary).filter((question) => !question.optional && !answered(answers[question.id]));
+/** Questions this setup may save an answer to: those of its outcome and any additional priorities. */
+export function allowedQuestions(primary: Priority | undefined | null, secondary: Priority[]): Question[] {
+  const chosen = [primary, ...secondary].filter(Boolean) as Priority[];
+  return QUESTIONS.filter((question) => question.for.some((value) => chosen.includes(value)));
+}
+
+export type Step = { id: StageId; stage: StageId; optional: boolean; label: string };
+
+/** The five stages, always. "Add context" is optional, and passed through when nothing is left to ask. */
+export function stepsFor(): Step[] {
+  return STAGES.map((stage) => ({ id: stage.id, stage: stage.id, label: stage.label, optional: stage.id === "context" }));
+}
+
+/**
+ * Answers business configuration still reads (configure.ts) that the shorter path no longer asks on its own
+ * screen: how pricing works today, and whether they have their own agreement. They can still be saved.
+ */
+export const KEPT_ANSWERS = ["pricing.state", "agreements.have"] as const;
+
+const LEGACY_STEPS = ["start", "basics", "team", "priority", "offer", "records", "prepare", "review"];
+
+/** A step id setup accepts: a stage, or one of the earlier setup's ids (saved as the stage that holds it). */
+export function isKnownStep(step: string): boolean {
+  if (STAGES.some((stage) => stage.id === step) || LEGACY_STEPS.includes(step)) return true;
+  return step.startsWith("q:") && QUESTIONS.some((question) => question.id === step.slice(2));
+}
+
+/** Step ids from the earlier, longer setup, mapped onto the stage that now holds them. */
+export function normalizeStep(step: string): StageId {
+  if (STAGES.some((stage) => stage.id === step)) return step as StageId;
+  if (step === "priority") return "outcome";
+  if (step === "start" || step === "basics" || step === "team") return "essentials";
+  if (step.startsWith("q:")) return "context";
+  if (step === "offer" || step === "records" || step === "prepare") return "build";
+  if (step === "review") return "build";
+  return "outcome";
+}
+
+/**
+ * How far along the owner is, out of a fixed total. A stage counts once the owner moved past it, so
+ * choosing another outcome or answering fewer questions never moves the bar backward.
+ */
+export function progress(input: { step: string }): { done: number; total: number; stage: StageId } {
+  const stage = normalizeStep(input.step);
+  return { done: STAGES.findIndex((row) => row.id === stage), total: STAGES.length, stage };
 }
 
 export type Connection = { id: string; title: string; does: string; href: string; for: Priority[] };
 
-/** Connections that already work in Selestial, in business words, by the priority they help. Nothing here is a connector that does not exist. */
+/** Connections that already work in Selestial, in business words, by the outcome they help. Nothing here is a connector that does not exist. */
 export const CONNECTIONS: Connection[] = [
-  { id: "google-calendar", title: "Google Calendar", does: "Check existing appointments and keep visits on your calendar.", href: "/app/integrations", for: ["dispatch", "retention", "sales"] },
-  { id: "gmail", title: "Gmail hiring inbox", does: "Find applicants who already applied by email.", href: "/app/agents/recruiter", for: ["recruiter"] },
-  { id: "google-business", title: "Google Business Profile", does: "Read and answer your Google reviews.", href: "/app/integrations", for: ["retention", "sales"] },
-  { id: "google-ads", title: "Google Ads lead forms", does: "Read incoming customer inquiries from your ads.", href: "/app/integrations", for: ["sales"] },
-  { id: "quo", title: "Quo (formerly OpenPhone)", does: "Already text from Quo? Let agents text and receive replies through your own numbers, instead of a new Selestial number.", href: "/app/settings/integrations/quo", for: ["dispatch", "sales", "retention", "recruiter"] },
-  { id: "stripe", title: "Stripe", does: "Collect customer payments and deposits.", href: "/app/finance", for: ["booking", "sales"] },
-  { id: "google-drive", title: "Google Drive", does: "Bring in price lists and documents you already keep.", href: "/app/integrations", for: ["pricing", "booking"] },
+  { id: "google-calendar", title: "Google Calendar", does: "Bring in existing appointments.", href: "/app/settings/integrations", for: ["dispatch", "retention", "sales"] },
+  { id: "gmail", title: "Gmail hiring inbox", does: "Find applicants who already applied by email. Read only for hiring.", href: "/app/agents/recruiter/applicants", for: ["recruiter"] },
+  { id: "google-business", title: "Google Business Profile", does: "Read and answer your Google reviews.", href: "/app/settings/integrations", for: ["retention", "sales"] },
+  { id: "google-ads", title: "Google Ads lead forms", does: "Read incoming customer inquiries from your ads.", href: "/app/settings/integrations", for: ["sales"] },
+  { id: "quo", title: "Quo (formerly OpenPhone)", does: "Text through your own numbers instead of a new one.", href: "/app/settings/integrations/quo", for: ["dispatch", "sales", "retention", "recruiter"] },
+  { id: "stripe", title: "Payments", does: "Collect customer payments and deposits.", href: "/app/finance/setup", for: ["booking", "sales"] },
+  { id: "google-drive", title: "Google Drive", does: "Bring in price lists and documents you already keep.", href: "/app/settings/integrations", for: ["pricing", "booking"] },
 ];
 
-export function connectionsFor(primary: Priority | undefined, secondary: Priority[]): Connection[] {
+export function connectionsFor(primary: Priority | undefined | null, secondary: Priority[] = []): Connection[] {
   if (!primary) return [];
   const chosen = [primary, ...secondary];
-  return CONNECTIONS.filter((row) => row.for.some((value) => chosen.includes(value))).sort((a, b) => Number(b.for.includes(primary)) - Number(a.for.includes(primary))).slice(0, 4);
+  return CONNECTIONS.filter((row) => row.for.some((value) => chosen.includes(value)))
+    .sort((a, b) => Number(b.for.includes(primary)) - Number(a.for.includes(primary)))
+    .slice(0, 3);
 }
