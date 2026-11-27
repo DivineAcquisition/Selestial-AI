@@ -6,6 +6,7 @@ import { useState } from "react";
 
 import { CodeField, ConsentField, Notice, PasswordField, QuietButton, Requirements, SubmitButton, TextField, useCooldown } from "@/components/auth/fields";
 import { enter, goOn, useNext, useSkipWhenSignedIn } from "@/components/auth/flow";
+import { GoogleButton, OrDivider } from "@/components/auth/google";
 import { AuthLink, AuthShell, useEvents, type TraceStep } from "@/components/auth/shell";
 import { codeOf, problemOf, type AuthProblem } from "@/lib/auth/errors";
 import { meets, requirements, splitName, type PasswordPolicy } from "@/lib/auth/password";
@@ -25,7 +26,7 @@ function signupSteps(at: "form" | "sending" | "code" | "checking" | "entering" |
   ];
 }
 
-export function SignupScreen({ policy }: { policy: PasswordPolicy | null }) {
+export function SignupScreen({ policy, google = false }: { policy: PasswordPolicy | null; google?: boolean }) {
   const router = useRouter();
   const next = useNext();
   const { signUp } = useSignUp();
@@ -139,6 +140,13 @@ export function SignupScreen({ policy }: { policy: PasswordPolicy | null }) {
         <SubmitButton busy={busy} busyLabel="Creating your account" disabled={!signUp || name.trim() === "" || email.trim() === "" || !meets(policy, password) || confirm === "" || !agreed}>
           Create account
         </SubmitButton>
+        {google ? (
+          <>
+            <OrDivider />
+            <GoogleButton mode="signup" next={next} disabled={busy || !agreed} onStart={() => (setProblem(null), note("Opening Google"))} onProblem={(found) => (setProblem(found), note("Google sign-up did not start"))} />
+            {!agreed ? <p className="-mt-2 text-center text-xs text-[#667085]">Tick the agreement above to continue with Google.</p> : null}
+          </>
+        ) : null}
       </form>
     </AuthShell>
   );
