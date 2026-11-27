@@ -36,9 +36,11 @@ const CONFIGURE_FOR: Record<Priority, OutputKind[]> = {
 /** What configuration makes, by the activation template that would otherwise make it too. */
 const SAME_AS: Partial<Record<OutputKind, string[]>> = { services: ["sales.service_draft"], booking: ["sales.booking_page"], agreements: ["sales.agreement_draft"] };
 
-export function buildPlan(outcome: Priority, hasCategories: boolean): BuildPlan {
+export function buildPlan(outcome: Priority, hasCategories: boolean, secondary: Priority[] = []): BuildPlan {
   // Configuration needs to know who they clean for; without it, activation's own drafts are used instead.
-  const configure = hasCategories ? CONFIGURE_FOR[outcome] : [];
+  // Additional priorities add the drafts they need (a booking form for "Launch my booking form").
+  const wanted = new Set([outcome, ...secondary].flatMap((value) => CONFIGURE_FOR[value]));
+  const configure = hasCategories ? (["services", "booking"] as OutputKind[]).filter((kind) => wanted.has(kind)) : [];
   return { configure, exclude: configure.flatMap((kind) => SAME_AS[kind] ?? []) };
 }
 

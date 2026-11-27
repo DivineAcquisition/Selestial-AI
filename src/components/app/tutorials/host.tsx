@@ -143,6 +143,12 @@ export function TutorialHost({ children, welcome = false }: { children: React.Re
 }
 
 const WELCOME_ID = "setup-company";
+/**
+ * Media version 1 of "Set up your company" was recorded from the earlier, longer setup screens. It is not
+ * opened by itself over the new setup; once a recording of the current setup (storyboard version 2) is
+ * published as media version 2, the welcome opens it again. It stays available from Help meanwhile.
+ */
+const WELCOME_MIN_MEDIA_VERSION = 2;
 
 /**
  * The first time an Owner opens the workspace, the company-setup video opens in the tutorial dialog.
@@ -154,7 +160,7 @@ function WelcomeOnce() {
   useEffect(() => {
     if (role !== "owner" || !published) return;
     const tutorial = published.find((row) => row.id === WELCOME_ID && row.media);
-    if (!tutorial?.media) return;
+    if (!tutorial?.media || tutorial.media.version < WELCOME_MIN_MEDIA_VERSION) return;
     const key = `selestial:welcome-tutorial:${companyId}:${tutorial.id}:v${tutorial.media.version}`;
     try {
       if (window.localStorage.getItem(key) === "1") return;

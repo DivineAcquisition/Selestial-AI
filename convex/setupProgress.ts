@@ -83,8 +83,7 @@ function breakdown(rows: Doc<"companySetups">[], key: (row: Doc<"companySetups">
 }
 
 /** Setup events counted for the funnel: handoffs, exits and returns, and preparation failing then recovering. */
-const COUNTED = ["setup.handoff_started", "setup.handoff_returned", "setup.handoff_failed", "setup.exited", "setup.resumed", "setup.build_retried", "configuration.failed", "activation.task_failed"] as const;
-const CONNECTED = new Set(["google.connected", "google.reconnected", "mailbox.connected", "connector.connected"]);
+const COUNTED = ["setup.handoff_started", "setup.handoff_completed", "setup.handoff_returned", "setup.handoff_failed", "setup.exited", "setup.resumed", "setup.build_retried", "configuration.failed", "activation.task_failed"] as const;
 
 /**
  * The setup funnel, for Selestial staff: of the setups started in the window, how many reached each
@@ -101,23 +100,14 @@ export const funnel = staffQuery({
     const all = (await ctx.db.query("companySetups").take(10000)).filter((row) => row.milestones.startedAt >= since);
     const optedIn = all.filter((row) => row.optedIn === true);
     const fresh = all.filter((row) => !optedIn.includes(row));
-    const events: Record<string, number> = Object.fromEntries([...COUNTED, "setup.handoff_completed"].map((type) => [type, 0]));
+    const events: Record<string, number> = Object.fromEntries(COUNTED.map((type) => [type, 0]));
     let recovered = 0;
     for (const row of fresh.slice(0, 500)) {
       const rows = await ctx.db
         .query("events")
         .withIndex("by_company_at", (q) => q.eq("companyId", row.companyId).gte("at", row.milestones.startedAt))
         .take(2000);
-      let handoffOpen = false;
-      for (const event of rows) {
-        if ((COUNTED as readonly string[]).includes(event.type)) events[event.type] += 1;
-        if (event.type === "setup.handoff_started") handoffOpen = true;
-        // A connection that finished after setup sent the owner to make it.
-        if (handoffOpen && CONNECTED.has(event.type)) {
-          events["setup.handoff_completed"] += 1;
-          handoffOpen = false;
-        }
-      }
+      for (const event of rows) if ((COUNTED as readonly string[]).includes(event.type)) events[event.type] += 1;
       const failed = rows.some((event) => event.type === "configuration.failed" || event.type === "activation.task_failed");
       if (failed && row.milestones.firstUsableAt !== undefined && rows.some((event) => event.type === "setup.build_retried")) recovered += 1;
     }

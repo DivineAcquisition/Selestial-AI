@@ -135,7 +135,7 @@ function Flow({ view, setup, onReload }: { view: View; setup: Setup; onReload: (
       saveSetup({ companyId, ...input, priority: input.priority as Priority | undefined, secondary: input.secondary as Priority[] | undefined, methods: input.methods as ("website" | "connect" | "manual")[] | undefined }),
     [saveSetup, companyId],
   );
-  const autosave = useAutosave({ storageKey: `selestial.setup.pending.${companyId}`, serverRevision: setup.revision, step: stepId, save });
+  const autosave = useAutosave({ storageKey: `selestial.setup.pending.${companyId}`, serverRevision: setup.revision, step: stepId, save, onExternal: onReload });
   const [form, setForm] = useState<Form>(() => apply(fromServer(view, setup), autosave.pending));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -151,14 +151,6 @@ function Flow({ view, setup, onReload }: { view: View; setup: Setup; onReload: (
     [autosave],
   );
 
-  // Another tab or device saved while this one had nothing unsaved: show what it saved.
-  const { external, clearExternal } = autosave;
-  useEffect(() => {
-    if (!external) return;
-    clearExternal();
-    onReload();
-  }, [external, clearExternal, onReload]);
-
   // Coming back after "Save and exit" is recorded once, for the funnel.
   const resumed = useRef(false);
   useEffect(() => {
@@ -166,6 +158,17 @@ function Flow({ view, setup, onReload }: { view: View; setup: Setup; onReload: (
     resumed.current = true;
     void resume({ companyId }).catch(() => undefined);
   }, [setup.exitedAt, setup.resumedAt, resume, companyId]);
+
+  // The action bar is fixed to the bottom: a field focused by keyboard, or a validation message scrolled
+  // to, stops above it instead of underneath it.
+  useEffect(() => {
+    const root = document.documentElement;
+    const before = root.style.scrollPaddingBottom;
+    root.style.scrollPaddingBottom = "7rem";
+    return () => {
+      root.style.scrollPaddingBottom = before;
+    };
+  }, []);
 
   // Moving between stages puts focus on the new heading, for keyboard and screen reader users.
   const first = useRef(true);
@@ -366,7 +369,7 @@ function Flow({ view, setup, onReload }: { view: View; setup: Setup; onReload: (
               <>
                 <StepHeading id="step-heading" eyebrow={info ? `Your first result · ${info.title}` : "Your first result"} title={status?.started ? (status.counts.preparing && !status.counts.usable ? "Your workspace is being prepared" : "Here's what Selestial prepared") : "Preparing your workspace"} lead={status?.started && status.counts.preparing ? "Results appear here as they're ready. You can leave: the work keeps going." : undefined} />
                 {status?.started ? <ResultPanel status={status} onEdit={() => void go(contextNeeded(form.priority, form, records, Boolean(view.prepared.service)) ? "context" : "essentials")} onFinishLater={() => setLeaving(true)} beforeLeave={() => autosave.flush()} /> : <Skeleton className="h-48 rounded-2xl" />}
-                <MorePriorities form={form} update={update} onAdd={() => void startBuild()} busy={busy} running={status?.started === true && status.activation?.status === "running"} />
+                <MorePriorities form={form} update={update} onAdd={() => void startBuild()} busy={busy} included={status?.started ? status.included : []} />
               </>
             ) : null}
 
@@ -454,24 +457,29 @@ function Flow({ view, setup, onReload }: { view: View; setup: Setup; onReload: (
 }
 
 /** Additional priorities, after the first result: optional, and added to the workspace only when the owner asks. */
-function MorePriorities({ form, update, onAdd, busy, running }: { form: Form; update: (patch: Patch) => void; onAdd: () => void; busy: boolean; running: boolean }) {
+function MorePriorities({ form, update, onAdd, busy, included }: { form: Form; update: (patch: Patch) => void; onAdd: () => void; busy: boolean; included: Priority[] }) {
   const others = PRIORITY_INFO.filter((item) => item.id !== form.priority);
+  const waiting = form.secondary.filter((value) => !included.includes(value));
   return (
-    <details className="group rounded-2xl border border-border bg-white">
+    <details className="group rounded-2xl border border-border bg-white" open={included.length > 0 || undefined}>
       <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 px-4 text-sm font-medium text-strong focus-visible:outline-2 focus-visible:outline-brand-500">
         Add more priorities (optional)
         <ChevronDown className="ml-auto size-4 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden />
       </summary>
       <div className="grid gap-3 border-t border-border p-4">
         <p id="more-priorities" className="text-sm text-muted-foreground">
-          Choose anything else Selestial should help with. Nothing changes until you add it to your workspace.
+          Choose anything else Selestial should help with. Nothing changes until you add it, and only its own work is added: nothing already prepared is redone.
         </p>
         <ChoiceChips aria-labelledby="more-priorities" options={others.map((item) => ({ value: item.id, label: item.title }))} value={form.secondary} onValueChange={(next) => update({ secondary: next })} />
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" disabled={!form.secondary.length || running || busy} loading={busy} onClick={onAdd}>
-            Add to my workspace
+          <Button variant="outline" size="sm" disabled={!waiting.length || busy} loading={busy} onClick={onAdd}>
+            {waiting.length ? `Add ${waiting.length === 1 ? "it" : `these ${waiting.length}`} to my workspace` : "Add to my workspace"}
           </Button>
-          {running ? <span className="text-xs text-muted-foreground">Your current work is still running. Add these once it settles.</span> : null}
+          {included.length ? (
+            <span className="text-xs text-muted-foreground" role="status">
+              In your workspace: {included.map((value) => PRIORITY_INFO.find((item) => item.id === value)?.title.toLowerCase()).join("; ")}.
+            </span>
+          ) : null}
         </div>
       </div>
     </details>

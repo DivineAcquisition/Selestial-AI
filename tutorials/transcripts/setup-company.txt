@@ -1,15 +1,15 @@
-Let's set up your company, so everything Selestial prepares fits the way you actually work.
+Let's set up your company. You choose what to start with, confirm a few essentials, and Selestial builds your workspace around it.
 
-Start with your company name and time zone. Schedules, availability and deadlines all run on this clock.
+Name your company and confirm your time zone. Schedules, availability and deadlines all run on this clock.
 
-Choose how to begin. Selestial can read your website or your records, but entering the details yourself is a few short questions.
+Choose what you'd like help with first. Here, launching a booking form. You can add other priorities after your first result.
 
-Add where you're based and the areas you serve, in your own words. Then choose who you clean for. These shape the services and booking pages Selestial drafts for you. Nothing is priced or published yet.
+Confirm a few essentials: where you're based and the kinds of cleaning you do. If you have a website, Selestial can suggest these, and nothing is used until you choose it.
 
-Next, how your cleaners work with you, and roughly how many. Employees and contractors get different onboarding and pay rules later on.
+Selestial only asks what changes your first result. Prices can wait: customers can ask for a quote until you set them.
 
-Then pick what you'd like help with first. You can add the others any time, and setup saves as you go, so you can finish the rest later.
+Then build your workspace. Selestial prepares drafts in the background. Nothing is published, sent or charged without you.
 
-Two settings change real bookings, so they live in Settings, under Company profile. Add the ZIP codes you serve, and new bookings are only accepted inside them. Then set your booking hours. Each cleaner's own availability still applies.
+Your first result leads: here, a booking form draft, with exactly what it still needs before it can go live. Review it now, or finish later.
 
 That's your company set up. Next, build your services and pricing, so customers and your agents work from real prices.

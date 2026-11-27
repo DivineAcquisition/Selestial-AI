@@ -27,7 +27,7 @@ import { companyQuery, ownerMutation } from "./lib/builders";
 import { notFound, userError } from "./lib/errors";
 import { recordEvent, type Actor } from "./lib/events";
 import { kindFor, noticeInApp } from "./lib/activation/notices";
-import { FOCUS, NOT_BUILT, planFor, regate, STATE_WORDS, type TemplateId } from "./lib/activation/plan";
+import { FOCUS, MAX_TASKS, NOT_BUILT, planFor, regate, STATE_WORDS, type TemplateId } from "./lib/activation/plan";
 import { BLOCKED_STATES, FINAL_STATES, type Output, type TaskState } from "./lib/activation/schema";
 import { contextOf, snapshotOf } from "./lib/activation/snapshot";
 import { accessFor, runStep, type Result } from "./lib/activation/work";
@@ -176,6 +176,15 @@ export async function startActivation(
     noticed: {},
     updatedAt: now,
   });
+  await insertTasks(ctx, activationId, planned, args.exclude, now);
+  // Work that can't start yet is told once, with the one thing that unblocks it.
+  for (const row of await tasksOf(ctx, activationId)) if (row.state === "waiting_info" || row.state === "waiting_connection") await noticeTask(ctx, (await ctx.db.get(activationId))!, row);
+  await recordEvent(ctx, { companyId: ctx.companyId, type: "activation.started", actor: { kind: "member", memberId: ctx.member._id }, subject: { table: "companies", id: ctx.companyId }, data: { focus, tasks: planned.length, source: args.source, version } });
+  await ctx.scheduler.runAfter(0, internal.activation.tick, { activationId });
+  return { kind: "started", activationId };
+}
+
+async function insertTasks(ctx: MutationCtx & { companyId: Id<"companies"> }, activationId: Id<"activations">, planned: ReturnType<typeof planFor>, exclude: string[], now: number) {
   for (const t of planned) {
     await ctx.db.insert("activationTasks", {
       companyId: ctx.companyId,
@@ -190,7 +199,7 @@ export async function startActivation(
       authority: t.authority,
       estimate: t.estimate,
       priority: t.priority,
-      dependsOn: t.dependsOn.filter((dep) => !args.exclude.includes(dep)),
+      dependsOn: t.dependsOn.filter((dep) => !exclude.includes(dep)),
       completion: t.completion,
       state: t.state,
       statusLine: t.statusLine,
@@ -206,11 +215,37 @@ export async function startActivation(
       ...(t.state === "unavailable" ? { finishedAt: now } : {}),
     });
   }
-  // Work that can't start yet is told once, with the one thing that unblocks it.
-  for (const row of await tasksOf(ctx, activationId)) if (row.state === "waiting_info" || row.state === "waiting_connection") await noticeTask(ctx, (await ctx.db.get(activationId))!, row);
-  await recordEvent(ctx, { companyId: ctx.companyId, type: "activation.started", actor: { kind: "member", memberId: ctx.member._id }, subject: { table: "companies", id: ctx.companyId }, data: { focus, tasks: planned.length, source: args.source, version } });
-  await ctx.scheduler.runAfter(0, internal.activation.tick, { activationId });
-  return { kind: "started", activationId };
+}
+
+/**
+ * Adds the supporting work for priorities the Owner added after starting, to the same batch: only tasks
+ * it doesn't already have, only ones that can start now (or wait on something the owner can give), and
+ * never past MAX_TASKS. A finished batch starts running again for them; nothing already done is redone.
+ */
+export async function extendActivation(
+  ctx: MutationCtx & { companyId: Id<"companies">; company: Doc<"companies">; member: Doc<"members"> },
+  activationId: Id<"activations">,
+  secondary: Priority[],
+  exclude: string[],
+): Promise<string[]> {
+  const activation = await ctx.db.get(activationId);
+  if (!activation || activation.companyId !== ctx.companyId || activation.status === "canceled") return [];
+  const wanted = [...new Set([...activation.secondary, ...secondary])].filter((value) => value !== activation.focus).slice(0, 5);
+  if (wanted.length === activation.secondary.length && wanted.every((value) => activation.secondary.includes(value))) return [];
+  const existing = await tasksOf(ctx, activation._id);
+  const have = new Set(existing.map((t) => t.template));
+  const now = Date.now();
+  const snapshot = await snapshotOf(ctx, ctx.company, now);
+  const room = Math.max(0, MAX_TASKS - existing.length);
+  const added = planFor(activation.focus, wanted, snapshot)
+    .filter((t) => !have.has(t.template) && !exclude.includes(t.template) && t.state === "queued")
+    .slice(0, room);
+  await ctx.db.patch(activation._id, { secondary: wanted, ...(added.length && activation.status !== "running" ? { status: "running", finishedAt: undefined } : {}), updatedAt: now });
+  if (!added.length) return [];
+  await insertTasks(ctx, activation._id, added, exclude, now);
+  await recordEvent(ctx, { companyId: ctx.companyId, type: "activation.extended", actor: { kind: "member", memberId: ctx.member._id }, subject: { table: "companies", id: ctx.companyId }, data: { added: added.map((t) => t.template).join(", "), secondary: wanted.join(", ") } });
+  await ctx.scheduler.runAfter(0, internal.activation.tick, { activationId: activation._id });
+  return added.map((t) => t.template);
 }
 
 // ── Running ─────────────────────────────────────────────────────────────────────────────────────────

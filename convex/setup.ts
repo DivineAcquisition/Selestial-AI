@@ -21,7 +21,7 @@ import { buildPlan, buildSentence, fromCard, fromTask, leadHeadline, ordered, su
 import { safeSetupPath, setupDestination } from "./lib/setup/routes";
 import { snapshotOf } from "./lib/activation/snapshot";
 import { planFor, type Snapshot } from "./lib/activation/plan";
-import { retryTask, startActivation } from "./activation";
+import { extendActivation, retryTask, startActivation } from "./activation";
 import { cardsOf, queueForSetup, requeueChanged, requeueKind } from "./configure";
 import { outputKindValidator } from "./lib/configure/schema";
 import { servicesToPrepare } from "./lib/configure/catalog";
@@ -294,13 +294,22 @@ export const build = ownerMutation({
     if (!outcome) throw userError("Choose what you'd like Selestial to help with first.");
     const { known } = await knownOf(ctx, ctx.company, setup);
     const categories = known.facts["services.categories"];
-    const plan = buildPlan(outcome, Array.isArray(categories) && categories.length > 0);
+    const plan = buildPlan(outcome, Array.isArray(categories) && categories.length > 0, setup.secondary);
     const now = Date.now();
     const already = setup.build !== undefined && setup.build.outcome === outcome;
 
     const queued = await queueForSetup(ctx, ctx.company, ctx.member._id, plan.configure);
     const exclude = [...plan.exclude, ...setupExclusions(outcome, known)];
-    const started = await startActivation(ctx, { source: "setup", focus: outcome, secondary: setup.secondary, exclude, trimBlocked: true });
+    // Building again for the same outcome adds to the batch already made (new priorities' work only),
+    // whether it is still running or settled; a different outcome starts its own batch.
+    const previous = already && setup.build?.activationId ? await ctx.db.get(setup.build.activationId) : null;
+    let started: { kind: "started" | "already" | "extended"; activationId: Id<"activations"> } | { kind: "empty" };
+    if (previous && previous.status !== "canceled") {
+      const added = await extendActivation(ctx, previous._id, setup.secondary, exclude);
+      started = { kind: added.length ? "extended" : "already", activationId: previous._id };
+    } else {
+      started = await startActivation(ctx, { source: "setup", focus: outcome, secondary: setup.secondary, exclude, trimBlocked: true });
+    }
     const activationId = started.kind === "empty" ? undefined : started.activationId;
 
     const fresh = (await ctx.db.get(setup._id))!;
@@ -310,7 +319,7 @@ export const build = ownerMutation({
         requestedAt: fresh.build?.requestedAt ?? now,
         requestedBy: ctx.member._id,
         outcome,
-        configure: plan.configure,
+        configure: [...new Set([...(fresh.build?.outcome === outcome ? fresh.build.configure : []), ...plan.configure])],
         exclude,
         ...(activationId ? { activationId } : (fresh.build?.activationId ? { activationId: fresh.build.activationId } : {})),
         ...(started.kind === "empty" ? { activationNote: "No agent work was needed for this outcome yet." } : {}),
@@ -340,7 +349,7 @@ export const build = ownerMutation({
 async function buildPreview(ctx: QueryCtx, company: Doc<"companies">, setup: Doc<"companySetups">, outcome: Priority) {
   const { known, snapshot } = await knownOf(ctx, company, setup);
   const categories = known.facts["services.categories"];
-  const plan = buildPlan(outcome, Array.isArray(categories) && categories.length > 0);
+  const plan = buildPlan(outcome, Array.isArray(categories) && categories.length > 0, setup.secondary);
   const exclude = [...plan.exclude, ...setupExclusions(outcome, known)];
   const tasks = planFor(outcome, setup.secondary, snapshot).filter((t) => !exclude.includes(t.template) && (t.priority === 1 || t.state === "queued"));
   return { plan, sentence: buildSentence(outcome, plan, tasks.map((t) => t.title)), tasks: tasks.map((t) => ({ template: t.template, agent: t.agent, title: t.title, startsBlocked: t.state !== "queued", blocker: t.blocker?.words ?? null })) };
@@ -383,6 +392,8 @@ export const buildStatus = companyQuery({
       outcome,
       requestedAt: setup.build.requestedAt,
       outdated: setup.build.outcome !== outcome || cards.some((card) => card.changed),
+      /** Additional priorities already part of the workspace's work; any others are added when the owner asks. */
+      included: activation && activation.companyId === ctx.companyId ? activation.secondary : [],
       headline: leadHeadline(outcome, lead),
       counts: summarize(items),
       lead,

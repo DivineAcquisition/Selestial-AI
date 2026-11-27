@@ -67,119 +67,197 @@ export const STATUS_WORDS: Record<SaveStatus, string> = {
 const STALE = /changed somewhere else/i;
 const DELAY_MS = 800;
 
-type SaveFn = (input: Patch & { expectedRevision: number; step: string; skip?: string; confirmContext?: boolean }) => Promise<{ revision: number }>;
+export type SaveInput = Patch & { expectedRevision: number; step: string; skip?: string; confirmContext?: boolean };
+type SaveFn = (input: SaveInput) => Promise<{ revision: number }>;
+export type Snapshot = { pending: Patch; status: SaveStatus; error: string | null };
 
-export function useAutosave({ storageKey, serverRevision, step, save }: { storageKey: string; serverRevision: number; step: string; save: SaveFn }) {
-  const [pending, setPending] = useState<Patch>(() => restore(storageKey, serverRevision));
-  const [status, setStatus] = useState<SaveStatus>(() => (isEmpty(restore(storageKey, serverRevision)) ? "saved" : "unsaved"));
-  const [error, setError] = useState<string | null>(null);
-  const revision = useRef(serverRevision);
-  const pendingRef = useRef(pending);
-  const stepRef = useRef(step);
-  const chain = useRef<Promise<boolean>>(Promise.resolve(true));
-  const inFlight = useRef(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    stepRef.current = step;
-  }, [step]);
+/**
+ * The saving rules, without React or timers, so each case can be tested on its own: one save in flight at
+ * a time, each naming the revision it started from; a response clears only what it carried; a refusal
+ * because another tab saved first is a conflict that keeps every edit until the owner chooses; any other
+ * failure keeps every edit for a retry. `persist` keeps pending edits across a reload.
+ */
+export class SaveQueue {
+  private snapshot: Snapshot;
+  private revision: number;
+  private step: string;
+  private chain: Promise<boolean> = Promise.resolve(true);
+  private inFlight = false;
+  private saveFn: SaveFn;
 
-  const keep = useCallback(
-    (next: Patch) => {
-      pendingRef.current = next;
-      setPending(next);
-      try {
-        if (isEmpty(next)) window.localStorage.removeItem(storageKey);
-        else window.localStorage.setItem(storageKey, JSON.stringify({ base: revision.current, patch: next }));
-      } catch {
-        // Not kept across reloads in this browser; saving still works.
-      }
-    },
-    [storageKey],
-  );
+  constructor(
+    private readonly options: { revision: number; step: string; pending?: Patch; save: SaveFn; onChange: (snapshot: Snapshot) => void; persist?: (revision: number, pending: Patch) => void },
+  ) {
+    this.saveFn = options.save;
+    this.revision = options.revision;
+    this.step = options.step;
+    const pending = options.pending ?? {};
+    this.snapshot = { pending, status: isEmpty(pending) ? "saved" : "unsaved", error: null };
+  }
+
+  get state(): Snapshot {
+    return this.snapshot;
+  }
+  get currentRevision(): number {
+    return this.revision;
+  }
+  get saving(): boolean {
+    return this.inFlight;
+  }
+
+  private set(next: Partial<Snapshot>) {
+    this.snapshot = { ...this.snapshot, ...next };
+    if (next.pending) this.options.persist?.(this.revision, next.pending);
+    this.options.onChange(this.snapshot);
+  }
+
+  setStep(step: string) {
+    this.step = step;
+  }
+
+  /** The newest save function (it closes over the company and the mutation). */
+  setSave(save: SaveFn) {
+    this.saveFn = save;
+  }
+
+  /** Records an edit. While in conflict it stays a conflict: nothing is sent until the owner chooses. */
+  edit(patch: Patch) {
+    this.set({ pending: mergePatch(this.snapshot.pending, patch), status: this.snapshot.status === "conflict" ? "conflict" : "unsaved" });
+  }
+
+  /** Whether a debounced save should go now. A conflict waits for the owner. */
+  get shouldAutoSave(): boolean {
+    return this.snapshot.status !== "conflict" && !isEmpty(this.snapshot.pending);
+  }
 
   /** Sends everything pending (and `extra`), after any save already going. Resolves true when it saved. */
+  flush(extra: { step?: string; skip?: string; confirmContext?: boolean; patch?: Patch } = {}): Promise<boolean> {
+    if (extra.patch) this.edit(extra.patch);
+    const run = async (): Promise<boolean> => {
+      if (this.snapshot.status === "conflict") return false;
+      const sent = this.snapshot.pending;
+      const moving = extra.step !== undefined && extra.step !== this.step;
+      if (isEmpty(sent) && !moving && !extra.skip && !extra.confirmContext) {
+        if (this.snapshot.status !== "failed") this.set({ status: "saved" });
+        return this.snapshot.status !== "failed";
+      }
+      this.inFlight = true;
+      this.set({ status: "saving", error: null });
+      try {
+        const result = await this.saveFn({ ...sent, expectedRevision: this.revision, step: extra.step ?? this.step, ...(extra.skip ? { skip: extra.skip } : {}), ...(extra.confirmContext ? { confirmContext: true } : {}) });
+        this.revision = Math.max(this.revision, result.revision);
+        if (extra.step !== undefined) this.step = extra.step;
+        const left = remaining(this.snapshot.pending, sent);
+        this.set({ pending: left, status: isEmpty(left) ? "saved" : "unsaved" });
+        return true;
+      } catch (caught) {
+        const message = messageOf(caught);
+        this.set({ error: message, status: STALE.test(message) ? "conflict" : "failed" });
+        return false;
+      } finally {
+        this.inFlight = false;
+      }
+    };
+    this.chain = this.chain.then(run, run);
+    return this.chain;
+  }
+
+  /**
+   * The server's revision moved. A revision this tab made is already known. A newer one is another tab's:
+   * adopted when nothing is pending here ("adopted": show what it saved), a conflict otherwise.
+   */
+  serverRevision(next: number): "none" | "adopted" | "conflict" {
+    if (next <= this.revision || this.inFlight) return "none";
+    if (isEmpty(this.snapshot.pending) && this.snapshot.status !== "failed") {
+      this.revision = next;
+      return "adopted";
+    }
+    this.set({ status: "conflict" });
+    return "conflict";
+  }
+
+  /** Keep this tab's edits: save them over the newer revision. */
+  keepMine(serverRevision: number): Promise<boolean> {
+    this.revision = Math.max(this.revision, serverRevision);
+    this.set({ status: "unsaved", error: null });
+    return this.flush();
+  }
+
+  /** Drop this tab's unsaved edits and take what was saved elsewhere. */
+  discard(serverRevision: number) {
+    this.revision = Math.max(this.revision, serverRevision);
+    this.set({ pending: {}, status: "saved", error: null });
+  }
+
+  /** A revision this tab made through another mutation (Build): known, so it isn't taken for another tab's save. */
+  adopt(next: number) {
+    if (next > this.revision) this.revision = next;
+  }
+}
+
+export function useAutosave({ storageKey, serverRevision, step, save, onExternal }: { storageKey: string; serverRevision: number; step: string; save: SaveFn; onExternal: () => void }) {
+  const [snapshot, setSnapshot] = useState<Snapshot>(() => {
+    const pending = restore(storageKey, serverRevision);
+    return { pending, status: isEmpty(pending) ? "saved" : "unsaved", error: null };
+  });
+  const [queue] = useState(
+    () =>
+      new SaveQueue({
+        revision: serverRevision,
+        step,
+        pending: snapshot.pending,
+        save,
+        onChange: setSnapshot,
+        persist: (base, pending) => {
+          try {
+            if (isEmpty(pending)) window.localStorage.removeItem(storageKey);
+            else window.localStorage.setItem(storageKey, JSON.stringify({ base, patch: pending }));
+          } catch {
+            // Not kept across reloads in this browser; saving still works.
+          }
+        },
+      }),
+  );
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    queue.setStep(step);
+  }, [queue, step]);
+  useEffect(() => {
+    queue.setSave(save);
+  }, [queue, save]);
+
   const flush = useCallback(
-    (extra: { step?: string; skip?: string; confirmContext?: boolean; patch?: Patch } = {}): Promise<boolean> => {
+    (extra: { step?: string; skip?: string; confirmContext?: boolean; patch?: Patch } = {}) => {
       if (timer.current) {
         clearTimeout(timer.current);
         timer.current = null;
       }
-      if (extra.patch) keep(mergePatch(pendingRef.current, extra.patch));
-      const run = async (): Promise<boolean> => {
-        const sent = pendingRef.current;
-        const moving = extra.step !== undefined && extra.step !== stepRef.current;
-        if (isEmpty(sent) && !moving && !extra.skip && !extra.confirmContext) {
-          setStatus((now) => (now === "conflict" || now === "failed" ? now : "saved"));
-          return true;
-        }
-        inFlight.current = true;
-        setStatus("saving");
-        setError(null);
-        try {
-          const result = await save({ ...(sent as Patch), expectedRevision: revision.current, step: extra.step ?? stepRef.current, ...(extra.skip ? { skip: extra.skip } : {}), ...(extra.confirmContext ? { confirmContext: true } : {}) });
-          revision.current = result.revision;
-          const left = remaining(pendingRef.current, sent);
-          keep(left);
-          setStatus(isEmpty(left) ? "saved" : "unsaved");
-          return true;
-        } catch (caught) {
-          const message = messageOf(caught);
-          setError(message);
-          setStatus(STALE.test(message) ? "conflict" : "failed");
-          return false;
-        } finally {
-          inFlight.current = false;
-        }
-      };
-      chain.current = chain.current.then(run, run);
-      return chain.current;
+      return queue.flush(extra);
     },
-    [keep, save],
+    [queue],
   );
 
   /** Records an edit and saves it after a pause. */
   const edit = useCallback(
     (patch: Patch) => {
-      keep(mergePatch(pendingRef.current, patch));
-      setStatus((now) => (now === "conflict" ? now : "unsaved"));
+      queue.edit(patch);
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => {
         timer.current = null;
-        void flush();
+        if (queue.shouldAutoSave) void queue.flush();
       }, DELAY_MS);
     },
-    [flush, keep],
+    [queue],
   );
 
   // A newer revision this tab didn't make: another tab or device saved. With nothing pending here, the
-  // newer one is simply adopted; with edits pending, the owner chooses.
-  const [external, setExternal] = useState(false);
+  // screen shows what it saved; with edits pending, the owner chooses (status "conflict").
   useEffect(() => {
-    if (serverRevision <= revision.current || inFlight.current) return;
-    if (isEmpty(pendingRef.current)) {
-      revision.current = serverRevision;
-      setExternal(true);
-    } else {
-      setStatus("conflict");
-    }
-  }, [serverRevision]);
-
-  /** Keep this tab's edits: save them over the newer revision. */
-  const keepMine = useCallback(() => {
-    revision.current = serverRevision;
-    setStatus("unsaved");
-    return flush();
-  }, [flush, serverRevision]);
-
-  /** Drop this tab's unsaved edits and take what was saved elsewhere. */
-  const discard = useCallback(() => {
-    revision.current = serverRevision;
-    keep({});
-    setStatus("saved");
-    setError(null);
-  }, [keep, serverRevision]);
+    if (queue.serverRevision(serverRevision) === "adopted") onExternal();
+  }, [queue, serverRevision, onExternal]);
 
   // Warn before leaving with edits not yet saved.
+  const { status } = snapshot;
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
       if (status === "saved") return;
@@ -196,12 +274,17 @@ export function useAutosave({ storageKey, serverRevision, step, save }: { storag
     [],
   );
 
-  /** A revision this tab made through another mutation (Build): known, so it isn't taken for another tab's save. */
-  const adopt = useCallback((next: number) => {
-    if (next > revision.current) revision.current = next;
-  }, []);
-
-  return { pending, status, error, edit, flush, keepMine, discard, adopt, external, clearExternal: () => setExternal(false), revision: () => revision.current };
+  return {
+    pending: snapshot.pending,
+    status: snapshot.status,
+    error: snapshot.error,
+    edit,
+    flush,
+    keepMine: () => queue.keepMine(serverRevision),
+    discard: () => queue.discard(serverRevision),
+    adopt: (next: number) => queue.adopt(next),
+    revision: () => queue.currentRevision,
+  };
 }
 
 /** Edits left unsaved in this browser for the same revision; anything older was overtaken and is dropped. */

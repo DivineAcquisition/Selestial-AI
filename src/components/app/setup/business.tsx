@@ -187,9 +187,12 @@ function OutputCard({ card, canEdit }: { card: Card; canEdit: boolean }) {
 export function PrepareBusiness({ showLink = true }: { showLink?: boolean }) {
   const { companyId } = useCompany();
   const view = useQuery(api.configure.workspace, { companyId });
+  const setup = useQuery(api.setup.state, { companyId });
   const startPrep = useMutation(api.configure.start);
   const { busy, error, run } = useRun();
-  if (view === undefined) return <Skeleton className="h-28 rounded-2xl" />;
+  if (view === undefined || setup === undefined) return <Skeleton className="h-28 rounded-2xl" />;
+  // A company in setup prepares through setup's one "Build my workspace", not a second button here.
+  const viaSetup = setup.setup !== null && setup.setup.built === null;
   const items = view.cards.map(fromCard).filter((item) => item !== null);
   const counts = summarize(items);
   const preparing = counts.preparing;
@@ -218,9 +221,13 @@ export function PrepareBusiness({ showLink = true }: { showLink?: boolean }) {
         </p>
       )}
       <div className="flex flex-wrap gap-2">
-        {view.canEdit && view.ready && (!view.started || anyChanged) ? (
+        {view.canEdit && viaSetup ? (
+          <Button variant="primary" size="sm" render={<Link href="/app/setup?step=build" />}>
+            Build my workspace in setup
+          </Button>
+        ) : view.canEdit && view.ready && (!view.started || anyChanged) ? (
           <Button variant="primary" size="sm" loading={busy} onClick={() => void run(() => startPrep({ companyId }))}>
-            {view.started ? "Update my business setup" : "Prepare my business setup"}
+            {view.started ? (view.cards.some((c) => c.status === "not_started") ? "Also prepare agreements and job standards" : "Update my business setup") : "Prepare my business setup"}
           </Button>
         ) : null}
         {showLink && view.started ? (

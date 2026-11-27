@@ -13,6 +13,7 @@ import { addMember, company, refusal, start, type T } from "../tests/harness";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { NOT_ALLOWED } from "./lib/errors";
+import { recordEvent } from "./lib/events";
 import type { Priority } from "./lib/setup/schema";
 
 type As = Awaited<ReturnType<typeof company>>["as"];
@@ -198,6 +199,39 @@ describe("Build my workspace", () => {
     expect(types).toContain("setup.build_retried");
   });
 
+  it("adds a later priority's own work to the same batch, while it runs or after it settles, and redoes nothing", async () => {
+    const t = start();
+    const { as, companyId } = await company(t, "owner-a", "Alpha Cleaning");
+    await essentials(as, companyId, "sales", { "pricing.path": "later", "inquiries.channels": ["phone"] }, { "company.areas": "Austin", "workforce.arrangement": ["employees"] });
+    const first = await as.mutation(api.setup.build, { companyId });
+    // While it is still running: Recruiter is added to the same batch.
+    let revision = (await as.query(api.setup.state, { companyId })).setup!.revision;
+    await as.mutation(api.setup.save, { companyId, expectedRevision: revision, step: "result", secondary: ["recruiter"] });
+    const extended = await as.mutation(api.setup.build, { companyId });
+    expect(extended).toMatchObject({ activation: "extended", activationId: first.activationId });
+    await drain(t);
+    let status = (await as.query(api.setup.buildStatus, { companyId }))!;
+    if (!status.started) throw new Error("expected started");
+    expect(status.included).toEqual(["recruiter"]);
+    expect([status.lead, ...status.rest].map((item) => item?.key)).toContain("activation:recruiter.role_draft");
+    const before = await counts(t, companyId);
+    expect(before).toMatchObject({ activations: 1, roles: 1, forms: 1 });
+
+    // After it settled: retention is added, again to the same batch; nothing already made is made twice.
+    revision = (await as.query(api.setup.state, { companyId })).setup!.revision;
+    await as.mutation(api.setup.save, { companyId, expectedRevision: revision, step: "result", secondary: ["recruiter", "retention"] });
+    expect((await as.mutation(api.setup.build, { companyId })).activation).toBe("extended");
+    await drain(t);
+    status = (await as.query(api.setup.buildStatus, { companyId }))!;
+    if (!status.started) throw new Error("expected started");
+    expect(status.included).toEqual(["recruiter", "retention"]);
+    expect(await counts(t, companyId)).toMatchObject({ activations: 1, roles: 1, forms: 1, services: before.services, outbound: 0 });
+    // Pressing it once more adds nothing.
+    expect((await as.mutation(api.setup.build, { companyId })).activation).toBe("already");
+    const tasks = await t.run(async (ctx) => of(await ctx.db.query("activationTasks").collect(), companyId).map((row) => row.template));
+    expect(new Set(tasks).size).toBe(tasks.length);
+  });
+
   it("keeps the owner's own price exactly as entered, as a draft", async () => {
     const t = start();
     const { as, companyId } = await company(t, "owner-a", "Alpha Cleaning");
@@ -241,7 +275,12 @@ describe("Build my workspace", () => {
     await as.mutation(api.setup.handoff, { companyId, href: "/app/settings/integrations?tool=gmail&result=failed", phase: "failed" });
     const setup = await t.run(async (ctx) => of(await ctx.db.query("companySetups").collect(), companyId)[0]);
     expect(setup.handoff).toMatchObject({ kind: "inbox", href: "/app/agents/recruiter/applicants", step: "result", outcome: "failed" });
+    // A connection that really lands closes the handoff as completed, once; a page visit alone never does.
+    await as.mutation(api.setup.handoff, { companyId, href: "/app/settings/integrations", phase: "started" });
+    for (let i = 0; i < 2; i += 1) await t.run((ctx) => recordEvent(ctx, { companyId, type: "google.connected", actor: { kind: "system" }, subject: { table: "companies", id: companyId } }));
+    expect((await t.run(async (ctx) => of(await ctx.db.query("companySetups").collect(), companyId)[0])).handoff).toMatchObject({ kind: "integration", outcome: "completed" });
     const types = await t.run(async (ctx) => of(await ctx.db.query("events").collect(), companyId).map((row) => row.type));
+    expect(types.filter((type) => type === "setup.handoff_completed")).toHaveLength(1);
     expect(types.filter((type) => type === "setup.resumed")).toHaveLength(1);
     expect(types).toEqual(expect.arrayContaining(["setup.exited", "setup.handoff_started", "setup.handoff_failed"]));
     // Analytics carry no customer content: event data is only counts, ids of stages and paths.
