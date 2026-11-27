@@ -37,6 +37,7 @@ export const DOCUMENT_TITLES: Record<DocumentKind, string> = {
 export const DOCUMENT_VERSIONS: readonly DocumentVersion[] = [
   { id: "terms-2026-11-16", kind: "terms", title: DOCUMENT_TITLES.terms, effectiveOn: "2026-11-16", summary: "First version." },
   { id: "privacy-2026-11-16", kind: "privacy", title: DOCUMENT_TITLES.privacy, effectiveOn: "2026-11-16", summary: "First version." },
+  { id: "privacy-2026-11-27", kind: "privacy", title: DOCUMENT_TITLES.privacy, effectiveOn: "2026-11-27", summary: "Says that a company's records are kept after its plan ends, and deleted within 90 days of the Owner asking or of a plan cancelled for non-payment.", ownerApproved: { on: "2026-11-27", note: "The owner approved publishing the reworded retention line on 2026-11-27." } },
   { id: "cookies-2026-11-16", kind: "cookies", title: DOCUMENT_TITLES.cookies, effectiveOn: "2026-11-16", summary: "First version." },
   { id: "messaging-2026-11-16", kind: "messaging", title: DOCUMENT_TITLES.messaging, effectiveOn: "2026-11-16", summary: "First version." },
   { id: "security-2026-11-16", kind: "security", title: DOCUMENT_TITLES.security, effectiveOn: "2026-11-16", summary: "First version." },
