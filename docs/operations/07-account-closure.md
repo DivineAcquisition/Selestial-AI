@@ -196,8 +196,9 @@ require it).
    table above, so the sentence "we delete its records" is not literally true; see "For counsel".
    *Decide:* whether a self-cancelled plan should also start the clock; counsel tightens the wording.
    *Owner's decision (November 27, 2026):* a self-cancelled plan does **not** start the clock; the sentence is
-   reworded instead. Proposed wording, awaiting counsel and publication: docs/billing/05-cancellation.md,
-   "Decisions".
+   reworded instead, published as Owner-approved `privacy-2026-11-27` (docs/billing/05-cancellation.md,
+   "Decisions"). The trust register says the same. The rest of this gap (records kept after deletion) is
+   still for counsel.
 
 2. **"Settings includes tools to export your records and to delete them."**
    `src/lib/trust/documents/terms.ts:161`.

@@ -194,8 +194,8 @@ production):
 - **Sandbox checks:** the Owner runs checks 1–6 with `scripts/retention-sandbox-check.mjs` and reports the
   results. `RETENTION_OFFERS` stays off until then.
 - **Privacy Notice:** change the wording rather than build automatic deletion. A cancelled plan keeps its records
-  so the company can come back or export them. Proposed line for the next version (not published; it needs
-  counsel's review, then a new version in `convex/lib/trust/documents.ts` published in Staff › Trust):
+  so the company can come back or export them. **Published** as Owner-approved version `privacy-2026-11-27`
+  (the Owner chose to publish without waiting for counsel); `privacy-2026-11-16` stays listed unchanged:
 
   > A company's records: while the company has an account with Selestial, including after its plan ends, so it
   > can come back or export them. When the company's Owner asks us to delete the company, or its plan is
