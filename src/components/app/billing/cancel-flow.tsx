@@ -81,7 +81,7 @@ function FlowBody({ onClose }: { onClose: () => void }) {
 
 /** What the steps can ask of the server. The connected dialog sends each to Convex; a preview can stub them. */
 export type FlowActions = {
-  answer: (input: { step: "reason" | "need" | "skip"; code?: string; note?: string }) => Promise<unknown>;
+  answer: (input: { step: "reason" | "need" | "detail" | "skip"; code?: string; note?: string }) => Promise<unknown>;
   seen: (offerId: "save10_once" | "save15_three", outcome: "viewed" | "declined") => Promise<unknown>;
   keep: () => Promise<unknown>;
   accept: (offerId: "save10_once" | "save15_three", version: string) => Promise<unknown>;
@@ -128,6 +128,9 @@ export function CancelFlowSteps({ flow, actions, onClose, initialStep = "reason"
   const [reasonNote, setReasonNote] = useState("");
   const [need, setNeed] = useState<StayNeed | null>(null);
   const [needNote, setNeedNote] = useState("");
+  // The follow-up for setup or reliability reasons: asked once, beside the first offer or, without one, on the confirmation.
+  const [detail, setDetail] = useState("");
+  const [detailSaved, setDetailSaved] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reactivating, setReactivating] = useState(false);
@@ -170,6 +173,14 @@ export function CancelFlowSteps({ flow, actions, onClose, initialStep = "reason"
   useEffect(() => {
     if (current === "offer10" || current === "offer15") void seen(current === "offer10" ? "save10_once" : "save15_three", "viewed").catch(() => undefined);
   }, [current, seen]);
+
+  const saveDetail = async () => {
+    const text = detail.trim();
+    if (!flow.detail || !text || text === detailSaved) return;
+    await actions.answer({ step: "detail", note: text }).catch(() => undefined);
+    setDetailSaved(text);
+  };
+  const detailField = flow.detail ? <Note label={flow.detail.question} value={detail} onChange={setDetail} /> : null;
 
   const toConfirm = async (from: "reason" | "need" | "offer") => {
     if (from !== "offer") await actions.answer({ step: "skip" }).catch(() => undefined);
@@ -223,7 +234,6 @@ export function CancelFlowSteps({ flow, actions, onClose, initialStep = "reason"
       const first = offer.renewals[0];
       return (
         <Frame title="Would a little breathing room help?" description="Stay with Selestial and get 10% off your next monthly subscription payment." progress={2}>
-          <SupportNote flow={flow} />
           <div className="rounded-xl border border-brand-500/20 bg-brand-500/[0.07] p-4">
             <dl className="grid gap-2 text-sm">
               <Row label={`Next payment, ${shortDate(first.at)}`}>
@@ -238,13 +248,14 @@ export function CancelFlowSteps({ flow, actions, onClose, initialStep = "reason"
             </dl>
           </div>
           <Disclosure />
+          {detailField}
           {stale ? <p className="text-xs text-muted-foreground" role="status">Refreshing these terms…</p> : null}
           <FormError message={error} />
           <Actions>
-            <Button variant="outline" onClick={() => void decline("save10_once").then(() => setStep(flow.offers.save15_three.eligible ? "need" : "confirm"))}>
+            <Button variant="outline" onClick={() => void saveDetail().then(() => decline("save10_once")).then(() => setStep(flow.offers.save15_three.eligible ? "need" : "confirm"))}>
               Continue cancellation
             </Button>
-            <Button variant="default" loading={busy} disabled={stale} onClick={() => void run(async () => { await actions.accept("save10_once", offer.version); setStep("applying"); })}>
+            <Button variant="default" loading={busy} disabled={stale} onClick={() => void run(async () => { await saveDetail(); await actions.accept("save10_once", offer.version); setStep("applying"); })}>
               Apply 10% discount
             </Button>
           </Actions>
@@ -406,7 +417,7 @@ export function CancelFlowSteps({ flow, actions, onClose, initialStep = "reason"
       const waiting = current === "canceling" && !failed;
       return (
         <Frame title="Cancel your Selestial subscription?" description="Here’s exactly what happens.">
-          <SupportNote flow={flow} />
+          {flow.offers.save10_once.eligible ? null : detailField}
           <dl className="grid gap-3 text-sm">
             <Fact label="Your subscription">
               {plan.name}
@@ -438,7 +449,7 @@ export function CancelFlowSteps({ flow, actions, onClose, initialStep = "reason"
             <Button variant="outline" disabled={waiting} onClick={() => void keepIt()}>
               Keep subscription
             </Button>
-            <Button variant="destructive" loading={busy || waiting} onClick={() => void run(async () => { await actions.cancel(); setStep("canceling"); })}>
+            <Button variant="destructive" loading={busy || waiting} onClick={() => void run(async () => { await saveDetail(); await actions.cancel(); setStep("canceling"); })}>
               {failed ? "Try again" : "Confirm cancellation"}
             </Button>
           </Actions>
@@ -571,24 +582,6 @@ function Pending() {
     <div role="status" className="flex items-center gap-3 rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
       <span aria-hidden className="size-4 animate-spin rounded-full border-2 border-brand-500 border-t-transparent motion-reduce:animate-none" />
       Waiting for billing to confirm…
-    </div>
-  );
-}
-
-/** Setup or reliability: a discount doesn't fix that, so it says so and points to people who can help. */
-function SupportNote({ flow }: { flow: Flow }) {
-  if (!flow.support.forReason) return null;
-  const setup = flow.reason === "setup_time";
-  return (
-    <div className="rounded-xl border border-border bg-muted/40 p-4 text-sm">
-      <p className="font-medium text-strong">{setup ? "Sorry setup has taken this long." : "Sorry things haven’t been working reliably."}</p>
-      <p className="mt-1 text-muted-foreground">
-        {setup ? "Our team can help you get your agents and workflows running." : "Tell us what went wrong and our team will look into it."} Write to{" "}
-        <a className="font-medium text-brand-600 underline underline-offset-2" href={`mailto:${flow.support.email}?subject=${encodeURIComponent(setup ? "Help with setup" : "Something isn't working")}`}>
-          {flow.support.email}
-        </a>
-        .
-      </p>
     </div>
   );
 }

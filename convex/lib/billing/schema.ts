@@ -339,6 +339,8 @@ export const cancellationTables = {
     planCents: v.union(v.number(), v.null()),
     reason: v.optional(literals(CANCEL_REASONS)),
     reasonNote: v.optional(v.string()),
+    /** The answer to the follow-up question for setup or reliability reasons (DETAIL_QUESTIONS). */
+    reasonDetail: v.optional(v.string()),
     need: v.optional(literals(STAY_NEEDS)),
     needNote: v.optional(v.string()),
     /** Skipped the questions and went straight to cancelling. */

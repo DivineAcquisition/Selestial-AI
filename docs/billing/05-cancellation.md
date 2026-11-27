@@ -184,10 +184,19 @@ production):
    and how the month-12 move treats an existing discount (check 6).
 3. `RETENTION_OFFERS` stays off until checks 1–5 pass.
 
-## Decisions for the Owner
+## Decisions (the Owner, November 27, 2026)
 
-- The Privacy Notice says a company's records are deleted within 90 days when it leaves, but nothing deletes
-  them when a plan ends. The confirmation describes what actually happens; the policy needs a decision.
-- Whether the 10% offer should also appear for setup and reliability reasons (it does today, beside the support
-  note), or only the support route.
-- Whether offers that span the end of the early-user year should be allowed once verified.
+- **Setup and reliability reasons:** the discount is shown as usual, with no support note. Instead, one optional
+  question beside the offer ("What made getting set up take so long?" / "What wasn't working reliably?"), or on
+  the confirmation when no offer can be made. Stored as `cancelFlows.reasonDetail`, shown in the staff report.
+- **Offers across the end of the early-user year:** allowed once sandbox check 6 passes; then set
+  `RETENTION_ACROSS_PRICE_CHANGE=on`.
+- **Sandbox checks:** the Owner runs checks 1–6 with `scripts/retention-sandbox-check.mjs` and reports the
+  results. `RETENTION_OFFERS` stays off until then.
+- **Privacy Notice:** change the wording rather than build automatic deletion. A cancelled plan keeps its records
+  so the company can come back or export them. Proposed line for the next version (not published; it needs
+  counsel's review, then a new version in `convex/lib/trust/documents.ts` published in Staff › Trust):
+
+  > A company's records: while the company has an account with Selestial, including after its plan ends, so it
+  > can come back or export them. When the company's Owner asks us to delete the company, or its plan is
+  > cancelled for non-payment, we delete its records within 90 days, except the records this section says we keep.

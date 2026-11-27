@@ -105,6 +105,7 @@ export function CancellationsPanel() {
               </p>
               {row.reason ? <p className="text-muted-foreground">{row.reason}</p> : null}
               {row.reasonNote ? <p className="text-strong">“{row.reasonNote}”</p> : null}
+              {row.reasonDetail ? <p className="text-strong">What went wrong: “{row.reasonDetail}”</p> : null}
               {row.need ? <p className="text-muted-foreground">{row.need}</p> : null}
               {row.needNote ? <p className="text-strong">“{row.needNote}”</p> : null}
             </li>

@@ -52,8 +52,14 @@ export const STAY_NEED_WORDS: Record<StayNeed, string> = {
   nothing: "Nothing right now—I need to cancel.",
 };
 
-/** Reasons a discount does not fix. The screen says so plainly and points to people who can help. */
-export const SUPPORT_REASONS: readonly CancelReason[] = ["setup_time", "not_reliable"];
+/**
+ * Reasons that get one more optional question beside the offer, so Selestial learns exactly what went wrong
+ * (the Owner's decision of November 27, 2026: the discount, and this question, instead of a support note).
+ */
+export const DETAIL_QUESTIONS: Partial<Record<CancelReason, string>> = {
+  setup_time: "What made getting set up take so long?",
+  not_reliable: "What wasn’t working reliably?",
+};
 
 // ── The offers ───────────────────────────────────────────────────────────────────────────────────
 

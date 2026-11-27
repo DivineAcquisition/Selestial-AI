@@ -104,6 +104,9 @@ describe("cancellation and retention offers", () => {
     const s = await subscribed(t);
     const flowId = await open(s);
     await s.as.mutation(api.cancellation.answer, { companyId: s.companyId, flowId, step: "reason", code: "price_too_high", note: "Too much for a two-person team." });
+    // The follow-up question belongs to setup and reliability reasons only.
+    expect((await view(s, flowId)).detail).toBeNull();
+    expect(await refusal(s.as.mutation(api.cancellation.answer, { companyId: s.companyId, flowId, step: "detail", note: "x" }))).toMatch(/no follow-up/);
     await s.as.mutation(api.cancellation.offerSeen, { companyId: s.companyId, flowId, offerId: "save10_once", outcome: "viewed" });
     await s.as.mutation(api.cancellation.offerSeen, { companyId: s.companyId, flowId, offerId: "save10_once", outcome: "declined" });
     await s.as.mutation(api.cancellation.answer, { companyId: s.companyId, flowId, step: "need", code: "lower_price" });
@@ -337,7 +340,10 @@ describe("cancellation and retention offers", () => {
     expect(flow.cancel).toMatchObject({ stage: "failed", problem: expect.any(String) });
     expect(flow.outcome).toBeNull();
     expect(flow.reason).toBe("not_reliable");
-    expect(flow.support).toEqual({ email: "support@selestial.io", forReason: true });
+    expect(flow.support).toEqual({ email: "support@selestial.io" });
+    expect(flow.detail).toEqual({ question: "What wasn’t working reliably?", answer: null });
+    await s.as.mutation(api.cancellation.answer, { companyId: s.companyId, flowId, step: "detail", note: "Texts to cleaners went out twice." });
+    expect((await view(s, flowId)).detail).toEqual({ question: "What wasn’t working reliably?", answer: "Texts to cleaners went out twice." });
     expect(flow.plan.endsAt).toBeNull();
     expect(await notices(t, s.companyId, "cancel_scheduled")).toHaveLength(0);
   });

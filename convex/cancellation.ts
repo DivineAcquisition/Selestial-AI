@@ -29,6 +29,7 @@ import {
   CANCEL_REASON_WORDS,
   CANCEL_REASONS,
   customerWords,
+  DETAIL_QUESTIONS,
   hasCoupon,
   INELIGIBLE_WORDS,
   OFFER_IDS,
@@ -40,7 +41,6 @@ import {
   RETENTION_POLICY,
   STAY_NEED_WORDS,
   STAY_NEEDS,
-  SUPPORT_REASONS,
   type EligibilityInput,
   type Ineligible,
   type OfferId,
@@ -231,7 +231,7 @@ export const recheck = ownerMutation({
 export const answer = ownerMutation({
   args: {
     flowId: v.id("cancelFlows"),
-    step: v.union(v.literal("reason"), v.literal("need"), v.literal("skip")),
+    step: v.union(v.literal("reason"), v.literal("need"), v.literal("detail"), v.literal("skip")),
     code: v.optional(v.string()),
     note: v.optional(v.string()),
   },
@@ -241,6 +241,11 @@ export const answer = ownerMutation({
     const now = Date.now();
     if (args.step === "skip") {
       await ctx.db.patch(flow._id, { skipped: true, updatedAt: now });
+      return null;
+    }
+    if (args.step === "detail") {
+      if (!flow.reason || !DETAIL_QUESTIONS[flow.reason]) throw userError("There is no follow-up question for this answer.");
+      await ctx.db.patch(flow._id, { reasonDetail: note, updatedAt: now });
       return null;
     }
     if (args.step === "reason") {
@@ -385,7 +390,9 @@ export const flow = ownerQuery({
       outcome: flow.outcome ?? null,
       /** Stripe is still being read: the offers aren't decided yet. */
       checking: offersOn() && flow.factsAskedAt !== undefined && (!facts || facts.fetchedAt < flow.factsAskedAt),
-      support: { email: SUPPORT_EMAIL, forReason: flow.reason ? SUPPORT_REASONS.includes(flow.reason) : false },
+      support: { email: SUPPORT_EMAIL },
+      /** The follow-up question for setup or reliability reasons, shown beside the offer, and its answer so far. */
+      detail: flow.reason && DETAIL_QUESTIONS[flow.reason] ? { question: DETAIL_QUESTIONS[flow.reason]!, answer: flow.reasonDetail ?? null } : null,
       plan: {
         name: plan?.name ?? (account?.plan === "expand" ? "Expand" : "Operate"),
         monthlyCents: plan?.cents ?? null,
@@ -785,7 +792,7 @@ export const report = staffQuery({
         projectedCents: applied.reduce((sum, row) => sum + remaining(row.renewals, now).reduce((s, r) => s + r.totalCents, 0), 0),
       },
       retention,
-      recent: flows.slice(0, 50).map((row) => ({ id: row._id, company: companies.get(row.companyId) ?? "", at: row.startedAt, reason: row.reason ? CANCEL_REASON_WORDS[row.reason] : null, reasonNote: row.reasonNote ?? null, need: row.need ? STAY_NEED_WORDS[row.need] : null, needNote: row.needNote ?? null, outcome: row.outcome ?? null, skipped: row.skipped ?? false })),
+      recent: flows.slice(0, 50).map((row) => ({ id: row._id, company: companies.get(row.companyId) ?? "", at: row.startedAt, reason: row.reason ? CANCEL_REASON_WORDS[row.reason] : null, reasonNote: row.reasonNote ?? null, reasonDetail: row.reasonDetail ?? null, need: row.need ? STAY_NEED_WORDS[row.need] : null, needNote: row.needNote ?? null, outcome: row.outcome ?? null, skipped: row.skipped ?? false })),
     };
   },
 });
