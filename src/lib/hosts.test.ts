@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { decide, HOST_ROLES, HOST_SETTINGS, hostMap, hostName, indexable, parseOrigin, publicOrigin, roleOfHost, roleOfPath, type HostMap } from "./hosts";
+import { decide, HOST_ROLES, HOST_SETTINGS, hostMap, hostName, hrefFor, indexable, parseOrigin, publicOrigin, roleOfHost, roleOfPath, type HostMap } from "./hosts";
 
 const SETTINGS = {
   NEXT_PUBLIC_SITE_ORIGIN: "https://www.example.test",
@@ -275,32 +275,43 @@ describe("requests that are not page loads", () => {
 });
 
 describe("the founding host", () => {
-  const WITH = hostMap({ ...SETTINGS, FOUNDING_ORIGIN: "https://beta.example.test" });
-  const at = (pathname: string, search = "", method = "GET") => decide({ host: "beta.example.test", pathname, search, method }, WITH);
+  const WITH = hostMap({ ...SETTINGS, FOUNDING_ORIGIN: "https://access.example.test" });
+  const at = (pathname: string, search = "", method = "GET") => decide({ host: "access.example.test", pathname, search, method }, WITH);
+  const missing = { kind: "not_found", message: "Not found." };
 
   it("shows the founding page at its root, indexable, and keeps one address for it", () => {
     expect(at("/")).toEqual({ kind: "rewrite", to: "/founding", noindex: false });
-    expect(at("/founding", "?utm_source=x")).toEqual(goesTo("https://beta.example.test/?utm_source=x"));
+    expect(at("/", "", "POST")).toEqual({ kind: "rewrite", to: "/founding", noindex: false });
+    expect(at("/founding", "?utm_source=x")).toEqual(goesTo("https://access.example.test/?utm_source=x"));
+    expect(at("/founding/og.png")).toEqual(serves(false));
     expect(at("/api/founding/status")).toEqual(serves(false));
-    expect(indexable("beta.example.test", WITH)).toBe(true);
+    expect(at("/robots.txt")).toEqual(serves(false));
+    expect(indexable("access.example.test", WITH)).toBe(true);
   });
 
-  it("sends sign-up, sign-in and the workspace to the workspace host with the claim intact", () => {
-    expect(at("/signup", "?next=%2Fapp%2Ffounding%3Fclaim%3Dabc")).toEqual(goesTo("https://app.example.test/signup?next=%2Fapp%2Ffounding%3Fclaim%3Dabc"));
-    expect(at("/login")).toEqual(goesTo("https://app.example.test/login"));
-    expect(at("/app/founding")).toEqual(goesTo("https://app.example.test/app/founding"));
+  it("serves no other page and forwards nowhere", () => {
+    for (const path of ["/signup", "/login", "/app", "/app/founding", "/terms", "/privacy", "/book-a-call", "/agents", "/staff/operations", "/c/abc", "/b/juniper", "/n/x", "/auth/callback"]) {
+      expect(at(path)).toEqual(missing);
+      expect(at(path, "", "POST")).toEqual(missing);
+    }
   });
 
-  it("sends legal and other public pages to the main site, which stays as it was", () => {
-    expect(at("/terms")).toEqual(goesTo("https://www.example.test/terms"));
-    expect(at("/privacy")).toEqual(goesTo("https://www.example.test/privacy"));
+  it("is never reached from the main site or the other hosts", () => {
     expect(get("www.example.test", "/", WITH)).toEqual(serves(false));
-    expect(get("www.example.test", "/founding", WITH)).toEqual(goesTo("https://beta.example.test/"));
-    expect(get("app.example.test", "/founding", WITH)).toEqual(goesTo("https://beta.example.test/"));
+    for (const host of ["www.example.test", "app.example.test", "admin.example.test", "link.example.test"]) {
+      expect(get(host, "/founding", WITH)).toEqual(missing);
+      expect(get(host, "/api/founding/status", WITH)).toEqual(missing);
+    }
   });
 
-  it("never replays a form post across hosts", () => {
-    expect(at("/terms", "", "POST")).toEqual({ kind: "not_found", message: "Not found." });
+  it("links from the founding page straight to the host that serves each page", () => {
+    expect(hrefFor("/signup?next=%2Fapp%2Ffounding%3Fclaim%3Dabc", WITH)).toBe("https://app.example.test/signup?next=%2Fapp%2Ffounding%3Fclaim%3Dabc");
+    expect(hrefFor("/login?next=%2Fapp", WITH)).toBe("https://app.example.test/login?next=%2Fapp");
+    expect(hrefFor("/terms", WITH)).toBe("https://www.example.test/terms");
+    expect(hrefFor("/book-a-call", WITH)).toBe("https://www.example.test/book-a-call");
+    expect(hrefFor("#offer", WITH)).toBe("#offer");
+    expect(hrefFor("/founding/og.png", WITH)).toBe("/founding/og.png");
+    expect(hrefFor("/terms", {})).toBe("/terms");
   });
 
   it("serves the page on previews and on the main site until the host is set", () => {

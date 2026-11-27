@@ -1,7 +1,7 @@
-# Selestial Founding Access (beta.selestial.io)
+# Selestial Founding Access (access.selestial.io)
 
 Built November 25, 2026 on `claude/selestial-founding-access-page-byf60g`. Customer-facing name: **Selestial
-Founding Access**. The word "beta" appears only in the host name.
+Founding Access**.
 
 ## Offer terms: where they come from
 
@@ -92,24 +92,33 @@ onboarding are measured server-side (`founding:funnel`, event log), because the 
 
 ## Domain and routing
 
-`src/lib/hosts.ts` has a `founding` role read from `FOUNDING_ORIGIN`. On that host `/` is rewritten to
-`/founding` (indexable), `/founding` redirects to `/`, sign-up/sign-in/workspace go to `APP_ORIGIN` keeping the
-query, and legal/other pages go to the public site. The public and app hosts redirect `/founding` to the founding
-host once it is set. Previews and hosts no setting names serve `/founding` directly.
+`src/lib/hosts.ts` has a `founding` role read from `FOUNDING_ORIGIN` (`https://access.selestial.io`). That host
+serves the founding page and nothing else: `/` shows `/founding` (indexable), `/founding` redirects to `/`, and
+`/founding/*` assets, `/api/founding/status` and the shared files (robots, icons, `/.well-known`, `/__clerk`) are
+served. Every other path is a plain 404; nothing is forwarded to another host. The page's own links (sign in,
+sign up with the claim in `next`, legal pages, book a call) are written as absolute links to `APP_ORIGIN` and
+`NEXT_PUBLIC_SITE_ORIGIN` (`hrefFor`), and a saved claim redirects straight to `APP_ORIGIN/signup?next=...`.
 
-**Verified November 25, 2026 (read-only):** `beta.selestial.io` is **not attached** to Vercel project
-`selestial-ai`, and has no DNS record. DNS for `selestial.io` is at GoDaddy (`ns69/ns70.domaincontrol.com`).
-**It is not live.**
+Once `FOUNDING_ORIGIN` is set, no other host leads to it: `/founding` and `/api/founding/*` are 404 on the public
+site, the workspace, the staff and the link hosts, and the main site has no link to the access host. Previews and
+hosts no setting names still serve `/founding` directly.
+
+The access host was previously planned as `beta.selestial.io`; that name is not used.
+
+**Verified November 25, 2026 (read-only):** neither host is attached to Vercel project `selestial-ai`. DNS for
+`selestial.io` is at GoDaddy (`ns69/ns70.domaincontrol.com`). **It is not live.**
 
 To go live (needs the Owner's go-ahead):
 
-1. Vercel › `selestial-ai` › Domains › add `beta.selestial.io` (production).
-2. GoDaddy DNS for `selestial.io`: `CNAME beta → 1d759f65bace6df9.vercel-dns-016.com.` (Vercel's recommended
-   value for this project; `cname.vercel-dns.com.` also works).
-3. Vercel › Environment Variables (Production): `FOUNDING_ORIGIN=https://beta.selestial.io`. Redeploy.
-4. Clerk: no change needed. Sign-in stays on `app.selestial.io`; `beta` only links to it.
-5. Verify: TLS issued, `https://beta.selestial.io/` returns 200 with the founding page, `/terms` redirects to
-   `www`, `/signup?next=...` redirects to `app` with the query intact, `/api/founding/status` returns JSON.
+1. Vercel › `selestial-ai` › Domains › add `access.selestial.io` (production). Remove `beta.selestial.io` if it
+   was ever added.
+2. GoDaddy DNS for `selestial.io`: `CNAME access → 1d759f65bace6df9.vercel-dns-016.com.` (Vercel's recommended
+   value for this project; `cname.vercel-dns.com.` also works). Remove any `beta` record.
+3. Vercel › Environment Variables (Production): `FOUNDING_ORIGIN=https://access.selestial.io`. Redeploy.
+4. Clerk: no change needed. Sign-in stays on `app.selestial.io`; `access` only links to it.
+5. Verify: TLS issued, `https://access.selestial.io/` returns 200 with the founding page,
+   `/api/founding/status` returns JSON, `/terms`, `/signup` and `/app` return 404 there, and
+   `https://www.selestial.io/founding` returns 404.
 
 ## Before enabling live claims
 

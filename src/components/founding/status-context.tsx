@@ -4,10 +4,12 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, type R
 
 import { remaining } from "../../../convex/lib/founding/offer";
 import type { FoundingView } from "@/lib/founding/view";
+import { hrefFor, type HostMap } from "@/lib/hosts";
 
 type Live = { view: FoundingView; now: number };
 
 const Ctx = createContext<Live | null>(null);
+const Hosts = createContext<HostMap>({});
 
 /** How often the timer moves. It shows minutes, so once every 15 seconds keeps it exact without busy work. */
 const TICK_MS = 15_000;
@@ -20,7 +22,7 @@ const REFRESH_MS = 5 * 60_000;
  * by the measured difference to the server's clock: a visitor whose clock is wrong still sees the true
  * deadline, and every visitor counts down to the same stored timestamp. Nothing is kept in the browser.
  */
-export function FoundingStatusProvider({ initial, children }: { initial: FoundingView; children: ReactNode }) {
+export function FoundingStatusProvider({ initial, hosts = {}, children }: { initial: FoundingView; hosts?: HostMap; children: ReactNode }) {
   const [view, setView] = useState(initial);
   const [now, setNow] = useState(initial.serverNow);
   const offset = useRef<number | null>(null);
@@ -59,7 +61,17 @@ export function FoundingStatusProvider({ initial, children }: { initial: Foundin
     return { view, now };
   }, [view, now]);
 
-  return <Ctx.Provider value={live}>{children}</Ctx.Provider>;
+  return (
+    <Hosts.Provider value={hosts}>
+      <Ctx.Provider value={live}>{children}</Ctx.Provider>
+    </Hosts.Provider>
+  );
+}
+
+/** Links off the founding page, at the host that serves them: the founding host serves nothing else. */
+export function useFoundingHref(): (href: string) => string {
+  const hosts = useContext(Hosts);
+  return (href) => hrefFor(href, hosts);
 }
 
 export function useFounding(): Live & { left: ReturnType<typeof remaining> | null } {

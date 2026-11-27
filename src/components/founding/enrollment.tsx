@@ -9,7 +9,7 @@ import { CTA, STATUS } from "@/lib/founding/content";
 import { closingDate } from "@/lib/founding/view";
 import { cn } from "@/lib/utils";
 
-import { useFounding } from "./status-context";
+import { useFounding, useFoundingHref } from "./status-context";
 
 const ctaShape = "h-12! rounded-[10px]! px-6! text-[15px]! before:rounded-[9px]!";
 
@@ -20,9 +20,10 @@ const ctaShape = "h-12! rounded-[10px]! px-6! text-[15px]! before:rounded-[9px]!
  */
 export function ClaimCta({ position, className, fullWidth = false, inverse = false, compact = false }: { position: string; className?: string; fullWidth?: boolean; inverse?: boolean; compact?: boolean }) {
   const { view } = useFounding();
+  const to = useFoundingHref();
   if (compact) {
     // The header's button, styled like the main site's nav CTA (icon-gradient, 40px, rounded-xl).
-    const href = view.canClaim ? "#claim" : view.state === "not_open" || view.state === "unavailable" ? "/book-a-call" : "/signup";
+    const href = to(view.canClaim ? "#claim" : view.state === "not_open" || view.state === "unavailable" ? "/book-a-call" : "/signup");
     const words = view.canClaim ? CTA : view.state === "not_open" || view.state === "unavailable" ? STATUS.talkCta : STATUS.afterCta;
     return (
       <a href={href} data-cta-position={position} onClick={() => view.canClaim && trackFounding("founding_cta_selected", position)} className={cn("icon-gradient h-10 items-center rounded-xl px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-[#6838ef]/60", className ?? "inline-flex")}>
@@ -32,7 +33,7 @@ export function ClaimCta({ position, className, fullWidth = false, inverse = fal
   }
   if (inverse) {
     // On the violet closing panel: a white button, same destinations as below.
-    const href = view.canClaim ? "#claim" : view.state === "not_open" || view.state === "unavailable" ? "/book-a-call" : "/signup";
+    const href = to(view.canClaim ? "#claim" : view.state === "not_open" || view.state === "unavailable" ? "/book-a-call" : "/signup");
     const words = view.canClaim ? CTA : view.state === "not_open" || view.state === "unavailable" ? STATUS.talkCta : STATUS.afterCta;
     return (
       <a href={href} data-cta-position={position} onClick={() => view.canClaim && trackFounding("founding_cta_selected", position)} className={cn("inline-flex h-12 items-center justify-center rounded-[10px] bg-white px-6 text-[15px] font-semibold text-[#5126c7] shadow-[0_10px_30px_-12px_rgba(0,0,0,0.45)] transition-colors hover:bg-[#f3efff] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white", className)}>
@@ -49,13 +50,13 @@ export function ClaimCta({ position, className, fullWidth = false, inverse = fal
   }
   if (view.state === "not_open" || view.state === "unavailable") {
     return (
-      <Button variant="gradient" size="xl" className={cn(ctaShape, fullWidth && "w-full", className)} render={<Link href="/book-a-call" data-cta-position={position} />}>
+      <Button variant="gradient" size="xl" className={cn(ctaShape, fullWidth && "w-full", className)} render={<Link href={to("/book-a-call")} data-cta-position={position} />}>
         {STATUS.talkCta}
       </Button>
     );
   }
   return (
-    <Button variant="gradient" size="xl" className={cn(ctaShape, fullWidth && "w-full", className)} render={<Link href="/signup" data-cta-position={position} />}>
+    <Button variant="gradient" size="xl" className={cn(ctaShape, fullWidth && "w-full", className)} render={<Link href={to("/signup")} data-cta-position={position} />}>
       {STATUS.afterCta}
     </Button>
   );

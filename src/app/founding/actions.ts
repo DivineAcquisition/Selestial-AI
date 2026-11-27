@@ -8,6 +8,7 @@ import { redirect } from "next/navigation";
 
 import { serverBackendUrl } from "@/lib/app/server-backend";
 import { AUTH, withNext } from "@/lib/auth/routes";
+import { hostMap, hrefFor } from "@/lib/hosts";
 
 import { api } from "../../../convex/_generated/api";
 import type { StartClaimResult } from "../../../convex/founding";
@@ -16,7 +17,7 @@ export type ClaimState = { status: "idle" } | { status: "invalid" | "closed" | "
 
 /** Where a started claim continues: account creation (or sign-in), then the claim inside the workspace. */
 export async function claimDestination(claimKey: string): Promise<string> {
-  return withNext(AUTH.signup, `/app/founding?claim=${encodeURIComponent(claimKey)}`);
+  return hrefFor(withNext(AUTH.signup, `/app/founding?claim=${encodeURIComponent(claimKey)}`), hostMap(process.env));
 }
 
 async function visitorKey(): Promise<string> {

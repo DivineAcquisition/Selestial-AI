@@ -8,6 +8,7 @@ import { HEADER } from "@/lib/founding/content";
 import { cn } from "@/lib/utils";
 
 import { ClaimCta } from "./enrollment";
+import { useFoundingHref } from "./status-context";
 
 const focusRing = "outline-none focus-visible:ring-2 focus-visible:ring-[#6838ef]/60";
 
@@ -27,6 +28,7 @@ const LINKS = [
  */
 export function FoundingNav() {
   const [scrolled, setScrolled] = useState(false);
+  const href = useFoundingHref();
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
     onScroll();
@@ -52,7 +54,7 @@ export function FoundingNav() {
           ))}
         </nav>
         <div className="flex items-center gap-1.5">
-          <Link href={`/login?next=${encodeURIComponent("/app/founding")}`} className={cn("inline-flex h-10 items-center rounded-xl px-3.5 text-sm font-medium text-muted-foreground transition-colors hover:text-strong", focusRing)}>
+          <Link href={href(`/login?next=${encodeURIComponent("/app/founding")}`)} className={cn("inline-flex h-10 items-center rounded-xl px-3.5 text-sm font-medium text-muted-foreground transition-colors hover:text-strong", focusRing)}>
             {HEADER.signIn}
           </Link>
           <ClaimCta position="nav" compact className="hidden sm:inline-flex" />

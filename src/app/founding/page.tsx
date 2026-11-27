@@ -36,8 +36,9 @@ export const revalidate = 60;
 export default async function Founding() {
   const view = await loadFoundingView();
   const tools = trackingTools();
+  const map = hostMap(process.env);
   return (
-    <FoundingStatusProvider initial={view}>
+    <FoundingStatusProvider initial={view} hosts={{ public: map.public, app: map.app }}>
       <FoundingPage />
       <ConsentControls tools={tools} />
       <Suspense fallback={null}>

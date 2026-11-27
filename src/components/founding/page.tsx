@@ -5,6 +5,7 @@ import { AgentMark } from "@/components/marketing/agent-mark";
 import { Logo } from "@/components/brand/logo";
 import { CookiePreferencesLink } from "@/components/consent/banner";
 import { AGENTS_SECTION, CLAIM, FAQ, FINAL, FOUNDING_MONTHS, FOUNDING_PRICE, HERO, OFFER, SETUP, SUPPORT_EMAIL, WALKTHROUGH } from "@/lib/founding/content";
+import { hostMap, hrefFor } from "@/lib/hosts";
 import { cn } from "@/lib/utils";
 
 import { AgentDesk } from "./agent-desk";
@@ -291,6 +292,7 @@ function Faq() {
 }
 
 function Final() {
+  const hosts = hostMap(process.env);
   return (
     <footer id="founding-footer" className={cn(gutter, "border-t border-border pt-20 pb-28 sm:pb-14")}>
       <div className={cn(shell, "rounded-3xl bg-[linear-gradient(135deg,#5126c7_0%,#6838ef_55%,#8a6bff_100%)] p-8 text-white sm:p-12")}>
@@ -319,7 +321,7 @@ function Final() {
                     {link.label}
                   </a>
                 ) : (
-                  <Link href={link.href} className="hover:text-strong">
+                  <Link href={hrefFor(link.href, hosts)} className="hover:text-strong">
                     {link.label}
                   </Link>
                 )}

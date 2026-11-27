@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 
 import { CURRENT_SOFTWARE, PRIORITIES, TEAM_SIZES } from "../../../convex/lib/founding/offer";
 import { ClaimCta } from "./enrollment";
-import { useFounding } from "./status-context";
+import { useFounding, useFoundingHref } from "./status-context";
 
 const control =
   "h-12 w-full rounded-lg border border-border bg-background px-3.5 text-[15px] text-strong shadow-xs transition-colors outline-none placeholder:text-muted-foreground hover:border-[#6838ef]/40 focus-visible:border-[#6838ef] focus-visible:ring-3 focus-visible:ring-[#6838ef]/20 aria-invalid:border-destructive";
@@ -67,6 +67,7 @@ const ERRORS: Record<Exclude<ClaimState["status"], "idle">, string> = CLAIM.erro
  */
 export function ClaimForm() {
   const { view } = useFounding();
+  const href = useFoundingHref();
   const [state, action, pending] = useActionState(startFoundingClaim, { status: "idle" } as ClaimState);
   const formRef = useRef<HTMLFormElement>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
@@ -93,7 +94,7 @@ export function ClaimForm() {
         <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-muted-foreground">{notice.body}</p>
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
           <ClaimCta position="claim-closed" />
-          <Link href="/login?next=%2Fapp" className="inline-flex h-12 items-center justify-center rounded-[10px] border border-border bg-background px-5 text-[15px] font-medium text-strong hover:bg-muted">
+          <Link href={href("/login?next=%2Fapp")} className="inline-flex h-12 items-center justify-center rounded-[10px] border border-border bg-background px-5 text-[15px] font-medium text-strong hover:bg-muted">
             {CLAIM.signIn.replace(" to claim for your company", "")}
           </Link>
         </div>
@@ -147,18 +148,18 @@ export function ClaimForm() {
         </Button>
         <p className="text-sm text-muted-foreground">
           {CLAIM.already}{" "}
-          <Link href={`/login?next=${encodeURIComponent("/app/founding")}`} className="font-medium text-[#5126c7] underline-offset-4 hover:underline">
+          <Link href={href(`/login?next=${encodeURIComponent("/app/founding")}`)} className="font-medium text-[#5126c7] underline-offset-4 hover:underline">
             {CLAIM.signIn}
           </Link>
         </p>
       </div>
       <p className="mt-5 text-xs leading-relaxed text-muted-foreground">
         {CLAIM.privacy}{" "}
-        <Link href="/privacy" className="underline underline-offset-2 hover:text-strong">
+        <Link href={href("/privacy")} className="underline underline-offset-2 hover:text-strong">
           Privacy Policy
         </Link>{" "}
         and{" "}
-        <Link href="/terms" className="underline underline-offset-2 hover:text-strong">
+        <Link href={href("/terms")} className="underline underline-offset-2 hover:text-strong">
           Terms
         </Link>
         .

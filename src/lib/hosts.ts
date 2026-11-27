@@ -21,7 +21,7 @@ export const HOST_SETTINGS: Record<HostRole, string> = {
   app: "APP_ORIGIN",
   link: "LINK_ORIGIN",
   admin: "ADMIN_ORIGIN",
-  /** The Selestial Founding Access page, for example https://beta.selestial.io. Its root shows /founding. */
+  /** The Selestial Founding Access page, for example https://access.selestial.io. Its root shows /founding and it serves nothing else. */
   founding: "FOUNDING_ORIGIN",
   docs: "DOCS_ORIGIN",
   status: "STATUS_ORIGIN",
@@ -160,9 +160,9 @@ export function decide(request: HostRequest, map: HostMap): Decision {
     if (!origin) return { kind: "next", noindex };
     // Only a plain page load is redirected. A form post to the wrong host is refused, not replayed.
     if (!safe) return { kind: "not_found", message: "Not found." };
-    // The founding page lives at its host's root.
-    const target = to === "founding" && pathname === FOUNDING_PATH ? "/" : pathname;
-    return { kind: "redirect", to: `${origin}${target}${request.search ?? ""}` };
+    // No other host leads to the founding host. Its page is reached only at its own address.
+    if (to === "founding") return { kind: "not_found", message: "Not found." };
+    return { kind: "redirect", to: `${origin}${pathname}${request.search ?? ""}` };
   };
 
   if (role === "founding") {
@@ -170,9 +170,9 @@ export function decide(request: HostRequest, map: HostMap): Decision {
     if (request.pathname === "/" || request.pathname === "") return { kind: "rewrite", to: FOUNDING_PATH, noindex };
     if (request.pathname === FOUNDING_PATH) return safe ? { kind: "redirect", to: `${map.founding}/${request.search ?? ""}` } : { kind: "next", noindex };
     if (path === "founding") return { kind: "next", noindex };
-    // Sign-up, sign-in and the workspace go to the workspace host, keeping the claim in the query.
-    // Legal pages and the rest of the site go to the public host.
-    return send(path, request.pathname);
+    // The founding host serves the founding page and nothing else, and never forwards elsewhere. The
+    // page's own links to sign-up and legal pages point at their hosts directly (hrefFor).
+    return { kind: "not_found", message: "Not found." };
   }
 
   if (role === "public") {
@@ -210,6 +210,18 @@ export function indexable(host: string, map: HostMap): boolean {
   if (!map.public) return true;
   const role = roleOfHost(host, map);
   return role === "public" || role === "founding";
+}
+
+/**
+ * A link from the founding page to a page it does not serve itself ("/signup?next=...", "/terms"), at
+ * the host that does serve it. Fragments, founding paths and hosts that are not set stay as written.
+ */
+export function hrefFor(href: string, map: HostMap): string {
+  if (!href.startsWith("/")) return href;
+  const path = roleOfPath(href.split(/[?#]/)[0]);
+  if (path === "founding" || path === "shared") return href;
+  const origin = map[path];
+  return origin ? `${origin}${href}` : href;
 }
 
 /** The public site's origin for canonical links and the sitemap, when it is set. */
