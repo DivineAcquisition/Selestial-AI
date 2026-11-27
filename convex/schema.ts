@@ -10,7 +10,7 @@ import { calendarTables } from "./lib/calendar/schema";
 import { cleanersSettingsValidator, cleanersTables, engagementValidator } from "./lib/cleaners/schema";
 import { googleTables } from "./lib/google/schema";
 import { aiTables } from "./lib/ai/schema";
-import { billingTables } from "./lib/billing/schema";
+import { billingTables, cancellationTables } from "./lib/billing/schema";
 import { messagingTables } from "./lib/messagingBilling/schema";
 import { bookingTables } from "./lib/booking/schema";
 import { chatTables } from "./lib/chat/schema";
@@ -1195,6 +1195,7 @@ export default defineSchema({
   // ── The AI layer: usage, model settings, Creative Studio, generation allowances, search index ──
   ...aiTables,
   ...billingTables,
+  ...cancellationTables,
   ...messagingTables,
   // Services & Pricing (convex/lib/services/schema.ts).
   ...servicesTables,

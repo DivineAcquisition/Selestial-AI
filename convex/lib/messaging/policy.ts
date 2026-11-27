@@ -11,6 +11,7 @@ import { activeSuppressions, blockingSuppression, currentPermission } from "../c
 import { normalAddress, recipientRecord, recipientsAt } from "../compliance/recipients";
 import { CATEGORIES, CHANNELS, type Category, type Channel, type Origin, type Recipient, type ReplyKind } from "../compliance/schema";
 import { localParts } from "../availability";
+import { accountFor, billingState, verifiedPlan } from "../billing/access";
 import { AGENT_PROFILES } from "../departments";
 import { covers } from "../texting/plan";
 import type { Agent } from "../statuses";
@@ -24,7 +25,7 @@ const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
 const WEEK = 7 * DAY;
 
-export const POLICY_CODES = ["company_suspended", "messaging_paused", "agent_paused", "sender_not_ready", "no_address", "not_registered", "suppressed", "no_permission", "quiet_hours", "frequency", "conversation_owned"] as const;
+export const POLICY_CODES = ["company_suspended", "messaging_paused", "agent_paused", "sender_not_ready", "no_address", "not_registered", "suppressed", "no_permission", "quiet_hours", "frequency", "conversation_owned", "no_plan"] as const;
 export type PolicyCode = (typeof POLICY_CODES)[number];
 
 /** The general words for each code. An answer carries more exact words for the case at hand. */
@@ -32,6 +33,7 @@ export const POLICY_WORDS: Record<PolicyCode, string> = {
   company_suspended: "Sending is suspended for this company by Selestial.",
   messaging_paused: "Texting is paused by the owner. Messages wait and go when it is resumed.",
   agent_paused: "The agent is paused, so it sends nothing. A person can still send.",
+  no_plan: "The subscription has ended, so agents send nothing. A person can still send.",
   sender_not_ready: "The company's sending setup is not finished.",
   no_address: "There is no usable address for this person on this channel.",
   not_registered: "The company's texting registration does not cover this kind of text to this person.",
@@ -126,6 +128,17 @@ export function quietUntil(now: number, timezone: string, window: { start: strin
  * the suppression that the STOP just made, it needs no permission because the person wrote first, and
  * it is not held for quiet hours because it answers them right away. Everything else still applies.
  */
+/**
+ * Whether paid access has ended: billing is connected, Autumn's record (Selestial's copy) exists for the
+ * company, and it shows no active plan. A company billing has never seen is left to the other checks.
+ */
+async function planEnded(ctx: Ctx, company: Doc<"companies">): Promise<boolean> {
+  const state = billingState();
+  if (!state.connected || verifiedPlan(company)) return false;
+  const account = await accountFor(ctx, company._id, state.env);
+  return account !== null && account.plan === null;
+}
+
 /** A paused company's messages are looked at again this often; resuming sends them at once (companies.resumeMessaging). */
 const PAUSE_RECHECK_MS = 6 * 60 * 60 * 1000;
 /** A text to someone who texted the company within this time answers them, and isn't held by the sending-hours floor. */
@@ -143,6 +156,14 @@ export async function checkSend(ctx: Ctx, input: PolicyInput): Promise<PolicyAns
 
   if (AGENT_ORIGINS.includes(input.origin) && input.agent && company.pausedAgents.includes(input.agent)) {
     return no("agent_paused", `${AGENT_PROFILES[input.agent].name} is paused, so it sends nothing. A person can still send.`);
+  }
+
+  // An agent's message is checked against the plan when it goes, not when it was queued: once paid access
+  // ended, nothing an agent wrote earlier (a campaign, a follow-up) is sent, through any route, including the
+  // company's own Gmail or Quo, which Selestial's messaging balance never sees. It is refused, not held, so a
+  // later reactivation never replays it. A person's own messages and replies to STOP/HELP still go.
+  if (AGENT_ORIGINS.includes(input.origin) && !input.reply && (await planEnded(ctx, company))) {
+    return no("no_plan", "The subscription has ended, so agents send nothing. A person can still send.");
   }
 
   const profile = await readProfile(ctx, input.companyId);

@@ -17,6 +17,23 @@ type Intent = {
 };
 type Refund = { id: string; account: string; payment_intent: string; amount: number; status: "pending" | "succeeded" | "failed" | "canceled"; metadata: Record<string, string> };
 
+/** A plan subscription on Selestial's own Stripe account, as the stand-in keeps it. Times in seconds, as Stripe sends them. */
+export type PlatformSub = {
+  id: string;
+  customer: string;
+  status: string;
+  cents: number;
+  product: string;
+  interval: string;
+  currentPeriodEnd: number;
+  anchor: number;
+  cancelAtPeriodEnd: boolean;
+  schedule: string | null;
+  trialEnd: number | null;
+  discounts: { id: string; coupon: string }[];
+  metadata: Record<string, string>;
+};
+
 export type Loss = { path: RegExp; when: "before" | "after"; times?: number };
 
 export function fakeStripe() {
@@ -29,6 +46,15 @@ export function fakeStripe() {
     replies: new Map<string, { status: number; body: unknown }>(),
     calls: [] as { method: string; path: string; key: string | null; account: string | null }[],
     losses: [] as Loss[],
+    /**
+     * Selestial's own account (the one Autumn charges plans through): customers with Autumn's id in their
+     * metadata, their plan subscriptions, and the coupons put on them (convex/cancellation.ts).
+     */
+    platform: {
+      customers: new Map<string, { id: string; metadata: Record<string, string> }>(),
+      subscriptions: new Map<string, PlatformSub>(),
+      coupons: new Map<string, { id: string; percent_off: number; duration: string; duration_in_months: number | null; applies_to: { products: string[] }; max_redemptions: number; metadata: Record<string, string> }>(),
+    },
     /** New refunds start in this state. */
     refundStatus: "succeeded" as Refund["status"],
     seq: 0,
@@ -53,8 +79,71 @@ export function fakeStripe() {
     };
   }
 
+  function subBody(sub: PlatformSub) {
+    return {
+      id: sub.id,
+      object: "subscription",
+      customer: sub.customer,
+      status: sub.status,
+      livemode: false,
+      currency: "usd",
+      cancel_at_period_end: sub.cancelAtPeriodEnd,
+      billing_cycle_anchor: sub.anchor,
+      trial_end: sub.trialEnd,
+      schedule: sub.schedule,
+      metadata: sub.metadata,
+      // Newer API versions keep the period on the item; the code reads either.
+      items: { data: [{ id: `si_${sub.id}`, quantity: 1, current_period_end: sub.currentPeriodEnd, price: { id: `price_${sub.product}`, unit_amount: sub.cents, currency: "usd", product: sub.product, recurring: { interval: sub.interval, interval_count: 1, usage_type: "licensed" } } }] },
+      discounts: sub.discounts.map((row) => ({ id: row.id, object: "discount", coupon: { id: row.coupon }, source: { coupon: row.coupon } })),
+    };
+  }
+
+  function handlePlatform(method: string, path: string, form: URLSearchParams): { status: number; body: unknown } | null {
+    let match: RegExpMatchArray | null;
+    const p = state.platform;
+    if (method === "GET" && path === "/v1/customers/search") {
+      const wanted = /'([^']+)'$/.exec(form.get("query") ?? "")?.[1];
+      return { status: 200, body: { data: [...p.customers.values()].filter((c) => Object.values(c.metadata).includes(wanted ?? "-")) } };
+    }
+    if (method === "GET" && (match = path.match(/^\/v1\/customers\/(cus_\w+)$/))) {
+      const customer = p.customers.get(match[1]);
+      return customer ? { status: 200, body: { ...customer, object: "customer" } } : { status: 404, body: { error: { code: "resource_missing", message: "No such customer" } } };
+    }
+    if (method === "GET" && path === "/v1/subscriptions") {
+      return { status: 200, body: { data: [...p.subscriptions.values()].filter((sub) => sub.customer === form.get("customer")).map(subBody) } };
+    }
+    if ((match = path.match(/^\/v1\/subscriptions\/(sub_\w+)$/))) {
+      const sub = p.subscriptions.get(match[1]);
+      if (!sub) return { status: 404, body: { error: { code: "resource_missing", message: "No such subscription" } } };
+      if (method === "POST") {
+        const coupon = form.get("discounts[0][coupon]");
+        if (coupon) {
+          const known = p.coupons.get(coupon);
+          if (!known) return { status: 400, body: { error: { code: "resource_missing", message: "No such coupon" } } };
+          // A populated list replaces the subscription's discounts (Stripe's documented behavior).
+          sub.discounts = [{ id: next("di"), coupon }];
+        }
+        for (const [key, value] of form) if (key.startsWith("metadata[")) sub.metadata[key.slice(9, -1)] = value;
+      }
+      return { status: 200, body: subBody(sub) };
+    }
+    if (method === "POST" && path === "/v1/coupons") {
+      const id = next("coupon");
+      const metadata: Record<string, string> = {};
+      for (const [key, value] of form) if (key.startsWith("metadata[")) metadata[key.slice(9, -1)] = value;
+      const coupon = { id, percent_off: Number(form.get("percent_off")), duration: form.get("duration") ?? "", duration_in_months: form.get("duration_in_months") ? Number(form.get("duration_in_months")) : null, applies_to: { products: form.getAll("applies_to[products][0]") }, max_redemptions: Number(form.get("max_redemptions")), metadata };
+      p.coupons.set(id, coupon);
+      return { status: 200, body: { ...coupon, object: "coupon" } };
+    }
+    return null;
+  }
+
   function handle(method: string, path: string, form: URLSearchParams, account: string | null): { status: number; body: unknown } {
     let match: RegExpMatchArray | null;
+    if (!account) {
+      const platform = handlePlatform(method, path, form);
+      if (platform) return platform;
+    }
     if (method === "POST" && path === "/v1/accounts") {
       const id = next("acct");
       state.accounts.set(id, { id, charges_enabled: false, payouts_enabled: false, details_submitted: false, currently_due: ["external_account"], disabled_reason: null, name: form.get("business_profile[name]") ?? "" });
@@ -156,6 +245,18 @@ export function fakeStripe() {
         pi.last_payment_error = null;
         pi.fee = status === "succeeded" ? fee : null;
       }
+    },
+    /**
+     * A plan subscription for a company on Selestial's own account, the way Autumn makes it: a Stripe customer
+     * whose metadata names Autumn's customer id, and one monthly base price.
+     */
+    planSubscription(companyId: string, fields: { cents: number; periodEnd: number; product?: string; status?: string; interval?: string; discounts?: { id: string; coupon: string }[]; schedule?: string | null; cancelAtPeriodEnd?: boolean; trialEnd?: number | null; anchor?: number }) {
+      const customerId = next("cus");
+      state.platform.customers.set(customerId, { id: customerId, metadata: { autumn_id: `company_${companyId}` } });
+      const id = next("sub");
+      const sub: PlatformSub = { id, customer: customerId, status: fields.status ?? "active", cents: fields.cents, product: fields.product ?? `prod_${fields.cents}`, interval: fields.interval ?? "month", currentPeriodEnd: Math.floor(fields.periodEnd / 1000), anchor: Math.floor((fields.anchor ?? fields.periodEnd) / 1000), cancelAtPeriodEnd: fields.cancelAtPeriodEnd ?? false, schedule: fields.schedule ?? null, trialEnd: fields.trialEnd ?? null, discounts: fields.discounts ?? [], metadata: {} };
+      state.platform.subscriptions.set(id, sub);
+      return sub;
     },
     intentsFor(paymentId: string) {
       return [...state.intents.values()].filter((pi) => pi.metadata.selestial_payment === paymentId);

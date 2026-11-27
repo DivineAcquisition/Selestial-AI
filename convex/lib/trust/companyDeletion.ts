@@ -142,6 +142,8 @@ export const DELETION_PLAN: readonly TablePlan[] = [
   keep("billingAccounts", "Selestial's billing record for the company: the plan, Autumn customer id and balances. Selestial's own accounting."),
   keep("billingDunning", "Unpaid Selestial invoices and what happened to each: Selestial's own accounting."),
   keep("billingIntents", "Purchases the company started with Selestial. The short-lived payment address is removed.", { personal: ["url", "problem"] }),
+  keep("retentionOffers", "Retention discounts the company accepted on its Selestial plan, and the invoices they applied to: Selestial's own billing record, and what keeps an offer to once in 12 months.", { personal: ["problem"] }),
+  del("cancelFlows", "The Owner's answers when considering cancelling (reasons and notes). Feedback for Selestial, not needed once the company is gone."),
   keep("billingWebhooks", "Autumn and Stripe deliveries to Selestial about the company's plan: Selestial's own accounting.", { uncounted: true }),
   keep("aiExecutions", "Each piece of AI work and its credit charge: Selestial's billing ledger.", { personal: ["message", "settleProblem"] }),
   keep("messagingTopUps", "Messaging balance purchases and refunds: Selestial's billing ledger.", { personal: ["invoiceUrl", "problem"] }),

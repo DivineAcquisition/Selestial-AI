@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { AiFeatures } from "@/components/app/billing/ai-features";
+import { CancelFlowDialog, usd } from "@/components/app/billing/cancel-flow";
 import { EarlyOfferConfirmNote, EarlyOfferNote, EarlyPriceLine } from "@/components/app/billing/early-offer";
 import { MessagingTab, ThreeBalances } from "@/components/app/billing/messaging";
 import { UsageDashboard } from "@/components/app/billing/usage";
@@ -144,12 +145,12 @@ function ConnectedView({ data }: { data: Connected }) {
 
 function CurrentPlan({ data, onIntent }: { data: Connected; onIntent: (id: Id<"billingIntents">) => void }) {
   const { companyId } = useCompany();
-  const cancel = useMutation(api.billing.cancelPlan);
   const resume = useMutation(api.billing.resumePlan);
   const change = useMutation(api.billing.startPlanChange);
   const { busy, error, run } = useRun();
-  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
   const offer = useQuery(api.earlyOffer.mine, { companyId });
+  const retention = useQuery(api.cancellation.status, { companyId });
   const account = data.account;
   const plan = account?.plan ?? null;
   const sub = account?.subscription;
@@ -186,6 +187,7 @@ function CurrentPlan({ data, onIntent }: { data: Connected; onIntent: (id: Id<"b
                 {earlyMove ? ` Operate's full price starts ${day(sub?.scheduledAt ?? sub?.periodEnd)}.` : sub?.scheduledPlan ? ` Changes to ${sub.scheduledPlan === "operate" ? "Operate" : "Expand"} on ${day(sub.scheduledAt ?? sub.periodEnd)}.` : ""}
               </p>
               <EarlyPriceLine offer={offer} />
+              <RetentionLine status={retention} />
             </div>
           )}
           {working.length > 0 ? (
@@ -222,29 +224,49 @@ function CurrentPlan({ data, onIntent }: { data: Connected; onIntent: (id: Id<"b
               Move to Operate at renewal
             </Button>
           ) : null}
-          {sub?.endsAt || (sub?.scheduledPlan && !earlyMove) ? (
-            <Button size="sm" variant="outline" loading={busy} onClick={() => void run(async () => onIntent(await resume({ companyId })))}>
-              {sub?.endsAt ? "Keep this plan" : "Keep the current plan"}
+          {sub?.endsAt ? (
+            <Button size="sm" variant="default" loading={busy} onClick={() => void run(async () => onIntent(await resume({ companyId })))}>
+              Reactivate subscription
             </Button>
-          ) : confirmCancel ? (
-            <>
-              <Button size="sm" variant="destructive-outline" loading={busy} onClick={() => void run(async () => onIntent(await cancel({ companyId })))}>
-                Confirm: end at {day(sub?.periodEnd)}
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => setConfirmCancel(false)}>
-                Not now
-              </Button>
-            </>
+          ) : sub?.scheduledPlan && !earlyMove ? (
+            <Button size="sm" variant="outline" loading={busy} onClick={() => void run(async () => onIntent(await resume({ companyId })))}>
+              Keep the current plan
+            </Button>
           ) : (
-            <Button size="sm" variant="ghost" onClick={() => setConfirmCancel(true)}>
-              Cancel plan
+            <Button size="sm" variant="ghost" onClick={() => setCancelOpen(true)}>
+              Cancel subscription
             </Button>
           )}
         </div>
       ) : null}
-      {confirmCancel ? <p className="mt-2 text-xs text-muted-foreground">The plan stays active until {day(sub?.periodEnd)} and does not renew. Records, completed work, signed agreements and cleaner links are kept. After that date, agents and AI work stop until a plan is chosen again; purchased credits cannot be used without a plan.</p> : null}
+      {sub?.endsAt ? <p className="mt-2 text-xs text-muted-foreground">Renewal is off. You can use Selestial until {day(sub.endsAt)}. Reactivating before then keeps your plan as it is, with nothing charged until your normal renewal.</p> : null}
+      <CancelFlowDialog open={cancelOpen} onClose={() => setCancelOpen(false)} />
       <FormError message={error} />
     </HeroCard>
+  );
+}
+
+/** The retention discount in force, and the next subscription payment. Plain words: no coupon or provider terms. */
+function RetentionLine({ status }: { status: ReturnType<typeof useQuery<typeof api.cancellation.status>> }) {
+  if (!status) return null;
+  const { offer, next } = status;
+  return (
+    <>
+      {offer ? (
+        <p className="mt-2 inline-flex flex-wrap items-center gap-x-2 rounded-lg bg-brand-500/[0.07] px-3 py-1.5 text-sm text-strong">
+          <span className="font-medium text-brand-600">{offer.percent}% off your subscription</span>
+          <span className="text-muted-foreground">
+            {offer.state === "applied" ? `${offer.renewalsLeft} discounted ${offer.renewalsLeft === 1 ? "payment" : "payments"} left, then ${usd(offer.resumesCents)} a month from ${day(offer.resumesAt)}.` : "Being confirmed with billing."}
+          </span>
+        </p>
+      ) : null}
+      {next ? (
+        <p className="mt-1 text-sm text-muted-foreground">
+          Next subscription payment: <span className="font-medium text-strong">{usd(next.cents)}</span> on {day(next.at)}
+          {next.discounted ? " (discounted)" : ""}, plus tax if applicable. Usage is billed separately.
+        </p>
+      ) : null}
+    </>
   );
 }
 

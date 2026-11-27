@@ -10,6 +10,7 @@ import { v } from "convex/values";
 import { literals } from "../statuses";
 import { PLAN_IDS, STORED_AGENT_IDS } from "./catalog";
 import { TASK_IDS } from "./rateCards";
+import { CANCEL_REASONS, OFFER_IDS, STAY_NEEDS } from "./retention";
 
 export const envValidator = v.union(v.literal("sandbox"), v.literal("production"));
 export const planValidator = literals(PLAN_IDS);
@@ -120,6 +121,8 @@ export const billingTables = {
     invoices: v.array(v.object({ id: v.string(), status: v.string(), cents: v.number(), currency: v.string(), createdAt: v.number(), url: v.union(v.string(), v.null()) })),
     syncedAt: v.number(),
     syncProblem: v.optional(v.string()),
+    /** Stripe's customer under Autumn's, once the server found and checked it (convex/retention.ts). Never from a request. */
+    stripeCustomerId: v.optional(v.string()),
   })
     .index("by_company_env", ["companyId", "env"])
     .index("by_env_customer", ["env", "customerId"]),
@@ -268,6 +271,8 @@ export const billingTables = {
      * when the Owner confirms, and the purchase is previewed again at the full price.
      */
     offer: v.optional(v.literal("early")),
+    /** The cancellation flow a cancel or uncancel was asked from (convex/retention.ts), for the report. */
+    flowId: v.optional(v.id("cancelFlows")),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_company_created", ["companyId", "createdAt"]),
@@ -311,6 +316,104 @@ export const billingTables = {
   })
     .index("by_company_env", ["companyId", "env"])
     .index("by_env_state", ["env", "state"]),
+};
+
+export const offerIdValidator = literals(OFFER_IDS);
+const renewalValidator = v.object({ at: v.number(), baseCents: v.number(), discountCents: v.number(), totalCents: v.number() });
+
+/**
+ * Cancellation and retention offers (docs/billing/05-cancellation.md, convex/retention.ts).
+ */
+export const cancellationTables = {
+  /**
+   * One opening of "Cancel subscription" by the Owner: what they answered, which offers they saw, and how it
+   * ended. Opening it, answering and seeing an offer change nothing in billing and use no eligibility.
+   */
+  cancelFlows: defineTable({
+    companyId: v.id("companies"),
+    env: envValidator,
+    memberId: v.id("members"),
+    policy: v.string(),
+    /** Autumn's plan id when the flow started, and its monthly price in cents. */
+    autumnPlanId: v.union(v.string(), v.null()),
+    planCents: v.union(v.number(), v.null()),
+    reason: v.optional(literals(CANCEL_REASONS)),
+    reasonNote: v.optional(v.string()),
+    need: v.optional(literals(STAY_NEEDS)),
+    needNote: v.optional(v.string()),
+    /** Skipped the questions and went straight to cancelling. */
+    skipped: v.optional(v.boolean()),
+    /** Stripe's subscription as the server last read it for this flow. */
+    facts: v.optional(v.any()),
+    factsAskedAt: v.optional(v.number()),
+    /** Whether any offer could be made when the flow first knew, and why not. */
+    eligible: v.optional(v.boolean()),
+    ineligible: v.optional(v.string()),
+    offers: v.array(v.object({ offerId: offerIdValidator, at: v.number(), outcome: v.union(v.literal("viewed"), v.literal("declined"), v.literal("accepted")) })),
+    outcome: v.optional(v.union(v.literal("kept"), v.literal("offer_accepted"), v.literal("cancel_requested"), v.literal("canceled"))),
+    startedAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_company_started", ["companyId", "startedAt"])
+    .index("by_env_started", ["env", "startedAt"]),
+
+  /**
+   * An accepted retention offer and the billing change behind it. Its id is the Idempotency-Key for the Stripe
+   * coupon and the subscription update, so a retry, a second click or a second tab is one discount.
+   *
+   *   pending      accepted; Stripe is being asked
+   *   applied      Stripe's subscription, read back, carries this offer's coupon
+   *   unconfirmed  Stripe didn't answer after the retries; the hourly sweep reads the subscription to settle it
+   *   failed       nothing was applied (refused, or the terms changed and must be accepted again)
+   */
+  retentionOffers: defineTable({
+    companyId: v.id("companies"),
+    env: envValidator,
+    flowId: v.id("cancelFlows"),
+    memberId: v.id("members"),
+    offerId: offerIdValidator,
+    policy: v.string(),
+    version: v.string(),
+    percent: v.number(),
+    autumnPlanId: v.string(),
+    currency: v.string(),
+    renewals: v.array(renewalValidator),
+    resumesAt: v.number(),
+    resumesCents: v.number(),
+    state: v.union(v.literal("pending"), v.literal("applied"), v.literal("unconfirmed"), v.literal("failed")),
+    stripeCustomerId: v.string(),
+    stripeSubscriptionId: v.string(),
+    stripeProductId: v.string(),
+    stripeCouponId: v.optional(v.string()),
+    stripeDiscountId: v.optional(v.string()),
+    attempts: v.number(),
+    nextTryAt: v.optional(v.number()),
+    problem: v.optional(v.string()),
+    /** Set when the terms changed between the preview and Stripe: shown again for fresh acceptance. */
+    termsChanged: v.optional(v.boolean()),
+    acceptedAt: v.number(),
+    appliedAt: v.optional(v.number()),
+    failedAt: v.optional(v.number()),
+    /** Plan invoices Stripe reported after acceptance: what was discounted and what was actually collected. */
+    invoices: v.array(
+      v.object({
+        invoiceId: v.string(),
+        status: v.string(),
+        subtotalCents: v.number(),
+        discountCents: v.number(),
+        paidCents: v.number(),
+        refundedCents: v.number(),
+        at: v.number(),
+      }),
+    ),
+    /** Stripe event ids already applied to `invoices`. */
+    events: v.array(v.string()),
+    updatedAt: v.number(),
+  })
+    .index("by_company_accepted", ["companyId", "acceptedAt"])
+    .index("by_state_next", ["state", "nextTryAt"])
+    .index("by_subscription", ["stripeSubscriptionId"])
+    .index("by_env_accepted", ["env", "acceptedAt"]),
 };
 
 export const DEFAULT_CONTROLS = { alertPercents: [50, 80, 100], autoTopUp: { enabled: false } };

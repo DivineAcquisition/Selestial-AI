@@ -10,6 +10,7 @@ import { Field, FormError, TextArea, TextInput, useRun } from "@/components/app/
 import { Modal } from "@/components/app/modal";
 import { PageHeader, Panel } from "@/components/app/shell";
 import { SecondFactor } from "@/components/app/support/verify";
+import { CancellationsPanel } from "@/components/staff/cancellations";
 import { EarlyOfferPanel } from "@/components/staff/early-offer";
 import { useNow } from "@/components/app/use-now";
 import { Activity, AlertTriangle, Building2, CheckCircle2, Clock, ExternalLink, RefreshCw, ShieldCheck } from "@/components/icons";
@@ -100,7 +101,12 @@ export function OperationsWorkspace({ view }: { view: OperationsView }) {
     <>
       <PageHeader title={view === "" ? "Operations" : title} lead={VIEW_LEAD[view]} />
       <OperationsTabs current={view} />
-      {view === "billing" ? <EarlyOfferPanel /> : null}
+      {view === "billing" ? (
+        <>
+          <EarlyOfferPanel />
+          <CancellationsPanel />
+        </>
+      ) : null}
       {view === "" ? <OverviewView onOpen={setOpenId} /> : view === "activity" ? <ActivityView onOpen={setOpenId} /> : <IncidentsView area={VIEW_AREA[view]} onOpen={setOpenId} />}
       <IncidentPanel id={openId} onClose={() => setOpenId(null)} />
     </>

@@ -129,6 +129,87 @@ export function getPlatformInvoice(invoiceId: string) {
   return call<{ id: string; status?: string | null; customer?: string | { id?: string } | null }>("GET", `/v1/invoices/${encodeURIComponent(invoiceId)}`, {});
 }
 
+// ── Selestial's own subscriptions: retention discounts (docs/billing/05-cancellation.md) ─────────────
+
+/**
+ * A plan subscription on Selestial's own Stripe account, as the retention rules read it. Field names differ
+ * between Stripe API versions (the period end moved onto items, `discount` became `discounts`), so both
+ * spellings are kept optional and read by `subscriptionFacts` in convex/retention.ts.
+ */
+export type RawPlatformSubscription = {
+  id: string;
+  status: string;
+  customer: string | { id: string };
+  livemode?: boolean;
+  currency?: string;
+  cancel_at_period_end?: boolean;
+  current_period_end?: number;
+  billing_cycle_anchor?: number;
+  trial_end?: number | null;
+  schedule?: string | { id: string } | null;
+  discount?: { id: string; coupon?: { id: string } } | null;
+  discounts?: (string | { id: string; coupon?: { id: string } | null; source?: { coupon?: string | { id: string } | null } | null })[];
+  items?: {
+    data: {
+      id: string;
+      quantity?: number;
+      current_period_end?: number;
+      price?: { id: string; unit_amount?: number | null; currency?: string; product?: string | { id: string }; recurring?: { interval?: string; interval_count?: number; usage_type?: string } | null } | null;
+    }[];
+  };
+};
+
+/** Customers whose metadata carries this Autumn customer id, under any key Autumn is known to use. */
+export function searchPlatformCustomers(autumnCustomerId: string) {
+  const id = autumnCustomerId.replace(/'/g, "");
+  return call<{ data: { id: string; metadata?: Record<string, string> | null; deleted?: boolean }[] }>("GET", "/v1/customers/search", {
+    query: `metadata['autumn_customer_id']:'${id}' OR metadata['autumn_id']:'${id}' OR metadata['customer_id']:'${id}'`,
+    limit: 5,
+  });
+}
+
+export function listPlatformSubscriptions(customerId: string) {
+  return call<{ data: RawPlatformSubscription[] }>("GET", "/v1/subscriptions", { customer: customerId, status: "all", limit: 20, expand: ["data.discounts"] });
+}
+
+export function getPlatformSubscription(subscriptionId: string) {
+  return call<RawPlatformSubscription>("GET", `/v1/subscriptions/${encodeURIComponent(subscriptionId)}`, { expand: ["discounts"] });
+}
+
+/**
+ * The coupon for one accepted offer: a percentage off the subscription's own base product only, once (one
+ * payment) or repeating for `months`, redeemable once. Keyed by the offer's record, so it is made once.
+ */
+export function createRetentionCoupon(input: { offerRowId: string; companyId: string; percent: number; months: number; productId: string }) {
+  return call<{ id: string; percent_off?: number; duration?: string; duration_in_months?: number | null; applies_to?: { products?: string[] } }>(
+    "POST",
+    "/v1/coupons",
+    {
+      percent_off: input.percent,
+      duration: input.months === 1 ? "once" : "repeating",
+      ...(input.months === 1 ? {} : { duration_in_months: input.months }),
+      applies_to: { products: [input.productId] },
+      max_redemptions: 1,
+      name: `Selestial retention ${input.percent}%`,
+      metadata: { selestial_retention_offer: input.offerRowId, selestial_company: input.companyId },
+    },
+    { idempotencyKey: `retention-coupon:${input.offerRowId}` },
+  );
+}
+
+/**
+ * Puts the coupon on the subscription. Only ever sent when the subscription has no discount at all, so the
+ * list it sends replaces nothing. No proration and no invoice now: the discount starts with the next renewal.
+ */
+export function applyRetentionCoupon(input: { offerRowId: string; subscriptionId: string; couponId: string }) {
+  return call<RawPlatformSubscription>(
+    "POST",
+    `/v1/subscriptions/${encodeURIComponent(input.subscriptionId)}`,
+    { discounts: [{ coupon: input.couponId }], proration_behavior: "none", expand: ["discounts"], metadata: { selestial_retention_offer: input.offerRowId } },
+    { idempotencyKey: `retention-apply:${input.offerRowId}` },
+  );
+}
+
 // ── The objects Selestial reads, reduced to the fields it uses ────────────────────────────────────
 
 export type RawAccount = {

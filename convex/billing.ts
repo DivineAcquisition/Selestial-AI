@@ -16,6 +16,7 @@ import { attach, attachBody, finalizeLock, openPortal, previewAttach, setupPayme
 import { AGENT_CATALOG, AGENT_IDS, agentReleased, AUTUMN, BOTH_PLANS_INCLUDE, lostOnChange, PLAN_FEATURES, PLAN_IDS, planIncludesAgent, planIncludesFeature, planOnSale, PLANS, RETIRED_AGENT_NAMES, type PlanFeature } from "./lib/billing/catalog";
 import { eligibility, offerFor, onAccountSynced, releasePlace, reservePlace } from "./lib/billing/earlyOffer";
 import { HOLD_MS, noteExecution } from "./lib/billing/executions";
+import { remaining as remainingRenewals } from "./lib/billing/retention";
 import type { Projection } from "./lib/billing/projection";
 import { TASKS } from "./lib/billing/rateCards";
 import { reserveExecution, syncAccount } from "./lib/billing/reserve";
@@ -228,6 +229,7 @@ export const storeAccount = internalMutation({
     const invoices = rawInvoices.slice(0, 24).map((row) => ({ id: row.id, status: row.status, cents: Math.round(Number(row.total) * 100), currency: row.currency, createdAt: row.created_at, url: row.hosted_invoice_url ?? null }));
     const now = Date.now();
     let account = await accountFor(ctx, args.companyId, args.env);
+    const before = account ? { plan: account.plan, endsAt: account.subscription.endsAt } : null;
     const ledger = args.ledger ? (JSON.parse(args.ledger) as Doc<"billingAccounts">["ledger"]) : undefined;
     const fields = { plan: projection.plan, autumnPlanId: projection.autumnPlanId ?? null, subscription: projection.subscription, credits: projection.credits, syncedAt: now, syncProblem: undefined, ...(projection.messaging ? { messaging: { ...projection.messaging, at: now } } : {}), ...(invoices.length ? { invoices } : {}), ...(ledger ? { ledger } : {}) };
     if (account) await ctx.db.patch(account._id, fields);
@@ -250,6 +252,7 @@ export const storeAccount = internalMutation({
     if (projection.subscription.pastDue) await notify(ctx, account, "past_due", "The last payment for this plan did not go through. Update the payment method in Plan & usage to keep the plan.");
     await usageAlerts(ctx, account);
     await closePaidIntents(ctx, args.companyId, args.env, projection, rawInvoices, now);
+    if (billingState().connected) await subscriptionNotices(ctx, args.companyId, args.env, before, projection, now);
     // The early-user offer: a place is claimed only here, once Autumn shows the $199 plan paid and active.
     if (billingState().connected) {
       const offer = await onAccountSynced(ctx, { companyId: args.companyId, env: args.env, projection, now });
@@ -265,6 +268,47 @@ export const storeAccount = internalMutation({
     if (projection.messaging && projection.messaging.remaining > 0) await ctx.scheduler.runAfter(0, internal.messagingBilling.releaseHeld, { companyId: args.companyId });
   },
 });
+
+/** Whether an accepted retention offer still has discounted renewals to come (convex/cancellation.ts). */
+export async function discountRunning(ctx: QueryCtx | MutationCtx, companyId: Id<"companies">, env: Doc<"billingIntents">["env"], now: number): Promise<boolean> {
+  const rows = await ctx.db
+    .query("retentionOffers")
+    .withIndex("by_company_accepted", (q) => q.eq("companyId", companyId))
+    .order("desc")
+    .take(5);
+  return rows.some((row) => row.env === env && row.state !== "failed" && remainingRenewals(row.renewals, now).length > 0);
+}
+
+/**
+ * The Owner's confirmations of a cancellation, a reactivation and the end of access, sent only when Autumn's
+ * record itself shows the change (never because a button was pressed). Each is keyed by the date it is about,
+ * so a duplicate or out-of-order webhook that re-runs this sync sends nothing twice. Out-of-order events can't
+ * reverse anything here: the record read back from Autumn is the current one, whatever the event said.
+ */
+async function subscriptionNotices(ctx: MutationCtx, companyId: Id<"companies">, env: Doc<"billingIntents">["env"], before: { plan: Projection["plan"]; endsAt: number | null } | null, projection: Projection, now: number) {
+  if (!before) return;
+  const endsAt = projection.subscription.endsAt;
+  const ref = companyId as string;
+  if (projection.plan && before.plan && before.endsAt === null && endsAt !== null) {
+    await notifyMembers(ctx, { companyId, event: "plan_subscription", ref, key: `cancel_scheduled:${endsAt}`, facts: { kind: "cancel_scheduled", endsAt, env }, now });
+    await recordEvent(ctx, { companyId, type: "billing.cancel_scheduled", actor: { kind: "system" }, subject: { table: "companies", id: companyId }, data: { endsAt, source: "autumn" } });
+  }
+  if (projection.plan && before.plan && before.endsAt !== null && endsAt === null) {
+    await notifyMembers(ctx, { companyId, event: "plan_subscription", ref, key: `reactivated:${before.endsAt}`, facts: { kind: "reactivated", periodEnd: projection.subscription.periodEnd, env }, now });
+    await recordEvent(ctx, { companyId, type: "billing.reactivated", actor: { kind: "system" }, subject: { table: "companies", id: companyId }, data: { source: "autumn" } });
+  }
+  if (!projection.plan && before.plan) {
+    // A plan canceled for being unpaid already told the Owner (plan_access "canceled"): not told twice.
+    const unpaid = (
+      await ctx.db
+        .query("billingDunning")
+        .withIndex("by_company_resolved", (q) => q.eq("companyId", companyId).gte("resolvedAt", now - 2 * 86_400_000))
+        .take(10)
+    ).some((row) => row.resolution === "canceled");
+    if (unpaid) return;
+    await notifyMembers(ctx, { companyId, event: "plan_subscription", ref, key: `ended:${before.endsAt ?? Math.floor(now / 86_400_000)}`, facts: { kind: "ended", endedAt: before.endsAt ?? now, env }, now });
+  }
+}
 
 /** A payment page stays open for a day at most; a purchase older than that is not waiting on one. */
 const PAYMENT_WINDOW = 24 * 60 * MINUTE;
@@ -409,11 +453,11 @@ export function topUpPacks(): number[] {
     .slice(0, 4);
 }
 
-export async function startIntent(ctx: MutationCtx & { companyId: Id<"companies">; member: Doc<"members"> }, fields: { kind: Doc<"billingIntents">["kind"]; planId?: string; quantity?: number; stage: "previewing" | "submitting"; offer?: "early" }) {
+export async function startIntent(ctx: MutationCtx & { companyId: Id<"companies">; member: Doc<"members"> }, fields: { kind: Doc<"billingIntents">["kind"]; planId?: string; quantity?: number; stage: "previewing" | "submitting"; offer?: "early"; flowId?: Id<"cancelFlows"> }) {
   const state = connectedOrRefuse();
   if (!(await allow(ctx, `billing:${ctx.companyId}`, 20, 10 * MINUTE))) throw userError("That is a lot of billing requests in a few minutes. Wait a moment and try again.", "limit");
   const now = Date.now();
-  const intentId = await ctx.db.insert("billingIntents", { companyId: ctx.companyId, env: state.env, kind: fields.kind, planId: fields.planId, quantity: fields.quantity, memberId: ctx.member._id, stage: fields.stage, createdAt: now, updatedAt: now, ...(fields.offer ? { offer: fields.offer } : {}) });
+  const intentId = await ctx.db.insert("billingIntents", { companyId: ctx.companyId, env: state.env, kind: fields.kind, planId: fields.planId, quantity: fields.quantity, memberId: ctx.member._id, stage: fields.stage, createdAt: now, updatedAt: now, ...(fields.offer ? { offer: fields.offer } : {}), ...(fields.flowId ? { flowId: fields.flowId } : {}) });
   await recordEvent(ctx, { companyId: ctx.companyId, type: `billing.${fields.kind}_started`, actor: byMember(ctx), subject: { table: "billingIntents", id: intentId }, data: { planId: fields.planId ?? null, quantity: fields.quantity ?? null } });
   await ctx.scheduler.runAfter(0, internal.billing.runIntent, { intentId });
   return intentId;
@@ -427,6 +471,8 @@ export const startPlanChange = ownerMutation({
     if (account?.plan === args.plan && !account.subscription.scheduledPlan) throw userError(`This company is already on ${PLANS[args.plan].name}.`);
     // A plan that is not on sale can only be kept (undoing a scheduled move away from it), never newly bought.
     if (!planOnSale(args.plan) && account?.plan !== args.plan) throw userError(`${PLANS[args.plan].name} isn't open to new companies yet. Your plan is ${PLANS.operate.name}.`);
+    // A retention discount is tied to the current plan's price: changing plan while it runs would end it unseen.
+    if (account?.plan && (await discountRunning(ctx, ctx.companyId, state.env, Date.now()))) throw userError("Your subscription discount applies to your current plan until its last discounted payment. You can change plans after that, or write to support@selestial.io.");
     // A first Operate purchase is previewed at the early-user price while a place is open (convex/lib/billing/earlyOffer.ts).
     // Nothing is reserved yet: that happens when the Owner confirms.
     const early = args.plan === "operate" && !account?.plan && (await eligibility(ctx, ctx.companyId, state.env, account, Date.now())).eligible;
@@ -470,28 +516,61 @@ export const confirmIntent = ownerMutation({
   },
 });
 
+/**
+ * A cancel or keep already on its way for this company: a second click, a second tab or the flow and the
+ * plain button together get the same request back instead of sending Autumn another one.
+ */
+async function inFlightChange(ctx: MutationCtx & { companyId: Id<"companies"> }, env: Doc<"billingIntents">["env"]) {
+  const now = Date.now();
+  return (
+    await ctx.db
+      .query("billingIntents")
+      .withIndex("by_company_created", (q) => q.eq("companyId", ctx.companyId).gt("createdAt", now - 30 * MINUTE))
+      .order("desc")
+      .take(10)
+  ).find((row) => row.env === env && (row.kind === "cancel" || row.kind === "uncancel") && row.stage === "submitting");
+}
+
+/**
+ * Ends the plan at the end of the paid period (Autumn's cancel_end_of_cycle): paid access continues until
+ * then. From the cancellation flow, `flowId` links the request to the Owner's answers for the report.
+ */
 export const cancelPlan = ownerMutation({
-  args: {},
-  handler: async (ctx) => {
+  args: { flowId: v.optional(v.id("cancelFlows")) },
+  handler: async (ctx, args) => {
     const state = connectedOrRefuse();
     const account = await accountFor(ctx, ctx.companyId, state.env);
+    const pending = await inFlightChange(ctx, state.env);
+    if (pending?.kind === "cancel") return pending._id;
+    if (pending) throw userError("A change to this plan is still being confirmed. Try again in a moment.");
     if (!account?.plan) throw userError("There is no active plan to cancel.");
     if (account.subscription.endsAt) throw userError("This plan is already set to end.");
+    let flowId: Id<"cancelFlows"> | undefined;
+    if (args.flowId) {
+      const flow = await ctx.db.get(args.flowId);
+      if (!flow || flow.companyId !== ctx.companyId) throw userError("That cancellation wasn't found. Close this and start again.", "not_found");
+      flowId = flow._id;
+      await ctx.db.patch(flow._id, { outcome: "cancel_requested", updatedAt: Date.now() });
+    }
     // Autumn's own plan id: the early-user price is its own plan ("operate_early").
-    return startIntent(ctx, { kind: "cancel", planId: account.autumnPlanId ?? account.plan, stage: "submitting" });
+    return startIntent(ctx, { kind: "cancel", planId: account.autumnPlanId ?? account.plan, stage: "submitting", flowId });
   },
 });
 
-/** Keeps a plan that was set to end, or drops a scheduled plan change. */
+/** Keeps a plan that was set to end (Reactivate subscription), or drops a scheduled plan change. No charge: the plan simply renews as before. */
 export const resumePlan = ownerMutation({
-  args: {},
-  handler: async (ctx) => {
+  args: { flowId: v.optional(v.id("cancelFlows")) },
+  handler: async (ctx, args) => {
     const state = connectedOrRefuse();
     const account = await accountFor(ctx, ctx.companyId, state.env);
+    const pending = await inFlightChange(ctx, state.env);
+    if (pending?.kind === "uncancel") return pending._id;
+    if (pending) throw userError("A change to this plan is still being confirmed. Try again in a moment.");
     if (!account?.plan || (!account.subscription.endsAt && !account.subscription.scheduledPlan)) throw userError("Nothing is scheduled to change.");
     // The move to the full price after the early-user year is part of the offer the company accepted; it is not undone here.
     if (!account.subscription.endsAt && account.autumnPlanId === AUTUMN.earlyPlan && account.subscription.scheduledAutumnPlanId === AUTUMN.plans.operate) throw userError("The move to the full Operate price at the end of your early-user year is part of the offer, so it can't be undone. Nothing else is scheduled to change.");
-    return startIntent(ctx, { kind: "uncancel", planId: account.autumnPlanId ?? account.plan, stage: "submitting" });
+    const flow = args.flowId ? await ctx.db.get(args.flowId) : null;
+    return startIntent(ctx, { kind: "uncancel", planId: account.autumnPlanId ?? account.plan, stage: "submitting", flowId: flow && flow.companyId === ctx.companyId ? flow._id : undefined });
   },
 });
 
@@ -575,6 +654,11 @@ export const intentAnswered = internalMutation({
     if (args.stage === "failed" && intent.offer === "early") {
       const offer = await offerFor(ctx, intent.companyId, intent.env);
       if (offer?.intentId === intent._id) await releasePlace(ctx, offer, "The purchase did not go through, so the place was given back.", "system", Date.now());
+    }
+    // The flow's own record of how it ended: canceled once Autumn accepted it; a failure leaves it open to try again.
+    if (intent.flowId && intent.kind === "cancel") {
+      const flow = await ctx.db.get(intent.flowId);
+      if (flow) await ctx.db.patch(flow._id, { outcome: args.stage === "done" ? "canceled" : args.stage === "failed" ? undefined : flow.outcome, updatedAt: Date.now() });
     }
     if (args.stage === "done" || args.stage === "failed") await recordEvent(ctx, { companyId: intent.companyId, type: `billing.${intent.kind}_${args.stage}`, actor: { kind: "system" }, subject: { table: "billingIntents", id: intent._id }, data: { planId: intent.planId ?? null } });
   },
