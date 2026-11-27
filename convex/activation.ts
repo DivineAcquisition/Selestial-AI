@@ -27,13 +27,14 @@ import { companyQuery, ownerMutation } from "./lib/builders";
 import { notFound, userError } from "./lib/errors";
 import { recordEvent, type Actor } from "./lib/events";
 import { kindFor, noticeInApp } from "./lib/activation/notices";
-import { FOCUS, NOT_BUILT, planFor, regate, STATE_WORDS, type TemplateId } from "./lib/activation/plan";
+import { FOCUS, MAX_TASKS, NOT_BUILT, planFor, regate, STATE_WORDS, type TemplateId } from "./lib/activation/plan";
 import { BLOCKED_STATES, FINAL_STATES, type Output, type TaskState } from "./lib/activation/schema";
 import { contextOf, snapshotOf } from "./lib/activation/snapshot";
 import { accessFor, runStep, type Result } from "./lib/activation/work";
 import { AGENT_PROFILES } from "./lib/departments";
 import { notifyMembers } from "./lib/notify/route";
 import { isOwner, roleOf } from "./lib/roles";
+import { noteMilestone } from "./lib/setup/milestones";
 import { priorityValidator, type Priority } from "./lib/setup/schema";
 import { AGENTS, type Agent } from "./lib/statuses";
 
@@ -119,79 +120,133 @@ function budgetWords(credits: number, connected: boolean): { estimate: string; a
 export const start = ownerMutation({
   args: { source: v.union(v.literal("setup"), v.literal("workspace")), focus: v.optional(priorityValidator), secondary: v.optional(v.array(priorityValidator)) },
   handler: async (ctx, args) => {
-    const { focus, secondary, setup } = await focusOf(ctx, ctx.companyId, args);
+    const { focus, setup } = await focusOf(ctx, ctx.companyId, args);
     if (!focus) throw userError("Choose what Selestial should focus on first.");
     const now = Date.now();
     if (args.source === "setup" && setup && setup.status === "in_progress") {
       await ctx.db.patch(setup._id, { status: "entered", milestones: { ...setup.milestones, enteredAt: now }, revision: setup.revision + 1, updatedAt: now });
       await recordEvent(ctx, { companyId: ctx.companyId, type: "setup.workspace_entered", actor: { kind: "member", memberId: ctx.member._id }, subject: { table: "companies", id: ctx.companyId }, data: { priority: setup.priority ?? "none", contextConfirmed: setup.milestones.contextConfirmedAt !== undefined, startedAgents: true } });
     }
-    const running = await latest(ctx, ctx.companyId);
-    if (running && running.status === "running") return { activationId: running._id, already: true };
-
-    const snapshot = await snapshotOf(ctx, ctx.company, now);
-    const { version, context } = await contextOf(ctx, ctx.company, focus, secondary, snapshot);
-    const same = await ctx.db
-      .query("activations")
-      .withIndex("by_company_version", (q) => q.eq("companyId", ctx.companyId).eq("contextVersion", version))
-      .first();
-    if (same && same.status !== "canceled") return { activationId: same._id, already: true };
-
-    const planned = planFor(focus, secondary, snapshot);
-    if (!planned.length) throw userError("There's nothing for your agents to start with this focus yet.");
-    const credits = planned.reduce((sum, t) => sum + t.estimate.credits, 0);
-    const words = budgetWords(credits, billingState().connected);
-    const activationId = await ctx.db.insert("activations", {
-      companyId: ctx.companyId,
-      focus,
-      secondary,
-      source: args.source,
-      contextVersion: version,
-      context: context.slice(0, 60),
-      status: "running",
-      startedBy: ctx.member._id,
-      startedAt: now,
-      budget: { estimatedCredits: credits, ceilingCredits: credits, allowance: words.allowance },
-      noticed: {},
-      updatedAt: now,
-    });
-    for (const t of planned) {
-      await ctx.db.insert("activationTasks", {
-        companyId: ctx.companyId,
-        activationId,
-        template: t.template,
-        agent: t.agent,
-        title: t.title,
-        objective: t.objective,
-        sources: t.sources,
-        expectedOutput: t.expectedOutput,
-        prerequisites: t.prerequisites,
-        authority: t.authority,
-        estimate: t.estimate,
-        priority: t.priority,
-        dependsOn: t.dependsOn,
-        completion: t.completion,
-        state: t.state,
-        statusLine: t.statusLine,
-        steps: [{ at: now, words: t.state === "queued" ? "Planned from your focus and confirmed details." : "Planned, and waiting for what is named below.", kind: t.state === "queued" ? "info" : "waiting" }],
-        outputs: [],
-        ...(t.blocker ? { blocker: t.blocker } : {}),
-        attempts: 0,
-        nextRunAt: now,
-        charges: [],
-        approvals: [],
-        createdAt: now,
-        updatedAt: now,
-        ...(t.state === "unavailable" ? { finishedAt: now } : {}),
-      });
-    }
-    // Work that can't start yet is told once, with the one thing that unblocks it.
-    for (const row of await tasksOf(ctx, activationId)) if (row.state === "waiting_info" || row.state === "waiting_connection") await noticeTask(ctx, (await ctx.db.get(activationId))!, row);
-    await recordEvent(ctx, { companyId: ctx.companyId, type: "activation.started", actor: { kind: "member", memberId: ctx.member._id }, subject: { table: "companies", id: ctx.companyId }, data: { focus, tasks: planned.length, source: args.source, version } });
-    await ctx.scheduler.runAfter(0, internal.activation.tick, { activationId });
-    return { activationId, already: false };
+    const result = await startActivation(ctx, { source: args.source, focus: args.focus, secondary: args.secondary, exclude: [] });
+    if (result.kind === "empty") throw userError("There's nothing for your agents to start with this focus yet.");
+    return { activationId: result.activationId, already: result.kind === "already" };
   },
 });
+
+/**
+ * Starts the first batch, or finds the one already running or planned from the same context. Shared by
+ * Start on Home and setup's "Build my workspace", so both are one batch with one set of guarantees.
+ * `exclude` leaves out templates another worker already makes (lib/setup/build.ts), so nothing is made twice.
+ */
+export async function startActivation(
+  ctx: MutationCtx & { companyId: Id<"companies">; company: Doc<"companies">; member: Doc<"members"> },
+  args: { source: "setup" | "workspace"; focus?: Priority; secondary?: Priority[]; exclude: string[]; trimBlocked?: boolean },
+): Promise<{ kind: "started" | "already"; activationId: Id<"activations"> } | { kind: "empty" }> {
+  const { focus, secondary } = await focusOf(ctx, ctx.companyId, args);
+  if (!focus) return { kind: "empty" };
+  const now = Date.now();
+  const running = await latest(ctx, ctx.companyId);
+  if (running && running.status === "running") return { kind: "already", activationId: running._id };
+
+  const snapshot = await snapshotOf(ctx, ctx.company, now);
+  const { version, context } = await contextOf(ctx, ctx.company, focus, secondary, snapshot);
+  const same = await ctx.db
+    .query("activations")
+    .withIndex("by_company_version", (q) => q.eq("companyId", ctx.companyId).eq("contextVersion", version))
+    .first();
+  if (same && same.status !== "canceled") return { kind: "already", activationId: same._id };
+
+  // Setup leaves out supporting work that could only start blocked: the owner sees their own outcome's
+  // work, and what it needs, instead of a list of tasks waiting on data a new company doesn't have yet.
+  const planned = planFor(focus, secondary, snapshot).filter((t) => !args.exclude.includes(t.template) && (!args.trimBlocked || t.priority === 1 || t.state === "queued"));
+  if (!planned.length) return { kind: "empty" };
+  const credits = planned.reduce((sum, t) => sum + t.estimate.credits, 0);
+  const words = budgetWords(credits, billingState().connected);
+  const activationId = await ctx.db.insert("activations", {
+    companyId: ctx.companyId,
+    focus,
+    secondary,
+    source: args.source,
+    contextVersion: version,
+    context: context.slice(0, 60),
+    status: "running",
+    startedBy: ctx.member._id,
+    startedAt: now,
+    budget: { estimatedCredits: credits, ceilingCredits: credits, allowance: words.allowance },
+    noticed: {},
+    updatedAt: now,
+  });
+  await insertTasks(ctx, activationId, planned, args.exclude, now);
+  // Work that can't start yet is told once, with the one thing that unblocks it.
+  for (const row of await tasksOf(ctx, activationId)) if (row.state === "waiting_info" || row.state === "waiting_connection") await noticeTask(ctx, (await ctx.db.get(activationId))!, row);
+  await recordEvent(ctx, { companyId: ctx.companyId, type: "activation.started", actor: { kind: "member", memberId: ctx.member._id }, subject: { table: "companies", id: ctx.companyId }, data: { focus, tasks: planned.length, source: args.source, version } });
+  await ctx.scheduler.runAfter(0, internal.activation.tick, { activationId });
+  return { kind: "started", activationId };
+}
+
+async function insertTasks(ctx: MutationCtx & { companyId: Id<"companies"> }, activationId: Id<"activations">, planned: ReturnType<typeof planFor>, exclude: string[], now: number) {
+  for (const t of planned) {
+    await ctx.db.insert("activationTasks", {
+      companyId: ctx.companyId,
+      activationId,
+      template: t.template,
+      agent: t.agent,
+      title: t.title,
+      objective: t.objective,
+      sources: t.sources,
+      expectedOutput: t.expectedOutput,
+      prerequisites: t.prerequisites,
+      authority: t.authority,
+      estimate: t.estimate,
+      priority: t.priority,
+      dependsOn: t.dependsOn.filter((dep) => !exclude.includes(dep)),
+      completion: t.completion,
+      state: t.state,
+      statusLine: t.statusLine,
+      steps: [{ at: now, words: t.state === "queued" ? "Planned from your focus and confirmed details." : "Planned, and waiting for what is named below.", kind: t.state === "queued" ? "info" : "waiting" }],
+      outputs: [],
+      ...(t.blocker ? { blocker: t.blocker } : {}),
+      attempts: 0,
+      nextRunAt: now,
+      charges: [],
+      approvals: [],
+      createdAt: now,
+      updatedAt: now,
+      ...(t.state === "unavailable" ? { finishedAt: now } : {}),
+    });
+  }
+}
+
+/**
+ * Adds the supporting work for priorities the Owner added after starting, to the same batch: only tasks
+ * it doesn't already have, only ones that can start now (or wait on something the owner can give), and
+ * never past MAX_TASKS. A finished batch starts running again for them; nothing already done is redone.
+ */
+export async function extendActivation(
+  ctx: MutationCtx & { companyId: Id<"companies">; company: Doc<"companies">; member: Doc<"members"> },
+  activationId: Id<"activations">,
+  secondary: Priority[],
+  exclude: string[],
+): Promise<string[]> {
+  const activation = await ctx.db.get(activationId);
+  if (!activation || activation.companyId !== ctx.companyId || activation.status === "canceled") return [];
+  const wanted = [...new Set([...activation.secondary, ...secondary])].filter((value) => value !== activation.focus).slice(0, 5);
+  if (wanted.length === activation.secondary.length && wanted.every((value) => activation.secondary.includes(value))) return [];
+  const existing = await tasksOf(ctx, activation._id);
+  const have = new Set(existing.map((t) => t.template));
+  const now = Date.now();
+  const snapshot = await snapshotOf(ctx, ctx.company, now);
+  const room = Math.max(0, MAX_TASKS - existing.length);
+  const added = planFor(activation.focus, wanted, snapshot)
+    .filter((t) => !have.has(t.template) && !exclude.includes(t.template) && t.state === "queued")
+    .slice(0, room);
+  await ctx.db.patch(activation._id, { secondary: wanted, ...(added.length && activation.status !== "running" ? { status: "running", finishedAt: undefined } : {}), updatedAt: now });
+  if (!added.length) return [];
+  await insertTasks(ctx, activation._id, added, exclude, now);
+  await recordEvent(ctx, { companyId: ctx.companyId, type: "activation.extended", actor: { kind: "member", memberId: ctx.member._id }, subject: { table: "companies", id: ctx.companyId }, data: { added: added.map((t) => t.template).join(", "), secondary: wanted.join(", ") } });
+  await ctx.scheduler.runAfter(0, internal.activation.tick, { activationId: activation._id });
+  return added.map((t) => t.template);
+}
 
 // ── Running ─────────────────────────────────────────────────────────────────────────────────────────
 
@@ -339,6 +394,7 @@ async function finishTask(ctx: MutationCtx, task: Doc<"activationTasks">, change
   const activation = await ctx.db.get(task.activationId);
   if (!activation) return;
   if (change.state !== task.state || (change.outputs?.length ?? 0) > 0) await noticeTask(ctx, activation, { ...task, state: change.state, statusLine: change.statusLine, outputs, blocker: change.blocker });
+  if ((change.state === "completed" || change.state === "ready_for_review") && outputs.length) await noteMilestone(ctx, task.companyId, "firstUsableAt", { via: task.template });
   if (final) await recordEvent(ctx, { companyId: task.companyId, type: `activation.task_${change.state}`, actor: { kind: "agent", agent: task.agent }, subject: { table: "companies", id: task.companyId }, data: { template: task.template, outputs: outputs.length } });
 }
 
@@ -347,6 +403,9 @@ async function noticeTask(ctx: MutationCtx, activation: Doc<"activations">, task
   const firstResult = activation.noticed.firstResultAt === undefined && task.outputs.length > 0 && (task.state === "completed" || task.state === "ready_for_review");
   const kind = kindFor(task.state, task.outputs, firstResult);
   if (!kind) return;
+  // From setup, the owner is watching one progress panel: they are told about the first result, what needs
+  // them and what failed, and the batch's summary, not about every draft as it lands.
+  if (activation.source === "setup" && (kind === "asset_created" || kind === "task_completed")) return;
   const target = task.outputs[0]?.ref ?? (task.blocker ? { table: "activationTasks", id: task._id, label: task.blocker.action.label, href: task.blocker.action.href } : undefined);
   await noticeInApp(ctx, {
     companyId: task.companyId,
@@ -527,18 +586,22 @@ export const retry = ownerMutation({
   args: { taskId: v.id("activationTasks") },
   support: { capability: "agents.recover", summary: "tried failed first agent work again" },
   handler: async (ctx, args) => {
-    const task = await ctx.db.get(args.taskId);
-    if (!task || task.companyId !== ctx.companyId) notFound();
-    const activation = await ctx.db.get(task.activationId);
-    if (!activation || activation.status === "canceled") throw userError("This work was canceled. Start your agents again from Home.");
-    if (task.state !== "failed" && !BLOCKED_STATES.includes(task.state)) throw userError(task.state === "working" || task.state === "queued" ? "It's already going." : "This task already finished. Its results are kept.");
-    const now = Date.now();
-    await ctx.db.patch(task._id, { state: "queued", attempts: 0, blocker: undefined, nextRunAt: now, finishedAt: undefined, statusLine: ctx.support ? "Queued again by Selestial Support." : "Queued again at your request.", steps: [...task.steps, { at: now, words: ctx.support ? "Selestial Support tried it again." : "You asked to try it again.", kind: "info" as const }].slice(-40), updatedAt: now });
-    if (activation.status !== "running") await ctx.db.patch(activation._id, { status: "running", finishedAt: undefined, updatedAt: now });
-    await ctx.scheduler.runAfter(0, internal.activation.tick, { activationId: activation._id });
+    await retryTask(ctx, args.taskId, Boolean(ctx.support));
     return null;
   },
 });
+
+export async function retryTask(ctx: MutationCtx & { companyId: Id<"companies"> }, taskId: Id<"activationTasks">, bySupport = false): Promise<void> {
+  const task = await ctx.db.get(taskId);
+  if (!task || task.companyId !== ctx.companyId) notFound();
+  const activation = await ctx.db.get(task.activationId);
+  if (!activation || activation.status === "canceled") throw userError("This work was canceled. Start your agents again from Home.");
+  if (task.state !== "failed" && !BLOCKED_STATES.includes(task.state)) throw userError(task.state === "working" || task.state === "queued" ? "It's already going." : "This task already finished. Its results are kept.");
+  const now = Date.now();
+  await ctx.db.patch(task._id, { state: "queued", attempts: 0, blocker: undefined, nextRunAt: now, finishedAt: undefined, statusLine: bySupport ? "Queued again by Selestial Support." : "Queued again at your request.", steps: [...task.steps, { at: now, words: bySupport ? "Selestial Support tried it again." : "You asked to try it again.", kind: "info" as const }].slice(-40), updatedAt: now });
+  if (activation.status !== "running") await ctx.db.patch(activation._id, { status: "running", finishedAt: undefined, updatedAt: now });
+  await ctx.scheduler.runAfter(0, internal.activation.tick, { activationId: activation._id });
+}
 
 // ── Home ────────────────────────────────────────────────────────────────────────────────────────────
 

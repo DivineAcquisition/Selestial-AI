@@ -25,6 +25,18 @@ export async function firstDecisionAt(ctx: QueryCtx, companyId: Id<"companies">,
   return found ? found.at : null;
 }
 
+/** The owner publishing or opening something setup prepared: a service, a booking form, a role, a standard. */
+export const PUBLISH_EVENTS = ["service.approved", "booking_experience.published", "hiring_need.opened", "quality_standard.published"] as const;
+
+export async function firstPublishedAt(ctx: QueryCtx, companyId: Id<"companies">, since: number): Promise<number | null> {
+  const events = await ctx.db
+    .query("events")
+    .withIndex("by_company_at", (q) => q.eq("companyId", companyId).gte("at", since))
+    .take(2000);
+  const found = events.find((event) => (PUBLISH_EVENTS as readonly string[]).includes(event.type) && event.actor.kind === "member");
+  return found ? found.at : null;
+}
+
 export async function agentMessagesSince(ctx: QueryCtx, companyId: Id<"companies">, since: number): Promise<Doc<"messages">[]> {
   const rows = await ctx.db
     .query("messages")

@@ -63,7 +63,9 @@ describe("setup progress", () => {
 
     const funnel = await t.withIdentity(STAFF).query(api.setupProgress.funnel, { days: 30 });
     expect(funnel).toMatchObject({ days: 30, setups: 2, optedInLater: 1 });
-    expect(Object.fromEntries(funnel.stages.map((row) => [row.stage, row.reached]))).toEqual({ startedAt: 2, contextConfirmedAt: 0, firstArtifactAt: 1, firstReviewedAt: 0, firstActionAt: 0, enteredAt: 1 });
+    expect(Object.fromEntries(funnel.stages.map((row) => [row.stage, row.reached]))).toEqual({ startedAt: 2, outcomeSelectedAt: 0, contextConfirmedAt: 0, buildStartedAt: 0, firstUsableAt: 0, firstOpenedAt: 0, firstPublishedAt: 0, firstReviewedAt: 0, firstActionAt: 0, enteredAt: 1 });
+    // Entering the workspace is shown, never counted as activation: no breakdown counts it.
+    expect(funnel.byEntry).toEqual([expect.objectContaining({ value: "manual", setups: 2, usable: 0, operational: 0 })]);
     expect(JSON.stringify(funnel)).not.toMatch(/Alpha|Beta|Gamma/);
     await refusal(a.as.query(api.setupProgress.funnel, {}));
   });

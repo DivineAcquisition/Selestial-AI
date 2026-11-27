@@ -9,6 +9,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { agentValidator } from "./statuses";
 import { NOTICE_EVENT_TYPES, noticesForEvent } from "./notify/fromEvents";
+import { closeHandoff, HANDOFF_CONNECTED } from "./setup/handoff";
 import { ACTIVATION_WAKE_TYPES, wakeActivation } from "./activation/wake";
 
 export const actorValidator = v.union(
@@ -193,5 +194,10 @@ export async function recordEvent(
   if (NOTICE_EVENT_TYPES.has(event.type)) await noticesForEvent(ctx, { id, companyId: event.companyId, type: event.type, actor: event.actor, subject: event.subject, data: event.data as Record<string, unknown> | undefined });
   // A change that may unblock the Owner's first agent work (an inbox connected, records imported) re-checks it.
   if (ACTIVATION_WAKE_TYPES.has(event.type)) await wakeActivation(ctx, event.companyId);
+  // A connection setup sent the owner to make has landed: the handoff is complete (lib/setup/handoff.ts).
+  if (HANDOFF_CONNECTED.has(event.type)) {
+    const closed = await closeHandoff(ctx, event.companyId);
+    if (closed) await recordEvent(ctx, { companyId: event.companyId, type: "setup.handoff_completed", actor: event.actor, subject: { table: "companies", id: event.companyId }, data: { ...closed, via: event.type } });
+  }
   return id;
 }

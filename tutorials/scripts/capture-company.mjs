@@ -33,11 +33,11 @@ const cardHtml = readFileSync(join(ROOT, "tutorials/scripts/card.html"), "utf8")
 /** What must be on screen before the scene's own actions, so loading is cut. */
 const READY = {
   create: { role: "textbox", name: "Company name" },
-  method: { role: "heading", name: "How would you like to start?" },
-  basics: { role: "heading", name: "The basics" },
-  team: { role: "heading", name: "Your team and how you run today" },
-  priority: { role: "heading", name: "What would you like Selestial to help with first?" },
-  business: { role: "heading", name: "Company profile" },
+  outcome: { role: "heading", name: "What would you like Selestial to help you accomplish first?" },
+  essentials: { role: "heading", name: "Confirm a few essentials" },
+  context: { role: "heading", name: "Add what makes your first result useful" },
+  build: { role: "heading", name: "Build my workspace" },
+  result: { role: "heading", name: "Here's what Selestial prepared" },
 };
 
 /** Cursor, highlight and callout, installed in the page itself so the recording shows them. */

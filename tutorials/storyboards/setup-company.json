@@ -1,6 +1,6 @@
 {
   "tutorial": "setup-company",
-  "version": 1,
+  "version": 2,
   "title": "Set up your company",
   "voice": {
     "provider": "elevenlabs",
@@ -22,12 +22,12 @@
   "scenes": [
     {
       "id": "title",
-      "narration": "Let's set up your company, so everything Selestial prepares fits the way you actually work.",
+      "narration": "Let's set up your company. You choose what to start with, confirm a few essentials, and Selestial builds your workspace around it.",
       "capture": {
         "kind": "card",
-        "eyebrow": "Setup guide \u00b7 1 of 6",
+        "eyebrow": "Setup guide · 1 of 6",
         "title": "Set up your company",
-        "body": "Your name, time zone, the areas you serve and when customers can book.",
+        "body": "Choose your first outcome, confirm a few essentials, and build your workspace.",
         "left": "Juniper Cleaning Co. is a fictional demo company.",
         "seconds": 8
       },
@@ -35,7 +35,7 @@
     },
     {
       "id": "create",
-      "narration": "Start with your company name and time zone. Schedules, availability and deadlines all run on this clock.",
+      "narration": "Name your company and confirm your time zone. Schedules, availability and deadlines all run on this clock.",
       "capture": {
         "kind": "playwright",
         "start": "/app",
@@ -49,13 +49,27 @@
             "text": "Juniper Cleaning Co."
           },
           {
+            "do": "click",
+            "target": {
+              "role": "combobox",
+              "name": "Time zone"
+            }
+          },
+          {
             "do": "type",
             "target": {
-              "role": "textbox",
+              "role": "combobox",
               "name": "Time zone"
             },
-            "text": "America/Chicago",
+            "text": "Chicago",
             "clear": true
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "option",
+              "name": "Central Time (Chicago, Dallas, Houston)"
+            }
           },
           {
             "do": "click",
@@ -73,38 +87,34 @@
           },
           {
             "do": "waitFor",
-            "target": "text=How would you like to start?",
+            "target": {
+              "role": "heading",
+              "name": "What would you like Selestial to help you accomplish first?"
+            },
             "cut": true,
             "timeout": 45000
           },
           {
             "do": "pause",
-            "ms": 1400
+            "ms": 1200
           }
         ]
       },
       "minSeconds": 6
     },
     {
-      "id": "method",
-      "narration": "Choose how to begin. Selestial can read your website or your records, but entering the details yourself is a few short questions.",
+      "id": "outcome",
+      "narration": "Choose what you'd like help with first. Here, launching a booking form. You can add other priorities after your first result.",
       "capture": {
         "kind": "playwright",
-        "start": "/app/setup",
         "actions": [
           {
             "do": "hover",
-            "target": "text=Use my website",
-            "ms": 700
-          },
-          {
-            "do": "hover",
-            "target": "text=Connect or upload information",
-            "ms": 700
+            "target": "text=Turn more inquiries into bookings"
           },
           {
             "do": "click",
-            "target": "text=Enter details myself"
+            "target": "text=Launch my booking form"
           },
           {
             "do": "pause",
@@ -121,7 +131,7 @@
             "do": "waitFor",
             "target": {
               "role": "heading",
-              "name": "The basics"
+              "name": "Confirm a few essentials"
             },
             "cut": true
           }
@@ -130,41 +140,31 @@
       "minSeconds": 6
     },
     {
-      "id": "basics",
-      "narration": "Add where you're based and the areas you serve, in your own words. Then choose who you clean for. These shape the services and booking pages Selestial drafts for you. Nothing is priced or published yet.",
+      "id": "essentials",
+      "narration": "Confirm a few essentials: where you're based and the kinds of cleaning you do. If you have a website, Selestial can suggest these, and nothing is used until you choose it.",
       "capture": {
         "kind": "playwright",
-        "start": "/app/setup",
         "actions": [
           {
-            "do": "type",
-            "target": {
-              "role": "textbox",
-              "name": "Where you are based"
-            },
-            "text": "Austin, TX"
+            "do": "highlight",
+            "target": "text=Have a website? Let Selestial help fill this in.",
+            "note": "Optional"
           },
           {
             "do": "type",
             "target": {
               "role": "textbox",
-              "name": "Areas you serve"
+              "name": "Where you're based"
             },
-            "text": "Austin, Round Rock, Pflugerville"
+            "text": "Austin, TX"
           },
           {
             "do": "click",
             "target": "text=Homes >> nth=0"
           },
           {
-            "do": "click",
-            "target": "text=Offices and businesses"
-          },
-          {
             "do": "highlight",
-            "target": "aside[aria-label='What Selestial knows so far']",
-            "note": "Everything you confirm shows here",
-            "ms": 2600
+            "target": "aside[aria-label='What Selestial knows so far']"
           },
           {
             "do": "click",
@@ -177,32 +177,27 @@
             "do": "waitFor",
             "target": {
               "role": "heading",
-              "name": "Your team and how you run today"
+              "name": "Add what makes your first result useful"
             },
             "cut": true
           }
         ]
       },
-      "minSeconds": 10
+      "minSeconds": 8
     },
     {
-      "id": "team",
-      "narration": "Next, how your cleaners work with you, and roughly how many. Employees and contractors get different onboarding and pay rules later on.",
+      "id": "context",
+      "narration": "Selestial only asks what changes your first result. Prices can wait: customers can ask for a quote until you set them.",
       "capture": {
         "kind": "playwright",
-        "start": "/app/setup",
         "actions": [
           {
             "do": "click",
-            "target": "text=Independent contractors"
-          },
-          {
-            "do": "click",
-            "target": "label:has-text('6 to 15')"
+            "target": "text=I'll finish pricing later"
           },
           {
             "do": "pause",
-            "ms": 700
+            "ms": 1000
           },
           {
             "do": "click",
@@ -215,124 +210,78 @@
             "do": "waitFor",
             "target": {
               "role": "heading",
-              "name": "What would you like Selestial to help with first?"
+              "name": "Build my workspace"
             },
             "cut": true
           }
         ]
       },
-      "minSeconds": 7
+      "minSeconds": 6
     },
     {
-      "id": "priority",
-      "narration": "Then pick what you'd like help with first. You can add the others any time, and setup saves as you go, so you can finish the rest later.",
+      "id": "build",
+      "narration": "Then build your workspace. Selestial prepares drafts in the background. Nothing is published, sent or charged without you.",
       "capture": {
         "kind": "playwright",
-        "start": "/app/setup",
         "actions": [
           {
-            "do": "click",
-            "target": "text=Keep jobs covered and organized"
+            "do": "highlight",
+            "target": "#control-heading",
+            "note": "You stay in control"
           },
           {
             "do": "pause",
-            "ms": 900
+            "ms": 1200
+          },
+          {
+            "do": "click",
+            "target": {
+              "role": "button",
+              "name": "Build my workspace"
+            }
+          },
+          {
+            "do": "waitFor",
+            "target": "#lead-result",
+            "cut": true,
+            "timeout": 90000
+          },
+          {
+            "do": "pause",
+            "ms": 800
+          }
+        ]
+      },
+      "minSeconds": 6
+    },
+    {
+      "id": "result",
+      "narration": "Your first result leads: here, a booking form draft, with exactly what it still needs before it can go live. Review it now, or finish later.",
+      "capture": {
+        "kind": "playwright",
+        "actions": [
+          {
+            "do": "highlight",
+            "target": "article:has(#lead-result)"
+          },
+          {
+            "do": "pause",
+            "ms": 1800
           },
           {
             "do": "highlight",
             "target": {
               "role": "button",
-              "name": "Save and exit"
-            },
-            "note": "Leave whenever you like; it's saved",
-            "ms": 2200
-          },
-          {
-            "do": "click",
-            "target": {
-              "role": "button",
-              "name": "Save and exit"
+              "name": "Preview and review"
             }
           },
           {
-            "do": "wait",
-            "ms": 10000,
-            "cut": true
+            "do": "pause",
+            "ms": 1200
           }
         ]
       },
       "minSeconds": 7
-    },
-    {
-      "id": "business",
-      "narration": "Two settings change real bookings, so they live in Settings, under Company profile. Add the ZIP codes you serve, and new bookings are only accepted inside them. Then set your booking hours. Each cleaner's own availability still applies.",
-      "capture": {
-        "kind": "playwright",
-        "start": "/app/settings/business",
-        "actions": [
-          {
-            "do": "scroll",
-            "target": "text=Service area"
-          },
-          {
-            "do": "type",
-            "target": {
-              "role": "textbox",
-              "name": "Add ZIP codes"
-            },
-            "text": "78701, 78702, 78704, 78745"
-          },
-          {
-            "do": "click",
-            "target": {
-              "role": "button",
-              "name": "Add"
-            }
-          },
-          {
-            "do": "pause",
-            "ms": 900
-          },
-          {
-            "do": "scroll",
-            "target": "text=Only during the hours below"
-          },
-          {
-            "do": "click",
-            "target": "text=Only during the hours below"
-          },
-          {
-            "do": "pause",
-            "ms": 900
-          },
-          {
-            "do": "highlight",
-            "target": "ul.divide-y:has-text('Monday') > li:first-child",
-            "note": "Weekdays, 8 to 5, to start",
-            "ms": 2000
-          },
-          {
-            "do": "scroll",
-            "target": {
-              "role": "button",
-              "name": "Save changes"
-            }
-          },
-          {
-            "do": "click",
-            "target": {
-              "role": "button",
-              "name": "Save changes"
-            }
-          },
-          {
-            "do": "pause",
-            "ms": 1500
-          }
-        ]
-      },
-      "minSeconds": 12,
-      "poster": true
     },
     {
       "id": "next",
@@ -343,7 +292,7 @@
         "title": "Build your services and pricing",
         "whereLabel": "In the sidebar:",
         "where": "Services & Pricing",
-        "left": "Setup guide \u00b7 1 of 6",
+        "left": "Setup guide · 1 of 6",
         "seconds": 8
       },
       "minSeconds": 6

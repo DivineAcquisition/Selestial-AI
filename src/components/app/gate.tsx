@@ -36,6 +36,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { convexUrl } from "@/lib/app/config";
 import { tutorialDemoEnabled } from "@/lib/app/tutorial-demo";
 import { LANDING_PATH, SETUP_PAGES } from "@/lib/app/navigation";
+import { detectedTimeZone } from "@/lib/app/timezones";
+import { ReturnToSetup } from "@/components/app/setup/return-bar";
+import { TimeZonePicker, zoneHint } from "@/components/app/setup/time-zone";
+import { allowedDuringSetup, isSetupPage } from "../../../convex/lib/setup/routes";
 import { AUTH, withNext } from "@/lib/auth/routes";
 
 import { api } from "../../../convex/_generated/api";
@@ -104,8 +108,8 @@ function Onboarding() {
   const companyName = touched ? name : name || claimed?.companyName || "";
   const [agreed, setAgreed] = useState(false);
   const terms = currentVersion("terms");
-  // Starts at the zone this browser reports. Nothing is assumed when it reports none.
-  const [timezone, setTimezone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "");
+  // Starts at the zone this browser reports, for the owner to confirm. Nothing is assumed when it reports none.
+  const [timezone, setTimezone] = useState(() => detectedTimeZone() ?? "");
   const { busy, error, run } = useRun();
   // One key for this setup. If the request is sent twice (a double click, a retry after a dropped
   // connection), the record makes one company, not two.
@@ -167,7 +171,15 @@ function Onboarding() {
         }}
       >
         <TextField label="Company name" name="organization" value={companyName} onChange={(event) => { setTouched(true); setName(event.target.value); }} required maxLength={160} autoComplete="organization" autoFocus={!hasInvitations} />
-        <TextField label="Time zone" name="timezone" value={timezone} onChange={(event) => setTimezone(event.target.value)} required autoComplete="off" hint="The IANA name of your zone, such as America/Chicago. Schedules, availability and deadlines are shown on this clock." />
+        <div className="grid gap-1.5">
+          <label htmlFor="company-timezone" className="text-sm font-medium text-[#211a35]">
+            Time zone
+          </label>
+          <TimeZonePicker id="company-timezone" value={timezone} onChange={setTimezone} describedBy="company-timezone-hint" />
+          <p id="company-timezone-hint" className="text-xs text-[#667085]">
+            {zoneHint(timezone)}
+          </p>
+        </div>
         <label className="flex items-start gap-2.5 text-sm text-[#3d3654]">
           <Checkbox checked={agreed} onCheckedChange={(checked) => setAgreed(checked)} required className="mt-0.5 shrink-0" />
           <span>
@@ -225,21 +237,33 @@ function Workspace({ companyId, role, userId, businesses, onSwitch, support, chi
   // The Founding Access claim page is part of setup: it links the claim before setup starts, so it is
   // shown full screen, like setup, and an Owner in setup is not sent away from it (and its claim) first.
   const onFounding = pathname === "/app/founding";
-  const inSetup = pathname === SETUP_PATH || pathname.startsWith(`${SETUP_PATH}/`) || (onFounding && setup?.required === true);
+  const inSetup = isSetupPage(pathname) || (onFounding && setup?.required === true);
   // Only an Owner who has not yet opened the workspace is taken to setup. Staff and older companies never are.
-  const sendToSetup = setup?.required === true && !inSetup;
+  // Pages setup itself sends them to (integrations and their OAuth returns, imports, drafts, approvals,
+  // billing) stay reachable, with a bar back to setup; every other page still returns them to setup
+  // (lib/setup/routes.ts). Sign-in, company and role checks are unchanged on every page.
+  const handoff = setup?.required === true && !inSetup && allowedDuringSetup(pathname);
+  const sendToSetup = setup?.required === true && !inSetup && !handoff;
   useEffect(() => {
     if (sendToSetup) router.replace(SETUP_PATH);
   }, [sendToSetup, router]);
   if (company === undefined || setup === undefined || sendToSetup) return <Loading />;
   // Setup is its own full screen: no sidebar, dock or chat until the owner opens the workspace.
-  const banner = support ? (
+  const own = support ? (
     <SupportBanner session={support.session} onExit={support.onExit} />
   ) : (
     <>
       {role === "owner" ? <PaymentWarning companyId={companyId} /> : null}
       <DocumentNotice companyId={companyId} />
     </>
+  );
+  const banner = handoff && !support ? (
+    <>
+      <ReturnToSetup />
+      {own}
+    </>
+  ) : (
+    own
   );
   if (inSetup) {
     return (

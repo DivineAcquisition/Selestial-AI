@@ -56,7 +56,7 @@ describe("Reading the owner's website", () => {
     const asked = serve({ "https://mapleandpine.com/": { html: HOME }, "https://mapleandpine.com/services": { html: SERVICES }, "https://mapleandpine.com/contact": { html: CONTACT } });
     setWebsiteModelForTests(async () => null);
     const { readId } = await as.mutation(api.setupWebsite.start, { companyId, url: "mapleandpine.com" });
-    expect(await as.mutation(api.setupWebsite.start, { companyId, url: "https://mapleandpine.com" })).toEqual({ readId, already: true });
+    expect(await as.mutation(api.setupWebsite.start, { companyId, url: "https://mapleandpine.com" })).toEqual({ readId, already: true, confirm: null });
     await settle(t);
 
     const read = (await as.query(api.setupWebsite.status, { companyId }))!;
@@ -76,8 +76,23 @@ describe("Reading the owner's website", () => {
     const { setup } = await as.query(api.setup.state, { companyId });
     await as.mutation(api.setup.save, { companyId, expectedRevision: setup!.revision, step: "basics", facts: { "company.areas": "Austin, Round Rock, Cedar Park" } });
     expect((await as.query(api.setup.state, { companyId })).facts["company.areas"]).toMatchObject({ state: "confirmed", source: "website" });
-    // A second site is not read for free in setup.
-    expect(await refusal(as.mutation(api.setupWebsite.start, { companyId, url: "another-site.com" }))).toContain("already read once");
+    // Correcting the website: a different address is read only once the owner confirms the replacement.
+    expect(await as.mutation(api.setupWebsite.start, { companyId, url: "another-site.com" })).toEqual({ readId: null, already: false, confirm: { current: "mapleandpine.com" } });
+    expect((await as.query(api.setupWebsite.status, { companyId }))!.host).toBe("mapleandpine.com");
+    serve({ "https://another-site.com/": { html: "<html><head><title>Home</title></head><body><h1>Other</h1></body></html>" } });
+    const replaced = await as.mutation(api.setupWebsite.start, { companyId, url: "another-site.com", replace: true });
+    expect(replaced.readId).not.toBe(readId);
+    await settle(t);
+    const after = (await as.query(api.setup.state, { companyId })).facts;
+    // Suggestions from the old site that were never used are gone; what the owner confirmed stays.
+    expect(after["contact.phone"]).toBeUndefined();
+    expect(after["company.areas"]).toMatchObject({ value: "Austin, Round Rock, Cedar Park", state: "confirmed" });
+    expect(after["company.website"]).toMatchObject({ value: "another-site.com", state: "confirmed" });
+    // Replacing is limited: three completed reads in all.
+    serve({ "https://third-site.com/": { html: "<html><head><title>Home</title></head><body>x</body></html>" } });
+    await as.mutation(api.setupWebsite.start, { companyId, url: "third-site.com", replace: true });
+    await settle(t);
+    expect(await refusal(as.mutation(api.setupWebsite.start, { companyId, url: "fourth-site.com", replace: true }))).toContain("limit");
   });
 
   it("never overwrites what the owner confirmed: a different value is kept as a conflict", async () => {

@@ -64,7 +64,41 @@ export const setupTables = {
       firstReviewedAt: v.optional(v.number()),
       firstActionAt: v.optional(v.number()),
       enteredAt: v.optional(v.number()),
+      /** The owner chose the one outcome setup leads with. */
+      outcomeSelectedAt: v.optional(v.number()),
+      /** The owner pressed "Build my workspace". */
+      buildStartedAt: v.optional(v.number()),
+      /** The first output the owner can open and use was ready (a draft, a review, a role). */
+      firstUsableAt: v.optional(v.number()),
+      /** The owner first opened a prepared output from setup to review it. */
+      firstOpenedAt: v.optional(v.number()),
+      /** The first prepared output was published or switched on by the owner. */
+      firstPublishedAt: v.optional(v.number()),
+      /** The owner left setup with "Save and exit" before building, and when they came back. */
+      exitedAt: v.optional(v.number()),
+      resumedAt: v.optional(v.number()),
     }),
+    /** How the owner came in, for the funnel: with a website to read, or by hand. */
+    entry: v.optional(v.union(v.literal("website"), v.literal("manual"), v.literal("founding"))),
+    /**
+     * The owner's one "Build my workspace" request: what it coordinates. Asking again finds this, so a
+     * refresh, a second tab or a retry never starts the expensive work twice.
+     */
+    build: v.optional(
+      v.object({
+        requestedAt: v.number(),
+        requestedBy: v.id("members"),
+        outcome: priorityValidator,
+        configure: v.array(v.string()),
+        exclude: v.array(v.string()),
+        activationId: v.optional(v.id("activations")),
+        /** Why activation didn't start, in the owner's words, when it didn't. */
+        activationNote: v.optional(v.string()),
+        updatedAt: v.number(),
+      }),
+    ),
+    /** The last time setup sent the owner to another page to connect, import or approve something. */
+    handoff: v.optional(v.object({ kind: v.string(), href: v.string(), step: v.string(), at: v.number(), outcome: v.optional(v.union(v.literal("completed"), v.literal("failed"), v.literal("returned"))) })),
     /** Set for a company that was already working in Selestial and chose setup later (`setup.begin`). */
     optedIn: v.optional(v.boolean()),
     /** The Owner closed the setup checklist on Home. It stays closed; setup itself is still there. */

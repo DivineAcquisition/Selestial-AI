@@ -263,7 +263,7 @@ export const SALES_WORKSPACE_TAB = { booking: "internal-booking", proposal: "quo
 /** Pages inside Services & Pricing. The first four are its tabs; the rest are reached from them. They have no sidebar entry of their own. */
 /** Company setup: a full-screen guided start for the Owner, outside the sidebar. Reached at company creation and from Home. */
 export const SETUP_PAGES: readonly { path: string; label: string; purpose: string }[] = [
-  { path: `${APP_ROOT}/setup`, label: "Set up your company", purpose: "The Owner confirms the company's details, chooses what Selestial helps with first, and opens the workspace." },
+  { path: `${APP_ROOT}/setup`, label: "Set up your company", purpose: "The Owner chooses one outcome, confirms a few essentials, adds only the context that outcome needs, builds the workspace with one action, and reviews the first useful result before opening the workspace." },
   { path: `${APP_ROOT}/setup/business`, label: "Your business setup", purpose: "What Selestial prepared from the Owner's answers: service drafts with suggested prices, booking forms, agreements and job standards, each with its status, what is missing and the next step. The answers it used can be changed here." },
   { path: `${APP_ROOT}/founding`, label: "Founding Access", purpose: "An Owner arriving from the Founding Access page links their claim to the company, sees whether founding access is claimed, processing, ready to pay or needs attention, and pays through the same purchase as Plan & Usage." },
   { path: `${APP_ROOT}/first-work`, label: "Your first work", purpose: "Where setup lands: what is prepared, what waits for a decision, what agents sent, and one next step." },

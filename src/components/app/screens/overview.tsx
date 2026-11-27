@@ -1,7 +1,7 @@
 "use client";
 
 import { MigrationBanner } from "@/components/app/migration/entry";
-import { SetupChecklist } from "@/components/app/setup/checklist";
+import { SetupContinuation } from "@/components/app/setup/checklist";
 import { useUser } from "@clerk/nextjs";
 import { useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
@@ -89,7 +89,7 @@ export function OverviewScreen() {
       checklist={
         <>
           <MigrationBanner />
-          <SetupChecklist />
+          <SetupContinuation />
         </>
       }
       attention={<IssueCards place="home" />}
