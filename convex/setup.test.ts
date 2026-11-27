@@ -64,6 +64,9 @@ describe("Company setup", () => {
     ({ revision } = await as.mutation(api.setup.save, { companyId, expectedRevision: revision, step: "basics" }));
     expect((await as.query(api.setup.state, { companyId })).setup!.step).toBe("essentials");
     expect(await refusal(as.mutation(api.setup.save, { companyId, expectedRevision: revision, step: "nowhere" }))).toContain("not part of your setup");
+    // A tab still open on the earlier screens during a release keeps saving its question steps and answers.
+    ({ revision } = await as.mutation(api.setup.save, { companyId, expectedRevision: revision, step: "q:pricing.state", answers: { "pricing.state": "quote_each", "customers.where": "few" } }));
+    expect((await as.query(api.setup.state, { companyId })).setup).toMatchObject({ step: "context", answers: { "pricing.state": "quote_each" } });
 
     // Confirming the context is recorded once; entering the workspace ends the gate and switches nothing on.
     await as.mutation(api.setup.save, { companyId, expectedRevision: revision, step: "build", confirmContext: true });

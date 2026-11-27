@@ -275,14 +275,19 @@ export function stepsFor(): Step[] {
  * Answers business configuration still reads (configure.ts) that the shorter path no longer asks on its own
  * screen: how pricing works today, and whether they have their own agreement. They can still be saved.
  */
-export const KEPT_ANSWERS = ["pricing.state", "agreements.have"] as const;
+export const KEPT_ANSWERS = ["pricing.state", "agreements.have", "customers.where"] as const;
 
 const LEGACY_STEPS = ["start", "basics", "team", "priority", "offer", "records", "prepare", "review"];
 
-/** A step id setup accepts: a stage, or one of the earlier setup's ids (saved as the stage that holds it). */
+/**
+ * A step id setup accepts: a stage, or one of the earlier setup's ids, saved as the stage that holds it.
+ * The earlier screens' question steps stay accepted, so a tab still open on them during a release (the new
+ * backend goes live before the new site) keeps saving instead of being refused.
+ */
 export function isKnownStep(step: string): boolean {
   if (STAGES.some((stage) => stage.id === step) || LEGACY_STEPS.includes(step)) return true;
-  return step.startsWith("q:") && QUESTIONS.some((question) => question.id === step.slice(2));
+  const id = step.startsWith("q:") ? step.slice(2) : null;
+  return id !== null && (QUESTIONS.some((question) => question.id === id) || (KEPT_ANSWERS as readonly string[]).includes(id));
 }
 
 /** Step ids from the earlier, longer setup, mapped onto the stage that now holds them. */
