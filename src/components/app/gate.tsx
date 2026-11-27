@@ -23,6 +23,7 @@ import { NotificationBell } from "@/components/app/activation/bell";
 import { AppShell } from "@/components/app/shell";
 import { useRecordAuth } from "@/components/app/providers";
 import { SupportBanner, type SupportSession } from "@/components/app/support/banner";
+import { DocumentNotice } from "@/components/app/document-notice";
 import { clearSupportSession, readSupportSession, supportClient } from "@/components/app/support/client";
 import { Notice, SubmitButton, TextField } from "@/components/auth/fields";
 import { AuthShell, useEvents, type TraceStep } from "@/components/auth/shell";
@@ -232,7 +233,14 @@ function Workspace({ companyId, role, userId, businesses, onSwitch, support, chi
   }, [sendToSetup, router]);
   if (company === undefined || setup === undefined || sendToSetup) return <Loading />;
   // Setup is its own full screen: no sidebar, dock or chat until the owner opens the workspace.
-  const banner = support ? <SupportBanner session={support.session} onExit={support.onExit} /> : role === "owner" ? <PaymentWarning companyId={companyId} /> : undefined;
+  const banner = support ? (
+    <SupportBanner session={support.session} onExit={support.onExit} />
+  ) : (
+    <>
+      {role === "owner" ? <PaymentWarning companyId={companyId} /> : null}
+      <DocumentNotice companyId={companyId} />
+    </>
+  );
   if (inSetup) {
     return (
       <CompanyProvider company={{ companyId, name: company.name, timezone: company.timezone, role }}>

@@ -195,7 +195,10 @@ production):
   results. `RETENTION_OFFERS` stays off until then.
 - **Privacy Notice:** change the wording rather than build automatic deletion. A cancelled plan keeps its records
   so the company can come back or export them. **Published** as Owner-approved version `privacy-2026-11-27`
-  (the Owner chose to publish without waiting for counsel); `privacy-2026-11-16` stays listed unchanged:
+  (the Owner chose to publish without waiting for counsel); `privacy-2026-11-16` stays listed unchanged.
+  People who already had an account are told in the product: a bar under the header with what changed, a link
+  to the notice and "Got it", shown until they close it, for 90 days (`trust.documentNotices`; any future
+  version with a `notice` is announced the same way):
 
   > A company's records: while the company has an account with Selestial, including after its plan ends, so it
   > can come back or export them. When the company's Owner asks us to delete the company, or its plan is

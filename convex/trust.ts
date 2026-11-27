@@ -10,12 +10,12 @@ import { v } from "convex/values";
 
 import type { Doc } from "./_generated/dataModel";
 import { internalMutation, type MutationCtx, type QueryCtx } from "./_generated/server";
-import { publicQuery, staffMutation, staffQuery, type StaffAccess } from "./lib/builders";
+import { companyMutation, companyQuery, publicQuery, staffMutation, staffQuery, type StaffAccess } from "./lib/builders";
 import { notFound, userError } from "./lib/errors";
 import { email, text } from "./lib/text";
 import { logTrustChange, type TrustAuthor } from "./lib/trust/changes";
 import { dateOnly } from "./lib/trust/checks";
-import { DOCUMENT_VERSIONS, versionById } from "./lib/trust/documents";
+import { DOCUMENT_VERSIONS, noticesDue, versionById } from "./lib/trust/documents";
 import {
   claimAreaValidator,
   claimStatusValidator,
@@ -355,5 +355,54 @@ export const seed = internalMutation({
       added.publications += 1;
     }
     return added;
+  },
+});
+
+// ── Telling people in the product about a changed document ───────────────────────────────────────
+
+/** The publications in force: the trust record's, or the seed's before the record exists (as publicSnapshot reads them). */
+async function publicationsNow(ctx: QueryCtx | MutationCtx) {
+  return (await settingsRow(ctx)) ? await ctx.db.query("policyPublications").take(200) : SEED.publications;
+}
+
+/**
+ * The changed documents this person hasn't closed the notice for: only material changes (a version with a
+ * notice), in force, recent, and only for people whose membership began before the change took effect (someone
+ * who joined since already saw the current text). Never during a support session: staff aren't the account holder.
+ */
+export const documentNotices = companyQuery({
+  args: {},
+  whileLocked: true,
+  handler: async (ctx) => {
+    if (ctx.support) return [];
+    const now = Date.now();
+    const due = noticesDue(await publicationsNow(ctx), now).filter((version) => ctx.member._creationTime < Date.parse(`${version.effectiveOn}T00:00:00Z`));
+    const userId = ctx.member.userId ?? ctx.member._id;
+    const shown = [];
+    for (const version of due) {
+      const closed = await ctx.db
+        .query("documentNoticeDismissals")
+        .withIndex("by_user_document", (q) => q.eq("userId", userId).eq("documentId", version.id))
+        .first();
+      if (!closed) shown.push({ documentId: version.id, kind: version.kind, title: version.title, effectiveOn: version.effectiveOn, notice: version.notice! });
+    }
+    return shown;
+  },
+});
+
+/** The person closed the notice. Once is enough: a second close changes nothing. */
+export const dismissDocumentNotice = companyMutation({
+  args: { documentId: v.string() },
+  whileLocked: true,
+  handler: async (ctx, args) => {
+    if (ctx.support) return null;
+    if (!versionById(args.documentId)) throw userError("That document isn't known.");
+    const userId = ctx.member.userId ?? ctx.member._id;
+    const closed = await ctx.db
+      .query("documentNoticeDismissals")
+      .withIndex("by_user_document", (q) => q.eq("userId", userId).eq("documentId", args.documentId))
+      .first();
+    if (!closed) await ctx.db.insert("documentNoticeDismissals", { userId, documentId: args.documentId, at: Date.now() });
+    return null;
   },
 });

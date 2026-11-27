@@ -147,6 +147,17 @@ export const trustTables = {
   }).index("by_document", ["documentId"]),
 
   /**
+   * A person closed the in-product notice about a changed document (convex/trust.ts documentNotices). Keyed by
+   * the signed-in person, so someone in two companies is told once. Not company data: nothing here is exported
+   * or deleted with a company.
+   */
+  documentNoticeDismissals: defineTable({
+    userId: v.string(),
+    documentId: v.string(),
+    at: v.number(),
+  }).index("by_user_document", ["userId", "documentId"]),
+
+  /**
    * Append-only: every change to the four tables above. Public fields are kept with their values before
    * and after; staff-only fields that changed are named without their values.
    */
