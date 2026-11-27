@@ -165,6 +165,8 @@ export const subjectValidator = v.union(
   v.object({ table: v.literal("servicePlans"), id: v.id("servicePlans") }),
   // Guided cleaner onboarding (convex/lib/cleaners/onboarding.ts).
   v.object({ table: v.literal("onboardingConfigs"), id: v.id("onboardingConfigs") }),
+  v.object({ table: v.literal("cancelFlows"), id: v.id("cancelFlows") }),
+  v.object({ table: v.literal("retentionOffers"), id: v.id("retentionOffers") }),
 );
 export type Subject = typeof subjectValidator.type;
 

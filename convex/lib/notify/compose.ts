@@ -612,6 +612,8 @@ async function build(ctx: MutationCtx, message: Doc<"messages">, company: Doc<"c
       return textingNotice(ctx, company, notice.ref, facts, c);
     case "plan_price_change":
       return planPriceChange(ctx, company, notice.ref, c);
+    case "plan_subscription":
+      return planSubscription(ctx, company, notice.ref, facts, c);
     case "founding_claimed":
       return foundingClaimed(ctx, company, notice.ref, c);
     case "plan_access":
@@ -883,6 +885,81 @@ async function foundingClaimed(ctx: MutationCtx, company: Doc<"companies">, ref:
     ],
     button: { label: "Start setup", path: "/app/founding" },
   });
+}
+
+/**
+ * The subscription itself (convex/cancellation.ts, convex/billing.ts subscriptionNotices): a retention
+ * discount applied, a cancellation scheduled, a reactivation, access ended. Each is checked against the
+ * record as it is when it goes, so a cancellation taken back in between sends no cancellation email.
+ */
+async function planSubscription(ctx: MutationCtx, company: Doc<"companies">, ref: string | undefined, facts: NoticeFacts | undefined, c: Context): Promise<Built> {
+  const kind = str(facts, "kind");
+  const base = { ...c, eyebrow: "Billing", essential: true, because: "you're the Owner, and the subscription is part of your account" };
+  const button = { label: "Open Plan & Usage", path: "/app/settings/billing" };
+  if (kind === "offer_applied") {
+    const id = ref ? ctx.db.normalizeId("retentionOffers", ref) : null;
+    const row = id ? await ctx.db.get(id) : null;
+    if (!row || row.companyId !== company._id || row.state !== "applied") return { problem: "The discount is no longer on record as applied." };
+    const first = row.renewals[0];
+    const pay = (cents: number) => money(cents, row.currency);
+    return alertEmail({
+      ...base,
+      tone: "info",
+      subject: row.renewals.length === 1 ? `Your ${row.percent}% discount is on your next Selestial payment` : `Your ${row.percent}% discount is on your next ${row.renewals.length} Selestial payments`,
+      heading: `${row.percent}% off ${row.renewals.length === 1 ? "your next payment" : `your next ${row.renewals.length} payments`}`,
+      body: `Thanks for staying with Selestial. Your subscription stays active, and ${row.renewals.length === 1 ? `your next payment on ${dateOnly(first.at, c.timezone)} is ${pay(first.totalCents)} instead of ${pay(first.baseCents)}` : `each of your next ${row.renewals.length} monthly payments is ${row.percent}% off`}. Your normal price of ${pay(row.resumesCents)} a month resumes on ${dateOnly(row.resumesAt, c.timezone)}.`,
+      note: "The discount applies to your subscription only. SMS, email, credits and other usage charges are unchanged. Taxes, if applicable, are additional.",
+      facts: [...row.renewals.map((r) => ({ label: dateOnly(r.at, c.timezone), value: `${pay(r.totalCents)} (saves ${pay(r.discountCents)})` })), { label: "From then", value: `${pay(row.resumesCents)} a month` }],
+      button,
+    });
+  }
+  const account = await ctx.db
+    .query("billingAccounts")
+    .withIndex("by_company_env", (q) => q.eq("companyId", company._id).eq("env", (str(facts, "env") ?? "production") as "sandbox" | "production"))
+    .unique();
+  if (kind === "cancel_scheduled") {
+    const endsAt = account?.subscription.endsAt ?? null;
+    if (!account?.plan || endsAt === null) return { problem: "The subscription was reactivated before this notice went." };
+    const date = dateOnly(endsAt, c.timezone);
+    return alertEmail({
+      ...base,
+      tone: "info",
+      subject: `Your Selestial subscription is canceled. Access continues until ${date}`,
+      heading: "Your subscription is canceled",
+      body: `It won't renew. You can keep using Selestial until ${date}, and your agents keep working until then. After that, agents stop and no new messages are sent from Selestial.`,
+      note: "Changed your mind? Reactivate any time before that date in Plan & Usage. Nothing is charged until your normal renewal.",
+      facts: [
+        { label: "Access until", value: date },
+        { label: "Renewal", value: "Off" },
+      ],
+      button: { label: "Reactivate subscription", path: "/app/settings/billing" },
+    });
+  }
+  if (kind === "reactivated") {
+    if (!account?.plan || account.subscription.endsAt !== null) return { problem: "The subscription is set to end again, so this notice wasn't sent." };
+    const renews = account.subscription.periodEnd;
+    return alertEmail({
+      ...base,
+      tone: "info",
+      subject: "Your Selestial subscription is reactivated",
+      heading: "Your subscription is reactivated",
+      body: `It renews as usual${renews ? ` on ${dateOnly(renews, c.timezone)}` : ""}. Nothing was charged for reactivating, and your agents carry on.`,
+      button,
+    });
+  }
+  if (kind === "ended") {
+    if (account?.plan) return { problem: "The company has an active plan again." };
+    return alertEmail({
+      ...base,
+      tone: "info",
+      subject: "Your Selestial subscription has ended",
+      heading: "Your subscription has ended",
+      body: "Your agents have stopped and Selestial no longer sends messages for your business. Your records are still in your workspace: you can sign in, export or delete them from Settings.",
+      note: "Choose a plan in Plan & Usage to start again. Nothing that was scheduled before is sent again on its own.",
+      button,
+    });
+  }
+  return { problem: "Unknown subscription notice." };
 }
 
 const EARLY_OFFER_CENTS = EARLY_OFFER.monthlyCents;

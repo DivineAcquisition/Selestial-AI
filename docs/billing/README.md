@@ -19,6 +19,7 @@ Messaging (texts and business email, paid from a prepaid messaging balance) is d
 | Plan catalog, agent and feature mapping | Built (`catalog.ts`). Mirrored into Autumn by `billing/autumn.config.ts`. |
 | Reserve, execute, finalize for AI work | Built: Company Chat answers, Recruiter's AI reading of hiring email, Creative Studio generations. |
 | Plan changes, cancellation, top-ups, billing portal, payment method | Built as Owner-confirmed intents against Autumn's attach, preview, update, portal and setup-payment APIs. |
+| Cancel subscription flow and retention offers | Built (`05-cancellation.md`). Offers are off until `RETENTION_OFFERS=on`, after the sandbox checks. |
 | Spending controls, usage alerts, zero-balance notices | Built. Automatic top-ups are not built and cannot be switched on. |
 | Autumn webhooks | Built: signed (Svix), deduplicated. The body only triggers a re-read from Autumn. |
 | Public pricing, FAQs, in-app comparison | Built. No credit allowance is shown because none is approved. |
@@ -212,8 +213,9 @@ refresh.
   - The preview lists the agents and features that will be lost.
   - Records, completed work, signed agreements and portal data are kept.
   - Work already reserved before the boundary finishes. New work is checked against the new plan.
-- **Cancel:** `cancel_end_of_cycle`. Paid access continues to the end of the period. "Keep this plan"
-  (`uncancel`) reverses a pending cancellation or a scheduled change.
+- **Cancel:** `cancel_end_of_cycle`, from the Cancel subscription flow (`05-cancellation.md`). Paid access
+  continues to the end of the period. "Reactivate subscription" (`uncancel`) reverses a pending
+  cancellation; "Keep the current plan" drops a scheduled change.
 - **Top-ups:** offered only when `BILLING_TOP_UP_PACKS` is set.
   - Both plans can buy them, and they need an active plan.
   - Credits are granted only after verified payment; a missing card returns a Stripe payment page and no

@@ -1,5 +1,8 @@
 import { FACTS, type DocumentText } from "./types";
 
+const OLD_RETENTION_LINE = `A company's records: while the company uses ${FACTS.product}. When a company leaves, we delete its records within 90 days.`;
+const NEW_RETENTION_LINE = `A company's records: while the company has an account with ${FACTS.product}, including after its plan ends, so it can come back or export them. When the company's Owner asks us to delete the company, or its plan is cancelled for non-payment, we delete its records within 90 days, except the records this section says we keep.`;
+
 export const PRIVACY: DocumentText = {
   versionId: "privacy-2026-11-16",
   kind: "privacy",
@@ -149,7 +152,7 @@ export const PRIVACY: DocumentText = {
         {
           list: [
             "Account information: while the account exists.",
-            `A company's records: while the company uses ${FACTS.product}. When a company leaves, we delete its records within 90 days.`,
+            OLD_RETENTION_LINE,
             `Requests to ${FACTS.product} (privacy requests, security reports and security questions), and the records that a deletion was done: three years after the request or deletion is closed, then deleted.`,
             "Data exports: the download file is deleted 24 hours after it is ready.",
             "Opt-out records: kept, so that an opt-out is never forgotten, even after other details are deleted.",
@@ -254,4 +257,27 @@ export const PRIVACY: DocumentText = {
       ],
     },
   ],
+};
+
+/**
+ * Version of November 27, 2026 (the Owner's approval of that date): the retention line says what actually
+ * happens when a plan ends. A cancelled plan keeps the company's records, so it can come back or export them;
+ * deletion follows the Owner's request or a plan cancelled for non-payment. Every other word is the
+ * 2026-11-16 text, which stays published as it was.
+ */
+export const PRIVACY_2026_11_27: DocumentText = {
+  ...PRIVACY,
+  versionId: "privacy-2026-11-27",
+  sections: PRIVACY.sections.map((section) =>
+    section.id !== "retention"
+      ? section
+      : {
+          ...section,
+          blocks: section.blocks.map((block) =>
+            "list" in block && block.list
+              ? { ...block, list: block.list.map((item) => (item === OLD_RETENTION_LINE ? NEW_RETENTION_LINE : item)) }
+              : block,
+          ),
+        },
+  ),
 };

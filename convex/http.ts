@@ -25,6 +25,7 @@ import { httpRouter } from "convex/server";
 import { qualityFileRequestValid } from "./lib/quality/fileLinks";
 
 import { internal } from "./_generated/api";
+import { retentionInvoiceOf } from "./lib/billing/retention";
 import { oauthCallback, oneClickUnsubscribe, providerWebhook, selfCheckRoute, signedFileRoute } from "./lib/builders";
 import { evidenceRequestValid } from "./lib/texting/evidence";
 import { siteOrigin } from "./lib/dispatch/links";
@@ -173,6 +174,9 @@ http.route({
       return verifyStripeSignature({ secret, header: request.headers.get("stripe-signature"), body, now: Date.now() });
     },
     handler: async (ctx, body) => {
+      // Plan invoices and refunds under an accepted retention offer: what Stripe discounted and collected (convex/cancellation.ts).
+      const retained = retentionInvoiceOf(body);
+      if (retained) await ctx.runMutation(internal.cancellation.invoiceEvent, retained);
       const invoiceEvent = parseInvoiceEvent(body);
       if (invoiceEvent) {
         await ctx.runAction(internal.billingLock.received, { event: invoiceEvent });
