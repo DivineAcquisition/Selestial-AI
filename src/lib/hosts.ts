@@ -21,7 +21,10 @@ export const HOST_SETTINGS: Record<HostRole, string> = {
   app: "APP_ORIGIN",
   link: "LINK_ORIGIN",
   admin: "ADMIN_ORIGIN",
-  /** The Selestial Founding Access page, for example https://access.selestial.io. Its root shows /founding and it serves nothing else. */
+  /**
+   * The access host for Selestial's focused offer pages, for example https://access.selestial.io. Its root
+   * shows Founding Access (/founding); /recruiter is the standalone Recruiter offer. It serves nothing else.
+   */
   founding: "FOUNDING_ORIGIN",
   docs: "DOCS_ORIGIN",
   status: "STATUS_ORIGIN",
@@ -38,6 +41,9 @@ const UNBUILT_MESSAGE: Record<string, string> = {
 
 /** The page the founding host shows at its root (the address bar keeps "/"). */
 export const FOUNDING_PATH = "/founding";
+
+/** The standalone Recruiter offer, served on the same access host at its own path. */
+export const RECRUITER_OFFER_PATH = "/recruiter";
 
 /** Where the staff host opens: the Operations workspace. */
 export const ADMIN_LANDING = "/staff/operations";
@@ -120,6 +126,8 @@ export function roleOfPath(pathname: string): PathRole {
   if (path === "/oauth/google/callback" || path === "/oauth/quickbooks/callback") return "shared";
   // Founding Access: the page and its live status. The claim itself continues on the workspace host.
   if (under(path, FOUNDING_PATH) || under(path, "/api/founding")) return "founding";
+  // The standalone Recruiter offer lives on the same access host, at its own path.
+  if (under(path, RECRUITER_OFFER_PATH)) return "founding";
   // The Selestial staff console. Sign-in stays on the workspace host, which staff share with everyone.
   if (under(path, "/staff")) return "admin";
   if (under(path, "/app") || isAuthPath(path)) return "app";

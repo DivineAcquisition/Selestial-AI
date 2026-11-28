@@ -304,6 +304,20 @@ describe("the founding host", () => {
     }
   });
 
+  it("serves the Recruiter offer at /recruiter on the same access host", () => {
+    expect(at("/recruiter")).toEqual(serves(false));
+    expect(at("/recruiter", "?utm_source=x")).toEqual(serves(false));
+    expect(at("/recruiter/opengraph-image")).toEqual(serves(false));
+    // The root still shows Founding Access.
+    expect(at("/")).toEqual({ kind: "rewrite", to: "/founding", noindex: false });
+  });
+
+  it("does not serve the Recruiter offer on other configured hosts", () => {
+    for (const host of ["www.example.test", "app.example.test", "admin.example.test", "link.example.test"]) {
+      expect(get(host, "/recruiter", WITH)).toEqual(missing);
+    }
+  });
+
   it("links from the founding page straight to the host that serves each page", () => {
     expect(hrefFor("/signup?next=%2Fapp%2Ffounding%3Fclaim%3Dabc", WITH)).toBe("https://app.example.test/signup?next=%2Fapp%2Ffounding%3Fclaim%3Dabc");
     expect(hrefFor("/login?next=%2Fapp", WITH)).toBe("https://app.example.test/login?next=%2Fapp");
