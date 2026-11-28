@@ -313,6 +313,24 @@ export const migrationTables = {
     rowId: v.id("migrationRows"),
     createdAt: v.number(),
   }).index("by_company_customer", ["companyId", "customerId"]),
+
+  /**
+   * A source adapter's report for a migration (lib/migration/sources): every source record's outcome, the
+   * company settings it read, money as recorded and outstanding links, as JSON. For review and reconciliation
+   * only: nothing reads it to act.
+   */
+  migrationSourceReports: defineTable({
+    companyId: v.id("companies"),
+    migrationId: v.id("migrations"),
+    source: v.string(),
+    instance: v.string(),
+    snapshotAt: v.union(v.string(), v.null()),
+    report: v.string(),
+    savedBy: actorValidator,
+    savedAt: v.number(),
+  })
+    .index("by_migration", ["migrationId"])
+    .index("by_company", ["companyId"]),
 };
 
 /** On a job or plan written by a migration: held until the owner releases it, so no agent acts on it first. */

@@ -225,6 +225,7 @@ export const DELETION_PLAN: readonly TablePlan[] = [
   del("migrationRuns", "Each import run and its counts."),
   del("migrationLinks", "Which record each imported row became, kept for undo."),
   del("importedHistory", "Past visits imported from a previous system, for reference only; they were never invoiced here."),
+  del("migrationSourceReports", "A source export's migration report."),
   keep("openingBalances", "Amounts customers already owed when the company moved to Selestial: part of the record of money owed. Notes are removed.", { personal: ["notes"], counsel: true }),
   // Agent Controls (convex/lib/controls): settings and their history.
   del("controlChanges", "Changes the company made to agent settings."),

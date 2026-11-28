@@ -34,7 +34,8 @@ export function SourceStep() {
       <StepHeading eyebrow="Step 1 of 6" title="Where is your business today?" lead="Choose the system you're moving from. You can add files from more than one place later." />
 
       <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3" role="radiogroup" aria-label="Your current system">
-        {SOURCES.map((id) => {
+        {/* Instant Shine is staged from its export by Selestial, not picked here. */}
+        {SOURCES.filter((id) => id !== "instant_shine").map((id) => {
           const card = SOURCE_CARDS[id];
           const selected = chosen === id;
           return (
@@ -175,6 +176,6 @@ function Chosen({ source }: { source: Source }) {
 }
 
 function SourceMark({ id }: { id: Source }) {
-  const letters: Record<Source, string> = { jobber: "J", housecall_pro: "HP", bookingkoala: "BK", spreadsheet: "CSV", other: "…", assisted: "S" };
+  const letters: Record<Source, string> = { jobber: "J", housecall_pro: "HP", bookingkoala: "BK", spreadsheet: "CSV", other: "…", assisted: "S", instant_shine: "IS" };
   return <span className="grid h-6 min-w-6 place-items-center rounded-md bg-muted px-1 text-[10px] font-bold text-strong" aria-hidden>{letters[id]}</span>;
 }

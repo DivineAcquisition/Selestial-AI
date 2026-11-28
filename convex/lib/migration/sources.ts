@@ -8,7 +8,7 @@
  * read-only connection in Selestial (convex/connectors.ts), and it is offered only when it is configured.
  */
 
-export const SOURCES = ["jobber", "housecall_pro", "bookingkoala", "spreadsheet", "other", "assisted"] as const;
+export const SOURCES = ["jobber", "housecall_pro", "bookingkoala", "spreadsheet", "other", "assisted", "instant_shine"] as const;
 export type Source = (typeof SOURCES)[number];
 
 export type SourceCard = {
@@ -87,6 +87,16 @@ export const SOURCE_CARDS: Record<Source, SourceCard> = {
     supported: ["Any CSV with a header row", "Column suggestions you confirm"],
     notSupported: ["No direct connection", NEVER_BY_CSV],
     exportSteps: [{ title: "Export what you can", steps: ["Look for Export, Download or Reports in your current system.", "Choose CSV. Customers first, then upcoming jobs and recurring schedules if available."] }],
+    verifiedFrom: null,
+    connector: null,
+  },
+  instant_shine: {
+    id: "instant_shine",
+    name: "Instant Shine",
+    summary: "A read-only export of your Instant Shine workspace, prepared with Selestial. Every record is checked here and you review it before anything is imported.",
+    supported: ["Customers, recurring customers and their addresses", "Your cleaners, once each, with their pay tier", "Upcoming visits with their accepted crew and the price the customer accepted", "Completed visits as history", "Text opt-outs", "Your ZIP codes, booking hours and crew pay rule, applied when you choose"],
+    notSupported: ["Saved cards and payment methods stay in Instant Shine's Stripe account, and payments stay there until they move: nothing is charged or refunded here", "Unpaid online checkouts, delivery logs and send queues stay in Instant Shine", "Sign-ins, passwords and saved links never move"],
+    exportSteps: [],
     verifiedFrom: null,
     connector: null,
   },
