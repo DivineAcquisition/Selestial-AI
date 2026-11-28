@@ -259,3 +259,57 @@ export const FOOTER = {
     { href: "/security", label: "Security" },
   ],
 };
+
+/**
+ * The hero's agentic desk: Recruiter at the centre, where applications come from, and you. Each step is an
+ * example of work the product does today (see the header of this file), with made-up names.
+ */
+export type DeskNode = "inbox" | "link" | "owner" | "onboarding";
+export const DESK = {
+  label: "Example of Recruiter at work, with demonstration data",
+  title: "Recruiter is working",
+  demo: "Demonstration data",
+  waiting: "1 decision is waiting for you",
+  clear: "Nothing is waiting on you",
+  caption:
+    "An example: Recruiter files a job-board notification from your hiring inbox, checks Jordan's application against your requirements, flags an unanswered question, prepares an interview invitation for you to approve, books the time Jordan picks, and starts onboarding for a cleaner who accepted an offer.",
+  nodes: {
+    inbox: { x: 14, y: 24, label: "Hiring inbox" },
+    link: { x: 86, y: 24, label: "Application link" },
+    owner: { x: 14, y: 76, label: "You" },
+    onboarding: { x: 86, y: 76, label: "Onboarding" },
+  } satisfies Record<DeskNode, { x: number; y: number; label: string }>,
+  steps: [
+    { id: "inbox", node: "inbox", actor: "recruiter", title: "Indeed notification in your hiring inbox", detail: "Residential Cleaner · new applicant", done: "Filed under Jordan Reyes" },
+    { id: "form", node: "link", actor: "recruiter", title: "Jordan completed their application", detail: "Checking answers against your requirements", done: "Weekday availability matches your role" },
+    { id: "unclear", node: "link", actor: "recruiter", title: "Pet-friendly homes: not answered", detail: "Looking for an answer in the application", done: "Flagged for you as unclear" },
+    { id: "invite", node: "owner", actor: "owner", title: "Interview invitation ready to review", detail: "Approve, edit or hold", done: "Approved by you · sent within your hours" },
+    { id: "interview", node: "inbox", actor: "recruiter", title: "Jordan picked Thursday 10:30", detail: "Reserving the time", done: "Interview booked · reminder set" },
+    { id: "onboard", node: "onboarding", actor: "recruiter", title: "Maria accepted your offer", detail: "Starting your onboarding checklist", done: "Agreement signed · payment details missing" },
+  ] as const,
+};
+
+/**
+ * The permissions panel: Recruiter's real actions and the levels an owner can give each
+ * (convex/lib/permissionCatalog.ts). A ceiling of "propose" means a person approves every time.
+ */
+export const PERMISSIONS = {
+  title: "What may Recruiter do by itself?",
+  actionLabel: "Pick a task",
+  levelLabel: "Your setting",
+  note: "An example of the setting, not your account. Messages always follow your sending hours, and anything above your setting waits for you.",
+  levels: [
+    { id: "off", label: "Off", body: "Recruiter doesn’t do this. It stays a task for your team." },
+    { id: "propose", label: "Propose", body: "Recruiter prepares it and waits. Nothing happens until you approve." },
+    { id: "execute_and_report", label: "Act & report", body: "Recruiter does it within your sending hours and tells you each time." },
+    { id: "execute", label: "Act", body: "Recruiter does it within your sending hours and records it in the applicant’s history." },
+  ],
+  actions: [
+    { id: "send_invitation", label: "Email an applicant the application link", ceiling: "execute" },
+    { id: "follow_up", label: "Remind about an unfinished application", ceiling: "execute" },
+    { id: "answer_questions", label: "Answer a routine question from your hiring FAQ", ceiling: "execute" },
+    { id: "interview_reminder", label: "Remind an applicant of their interview", ceiling: "execute" },
+    { id: "send_offer", label: "Send a hiring offer", ceiling: "propose", locked: "Offers always wait for your approval." },
+    { id: "decline_fixed", label: "Decline someone who misses a fixed requirement", ceiling: "propose", locked: "Recruiter proposes the decline; a person approves it." },
+  ],
+} as const;

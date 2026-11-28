@@ -27,6 +27,8 @@ import { rateCardAt } from "../../../convex/lib/messagingBilling/rates";
 import { RecruiterCta } from "./cta";
 import { FaqList } from "./faq";
 import { HeroWorkspace } from "./hero-workspace";
+import { PermissionsPanel } from "./permissions-panel";
+import { RecruiterDesk } from "./recruiter-desk";
 import { RecruiterNav } from "./nav";
 import { RecruiterStickyCta } from "./sticky-cta";
 import { WorkflowPreview } from "./workflow";
@@ -101,7 +103,7 @@ function Hero({ ctaHref }: { ctaHref: string }) {
           </p>
           <ModeNote className="mt-2" />
         </div>
-        <HeroWorkspace />
+        <RecruiterDesk />
       </div>
     </section>
   );
@@ -119,9 +121,12 @@ function Problem() {
           </div>
         ))}
       </div>
-      <div className="mt-6 flex items-start gap-4 rounded-2xl border border-[#e2d9ff] bg-[#eee8ff]/50 p-6">
-        <AgentMark id="recruiter" size="lg" />
-        <p className="text-[16px] leading-relaxed text-strong sm:text-[17px]">{PROBLEM.answer}</p>
+      <div className="mt-6 grid items-center gap-8 rounded-3xl border border-[#e2d9ff] bg-[#eee8ff]/40 p-6 sm:p-8 lg:grid-cols-[0.9fr_1.1fr] lg:gap-12">
+        <div className="flex items-start gap-4">
+          <AgentMark id="recruiter" size="lg" />
+          <p className="text-[16px] leading-relaxed text-strong sm:text-[17px]">{PROBLEM.answer}</p>
+        </div>
+        <HeroWorkspace />
       </div>
     </Section>
   );
@@ -178,7 +183,8 @@ function GettingStarted() {
 function Control({ privacyHref, securityHref }: { privacyHref: string; securityHref: string }) {
   return (
     <Section id="control" label="Control and trust" title={CONTROL.headline}>
-      <div className="grid gap-x-10 gap-y-7 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid items-start gap-10 lg:grid-cols-[1fr_1fr] lg:gap-12">
+      <div className="grid gap-x-8 gap-y-7 sm:grid-cols-2">
         {CONTROL.items.map((item) => (
           <div key={item.title} className="flex gap-3">
             <Check />
@@ -188,6 +194,8 @@ function Control({ privacyHref, securityHref }: { privacyHref: string; securityH
             </div>
           </div>
         ))}
+      </div>
+      <PermissionsPanel />
       </div>
       <div className="mt-10 rounded-2xl border border-border bg-[#f8f9fc] p-6">
         <p className="text-[15px] leading-relaxed text-strong">{CONTROL.inbox}</p>
